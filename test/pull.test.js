@@ -135,3 +135,22 @@ describe("performPull", () => {
     expect(actor.items).toHaveLength(0);
   });
 });
+
+describe("performPull and a GM's rarity", () => {
+  it("grants the copy at the rarity the GM set, and leaves an unedited one as its source", async () => {
+    globalThis.fromUuid = async uuid => ({ name: uuid, img: "", toObject: () => ({ name: uuid, type: "loot", flags: {}, system: { rarity: "uncommon" } }) });
+    const pools = { pool: { id: "pool", name: "Pool", pools: [], entries: [
+      { uuid: "set", name: "set", img: "", rarity: "uncommon", sourceRarity: "uncommon", rarityOverride: "legendary", weight: 1 },
+    ] } };
+    const box = { ...BOX, weights: { legendary: 1 } };
+    const actor = makeActor();
+    const out = await performPull({ box, pools, actor, state: {}, rng: () => 0.5 });
+    expect(out.result.rarity).toBe("legendary");
+    expect(actor.items[0].system.rarity).toBe("legendary");
+
+    const plain = { pool: { ...pools.pool, entries: [{ uuid: "plain", name: "plain", img: "", rarity: "uncommon", sourceRarity: "uncommon", weight: 1 }] } };
+    const actor2 = makeActor();
+    await performPull({ box: { ...BOX, weights: { uncommon: 1 } }, pools: plain, actor: actor2, state: {}, rng: () => 0.5 });
+    expect(actor2.items[0].system.rarity).toBe("uncommon");
+  });
+});
