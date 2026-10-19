@@ -131,6 +131,25 @@ const compendiumUuid = (packId, row) => row.uuid ?? `Compendium.${packId}.Item.$
 const entryFromRow = (packId, row) => ({ uuid: compendiumUuid(packId, row), name: row.name, img: row.img, rarity: normalizeRarity(row.system?.rarity), weight: 1 });
 
 /*
+  A pack's index rows, each physical item's row sure to carry system.rarity.
+  Foundry only keeps the fields in pack.indexFields when it re-indexes a
+  document it has loaded (a pull, the spin, an opened sheet), and dnd5e's
+  list has no rarity, so such a row drops `system.rarity` and asking
+  getIndex for the field again returns the same cached row. Read as is, that
+  item would go into a pool as common and a rarity filter would skip it.
+  The rows that lost it are read from their documents (cached once loaded).
+*/
+async function indexWithRarity(pack) {
+  const index = await pack.getIndex({ fields: INDEX_FIELDS });
+  const lost = [...index].filter(r => isLootType(r.type) && r.system?.rarity === undefined);
+  if (!lost.length) return index;
+  const docs = await pack.getDocuments({ _id__in: lost.map(r => r._id) });
+  const rarity = new Map(docs.map(d => [d.id, d.system?.rarity]));
+  const fixed = new Map(lost.map(r => [r._id, { ...r, system: { ...r.system, rarity: rarity.get(r._id) } }]));
+  return [...index].map(r => fixed.get(r._id) ?? r);
+}
+
+/*
   Bulk source: every item in a compendium that passes the filter.
   filter: { types: ["weapon", "equipment"], rarities: ["uncommon"], name: "wand" }
 */
@@ -142,7 +161,7 @@ export async function entriesFromCompendium(packId, filter = {}) {
 async function compendiumEntries(packId, filter = {}) {
   const pack = game.packs.get(packId);
   if (!pack || pack.documentName !== "Item") return [];
-  const index = await pack.getIndex({ fields: INDEX_FIELDS });
+  const index = await indexWithRarity(pack);
   const types = new Set(filter.types ?? []);
   const rarities = new Set((filter.rarities ?? []).map(normalizeRarity));
   const needle = (filter.name ?? "").trim().toLowerCase();
@@ -229,7 +248,8 @@ async function collectDrop(data) {
       const folders = [folder, ...folder.getSubfolders(true)];
       if (folder.pack) {
         const ids = new Set(folders.map(f => f.id));
-        const index = await game.packs.get(folder.pack)?.getIndex({ fields: INDEX_FIELDS });
+        const pack = game.packs.get(folder.pack);
+        const index = pack ? await indexWithRarity(pack) : null;
         const rows = [...(index ?? [])].filter(r => ids.has(r.folder?.id ?? r.folder));
         return { label: folder.name, entries: rows.map(r => ({ ...entryFromRow(folder.pack, r), type: r.type })) };
       }

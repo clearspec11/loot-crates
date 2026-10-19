@@ -28,6 +28,7 @@ function pack(collection, label, rows, documentName = "Item") {
   return {
     collection, documentName, metadata: { label }, index,
     getIndex: vi.fn(async () => index),
+    getDocuments: vi.fn(async ({ _id__in }) => _id__in.map(id => ({ id, system: { rarity: "" } }))),
   };
 }
 
@@ -158,6 +159,31 @@ describe("entriesFromDrop", () => {
     expect(await entriesFromDrop({ type: "Actor", uuid: "Actor.x" })).toBeNull();
     expect(await entriesFromDrop({ type: "Folder", uuid: "Folder.gone" })).toBeNull();
     expect(await entriesFromDrop(null)).toBeNull();
+  });
+});
+
+describe("index rows that lost their rarity", () => {
+  // Foundry re-indexes a compendium item it has loaded with only
+  // pack.indexFields, which has no system.rarity, and getIndex keeps
+  // returning that row. Live in cc-dev: Vicious Shortsword's row read
+  // { container, identifier, source } after one getDocument.
+  beforeEach(() => {
+    const srd = globalThis.game.packs.get("dnd5e.items");
+    srd.index.set("a2", { ...srd.index.get("a2"), system: { identifier: "wand-of-fireballs" } });
+    srd.getDocuments = vi.fn(async ({ _id__in }) => _id__in.map(id => ({ id, system: { rarity: { a2: "rare" }[id] } })));
+  });
+
+  it("reads the rarity from the document instead of calling it common", async () => {
+    const plan = await entriesFromDrop({ type: "Compendium", collection: "dnd5e.items" });
+    expect(plan.entries.find(e => e.name === "Wand of Fireballs").rarity).toBe("rare");
+    expect(globalThis.game.packs.get("dnd5e.items").getDocuments).toHaveBeenCalledWith({ _id__in: ["a2"] });
+  });
+
+  it("keeps such an item in a rarity filter and a compendium folder drop", async () => {
+    const filtered = await entriesFromDrop({ type: "Compendium", collection: "dnd5e.items", filter: { rarities: ["rare"] } });
+    expect(names(filtered)).toEqual(["Wand of Fireballs"]);
+    const fromFolder = await entriesFromDrop({ type: "Folder", uuid: "Compendium.dnd5e.items.Folder.cf2" });
+    expect(fromFolder.entries.map(e => e.rarity)).toEqual(["rare"]);
   });
 });
 
