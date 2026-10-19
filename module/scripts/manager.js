@@ -13,6 +13,7 @@ import { oddsTable, normalizeRarity } from "./odds.js";
 import { formatPrice } from "./currency.js";
 import { refreshShop } from "./shop.js";
 import { describeRefund, refundPull } from "./refund.js";
+import { postRefundCard } from "./chat.js";
 
 const { ApplicationV2, DialogV2 } = foundry.applications.api;
 const esc = s => foundry.utils.escapeHTML(String(s ?? ""));
@@ -138,6 +139,7 @@ export class CrateManager extends ApplicationV2 {
     if (done.status === "refunded") {
       const what = done.removedItem ? ` and ${done.removedItem} removed` : "";
       ui.notifications.info(`${formatPrice(row.price)} returned to ${actor.name}${what}.`);
+      await postRefundCard({ row, actor, removedItem: done.removedItem });
     } else if (done.status === "already") {
       ui.notifications.info("That pull was already refunded.");
     } else {

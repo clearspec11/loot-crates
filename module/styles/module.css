@@ -158,6 +158,7 @@
 .lc-chat__item img { width: 40px; height: 40px; border: 0; }
 .lc-chat__name { font-weight: 700; }
 .lc-chat__rarity { font-size: 11px; color: var(--lc-rarity); }
+.lc-chat__refund { font-size: 12px; margin-top: 4px; }
 
 @media (prefers-reduced-motion: reduce) {
   .lc-card { transition: none; }
