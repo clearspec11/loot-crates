@@ -1,0 +1,164 @@
+/* Loot Crates. Tokens are scoped to the module's own windows and chat cards
+   so Foundry's and other modules' styles are left alone. docs/DESIGN.md is
+   the source of truth for these values. */
+
+.loot-crates {
+  --lc-bg: #121417;
+  --lc-bg-2: #1a1d22;
+  --lc-bg-3: #23272e;
+  --lc-line: #30353d;
+  --lc-ink: #eef0f3;
+  --lc-ink-soft: #b7bdc7;
+  --lc-ink-mute: #8b929d;
+  --lc-accent: #e8b65a;
+  --lc-radius: 8px;
+  --lc-font: "Signika", "Plus Jakarta Sans", system-ui, sans-serif;
+
+  --lc-common: #9aa5b5;
+  --lc-uncommon: #4b8ff2;
+  --lc-rare: #9b59f0;
+  --lc-veryRare: #ef5aa7;
+  --lc-legendary: #ef4b4b;
+  --lc-artifact: #f2c14e;
+
+  color: var(--lc-ink);
+  font-family: var(--lc-font);
+}
+
+.loot-crates .window-content { background: var(--lc-bg); color: var(--lc-ink); }
+
+/* One rule per rarity sets --lc-rarity; everything else reads it. */
+.lc-rarity-common { --lc-rarity: var(--lc-common); }
+.lc-rarity-uncommon { --lc-rarity: var(--lc-uncommon); }
+.lc-rarity-rare { --lc-rarity: var(--lc-rare); }
+.lc-rarity-veryRare { --lc-rarity: var(--lc-veryRare); }
+.lc-rarity-legendary { --lc-rarity: var(--lc-legendary); }
+.lc-rarity-artifact { --lc-rarity: var(--lc-artifact); }
+
+/* Sidebar button */
+.loot-crates-open { flex: 0 0 100%; margin-top: 4px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+
+/* ---------- The spin ---------- */
+.lc-spin { position: relative; width: 100%; }
+.lc-spin__viewport {
+  position: relative; overflow: hidden; width: 100%; height: 176px;
+  background: linear-gradient(180deg, var(--lc-bg-2), var(--lc-bg));
+  border: 1px solid var(--lc-line); border-radius: var(--lc-radius);
+  mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+}
+.lc-spin__track {
+  --lc-card-w: 120px; --lc-card-gap: 8px;
+  position: absolute; top: 16px; left: 0; display: flex; gap: var(--lc-card-gap);
+  will-change: transform;
+}
+.lc-spin__marker {
+  position: absolute; top: 0; bottom: 0; left: 50%; width: 2px; margin-left: -1px;
+  background: var(--lc-accent); box-shadow: 0 0 12px var(--lc-accent);
+  pointer-events: none;
+}
+.lc-spin__marker::before, .lc-spin__marker::after {
+  content: ""; position: absolute; left: 50%; transform: translateX(-50%);
+  border: 7px solid transparent;
+}
+.lc-spin__marker::before { top: 0; border-top-color: var(--lc-accent); }
+.lc-spin__marker::after { bottom: 0; border-bottom-color: var(--lc-accent); }
+
+.lc-card {
+  flex: 0 0 var(--lc-card-w); width: var(--lc-card-w); height: 144px;
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 6px;
+  padding: 10px 8px 0; box-sizing: border-box;
+  background: var(--lc-bg-3); border: 1px solid var(--lc-line); border-radius: var(--lc-radius);
+  color: var(--lc-ink-soft); user-select: none;
+  transition: transform 420ms cubic-bezier(.2,.9,.3,1.2), box-shadow 420ms ease, border-color 420ms ease;
+}
+.lc-card__art {
+  width: 72px; height: 72px; display: grid; place-items: center;
+  border-radius: 6px; background: color-mix(in srgb, var(--lc-rarity) 14%, var(--lc-bg-2));
+  font-weight: 700; font-size: 20px; color: var(--lc-rarity);
+}
+.lc-card__art img { width: 64px; height: 64px; object-fit: contain; border: 0; }
+.lc-card__name {
+  width: 100%; font-size: 12px; line-height: 1.2; text-align: center;
+  overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  min-height: 2.4em; color: var(--lc-ink);
+}
+.lc-card__bar { width: 100%; height: 4px; border-radius: 0 0 var(--lc-radius) var(--lc-radius); background: var(--lc-rarity); }
+
+.lc-card--landed {
+  transform: translateY(-6px) scale(1.06);
+  border-color: var(--lc-rarity);
+  box-shadow: 0 0 0 1px var(--lc-rarity), 0 0 28px color-mix(in srgb, var(--lc-rarity) 60%, transparent);
+}
+.lc-spin--landed .lc-card:not(.lc-card--landed) { opacity: .55; }
+
+/* ---------- Reveal window ---------- */
+.lc-reveal__body { display: grid; gap: 12px; padding: 4px 0; }
+.lc-reveal__head { font-size: 14px; color: var(--lc-ink-soft); }
+.lc-reveal__head strong { color: var(--lc-ink); }
+.lc-reveal__price { margin-left: 6px; color: var(--lc-accent); }
+.lc-reveal__result { min-height: 48px; text-align: center; }
+.lc-reveal__name { font-size: 20px; font-weight: 700; }
+.lc-reveal__rarity { font-size: 12px; letter-spacing: .04em; color: var(--lc-ink-mute); }
+.lc-spin--landed + .lc-reveal__result .lc-reveal__name { color: var(--lc-ink); }
+.lc-reveal__actions { display: flex; justify-content: flex-end; }
+
+/* ---------- Shop ---------- */
+.lc-shop__body { display: grid; gap: 12px; }
+.lc-shop__head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.lc-shop__purse { color: var(--lc-accent); font-weight: 600; }
+.lc-shop__closed { color: var(--lc-ink-mute); font-style: italic; }
+.lc-shop__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+.lc-shop__empty, .lc-empty { color: var(--lc-ink-mute); margin: 8px 0; }
+.lc-box {
+  display: grid; gap: 8px; padding: 12px; text-align: center;
+  background: var(--lc-bg-2); border: 1px solid var(--lc-line); border-radius: var(--lc-radius);
+  border-top: 3px solid var(--lc-rarity);
+}
+.lc-box__art { font-size: 36px; color: var(--lc-rarity); }
+.lc-box__name { font-weight: 700; }
+.lc-box__odds, .lc-odds { display: flex; gap: 4px; justify-content: center; flex-wrap: wrap; }
+.lc-odd { font-size: 11px; padding: 1px 6px; border-radius: 999px; background: color-mix(in srgb, var(--lc-rarity) 22%, transparent); color: var(--lc-rarity); }
+.lc-box__stock { font-size: 11px; color: var(--lc-ink-mute); }
+.lc-box__buy { background: var(--lc-accent); color: #1a1200; border: 0; border-radius: 6px; padding: 8px 10px; font-weight: 700; cursor: pointer; }
+.lc-box__buy:disabled { background: var(--lc-bg-3); color: var(--lc-ink-mute); cursor: not-allowed; }
+
+/* ---------- Manager ---------- */
+.lc-manager__body { display: grid; grid-template-rows: auto 1fr; gap: 10px; height: 100%; }
+.lc-tabs { display: flex; gap: 6px; align-items: center; border-bottom: 1px solid var(--lc-line); padding-bottom: 6px; }
+.lc-tabs button.active { border-color: var(--lc-accent); color: var(--lc-accent); }
+.lc-tabs__spacer { flex: 1; }
+.lc-tab { overflow: auto; }
+.lc-toolbar { display: flex; gap: 6px; margin-bottom: 8px; }
+.lc-pool { border: 1px dashed var(--lc-line); border-radius: var(--lc-radius); padding: 8px; margin-bottom: 10px; }
+.lc-pool.lc-drop--over { border-color: var(--lc-accent); background: color-mix(in srgb, var(--lc-accent) 8%, transparent); }
+.lc-pool header { display: flex; align-items: center; gap: 8px; }
+.lc-pool__count, .lc-pool__hint { font-size: 12px; color: var(--lc-ink-mute); }
+.lc-entries { list-style: none; margin: 6px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 4px; }
+.lc-entry { display: flex; align-items: center; gap: 6px; padding: 3px 6px; border-radius: 6px; background: var(--lc-bg-2); border-left: 3px solid var(--lc-rarity); font-size: 12px; }
+.lc-entry img { width: 22px; height: 22px; border: 0; }
+.lc-entry span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lc-entry em { color: var(--lc-rarity); font-style: normal; font-size: 11px; }
+.lc-entry button { width: 22px; height: 22px; line-height: 1; padding: 0; }
+.lc-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.lc-table th, .lc-table td { padding: 6px; border-bottom: 1px solid var(--lc-line); text-align: left; vertical-align: middle; }
+.lc-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--lc-rarity); margin-right: 6px; }
+.lc-row--refunded { opacity: .5; }
+.lc-form { display: grid; gap: 8px; }
+.lc-form label { display: grid; gap: 4px; }
+.lc-form .lc-row { display: flex; align-items: center; gap: 8px; }
+.lc-form .lc-row input[type=number] { width: 72px; }
+.lc-form fieldset { border: 1px solid var(--lc-line); border-radius: 6px; }
+
+/* ---------- Chat card ---------- */
+.lc-chat { border-left: 3px solid var(--lc-rarity); padding: 6px 8px; border-radius: 4px; }
+.lc-chat__head { font-size: 12px; }
+.lc-chat__price { color: var(--lc-accent); margin-left: 4px; }
+.lc-chat__item { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.lc-chat__item img { width: 40px; height: 40px; border: 0; }
+.lc-chat__name { font-weight: 700; }
+.lc-chat__rarity { font-size: 11px; color: var(--lc-rarity); }
+
+@media (prefers-reduced-motion: reduce) {
+  .lc-card { transition: none; }
+}

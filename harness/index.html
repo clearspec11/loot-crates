@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Loot Crates harness</title>
+  <link rel="stylesheet" href="../module/styles/module.css">
+  <style>
+    body { margin: 0; background: #0d0f12; color: #eef0f3; font-family: "Plus Jakarta Sans", system-ui, sans-serif; }
+    .page { max-width: 760px; margin: 0 auto; padding: 16px; }
+    .window { background: #121417; border: 1px solid #30353d; border-radius: 10px; padding: 14px; }
+    .controls { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; font-size: 13px; }
+    .controls a, .controls button { color: #e8b65a; background: none; border: 1px solid #30353d; border-radius: 6px; padding: 4px 8px; text-decoration: none; cursor: pointer; font: inherit; }
+    .controls a.active { border-color: #e8b65a; }
+    h1 { font-size: 14px; font-weight: 600; color: #8b929d; margin: 0 0 12px; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <h1>Loot Crates harness (no Foundry: same scripts, sample data)</h1>
+    <nav class="controls" id="nav"></nav>
+    <div class="window loot-crates" id="stage"></div>
+  </div>
+  <script type="module" src="./harness.js"></script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+{
+  "name": "loot-crates",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Loot Crates for Foundry VTT: GM-curated item pools, gold-priced boxes, and a crate-opening spin the whole table watches.",
+  "type": "module",
+  "scripts": {
+    "lint": "eslint .",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "build": "node scripts/build.mjs",
+    "smoke": "node scripts/smoke.mjs",
+    "harness": "node scripts/serve.mjs",
+    "foundry:serve": "python3 foundry-dev/headless/serve-module.py module 8766"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.13.0",
+    "globals": "^17.13.0",
+    "vitest": "^5.0.5"
+  }
+}
