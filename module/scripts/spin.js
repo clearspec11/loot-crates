@@ -67,13 +67,18 @@ export function mountSpin(container, strip, options = {}) {
   container.append(viewport);
 
   // Centre of the landing card must end under the marker (viewport centre).
-  const target = () => strip.landIndex * step + cardWidth / 2 - viewport.clientWidth / 2;
+  // The width is read every frame, never cached: the window that hosts the
+  // spin is sized after its first frame (ApplicationV2 applies position.width
+  // once rendered) and can be dragged or resized mid-spin, and the one promise
+  // the marker makes is that what sits under it is what you got.
+  const width = () => viewport.clientWidth;
+  const target = w => strip.landIndex * step + cardWidth / 2 - w / 2;
+  const start = w => Math.max(0, Math.min(2, strip.landIndex) * step - w / 2);
   const setX = x => { track.style.transform = `translate3d(${-x}px, 0, 0)`; };
-  const start = () => Math.max(0, Math.min(2, strip.landIndex) * step - viewport.clientWidth / 2);
 
   let lastIndex = -1;
-  const tick = x => {
-    const index = Math.floor((x + viewport.clientWidth / 2) / step);
+  const tick = (x, w) => {
+    const index = Math.floor((x + w / 2) / step);
     if (index !== lastIndex) {
       lastIndex = index;
       options.onTick?.(index, strip.cards[index]);
@@ -85,6 +90,10 @@ export function mountSpin(container, strip, options = {}) {
     el.classList.add("lc-card--landed");
     container.classList.add("lc-spin--landed");
     container.dataset.rarity = strip.cards[strip.landIndex].rarity;
+    // Once landed, keep the result under the marker whatever happens to the
+    // window: a late size, a drag onto another monitor, a reduced-motion land
+    // on a viewport that had no width yet.
+    if (typeof ResizeObserver === "function") new ResizeObserver(() => setX(target(width()))).observe(viewport);
     options.onLand?.(strip.cards[strip.landIndex]);
   };
 
@@ -93,19 +102,27 @@ export function mountSpin(container, strip, options = {}) {
   // the result, so the better card next door sits under the marker for a beat.
   const overshoot = strip.nearMiss ? cardWidth * 0.55 : cardWidth * 0.18;
   const split = 0.86;
+  const MAX_UNSIZED_FRAMES = 10;
 
   function play() {
-    const x0 = start();
-    const x1 = target();
-    setX(x0);
+    setX(start(width()));
     if (reducedMotion || duration <= 0) {
-      setX(x1);
+      setX(target(width()));
       land();
       return Promise.resolve();
     }
     return new Promise(resolve => {
-      const t0 = performance.now();
+      let t0 = null;
+      let unsized = 0;
       const frame = now => {
+        const w = width();
+        // Don't start the clock on a viewport that has no width yet, or the
+        // first sized frame is a jump; give up waiting after a few frames so a
+        // hidden host still lands.
+        if (!w && unsized++ < MAX_UNSIZED_FRAMES) { requestAnimationFrame(frame); return; }
+        t0 ??= now;
+        const x0 = start(w);
+        const x1 = target(w);
         const p = Math.min(1, (now - t0) / duration);
         let x;
         if (p < split) {
@@ -114,9 +131,9 @@ export function mountSpin(container, strip, options = {}) {
           x = x1 + overshoot - overshoot * easeInOutQuad((p - split) / (1 - split));
         }
         setX(x);
-        tick(x);
+        tick(x, w);
         if (p < 1) requestAnimationFrame(frame);
-        else { setX(x1); land(); resolve(); }
+        else { setX(target(width())); land(); resolve(); }
       };
       requestAnimationFrame(frame);
     });
