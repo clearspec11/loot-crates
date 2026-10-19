@@ -578,7 +578,7 @@ export class CrateManager extends ApplicationV2 {
     return `<table class="lc-table"><thead><tr><th>When</th><th>Who</th><th>Box</th><th>Got</th><th></th></tr></thead><tbody>
       ${log.map(r => `<tr class="${r.refunded ? "lc-row--refunded" : ""}">
         <td>${new Date(r.at).toLocaleString()}</td><td>${esc(r.actorName)}</td><td>${esc(r.boxName)} (${esc(formatPrice(r.price))})</td>
-        <td class="lc-rarity-${esc(r.rarity)}"><span class="lc-dot"></span>${esc(r.name)}${r.pity ? " · pity" : ""}${logRarityNote(r)}</td>
+        <td class="lc-rarity-${esc(r.rarity)}"><span class="lc-dot"></span>${r.refunded ? `<s>${esc(r.name)}</s>` : esc(r.name)}${r.pity ? " · pity" : ""}${logRarityNote(r)}</td>
         <td>${r.refunded ? `refunded ${esc(refundTime(r.refunded))}` : `<button type="button" data-action="refund" data-row="${esc(r.id)}">Refund</button>`}</td>
       </tr>`).join("")}</tbody></table>`;
   }

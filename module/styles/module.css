@@ -223,7 +223,11 @@
 .lc-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .lc-table th, .lc-table td { padding: 6px; border-bottom: 1px solid var(--lc-line); text-align: left; vertical-align: middle; }
 .lc-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--lc-rarity); margin-right: 6px; }
-.lc-row--refunded { opacity: .5; }
+/* A refunded pull reads as withdrawn, as its chat card does: no rarity colour,
+   the name struck through, text muted but still readable (no opacity, which
+   took the 11px source note and the refund date under 2.5:1). */
+.lc-row--refunded td { color: var(--lc-ink-mute); }
+.lc-row--refunded .lc-dot { --lc-rarity: var(--lc-ink-mute); }
 .lc-log__rarity { display: block; margin-left: 14px; font-size: 11px; color: var(--lc-ink-mute); }
 .lc-form { display: grid; gap: 8px; }
 .lc-form label { display: grid; gap: 4px; }

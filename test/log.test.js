@@ -37,3 +37,15 @@ describe("the pull log", () => {
     expect(new CrateManager()._log()).not.toContain("set by GM");
   });
 });
+
+describe("a refunded row", () => {
+  it("strikes the name through and says when it was refunded", () => {
+    const at = Date.UTC(2026, 9, 20, 3, 0);
+    log = [row({ refunded: at, sourceRarity: ["uncommon"] })];
+    const html = new CrateManager()._log();
+    expect(html).toContain('class="lc-row--refunded"');
+    expect(html).toContain("<s>Rope</s>");
+    expect(html).toMatch(/refunded \S/);
+    expect(html).not.toContain('data-action="refund"');
+  });
+});
