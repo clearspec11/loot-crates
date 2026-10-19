@@ -153,9 +153,48 @@
 .lc-toolbar { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
 .lc-pool { border: 1px dashed var(--lc-line); border-radius: var(--lc-radius); padding: 8px; margin-bottom: 10px; }
 .lc-pool.lc-drop--over { border-color: var(--lc-accent); background: color-mix(in srgb, var(--lc-accent) 8%, transparent); }
-.lc-pool header { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+/* A pool is a <details>: the summary is its census, always in view. */
+.lc-pool__details > summary {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px;
+  list-style: none; cursor: pointer; padding: 2px 4px; border-radius: 6px;
+}
+.lc-pool__details > summary::-webkit-details-marker { display: none; }
+.lc-pool__details > summary::before {
+  content: ""; align-self: center; flex: none; width: 0; height: 0;
+  border-left: 6px solid var(--lc-ink-mute); border-top: 5px solid transparent; border-bottom: 5px solid transparent;
+  transition: transform 120ms ease;
+}
+.lc-pool__details[open] > summary::before { transform: rotate(90deg); }
+.lc-pool__details > summary:hover::before { border-left-color: var(--lc-accent); }
+.lc-pool__details > summary:focus-visible { outline: 2px solid var(--lc-accent); outline-offset: 1px; }
+.lc-pool__name { font-weight: 700; }
+.lc-pool__bar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 6px; }
+.lc-pool__bar > button { flex: none; width: auto; }
 .lc-pool__unset:empty { display: none; }
+.lc-pool__unset button { width: auto; }
+.loot-crates input.lc-pool__search {
+  flex: 1 1 10em; min-width: 8em; max-width: 22em; height: 26px; padding: 0 8px; font-size: 12px;
+  color: var(--lc-ink); background: var(--lc-bg-3); border: 1px solid var(--lc-line); border-radius: 6px;
+}
+.loot-crates input.lc-pool__search:focus-visible { outline: 2px solid var(--lc-accent); outline-offset: 1px; }
+/* The census as filter chips: odds-pill shape, pressed fills with its colour. */
+.lc-pool__chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.loot-crates button.lc-chip {
+  width: auto; height: auto; min-height: 24px; margin: 0; font-family: inherit; cursor: pointer;
+  box-shadow: none;
+}
+.loot-crates button.lc-chip:hover { border-color: var(--lc-rarity); }
+.loot-crates button.lc-chip[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--lc-rarity) 42%, var(--lc-bg-3)); border-color: var(--lc-rarity);
+  box-shadow: inset 0 0 0 1px var(--lc-rarity);
+}
+.loot-crates button.lc-chip:focus-visible { outline: 2px solid var(--lc-accent); outline-offset: 1px; }
+.lc-chip--problem { --lc-rarity: var(--lc-accent); }
+.lc-pool__foot { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: 6px; font-size: 12px; color: var(--lc-ink-mute); }
+.lc-pool__foot:empty { display: none; }
+.lc-pool__foot .lc-pool__more { width: auto; }
 .lc-pool__count, .lc-pool__hint { font-size: 12px; color: var(--lc-ink-mute); }
+@media (prefers-reduced-motion: reduce) { .lc-pool__details > summary::before { transition: none; } }
 .lc-entries { list-style: none; margin: 6px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 330px), 1fr)); gap: 4px; }
 .lc-entry { display: flex; align-items: center; gap: 6px; padding: 3px 6px; border-radius: 6px; background: var(--lc-bg-2); border-left: 3px solid var(--lc-rarity); font-size: 12px; }
 .lc-entry img { width: 22px; height: 22px; border: 0; }

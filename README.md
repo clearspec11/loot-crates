@@ -26,7 +26,7 @@ The harness runs the module's pure scripts with sample data outside Foundry so t
 ## Layout
 
 - `module/` is what ships: `module.json`, `scripts/`, `styles/`.
-  - Pure, tested, no Foundry globals: `odds.js` (the pull and the shop's odds), `currency.js` (coins), `boxcard.js` (the shop's box card and odds pills, shared with the manager and the harness), `revealcard.js` (the reveal's result block and where its window opens, shared with the harness), `strip.js` (the reveal row), `spin.js` (the animation, DOM only).
+  - Pure, tested, no Foundry globals: `odds.js` (the pull and the shop's odds), `currency.js` (coins), `boxcard.js` (the shop's box card and odds pills, shared with the manager and the harness), `revealcard.js` (the reveal's result block and where its window opens, shared with the harness), `poolview.js` (the pool editor's rows, search, filter chips and 50-row pages, shared with the harness), `strip.js` (the reveal row), `spin.js` (the animation, DOM only).
   - Foundry-side: `store.js` (settings-backed pools/boxes/log), `pull.js` (one purchase), `socket.js` (player to GM), `shop.js`, `reveal.js`, `manager.js`, `chat.js`, `sound.js`, `main.js`.
 - `harness/` is the no-Foundry page used by `npm run smoke`.
 - `test/` is Vitest. `scripts/` are the checks. `docs/DESIGN.md` holds the design tokens and rules.
