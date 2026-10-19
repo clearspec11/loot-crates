@@ -231,7 +231,7 @@ export function entryRow(poolId, row, esc) {
   const { e, src, status } = row;
   const ids = `data-pool="${esc(poolId)}" data-uuid="${esc(e.uuid)}"`;
   if (status === "missing") {
-    const remove = `<button type="button" class="lc-entry__remove" data-action="removeEntry" ${ids} aria-label="Remove ${esc(e.name)}" title="Remove">&times;</button>`;
+    const remove = `<button type="button" class="lc-entry__remove" data-action="removeEntry" ${ids} aria-label="Remove ${esc(e.name)}" data-tooltip="Remove"><i class="fa-solid fa-xmark" inert></i></button>`;
     return `<li class="lc-entry lc-entry--missing lc-rarity-${effectiveRarity(e)}" data-entry="${esc(e.uuid)}" data-pool="${esc(poolId)}" data-relink="${esc(e.uuid)}" title="Drop an item here to relink it">
       <img src="${esc(e.img || FALLBACK_IMG)}" alt="">
       <span class="lc-entry__text"><span class="lc-entry__name">${esc(e.name)}</span><small class="lc-entry__status">Source missing, not drawn. Drop an item here to relink.</small></span>
@@ -239,7 +239,7 @@ export function entryRow(poolId, row, esc) {
       ${remove}</li>`;
   }
   const parts = entryParts(row, esc);
-  const remove = `<button type="button" class="lc-entry__remove" data-action="removeEntry" ${ids} aria-label="Remove ${esc(parts.name)}" title="Remove">&times;</button>`;
+  const remove = `<button type="button" class="lc-entry__remove" data-action="removeEntry" ${ids} aria-label="Remove ${esc(parts.name)}" data-tooltip="Remove"><i class="fa-solid fa-xmark" inert></i></button>`;
   const update = status === "renamed" ? `<button type="button" class="lc-entry__update" data-action="updateEntry" ${ids} aria-label="Update ${esc(e.name)} to ${esc(parts.name)}">Update</button>` : "";
   return `<li class="${parts.className}" data-entry="${esc(e.uuid)}">
     <img src="${esc((status === "renamed" && src.img) || e.img || FALLBACK_IMG)}" alt="">

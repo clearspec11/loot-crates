@@ -22,11 +22,13 @@ export class CrateShop extends ApplicationV2 {
     classes: ["loot-crates", "lc-shop"],
     window: { title: "Crate Shop", resizable: true },
     position: { width: 640, height: "auto" },
-    actions: { buy: CrateShop.#buy, pickActor: CrateShop.#pickActor },
+    actions: { buy: CrateShop.#buy },
   };
 
   actorId = buyableActors()[0]?.id ?? null;
   busy = false;
+  // The box whose Buy was pressed, so only that card says "Opening…".
+  busyBox = null;
 
   get actor() { return game.actors.get(this.actorId) ?? null; }
 
@@ -34,6 +36,7 @@ export class CrateShop extends ApplicationV2 {
     if (this.busy) return;
     const boxId = target.dataset.box;
     this.busy = true;
+    this.busyBox = boxId;
     this.render();
     try {
       await requestPull({ boxId, actorId: this.actorId });
@@ -41,12 +44,15 @@ export class CrateShop extends ApplicationV2 {
       ui.notifications.warn(err.message);
     } finally {
       this.busy = false;
+      this.busyBox = null;
       this.render();
     }
   }
 
-  static #pickActor(_event, target) {
-    this.actorId = target.value;
+  // A change listener, not a data-action: ApplicationV2 runs actions on click,
+  // and re-rendering on the click that opens the list closed it again.
+  #pickActor(select) {
+    this.actorId = select.value;
     this.render();
   }
 
@@ -61,26 +67,26 @@ export class CrateShop extends ApplicationV2 {
     const purse = actor?.system?.currency ?? {};
 
     const picker = actors.length > 1
-      ? `<select data-action="pickActor" data-change="pickActor">${actors.map(a => `<option value="${a.id}"${a.id === this.actorId ? " selected" : ""}>${esc(a.name)}</option>`).join("")}</select>`
-      : `<span class="lc-shop__who">${esc(actor?.name ?? "No character")}</span>`;
+      ? `<label class="lc-shop__field"><span class="lc-label">Character</span><select class="lc-shop__actor">${actors.map(a => `<option value="${a.id}"${a.id === this.actorId ? " selected" : ""}>${esc(a.name)}</option>`).join("")}</select></label>`
+      : `<div class="lc-shop__field"><span class="lc-label">Character</span><span class="lc-shop__who">${esc(actor?.name ?? "No character")}</span></div>`;
 
     root.innerHTML = `
       <div class="lc-shop__head">
         ${picker}
-        <span class="lc-shop__purse" title="Your coins, as gold">${actor ? esc(formatGold(purse)) : ""}</span>
+        ${actor ? `<div class="lc-shop__field lc-shop__field--purse"><span class="lc-label">Purse</span><span class="lc-shop__purse">${esc(formatGold(purse))}</span></div>` : ""}
         ${open ? "" : `<span class="lc-shop__closed">${game.users.activeGM ? "The GM has closed the shop." : "Closed until a GM is online."}</span>`}
       </div>
       <div class="lc-shop__grid">
         ${boxes.length ? boxes.map(b => this.#boxCard(b, pools, purse, open)).join("") : `<p class="lc-shop__empty">No crates on the shelf yet. The GM builds them from Game Settings, Loot Crates.</p>`}
       </div>`;
-    root.querySelector("select[data-change]")?.addEventListener("change", e => CrateShop.#pickActor.call(this, e, e.currentTarget));
+    root.querySelector(".lc-shop__actor")?.addEventListener("change", e => this.#pickActor(e.currentTarget));
     return root;
   }
 
   #boxCard(box, pools, purse, open) {
     return boxCard(box, pools, {
       purse, open, gmOnline: !!game.users.activeGM, hasActor: !!this.actor,
-      busy: this.busy, art: `<i class="fas fa-box-open"></i>`, esc,
+      busy: this.busy, busyBox: this.busyBox, art: `<i class="fas fa-box-open"></i>`, esc,
     });
   }
 

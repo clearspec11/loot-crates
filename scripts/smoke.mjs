@@ -3,6 +3,8 @@
    The run fails when a page throws or scrolls sideways.
 
      NODE_PATH=$(npm root -g) npm run smoke
+     FOUNDRY_URL=http://<foundry>:30000 NODE_PATH=$(npm root -g) npm run smoke
+                                    # with dnd5e's real fonts and textures
 
    Needs Playwright (global is fine) with its Chromium. The landed spin uses a
    fixed seed and zero duration, so two runs give the same pixels. */
@@ -22,10 +24,12 @@ const WIDTHS = [
   { tag: "1440", viewport: { width: 1440, height: 900 } },
   { tag: "390", viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true },
 ];
+// Foundry's two themes; the light run's files end in -light.
+const THEMES = ["dark", "light"];
 const STATES = [
   ["shop", "state=shop"],
   ["landed", "state=landed&seed=7"],
-  ["landed-legendary", "state=landed&seed=23&box=royal"],
+  ["landed-legendary", "state=landed&seed=36&box=royal"],
   ["landed-buyer", "state=landed&seed=7&buyer=1"],
   ["manager", "state=manager"],
 ];
@@ -107,12 +111,16 @@ try {
   for (const w of WIDTHS) {
     const ctx = await browser.newContext({ viewport: w.viewport, isMobile: w.isMobile, hasTouch: w.hasTouch, reducedMotion: "reduce" });
     await mkdir(path.join(OUT, w.tag), { recursive: true });
-    for (const [name, query] of STATES) {
+    for (const theme of THEMES) for (const [name, query0] of STATES) {
+      const query = `${query0}&theme=${theme}`;
+      const shot = `${name}${theme === "light" ? "-light" : ""}`;
       const page = await ctx.newPage();
       const errors = [];
       const problems0 = [];
       page.on("pageerror", e => errors.push(e.message));
-      page.on("console", m => { if (m.type() === "error") errors.push(m.text()); });
+      // A missing borrowed asset (no FOUNDRY_URL, or Foundry is off) falls
+      // back to system fonts and plain grounds; that isn't a failure.
+      page.on("console", m => { if (m.type() === "error" && !m.text().startsWith("Failed to load resource")) errors.push(m.text()); });
       await page.goto(`http://localhost:${PORT}/harness/?${query}`, { waitUntil: "networkidle" });
       if (name.startsWith("landed")) await page.waitForSelector("body[data-landed]", { timeout: 10000 });
       if (name === "manager") await page.waitForSelector("body[data-ready]", { timeout: 10000 });
@@ -121,10 +129,11 @@ try {
       if (name === "shop") problems0.push(...await page.evaluate(shopProblems));
       else if (name === "manager") problems0.push(...await page.evaluate(managerProblems));
       else problems0.push(...await page.evaluate(revealProblems, name === "landed-buyer"));
-      await page.screenshot({ path: path.join(OUT, w.tag, `${name}.png`), fullPage: true });
+      await page.evaluate(() => document.fonts.ready);
+      await page.screenshot({ path: path.join(OUT, w.tag, `${shot}.png`), fullPage: true });
       const problems = [...errors, ...problems0, ...(wide ? ["page scrolls sideways"] : [])];
-      if (problems.length) { failures++; console.error(`FAIL ${w.tag}/${name}: ${problems.join("; ")}`); }
-      else console.log(`ok   ${w.tag}/${name}`);
+      if (problems.length) { failures++; console.error(`FAIL ${w.tag}/${shot}: ${problems.join("; ")}`); }
+      else console.log(`ok   ${w.tag}/${shot}`);
       await page.close();
     }
     await ctx.close();

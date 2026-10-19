@@ -22,6 +22,7 @@ import { MODULE_ID, SETTINGS } from "./config.js";
 import { mountSpin } from "./spin.js";
 import { formatPrice } from "./currency.js";
 import { cascadeOffset, canSeePurse, resultHTML, freeSlot, CLOSE_GRACE_MS } from "./revealcard.js";
+import { oddsRibbon } from "./boxcard.js";
 import { playTick, playSlow, playReveal } from "./sound.js";
 
 const { ApplicationV2 } = foundry.applications.api;
@@ -107,11 +108,14 @@ export class CrateReveal extends ApplicationV2 {
     root.innerHTML = `
       <div class="lc-reveal__head">
         <span class="lc-reveal__who">${esc(r.actorName)}</span> opens
-        <strong>${esc(r.box.name)}</strong>
+        <strong class="lc-reveal__crate">${esc(r.box.name)}</strong>
         <span class="lc-reveal__price">${esc(formatPrice(r.box.price))}</span>
       </div>
-      <div class="lc-reveal__spin"></div>
-      <div class="lc-reveal__result lc-rarity-${esc(r.result.rarity)}" aria-live="polite"></div>
+      <div class="lc-vault lc-rarity-${esc(r.result.rarity)}">
+        ${r.odds?.length ? oddsRibbon(r.odds) : ""}
+        <div class="lc-reveal__spin"></div>
+        <div class="lc-reveal__result lc-rarity-${esc(r.result.rarity)}" aria-live="polite"></div>
+      </div>
       <div class="lc-reveal__actions">
         <button type="button" class="lc-reveal__open" data-action="openItem" hidden>Open item</button>
         <button type="button" class="lc-reveal__close" data-action="skip">Skip</button>

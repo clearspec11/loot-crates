@@ -1,6 +1,35 @@
 // Sample pools and a box for the harness and screenshots. Names are SRD
-// magic items; no art, so the cards show initials.
-const item = (name, rarity, weight = 1) => ({ uuid: `sample.${name.replace(/\W+/g, "-").toLowerCase()}`, name, img: "", rarity, weight });
+// magic items; art paths are Foundry core icons, which the harness shows when
+// it is served with FOUNDRY_URL (the cards fall back to initials otherwise).
+const ICONS = {
+  "Potion of Healing": "icons/consumables/potions/potion-tube-corked-red.webp",
+  "Spell Scroll (Cantrip)": "icons/sundries/scrolls/scroll-bound-sealed-red.webp",
+  "Cloak of Billowing": "icons/equipment/back/cloak-collared-red.webp",
+  "Moon-Touched Sword": "icons/weapons/swords/sword-guard-blue.webp",
+  "Candle of the Deep": "icons/sundries/lights/candle-unlit-white.webp",
+  "Pole of Collapsing": "icons/weapons/staves/staff-simple.webp",
+  "Bag of Holding": "icons/containers/bags/pack-engraved-leather-tan.webp",
+  "Boots of Elvenkind": "icons/equipment/feet/boots-pointed-cloth-green.webp",
+  "Cloak of Protection": "icons/equipment/back/cloak-heavy-fur-blue.webp",
+  "Wand of Magic Missiles": "icons/weapons/wands/wand-gem-blue.webp",
+  "Goggles of Night": "icons/equipment/head/goggles-leather-blue.webp",
+  "Immovable Rod": "icons/commodities/tech/pipe-lead-closed.webp",
+  "Flame Tongue": "icons/weapons/swords/sword-broad-red.webp",
+  "Ring of Spell Storing": "icons/equipment/finger/ring-cabochon-silver-gold-red.webp",
+  "Boots of Speed": "icons/equipment/feet/boots-leather-green.webp",
+  "Cloak of Displacement": "icons/equipment/back/cloak-brown-accent-brown-layered-collared-fur.webp",
+  "Wand of Fireballs": "icons/weapons/wands/wand-carved-fire.webp",
+  "Staff of Power": "icons/weapons/staves/staff-ornate-banded-purple.webp",
+  "Ring of Regeneration": "icons/equipment/finger/ring-faceted-gold-purple.webp",
+  "Oathbow": "icons/weapons/bows/longbow-recurve-leather-red.webp",
+  "Holy Avenger": "icons/weapons/swords/greatsword-guard-gem-blue.webp",
+  "Vorpal Sword": "icons/weapons/swords/scimitar-guard-gold.webp",
+  "Ring of Three Wishes": "icons/equipment/finger/ring-cabochon-gold-purple.webp",
+  "Brindle's Lantern": "icons/sundries/lights/lantern-steel.webp",
+  "Thornwick Blade": "icons/weapons/swords/greatsword-guard.webp",
+  "Crown of the Pie King": "icons/commodities/gems/gem-rough-cushion-purple-pink.webp"
+};
+const item = (name, rarity, weight = 1) => ({ uuid: `sample.${name.replace(/\W+/g, "-").toLowerCase()}`, name, img: ICONS[name] ? `/${ICONS[name]}` : "", rarity, weight });
 
 export const POOLS = {
   core: {

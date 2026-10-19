@@ -67,3 +67,28 @@ describe("boxCard", () => {
     expect(oddsPills([{ rarity: "veryRare", label: "28%" }])).toBe('<span class="lc-odd lc-rarity-veryRare">V. rare 28%</span>');
   });
 });
+
+describe("the crate's peek and ribbon", () => {
+  it("peeks at real droppable items, best first, and none a crate can't drop", async () => {
+    const { peekItems } = await import("../module/scripts/boxcard.js");
+    const pauper = peekItems(byId("common"), POOLS);
+    expect(pauper.map(e => e.rarity)).toEqual(["uncommon", "common"]);
+    const royal = peekItems(byId("royal"), POOLS);
+    expect(royal.map(e => e.rarity)).toEqual(["legendary", "veryRare", "rare"]);
+    expect(peekItems(byId("empty"), POOLS)).toEqual([]);
+  });
+  it("draws the ribbon from the shop's own odds, hidden from assistive tech", async () => {
+    const { oddsRibbon } = await import("../module/scripts/boxcard.js");
+    const html = oddsRibbon(shopOdds(byId("common"), POOLS).rows);
+    expect(html).toMatch(/^<div class="lc-ribbon" aria-hidden="true">/);
+    expect([...html.matchAll(/flex-grow:([\d.]+)/g)].map(m => +m[1])).toEqual([0.85, 0.15]);
+    expect(oddsRibbon([])).toBe("");
+  });
+  it("only the pressed crate says Opening… while every Buy is off", () => {
+    const busy = { ...ctx, busy: true, busyBox: "common" };
+    expect(boxCard(byId("common"), POOLS, busy)).toContain("Opening…");
+    const other = boxCard(byId("adventurer"), POOLS, busy);
+    expect(other).not.toContain("Opening…");
+    expect(other.match(/<button[^>]*>/)[0]).toMatch(/ disabled/);
+  });
+});

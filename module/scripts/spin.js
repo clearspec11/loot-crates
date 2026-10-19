@@ -2,7 +2,7 @@
   The crate-opening reveal: a strip of item cards scrolls past a centre marker,
   slows with an ease-out, overshoots into the next card when it outranks the
   result (the marker sits a quarter into it, then clicks back), settles, then
-  the winning card lifts and glows.
+  the winning card lifts out of the strip, ringed in its rarity colour.
 
   Pure DOM plus one requestAnimationFrame loop driving a single translateX.
   No Foundry globals, so the harness page can run it for screenshots.

@@ -36,7 +36,10 @@
   near where it was. One status line in the toolbar speaks for them all.
 */
 import { RARITIES, RARITY_LABEL, DEFAULT_WEIGHTS, DEFAULT_PRICE_GP } from "./config.js";
-import { oddsPills } from "./boxcard.js";
+import { oddsPills, oddsRibbon } from "./boxcard.js";
+
+// A box's odds in the Boxes table: its ribbon over its named pills.
+const oddsCell = rows => rows.length ? `${oddsRibbon(rows)}<div class="lc-odds">${oddsPills(rows)}</div>` : "<em>empty</em>";
 import { getPools, getBoxes, getLog, createPool, updatePool, removePool, createBox, updateBox, removeBox, entryFromItem, entriesFromDrop, addEntries, packHasLoot, LOOT_TYPES, isLootType, isShopOpen, setShopOpen, enqueueWrite, checkSources, refreshMissing, removeEntry, patchEntry } from "./store.js";
 import { shopOdds, normalizeRarity, flattenPool, withSources, entryWeight, curateEntries } from "./odds.js";
 import { PAGE_ROWS, FALLBACK_IMG, defaultView, poolRows, sortRows, filterRows, pageRows, nextRows, poolCount, poolSummary, poolBody, chipsHTML, unsetButton, footHTML, entryRow, entryParts } from "./poolview.js";
@@ -457,7 +460,7 @@ export class CrateManager extends ApplicationV2 {
     root.innerHTML = `
       <nav class="lc-tabs">${tabs.map(([k, l]) => `<button type="button" data-action="tab" data-tab="${k}" class="${k === this.tab ? "active" : ""}">${l}</button>`).join("")}
         <span class="lc-tabs__spacer"></span>
-        <button type="button" data-action="toggleShop" class="lc-shop-toggle">${isShopOpen() ? "Shop is open" : "Shop is closed"}</button>
+        <button type="button" data-action="toggleShop" class="lc-shop-toggle" data-open="${isShopOpen()}" aria-pressed="${isShopOpen()}" title="${isShopOpen() ? "Players can buy now. Click to close the shop." : "Players can't buy now. Click to open the shop."}">${isShopOpen() ? "Shop open" : "Shop closed"}</button>
       </nav>
       <section class="lc-tab">${await this[`_${this.tab}`]()}</section>`;
     root.querySelectorAll("[data-drop-pool]").forEach(el => {
@@ -566,9 +569,9 @@ export class CrateManager extends ApplicationV2 {
         ${boxes.map(b => `<tr>
           <td>${esc(b.name)}</td><td>${esc(formatPrice(b.price))}</td>
           <td>${(b.pools ?? []).map(r => esc(pools[r.id]?.name ?? "missing")).join(", ") || "<em>none</em>"}</td>
-          <td class="lc-odds">${oddsPills(shopOdds(b, pools).rows) || "<em>empty</em>"}</td>
+          <td>${oddsCell(shopOdds(b, pools).rows)}</td>
           <td>${[b.rules?.pity ? `pity ${b.rules.pity.after}` : "", b.rules?.noDuplicates ? "no dupes" : "", b.rules?.stock != null ? `${b.rules.stock} left` : ""].filter(Boolean).join(", ")}</td>
-          <td><button type="button" data-action="editBox" data-box="${esc(b.id)}"><i class="fas fa-pen"></i></button> <button type="button" data-action="deleteBox" data-box="${esc(b.id)}"><i class="fas fa-trash"></i></button></td>
+          <td><button type="button" data-action="editBox" data-box="${esc(b.id)}" aria-label="Edit ${esc(b.name)}" data-tooltip="Edit"><i class="fas fa-pen" inert></i></button> <button type="button" data-action="deleteBox" data-box="${esc(b.id)}" aria-label="Delete ${esc(b.name)}" data-tooltip="Delete"><i class="fas fa-trash" inert></i></button></td>
         </tr>`).join("")}</tbody></table>` : `<p class="lc-empty">No boxes. A box prices a pull from one or more pools.</p>`}`;
   }
 

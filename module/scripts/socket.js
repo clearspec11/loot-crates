@@ -26,6 +26,7 @@ import { performPull, PullError } from "./pull.js";
 import { getBoxes, getPools, getActorState, setActorState, appendLog, isShopOpen, saveBox, enqueueWrite, refreshMissing, markMissing, reportMissing } from "./store.js";
 import { showReveal } from "./reveal.js";
 import { postPullCard } from "./chat.js";
+import { shopOdds } from "./odds.js";
 
 export const GM_TIMEOUT_MS = 30000;
 
@@ -133,7 +134,7 @@ async function doPull(msg) {
     // itemUuid is the granted copy on the sheet, which the reveal's Open item
     // and the chat card's link point at (the pool's source is r.result.uuid).
     const itemUuid = out.itemId ? `Actor.${actor.id}.Item.${out.itemId}` : null;
-    const reveal = { type: "reveal", requestId: msg.requestId, userId: msg.userId, actorId: actor.id, actorName: actor.name, box: { id: box.id, name: box.name, price: box.price }, result: out.result, strip: out.strip, purse: out.purse, itemId: out.itemId, itemUuid, logId };
+    const reveal = { type: "reveal", requestId: msg.requestId, userId: msg.userId, actorId: actor.id, actorName: actor.name, box: { id: box.id, name: box.name, price: box.price }, odds: shopOdds(box, getPools()).rows.map(({ rarity, chance, label }) => ({ rarity, chance, label })), result: out.result, strip: out.strip, purse: out.purse, itemId: out.itemId, itemUuid, logId };
     game.socket.emit(SOCKET, reveal);
     showAndPost(reveal);
     return reveal;

@@ -5,3 +5,6 @@ screenshots/
 .DS_Store
 .claude/plans/
 .impeccable/
+
+# Impeccable review captures (regenerated; screenshots/ holds the smoke set)
+.impeccable/review/
