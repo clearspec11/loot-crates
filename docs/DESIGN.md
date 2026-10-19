@@ -21,7 +21,7 @@ typography:
   floor: "11px; card names 12px; the reveal name 20px bold"
 radius: "8px windows and cards, 6px controls, 999px odds pills"
 motion:
-  spin: "5 to 7 s, constant then cubic ease-out, overshoot half a card on a near-miss, settle with ease-in-out"
+  spin: "5 to 7 s, constant then cubic ease-out, on a near-miss overshoot a quarter card into the teased card (one droppable rank up) and click back, settle with ease-in-out"
   landed: "card lifts 6px and scales 1.06 with a rarity glow, 420 ms"
   reduced-motion: "skip straight to the landed state"
 ---
