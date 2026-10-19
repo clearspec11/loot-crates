@@ -150,3 +150,17 @@ describe("updatePool with an edit function", () => {
     expect(dead.missing).toBe(true);
   });
 });
+
+describe("curateEntries on an entry added before sourceRarity existed", () => {
+  const old = { uuid: "a", name: "Rope", rarity: "common", weight: 1 };
+  it("keeps Common when the same change learns the source has no rarity", () => {
+    const [e] = curateEntries([old], ["a"], { sourceRarity: "", rarityOverride: "common" });
+    expect(e.sourceRarity).toBe("");
+    expect(e.rarityOverride).toBe("common");
+    expect(rarityUnset(e)).toBe(false);
+  });
+  it("still clears an override equal to a real source rarity", () => {
+    const [e] = curateEntries([{ ...old, rarity: "rare" }], ["a"], { sourceRarity: "rare", rarityOverride: "rare" });
+    expect(e.rarityOverride).toBeUndefined();
+  });
+});

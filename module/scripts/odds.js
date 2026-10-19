@@ -138,7 +138,9 @@ export function curateEntries(entries, uuids, change = {}) {
       const r = change.rarityOverride;
       // Picking the source's own rarity clears the override, unless the
       // source has none: then "common" is a real choice, not the default.
-      if (RARITIES.includes(r) && (r !== sourceRarityOf(e) || e.sourceRarity === "")) next.rarityOverride = r;
+      // Read `next`, not `e`: an older entry learns sourceRarity "" in this
+      // same change, and its Common must stick.
+      if (RARITIES.includes(r) && (r !== sourceRarityOf(next) || next.sourceRarity === "")) next.rarityOverride = r;
       else delete next.rarityOverride;
     }
     if ("weight" in change) next.weight = entryWeight({ weight: change.weight });
