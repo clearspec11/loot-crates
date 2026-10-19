@@ -19,7 +19,7 @@
   their pool, and the Boxes tab's odds leave the missing ones out.
 */
 import { RARITIES, RARITY_LABEL, DEFAULT_WEIGHTS, DEFAULT_PRICE_GP } from "./config.js";
-import { getPools, getBoxes, getLog, savePool, deletePool, saveBox, deleteBox, entryFromItem, entriesFromDrop, addEntries, packHasLoot, LOOT_TYPES, isShopOpen, setShopOpen, enqueueWrite, checkSources, refreshMissing, removeEntry, patchEntry } from "./store.js";
+import { getPools, getBoxes, getLog, createPool, updatePool, removePool, createBox, updateBox, removeBox, entryFromItem, entriesFromDrop, addEntries, packHasLoot, LOOT_TYPES, isShopOpen, setShopOpen, enqueueWrite, checkSources, refreshMissing, removeEntry, patchEntry } from "./store.js";
 import { oddsTable, normalizeRarity, flattenPool, sourceStatus, withSources } from "./odds.js";
 import { formatPrice } from "./currency.js";
 import { refreshShop } from "./shop.js";
@@ -65,18 +65,18 @@ export class CrateManager extends ApplicationV2 {
 
   static #tab(_e, t) { this.tab = t.dataset.tab; this.render(); }
 
-  static async #addPool() { await savePool({ name: "New pool" }); this.render(); }
+  static async #addPool() { await createPool({ name: "New pool" }); this.render(); }
 
   static async #editPool(_e, t) {
     const pool = getPools()[t.dataset.pool];
     const data = await promptForm("Edit pool", `<label>Name <input name="name" value="${esc(pool.name)}"></label>`);
-    if (data) { await savePool({ ...pool, name: data.name || pool.name }); this.render(); }
+    if (data) { await updatePool(pool.id, { name: data.name || pool.name }); this.render(); refreshShop(); }
   }
 
   static async #deletePool(_e, t) {
     const pool = getPools()[t.dataset.pool];
     if (await DialogV2.confirm({ window: { title: "Delete pool" }, content: `<p>Delete <strong>${esc(pool.name)}</strong>? Boxes that use it keep their other pools.</p>` })) {
-      await deletePool(pool.id); this.render(); refreshShop();
+      await removePool(pool.id); this.render(); refreshShop();
     }
   }
 
@@ -148,7 +148,7 @@ export class CrateManager extends ApplicationV2 {
     return true;
   }
 
-  static async #addBox() { await saveBox({ name: "New box", price: DEFAULT_PRICE_GP, weights: { ...DEFAULT_WEIGHTS } }); this.render(); refreshShop(); }
+  static async #addBox() { await createBox({ name: "New box", price: DEFAULT_PRICE_GP, weights: { ...DEFAULT_WEIGHTS } }); this.render(); refreshShop(); }
 
   static async #editBox(_e, t) {
     const box = getBoxes()[t.dataset.box];
@@ -169,25 +169,35 @@ export class CrateManager extends ApplicationV2 {
         <label class="lc-row">Stock (blank for unlimited) <input name="stock" type="number" min="0" step="1" value="${box.rules?.stock ?? ""}"></label>
       </fieldset>`);
     if (!data) return;
-    const next = {
-      ...box,
-      name: data.name || box.name,
-      price: Math.max(0, Number(data.price) || 0),
-      pools: pools.filter(p => data[`pool.${p.id}`]).map(p => ({ id: p.id, share: Math.max(0, Number(data[`share.${p.id}`]) || 0) })),
-      weights: Object.fromEntries(RARITIES.map(r => [r, Math.max(0, Number(data[`w.${r}`]) || 0)])),
-      rules: {
-        pity: data.pityRarity ? { minRarity: data.pityRarity, after: Math.max(1, Number(data.pityAfter) || 1) } : null,
-        noDuplicates: !!data.noDuplicates,
-        stock: data.stock === "" || data.stock == null ? null : Math.max(0, Number(data.stock) || 0),
-      },
-    };
-    await saveBox(next); this.render(); refreshShop();
+    // Stock moves while the dialog is open (each pull takes one, a refund
+    // puts one back), so the form's stock only wins if the GM changed it.
+    const shownStock = box.rules?.stock ?? null;
+    const formStock = data.stock === "" || data.stock == null ? null : Math.max(0, Number(data.stock) || 0);
+    const chosen = pools.filter(p => data[`pool.${p.id}`]).map(p => ({ id: p.id, share: Math.max(0, Number(data[`share.${p.id}`]) || 0) }));
+    const saved = await updateBox(box.id, fresh => {
+      const live = getPools();
+      return {
+        ...fresh,
+        name: data.name || fresh.name,
+        price: Math.max(0, Number(data.price) || 0),
+        pools: chosen.filter(ref => ref.id in live),
+        weights: Object.fromEntries(RARITIES.map(r => [r, Math.max(0, Number(data[`w.${r}`]) || 0)])),
+        rules: {
+          ...fresh.rules,
+          pity: data.pityRarity ? { minRarity: data.pityRarity, after: Math.max(1, Number(data.pityAfter) || 1) } : null,
+          noDuplicates: !!data.noDuplicates,
+          stock: formStock === shownStock ? (fresh.rules?.stock ?? null) : formStock,
+        },
+      };
+    });
+    if (!saved) ui.notifications.warn(`${box.name} was deleted while you were editing it.`);
+    this.render(); refreshShop();
   }
 
   static async #deleteBox(_e, t) {
     const box = getBoxes()[t.dataset.box];
     if (await DialogV2.confirm({ window: { title: "Delete box" }, content: `<p>Delete <strong>${esc(box.name)}</strong>?</p>` })) {
-      await deleteBox(box.id); this.render(); refreshShop();
+      await removeBox(box.id); this.render(); refreshShop();
     }
   }
 

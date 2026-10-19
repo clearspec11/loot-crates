@@ -83,6 +83,37 @@ export async function deleteBox(id) {
   await set(SETTINGS.BOXES, boxes);
 }
 
+/*
+  The manager's pool and box edits. Each runs in the shared write queue and
+  applies only what the GM changed to the setting as it is now, not to the
+  copy read when the dialog opened: a pull can lower a box's stock, a sweep
+  can flag an entry missing and a drop can add hundreds of entries while a
+  dialog is open, and writing that stale copy back would undo them.
+  `edit(fresh)` returns the new box from the current one.
+*/
+export const createPool = pool => enqueueWrite(() => savePool(pool));
+export const removePool = id => enqueueWrite(() => deletePool(id));
+export const createBox = box => enqueueWrite(() => saveBox(box));
+export const removeBox = id => enqueueWrite(() => deleteBox(id));
+export function updatePool(id, patch) {
+  return enqueueWrite(async () => {
+    const pools = getPools();
+    if (!pools[id]) return null;
+    pools[id] = { ...pools[id], ...patch, id };
+    await set(SETTINGS.POOLS, pools);
+    return pools[id];
+  });
+}
+export function updateBox(id, edit) {
+  return enqueueWrite(async () => {
+    const boxes = getBoxes();
+    if (!boxes[id]) return null;
+    boxes[id] = { ...edit(boxes[id]), id };
+    await set(SETTINGS.BOXES, boxes);
+    return boxes[id];
+  });
+}
+
 export function getActorState(actorId, boxId) {
   return get(SETTINGS.STATE)[`${actorId}.${boxId}`] ?? {};
 }
