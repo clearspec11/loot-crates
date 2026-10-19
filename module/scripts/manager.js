@@ -19,7 +19,7 @@
   their pool, and the Boxes tab's odds leave the missing ones out.
 */
 import { RARITIES, RARITY_LABEL, DEFAULT_WEIGHTS, DEFAULT_PRICE_GP } from "./config.js";
-import { getPools, getBoxes, getLog, createPool, updatePool, removePool, createBox, updateBox, removeBox, entryFromItem, entriesFromDrop, addEntries, packHasLoot, LOOT_TYPES, isShopOpen, setShopOpen, enqueueWrite, checkSources, refreshMissing, removeEntry, patchEntry } from "./store.js";
+import { getPools, getBoxes, getLog, createPool, updatePool, removePool, createBox, updateBox, removeBox, entryFromItem, entriesFromDrop, addEntries, packHasLoot, LOOT_TYPES, isLootType, isShopOpen, setShopOpen, enqueueWrite, checkSources, refreshMissing, removeEntry, patchEntry } from "./store.js";
 import { oddsTable, normalizeRarity, flattenPool, sourceStatus, withSources } from "./odds.js";
 import { formatPrice } from "./currency.js";
 import { refreshShop } from "./shop.js";
@@ -39,7 +39,7 @@ export class CrateManager extends ApplicationV2 {
     actions: {
       tab: CrateManager.#tab,
       addPool: CrateManager.#addPool, editPool: CrateManager.#editPool, deletePool: CrateManager.#deletePool,
-      bulkAdd: CrateManager.#bulkAdd, removeEntry: CrateManager.#removeEntry, updateEntry: CrateManager.#updateEntry,
+      bulkAdd: CrateManager.#bulkAdd, removeEntry: CrateManager.#removeEntry, updateEntry: CrateManager.#updateEntry, relinkEntry: CrateManager.#relinkEntry,
       addBox: CrateManager.#addBox, editBox: CrateManager.#editBox, deleteBox: CrateManager.#deleteBox,
       refund: CrateManager.#refund, toggleShop: CrateManager.#toggleShop,
     },
@@ -91,6 +91,18 @@ export class CrateManager extends ApplicationV2 {
     if (!src) { ui.notifications.warn("That item's source is gone; drop an item on the row to relink it."); return this.render(); }
     await patchEntry(t.dataset.pool, t.dataset.uuid, { name: src.name, img: src.img, rarity: src.rarity });
     this.render(); refreshShop();
+  }
+
+  // Relink without dragging (keyboard, screen reader, touch): paste the
+  // UUID of the item that replaces a missing source.
+  static async #relinkEntry(_e, t) {
+    const entry = getPools()[t.dataset.pool]?.entries?.find(e => e.uuid === t.dataset.uuid);
+    if (!entry) return this.render();
+    const data = await promptForm(`Relink ${entry.name}`, `
+      <p>The source of <strong>${esc(entry.name)}</strong> is gone. Paste the UUID of the item that replaces it; its weight stays.</p>
+      <label>Item UUID <input name="uuid" required placeholder="Compendium.dnd5e.items.Item.…" autocomplete="off"></label>
+      <p class="lc-form__hint">Copy it from an item sheet's ID button, or drag the item onto the row instead.</p>`);
+    if (data?.uuid) await this.#relink(t.dataset.pool, t.dataset.uuid, String(data.uuid).trim());
   }
 
   // Only packs and types that can hold loot are offered: a pool should never
@@ -278,8 +290,14 @@ export class CrateManager extends ApplicationV2 {
     let data;
     try { data = dragData(event); } catch { return; }
     if (data?.type !== "Item" || !data.uuid) return ui.notifications.warn("Drop an item to relink this entry.");
-    const item = await fromUuid(data.uuid);
-    if (!item) return;
+    return this.#relink(poolId, uuid, data.uuid);
+  }
+
+  async #relink(poolId, uuid, newUuid) {
+    let item = null;
+    try { item = await fromUuid(newUuid); } catch { /* reported below */ }
+    if (item?.documentName !== "Item") return ui.notifications.warn(`No item has the UUID ${newUuid}.`);
+    if (!isLootType(item.type)) return ui.notifications.warn(`${item.name} is not loot. A pool takes weapons, equipment, consumables, tools, loot and containers.`);
     const { name, img, rarity } = entryFromItem(item);
     const done = await patchEntry(poolId, uuid, { uuid: item.uuid, name, img, rarity });
     if (!done) ui.notifications.info(`${item.name} is already in ${getPools()[poolId]?.name ?? "that pool"}; remove the missing entry instead.`);
@@ -380,6 +398,7 @@ function entryRow(poolId, { e, src, status }) {
     return `<li class="lc-entry lc-entry--missing lc-rarity-${rarity}" data-pool="${esc(poolId)}" data-relink="${esc(e.uuid)}" title="Drop an item here to relink it">
       <img src="${esc(e.img || FALLBACK_IMG)}" alt="">
       <span class="lc-entry__text"><span class="lc-entry__name">${esc(e.name)}</span><small class="lc-entry__status">Source missing, not drawn. Drop an item here to relink.</small></span>
+      <button type="button" class="lc-entry__update" data-action="relinkEntry" ${ids} aria-label="Relink ${esc(e.name)}">Relink</button>
       ${remove}</li>`;
   }
   if (status === "renamed") {
