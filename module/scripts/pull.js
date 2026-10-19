@@ -20,6 +20,15 @@ async function resolveSource(uuid) {
   try { return await fromUuid(uuid); } catch { return null; }
 }
 
+// A source's own rarities as stored: dnd5e 6's set (an array once copied, more
+// than one for a "Varies" item), dnd5e 5's string, or none.
+export function sourceRaritiesOf(data) {
+  const sys = data?.system ?? {};
+  if (Array.isArray(sys.rarities)) return [...sys.rarities];
+  if (sys.rarities instanceof Set) return [...sys.rarities];
+  return typeof sys.rarity === "string" && sys.rarity ? [sys.rarity] : [];
+}
+
 /*
   `onMissing(entry)` is told about a rolled entry whose source turned out to be
   gone (the socket handler marks it in the pool setting and warns the GM).
@@ -59,18 +68,31 @@ export async function performPull({ box, pools, actor, state = {}, rng = rollRng
   const strip = buildStrip({ result, box, pools, rng });
 
   let created = null;
+  // The source's own rarity, kept on the copy and in the log when the GM's
+  // differs, so a Legendary rope can be traced back to an Uncommon one.
+  const sourceData = source.toObject();
+  const sourceRarity = sourceRaritiesOf(sourceData);
+  const overridden = RARITIES.includes(result.entry.rarityOverride);
   if (grant) {
-    const data = source.toObject();
+    const data = sourceData;
     delete data._id;
     delete data.folder;
-    data.flags = { ...(data.flags ?? {}), "loot-crates": { boxId: box.id, sourceUuid: result.entry.uuid, at: Date.now() } };
+    const marks = { boxId: box.id, sourceUuid: result.entry.uuid, at: Date.now() };
     // A rarity the GM set in the pool editor is the one the reveal and chat
-    // announce, so the copy on the sheet says it too. dnd5e 6 stores a set,
-    // system.rarities (system.rarity is a getter on it); dnd5e 5 a string.
-    if (RARITIES.includes(result.entry.rarityOverride)) {
+    // announce, so the copy on the sheet says it too (one value, never a
+    // "Varies" set). dnd5e 6 stores a set, system.rarities (system.rarity is
+    // a getter on it); dnd5e 5 a string. An unedited entry keeps its source's.
+    if (overridden) {
       data.system ??= {};
       if (Array.isArray(data.system.rarities)) data.system.rarities = [result.rarity];
       else data.system.rarity = result.rarity;
+      marks.sourceRarity = sourceRarity;
+      marks.rarityOverride = true;
+    }
+    data.flags = { ...(data.flags ?? {}), "loot-crates": marks };
+    // Foundry's provenance convention for a copy taken from a compendium.
+    if (source.pack || String(source.uuid ?? "").startsWith("Compendium.")) {
+      data._stats = { ...(data._stats ?? {}), compendiumSource: source.uuid };
     }
     await actor.update({ "system.currency": nextPurse });
     try {
@@ -94,6 +116,8 @@ export async function performPull({ box, pools, actor, state = {}, rng = rollRng
     strip,
     purse: nextPurse,
     itemId: created?.id ?? null,
+    sourceRarity,
+    rarityOverride: overridden,
     state: nextState(box, state, result),
   };
 }

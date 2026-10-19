@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { buildStrip, STRIP_LENGTH, LAND_INDEX, fillerSource } from "../module/scripts/strip.js";
 import { draw, seededRng, rarityRank, flattenPool } from "../module/scripts/odds.js";
-import { POOLS, BOX } from "../harness/sample.js";
+import { POOLS, BOX, BOXES } from "../harness/sample.js";
 
 describe("buildStrip", () => {
   it("puts the rolled result at the landing index and fills the rest from the pools", () => {
@@ -83,5 +83,66 @@ describe("buildStrip with missing entries", () => {
 
   it("fillerSource offers no rarity whose only entries are missing", () => {
     expect(fillerSource(box, pools).rarities).toEqual(["common", "uncommon"]);
+  });
+});
+
+describe("the near-miss tease is one droppable rank up", () => {
+  const PAUPER = BOXES.find(b => b.id === "common");
+  const entryOf = rarity => flattenPool("core", POOLS).find(e => e.rarity === rarity);
+  const fixed = (rarity, extra = {}) => ({ entry: entryOf(rarity), rarity, ...extra });
+
+  it("never teases a rarity the box weighs at 0, over 2000 seeded strips", () => {
+    expect(PAUPER.weights).toMatchObject({ common: 85, uncommon: 15, rare: 0, veryRare: 0, legendary: 0 });
+    expect(flattenPool("core", POOLS).some(e => e.rarity === "legendary")).toBe(true);
+    let teases = 0;
+    for (let seed = 1; seed <= 2000; seed++) {
+      const rng = seededRng(seed);
+      const result = draw({ box: PAUPER, pools: POOLS, rng, state: {} });
+      const strip = buildStrip({ result, box: PAUPER, pools: POOLS, rng });
+      if (!strip.nearMiss) continue;
+      teases++;
+      expect(result.rarity).toBe("common");
+      expect(strip.cards[LAND_INDEX + 1].rarity).toBe("uncommon");
+    }
+    expect(teases).toBeGreaterThan(0);
+  });
+
+  it("teases an uncommon result with a rare most of the time, sometimes two up, never the jackpot or lower", () => {
+    const counts = {};
+    let teases = 0;
+    for (let seed = 1; seed <= 2000; seed++) {
+      const rng = seededRng(seed);
+      const strip = buildStrip({ result: fixed("uncommon"), box: BOX, pools: POOLS, rng });
+      if (!strip.nearMiss) continue;
+      teases++;
+      const r = strip.cards[LAND_INDEX + 1].rarity;
+      counts[r] = (counts[r] ?? 0) + 1;
+      expect(rarityRank(r)).toBeGreaterThan(rarityRank("uncommon"));
+    }
+    expect(counts.rare / teases).toBeGreaterThanOrEqual(0.7);
+    expect(counts.veryRare).toBeGreaterThan(0);
+    expect(counts.legendary).toBeUndefined();
+    // The tease rate is unchanged at 0.6.
+    expect(teases / 2000).toBeCloseTo(0.6, 1);
+  });
+
+  it("gives no near-miss on a result at the box's best droppable rarity", () => {
+    for (let seed = 1; seed <= 200; seed++) {
+      expect(buildStrip({ result: fixed("uncommon"), box: PAUPER, pools: POOLS, rng: seededRng(seed) }).nearMiss).toBe(false);
+    }
+  });
+
+  it("gives no near-miss on a box that drops one rarity", () => {
+    const box = { ...BOX, id: "single", weights: { common: 0, uncommon: 0, rare: 1, veryRare: 0, legendary: 0 } };
+    for (let seed = 1; seed <= 200; seed++) {
+      expect(buildStrip({ result: fixed("rare"), box, pools: POOLS, rng: seededRng(seed) }).nearMiss).toBe(false);
+      expect(buildStrip({ result: fixed("common"), box, pools: POOLS, rng: seededRng(seed) }).nearMiss).toBe(false);
+    }
+  });
+
+  it("gives no near-miss on a pity result", () => {
+    for (let seed = 1; seed <= 200; seed++) {
+      expect(buildStrip({ result: fixed("rare", { pity: true }), box: BOX, pools: POOLS, rng: seededRng(seed) }).nearMiss).toBe(false);
+    }
   });
 });

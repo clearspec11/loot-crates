@@ -160,4 +160,60 @@ describe("performPull and a GM's rarity", () => {
     await performPull({ box: { ...BOX, weights: { uncommon: 1 } }, pools: plain, actor: actor2, state: {}, rng: () => 0.5 });
     expect(actor2.items[0].system.rarity).toBe("uncommon");
   });
+
+  const PACK = "Compendium.dnd5e.items.Item.";
+  const rope = (system, uuid = PACK + "rope") => async () => ({ name: "Rope", img: "", uuid, pack: uuid.startsWith("Compendium.") ? "dnd5e.items" : null, toObject: () => ({ _id: "rope", name: "Rope", type: "loot", flags: {}, system: structuredClone(system), _stats: { compendiumSource: null } }) });
+  const pullOne = async (entry, weights) => {
+    const actor = makeActor();
+    const pools = { pool: { id: "pool", name: "Pool", pools: [], entries: [{ uuid: PACK + "rope", name: "Rope", img: "", weight: 1, ...entry }] } };
+    const out = await performPull({ box: { ...BOX, weights }, pools, actor, state: {}, rng: () => 0.5 });
+    return { out, item: actor.items[0] };
+  };
+
+  it("keeps the source's rarity on record when the GM promotes it (dnd5e 6)", async () => {
+    globalThis.fromUuid = rope({ rarities: ["uncommon"] });
+    const { out, item } = await pullOne({ rarity: "uncommon", sourceRarity: "uncommon", rarityOverride: "legendary" }, { legendary: 1 });
+    expect(item.system.rarities).toEqual(["legendary"]);
+    expect(item.flags["loot-crates"]).toMatchObject({ sourceRarity: ["uncommon"], rarityOverride: true, sourceUuid: PACK + "rope" });
+    expect(item._stats.compendiumSource).toBe(PACK + "rope");
+    expect(out.sourceRarity).toEqual(["uncommon"]);
+    expect(out.rarityOverride).toBe(true);
+  });
+
+  it("records an empty source rarity when the source had none", async () => {
+    globalThis.fromUuid = rope({ rarities: [] });
+    const { item } = await pullOne({ rarity: "common", sourceRarity: "", rarityOverride: "rare" }, { rare: 1 });
+    expect(item.system.rarities).toEqual(["rare"]);
+    expect(item.flags["loot-crates"].sourceRarity).toEqual([]);
+  });
+
+  it("replaces a 'Varies' set with one value when overridden, and leaves it alone when not", async () => {
+    globalThis.fromUuid = rope({ rarities: ["uncommon", "rare"] });
+    const set = await pullOne({ rarity: "uncommon", sourceRarity: "uncommon", rarityOverride: "veryRare" }, { veryRare: 1 });
+    expect(set.item.system.rarities).toEqual(["veryRare"]);
+    expect(set.item.flags["loot-crates"].sourceRarity).toEqual(["uncommon", "rare"]);
+
+    const kept = await pullOne({ rarity: "uncommon", sourceRarity: "uncommon" }, { uncommon: 1 });
+    expect(kept.item.system.rarities).toEqual(["uncommon", "rare"]);
+    expect(kept.item.flags["loot-crates"]).not.toHaveProperty("rarityOverride");
+    expect(kept.item.flags["loot-crates"]).not.toHaveProperty("sourceRarity");
+    expect(kept.item._stats.compendiumSource).toBe(PACK + "rope");
+    expect(kept.out.rarityOverride).toBe(false);
+  });
+
+  it("handles a dnd5e 5 shaped source, whose rarity is a string", async () => {
+    globalThis.fromUuid = rope({ rarity: "uncommon" });
+    const { item } = await pullOne({ rarity: "uncommon", sourceRarity: "uncommon", rarityOverride: "rare" }, { rare: 1 });
+    expect(item.system.rarity).toBe("rare");
+    expect(item.system.rarities).toBeUndefined();
+    expect(item.flags["loot-crates"].sourceRarity).toEqual(["uncommon"]);
+  });
+
+  it("sets no compendium source for a world item", async () => {
+    globalThis.fromUuid = rope({ rarities: ["uncommon"] }, "Item.rope");
+    const actor = makeActor();
+    const pools = { pool: { id: "pool", name: "Pool", pools: [], entries: [{ uuid: "Item.rope", name: "Rope", img: "", rarity: "uncommon", weight: 1 }] } };
+    await performPull({ box: { ...BOX, weights: { uncommon: 1 } }, pools, actor, state: {}, rng: () => 0.5 });
+    expect(actor.items[0]._stats.compendiumSource).toBeNull();
+  });
 });

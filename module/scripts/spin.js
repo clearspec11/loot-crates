@@ -1,7 +1,8 @@
 /*
   The crate-opening reveal: a strip of item cards scrolls past a centre marker,
-  slows with an ease-out, overshoots the result by half a card when the next
-  card outranks it, settles back, then the winning card lifts and glows.
+  slows with an ease-out, overshoots into the next card when it outranks the
+  result (the marker sits a quarter into it, then clicks back), settles, then
+  the winning card lifts and glows.
 
   Pure DOM plus one requestAnimationFrame loop driving a single translateX.
   No Foundry globals, so the harness page can run it for screenshots.
@@ -21,6 +22,10 @@ export const DEFAULT_DURATION = 6200;
 
 const easeOutCubic = p => 1 - Math.pow(1 - p, 3);
 const easeInOutQuad = p => (p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2);
+
+// How far past the result's centre the marker travels on a near-miss: out of
+// the result card, across the gap, and a quarter of the way into the tease.
+export const nearMissOvershoot = (cardWidth = CARD_WIDTH, gap = CARD_GAP) => cardWidth / 2 + gap + cardWidth * 0.25;
 
 export function cardElement(card) {
   const el = document.createElement("div");
@@ -107,9 +112,12 @@ export function mountSpin(container, strip, options = {}) {
   };
 
   // Phase 1 (most of the time): ease out to the target plus the overshoot.
-  // Phase 2: settle back. The overshoot is the near-miss: half a card past
-  // the result, so the better card next door sits under the marker for a beat.
-  const overshoot = strip.nearMiss ? cardWidth * 0.55 : cardWidth * 0.18;
+  // Phase 2: settle back. On a near-miss the overshoot crosses the boundary
+  // into the better card (half the result card plus the gap) and goes a
+  // quarter card further, so the teased card really sits under the marker for
+  // a beat, onTick fires for it, and the settle crosses back with a click.
+  // Otherwise the overshoot stays inside the result card.
+  const overshoot = strip.nearMiss ? nearMissOvershoot(cardWidth, gap) : cardWidth * 0.18;
   const split = 0.86;
   const MAX_UNSIZED_FRAMES = 10;
 

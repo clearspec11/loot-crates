@@ -2,7 +2,7 @@
 // go into a pool, each with a preview first.
 //
 // Makes sure an Item folder "Loot Crates Test" holds two test items (creating
-// the folder and the items if absent), then calls entriesFromDrop with a
+// the folder and the items if absent; live-sweep.js adds a third), then calls entriesFromDrop with a
 // Compendium payload for dnd5e.items, a Folder payload for that folder and a
 // RollTable payload from dnd5e.tables, and adds the first two to a test pool
 // with addEntries. Reports what each would add, what it skipped, and the
@@ -19,6 +19,7 @@
 // on the first run only, one Item folder with two items.
 const store = await import(MODULE_BASE + "scripts/store.js");
 try { store.registerSettings(); } catch (e) { if (!/already registered/i.test(String(e))) throw e; }
+store.registerIndexFields();
 
 const FOLDER = "Loot Crates Test";
 let folder = game.folders.find(f => f.type === "Item" && f.name === FOLDER);
@@ -29,6 +30,8 @@ const want = [
 ];
 const missing = want.filter(w => !folder.contents.some(i => i.name === w.name));
 if (missing.length) await Item.createDocuments(missing.map(w => ({ ...w, folder: folder.id })));
+
+const inFolder = folder.contents.filter(i => store.isLootType(i.type)).length;
 
 const wait = ms => new Promise(r => setTimeout(r, ms));
 const until = async (fn, ms = 8000) => { for (let t = 0; t < ms && !fn(); t += 100) await wait(100); return fn(); };
@@ -98,9 +101,9 @@ const poolNow = store.getPools()[pool.id];
 // Empty the big test pool again (a setting, not a document): left full, its
 // 874 entries slow every later check that opens the pool editor.
 await store.savePool({ ...poolNow, entries: [] });
-const ok = compendium.entries.length >= 700 && addedCompendium === compendium.entries.length && addedFolder === 2
+const ok = compendium.entries.length >= 700 && addedCompendium === compendium.entries.length && addedFolder === inFolder && inFolder >= 2
   && again.entries.length === 0 && again.skipped.duplicates === compendium.entries.length
-  && savedBeforeAdd === 0 && afterFolderAdd === 2 && /Add 2 items from Loot Crates Test/.test(folderPreview?.lead ?? "")
+  && savedBeforeAdd === 0 && afterFolderAdd === inFolder && new RegExp(`Add ${inFolder} items from Loot Crates Test`).test(folderPreview?.lead ?? "")
   && new RegExp(`Add ${compendium.entries.length} items from Items \\(SRD\\)`).test(compendiumPreview?.lead ?? "")
   && compendiumPreview?.rows === 50 && !pickerPacks.includes("dnd5e.spells") && !pickerPacks.includes("dnd5e.classfeatures");
 

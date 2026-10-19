@@ -23,17 +23,28 @@
   the override) and a whole-number weight (0 never drops). An entry whose
   source has no rarity says so instead of passing as Common, and a pool with
   any offers "Set rarity for unset items". An edit saves through updatePool
-  in the write queue and updates only its row and its pool's header, so
+  in the write queue and updates only its row and its pool's census, so
   focus stays where the GM is typing.
+
+  A big pool is a craft table (poolview.js draws it): each pool is a
+  <details> whose summary keeps the census in view while collapsed, and one
+  of more than 60 entries starts collapsed. An open pool draws 50 rows at a
+  time with "Show 50 more", a name search, and the census as filter chips.
+  Each pool's open state, search, chip and rows shown live on this window
+  (#view) and survive a re-render; a search, a chip, Show more, Update,
+  Remove, Relink and the bulk rarity redraw only that pool and keep focus
+  near where it was. One status line in the toolbar speaks for them all.
 */
 import { RARITIES, RARITY_LABEL, DEFAULT_WEIGHTS, DEFAULT_PRICE_GP } from "./config.js";
 import { oddsPills } from "./boxcard.js";
 import { getPools, getBoxes, getLog, createPool, updatePool, removePool, createBox, updateBox, removeBox, entryFromItem, entriesFromDrop, addEntries, packHasLoot, LOOT_TYPES, isLootType, isShopOpen, setShopOpen, enqueueWrite, checkSources, refreshMissing, removeEntry, patchEntry } from "./store.js";
-import { shopOdds, normalizeRarity, flattenPool, sourceStatus, withSources, effectiveRarity, sourceRarityOf, entryWeight, curateEntries } from "./odds.js";
+import { shopOdds, normalizeRarity, flattenPool, withSources, entryWeight, curateEntries } from "./odds.js";
+import { PAGE_ROWS, FALLBACK_IMG, defaultView, poolRows, sortRows, filterRows, pageRows, nextRows, poolCount, poolSummary, poolBody, chipsHTML, unsetButton, footHTML, entryRow, entryParts } from "./poolview.js";
 import { formatPrice } from "./currency.js";
 import { refreshShop } from "./shop.js";
 import { describeRefund, refundPull } from "./refund.js";
 import { postRefundCard } from "./chat.js";
+import { refundTime } from "./chatcard.js";
 
 const { ApplicationV2, DialogV2 } = foundry.applications.api;
 const esc = s => foundry.utils.escapeHTML(String(s ?? ""));
@@ -51,6 +62,7 @@ export class CrateManager extends ApplicationV2 {
       bulkAdd: CrateManager.#bulkAdd, setUnsetRarity: CrateManager.#setUnsetRarity, removeEntry: CrateManager.#removeEntry, updateEntry: CrateManager.#updateEntry, relinkEntry: CrateManager.#relinkEntry,
       addBox: CrateManager.#addBox, editBox: CrateManager.#editBox, deleteBox: CrateManager.#deleteBox,
       refund: CrateManager.#refund, toggleShop: CrateManager.#toggleShop,
+      filterChip: CrateManager.#filterChip, showMore: CrateManager.#showMore,
     },
   };
 
@@ -63,7 +75,7 @@ export class CrateManager extends ApplicationV2 {
   #sources = null;
   checking = false;
   async #checkedSources(entries) {
-    const run = checkSources(entries, { rarity: true });
+    const run = checkSources(entries);
     const got = await Promise.race([run, new Promise(r => setTimeout(() => r(null), 400))]);
     if (got) { this.checking = false; return (this.#sources = got); }
     this.checking = true;
@@ -73,6 +85,124 @@ export class CrateManager extends ApplicationV2 {
   }
 
   static #tab(_e, t) { this.tab = t.dataset.tab; this.render(); }
+
+  // Each pool's view: open, name search, filter chip, rows shown.
+  #view = new Map();
+  #viewOf(pool) {
+    let v = this.#view.get(pool.id);
+    if (!v) this.#view.set(pool.id, (v = defaultView(pool)));
+    return v;
+  }
+  #rowsOf(pool) { return sortRows(poolRows(pool, e => this.#srcOf(e))); }
+  #poolEl(poolId) { return this.element?.querySelector(`.lc-pool[data-drop-pool="${CSS.escape(poolId)}"]`) ?? null; }
+  #announce(text) {
+    const el = this.element?.querySelector(".lc-manager__status");
+    if (el) el.textContent = text;
+  }
+
+  // An open pool's whole body, drawn again from the stored pool, with focus
+  // put back near where it was: on the row `uuid`, else the row now at
+  // index `at` (or the one before it), else the pool's search or summary.
+  // Falls back to a full render when the pool isn't on screen.
+  #repaint(poolId, { uuid = null, at = null } = {}) {
+    const el = this.#poolEl(poolId);
+    const pool = getPools()[poolId];
+    if (!el || !pool) return this.render();
+    this.#fillBody(el, pool);
+    const list = el.querySelector(".lc-entries");
+    const li = (uuid && list?.querySelector(`[data-entry="${CSS.escape(uuid)}"]`))
+      || (at != null && (list?.children[at] ?? list?.children[at - 1]));
+    const target = li?.querySelector("select, input, button") ?? el.querySelector(".lc-pool__search") ?? el.querySelector("summary");
+    target?.focus();
+  }
+
+  #fillBody(el, pool) {
+    const rows = this.#rowsOf(pool);
+    el.querySelector(".lc-pool__count").innerHTML = poolCount(pool, rows);
+    const details = el.querySelector(".lc-pool__details");
+    const body = el.querySelector(".lc-pool__body");
+    if (!details?.open) { body?.replaceChildren(); return; }
+    body.innerHTML = poolBody(pool, rows, this.#viewOf(pool), esc);
+    this.#wireRelinks(body);
+  }
+
+  // The chips again (their counts follow edits), focus kept on the pressed one.
+  #paintChips(el, pool, rows) {
+    const box = el.querySelector(".lc-pool__chips");
+    if (!box) return;
+    const had = box.contains(document.activeElement) ? document.activeElement.dataset.chip : null;
+    box.innerHTML = chipsHTML(pool, rows, this.#viewOf(pool), esc);
+    if (had) box.querySelector(`[data-chip="${CSS.escape(had)}"]`)?.focus();
+  }
+
+  // A search or chip changed: redraw this pool's rows from the first page.
+  #refilter(poolId) {
+    const el = this.#poolEl(poolId);
+    const pool = getPools()[poolId];
+    const list = el?.querySelector(".lc-entries");
+    if (!pool || !list) return this.render();
+    const rows = this.#rowsOf(pool);
+    const view = this.#viewOf(pool);
+    view.shown = PAGE_ROWS;
+    this.#paintChips(el, pool, rows);
+    const matched = filterRows(rows, view);
+    const page = pageRows(matched, view.shown);
+    list.innerHTML = page.rows.map(r => entryRow(pool.id, r, esc)).join("");
+    this.#wireRelinks(list);
+    el.querySelector(".lc-pool__foot").innerHTML = footHTML(pool, rows, matched, page, esc);
+    el.querySelector(".lc-pool__unset").innerHTML = unsetButton(pool, matched, view, esc);
+    const narrowed = view.q.trim() || view.chip;
+    this.#announce(narrowed ? `${matched.length} of ${rows.length} items in ${pool.name} match.` : `Filter cleared in ${pool.name}.`);
+  }
+
+  static #filterChip(_e, t) {
+    const pool = getPools()[t.dataset.pool];
+    if (!pool) return this.render();
+    const view = this.#viewOf(pool);
+    view.chip = view.chip === t.dataset.chip ? null : t.dataset.chip;
+    this.#refilter(pool.id);
+  }
+
+  // The next 50 matching rows, appended; focus goes to the first new one.
+  static #showMore(_e, t) {
+    const el = this.#poolEl(t.dataset.pool);
+    const pool = getPools()[t.dataset.pool];
+    const list = el?.querySelector(".lc-entries");
+    if (!pool || !list) return this.render();
+    const view = this.#viewOf(pool);
+    const rows = this.#rowsOf(pool);
+    const matched = filterRows(rows, view);
+    const page = nextRows(matched, [...list.children].map(li => li.dataset.entry));
+    const before = list.childElementCount;
+    list.insertAdjacentHTML("beforeend", page.rows.map(r => entryRow(pool.id, r, esc)).join(""));
+    this.#wireRelinks(list);
+    view.shown = list.childElementCount;
+    el.querySelector(".lc-pool__foot").innerHTML = footHTML(pool, rows, matched, page, esc);
+    list.children[before]?.querySelector("select, input, button")?.focus();
+    this.#announce(`Showing ${list.childElementCount} of ${matched.length} in ${pool.name}.`);
+  }
+
+  // A pool opened or closed: draw its body, or drop it.
+  #onToggle(details) {
+    const pool = getPools()[details.dataset.pool];
+    if (!pool) return;
+    this.#viewOf(pool).open = details.open;
+    const body = details.querySelector(".lc-pool__body");
+    if (details.open === !!body.childElementCount) return;
+    this.#fillBody(details.closest(".lc-pool"), pool);
+  }
+
+  // Dropping an item on a missing row relinks it; wired once per row.
+  #wired = new WeakSet();
+  #wireRelinks(scope) {
+    scope.querySelectorAll("[data-relink]").forEach(el => {
+      if (this.#wired.has(el)) return;
+      this.#wired.add(el);
+      el.addEventListener("dragover", e => { e.preventDefault(); e.stopPropagation(); el.classList.add("lc-drop--over"); });
+      el.addEventListener("dragleave", () => el.classList.remove("lc-drop--over"));
+      el.addEventListener("drop", e => { e.stopPropagation(); this.#onRelink(e, el.dataset.pool, el.dataset.relink); });
+    });
+  }
 
   static async #addPool() { await createPool({ name: "New pool" }); this.render(); }
 
@@ -90,17 +220,21 @@ export class CrateManager extends ApplicationV2 {
   }
 
   static async #removeEntry(_e, t) {
-    await removeEntry(t.dataset.pool, t.dataset.uuid);
-    this.render(); refreshShop();
+    const { pool: poolId, uuid } = t.dataset;
+    const list = t.closest(".lc-entries");
+    const at = list ? [...list.children].findIndex(li => li.dataset.entry === uuid) : -1;
+    await removeEntry(poolId, uuid);
+    this.#repaint(poolId, { at: at < 0 ? null : at }); refreshShop();
   }
 
   // Renamed at the source: take its current name, image and rarity.
   static async #updateEntry(_e, t) {
-    const src = (await checkSources([{ uuid: t.dataset.uuid }], { rarity: true })).get(t.dataset.uuid);
+    const src = (await checkSources([{ uuid: t.dataset.uuid }])).get(t.dataset.uuid);
     if (src === undefined) return ui.notifications.warn("Couldn't read that item's compendium just now; try again.");
     if (!src) { ui.notifications.warn("That item's source is gone; drop an item on the row to relink it."); return this.render(); }
     await patchEntry(t.dataset.pool, t.dataset.uuid, { name: src.name, img: src.img, rarity: src.rarity, sourceRarity: src.rawRarity ?? undefined });
-    this.render(); refreshShop();
+    this.#sources?.set(t.dataset.uuid, src);
+    this.#repaint(t.dataset.pool, { uuid: t.dataset.uuid }); refreshShop();
   }
 
   // Relink without dragging (keyboard, screen reader, touch): paste the
@@ -115,22 +249,25 @@ export class CrateManager extends ApplicationV2 {
     if (data?.uuid) await this.#relink(t.dataset.pool, t.dataset.uuid, String(data.uuid).trim());
   }
 
-  // One rarity for every entry in the pool whose source has none.
+  // One rarity for every entry in the pool whose source has none, of those
+  // the pool's search and chip let through.
   static async #setUnsetRarity(_e, t) {
     const poolId = t.dataset.pool;
     const pool = getPools()[poolId];
     if (!pool) return this.render();
-    const unset = uuidsUnset(pool, this.#sources);
-    if (!unset.length) return this.render();
+    const view = this.#viewOf(pool);
+    const unset = filterRows(this.#rowsOf(pool), view).filter(r => r.unset).map(r => r.e.uuid);
+    if (!unset.length) return this.#repaint(poolId);
     const n = unset.length;
+    const matching = view.q.trim() || view.chip ? " matching the search and filter" : "";
     const data = await promptForm(`Set rarity in ${pool.name}`, `
-      <p>${n} item${n === 1 ? " has" : "s have"} no rarity at the source and draw${n === 1 ? "s" : ""} as Common until you pick one.</p>
+      <p>${n} item${n === 1 ? "" : "s"}${matching} ${n === 1 ? "has" : "have"} no rarity at the source and draw${n === 1 ? "s" : ""} as Common until you pick one.</p>
       <label>Rarity <select name="rarity">${RARITIES.map(r => `<option value="${r}">${RARITY_LABEL[r]}</option>`).join("")}</select></label>
-      <p class="lc-form__hint">Each item's rarity can still be changed on its own row.</p>`);
+      <p class="lc-form__hint">The granted item carries this rarity. Each item's rarity can still be changed on its own row.</p>`);
     if (!RARITIES.includes(data?.rarity)) return;
     const saved = await updatePool(poolId, fresh => ({ ...fresh, entries: curateEntries(fresh.entries, unset, { sourceRarity: "", rarityOverride: data.rarity }) }));
     if (saved) ui.notifications.info(`${n} item${n === 1 ? "" : "s"} in ${pool.name} set to ${RARITY_LABEL[data.rarity]}.`);
-    this.render(); refreshShop();
+    this.#repaint(poolId); refreshShop();
   }
 
   // A rarity or weight changed on a row: save just that, then update the row
@@ -152,13 +289,19 @@ export class CrateManager extends ApplicationV2 {
     const row = el.closest(".lc-entry");
     const poolEl = el.closest(".lc-pool");
     if (!entry || !row || !poolEl) { this.render(); refreshShop(); return; }
+    // The row stays where it is even if it no longer matches the chip, so
+    // focus stays on it; the census and chips catch up.
     const src = this.#srcOf(entry);
-    const fresh = entryParts(poolId, { e: entry, src, status: sourceStatus(entry, src) });
+    const fresh = entryParts(poolRows({ entries: [entry] }, () => src)[0], esc);
     row.className = fresh.className;
     row.querySelector(".lc-entry__text")?.replaceWith(htmlNode(fresh.text));
     if (el.dataset.curate === "weight") el.defaultValue = String(entryWeight(entry));
-    poolEl.querySelector(".lc-pool__count").innerHTML = poolCount(saved, poolRows(saved, src => this.#srcOf(src)));
-    poolEl.querySelector(".lc-pool__unset").innerHTML = unsetButton(saved, this.#sources);
+    const rows = this.#rowsOf(saved);
+    const view = this.#viewOf(saved);
+    poolEl.querySelector(".lc-pool__count").innerHTML = poolCount(saved, rows);
+    this.#paintChips(poolEl, saved, rows);
+    const unsetEl = poolEl.querySelector(".lc-pool__unset");
+    if (unsetEl) unsetEl.innerHTML = unsetButton(saved, filterRows(rows, view), view, esc);
     refreshShop();
   }
 
@@ -326,10 +469,21 @@ export class CrateManager extends ApplicationV2 {
       const el = e.target.closest?.("[data-curate]");
       if (el) this.#onCurate(el).catch(err => { console.error(`loot-crates | saving that entry failed`, err); this.render(); });
     });
-    root.querySelectorAll("[data-relink]").forEach(el => {
-      el.addEventListener("dragover", e => { e.preventDefault(); e.stopPropagation(); el.classList.add("lc-drop--over"); });
-      el.addEventListener("dragleave", () => el.classList.remove("lc-drop--over"));
-      el.addEventListener("drop", e => { e.stopPropagation(); this.#onRelink(e, el.dataset.pool, el.dataset.relink); });
+    this.#wireRelinks(root);
+    root.querySelectorAll(".lc-pool__details").forEach(d => d.addEventListener("toggle", () => this.#onToggle(d)));
+    // The typed text goes into the view at once, so a full render that lands
+    // before the debounce (a late source check) redraws it instead of
+    // dropping it; only the redraw of the rows waits.
+    root.addEventListener("input", e => {
+      const el = e.target.closest?.(".lc-pool__search");
+      if (!el) return;
+      const pool = getPools()[el.dataset.pool];
+      if (pool) this.#viewOf(pool).q = el.value;
+      clearTimeout(this.#searchTimer);
+      this.#searchTimer = setTimeout(() => {
+        const live = this.#poolEl(el.dataset.pool)?.querySelector(".lc-pool__search");
+        if (live && getPools()[el.dataset.pool]) this.#refilter(el.dataset.pool);
+      }, SEARCH_DELAY_MS);
     });
     return root;
   }
@@ -370,7 +524,7 @@ export class CrateManager extends ApplicationV2 {
     const { name, img, rarity, sourceRarity } = entryFromItem(item);
     const done = await patchEntry(poolId, uuid, { uuid: item.uuid, name, img, rarity, sourceRarity });
     if (!done) ui.notifications.info(`${item.name} is already in ${getPools()[poolId]?.name ?? "that pool"}; remove the missing entry instead.`);
-    this.render(); refreshShop();
+    this.#repaint(poolId, { uuid: done ? item.uuid : uuid }); refreshShop();
   }
 
   async _pools() {
@@ -383,26 +537,19 @@ export class CrateManager extends ApplicationV2 {
         .then(() => refreshShop())
         .catch(err => console.error(`loot-crates | checking pools for missing items failed`, err));
     }
+    // One status line for the whole tab: the source check, then what a
+    // search, a chip or Show more did.
     return `
-      <div class="lc-toolbar"><button type="button" data-action="addPool"><i class="fas fa-plus"></i> New pool</button>${this.checking ? `<span class="lc-pool__hint" role="status">Checking each item against its source…</span>` : ""}</div>
+      <div class="lc-toolbar"><button type="button" data-action="addPool"><i class="fas fa-plus"></i> New pool</button><span class="lc-pool__hint lc-manager__status" role="status">${this.checking ? "Checking each item against its source…" : ""}</span></div>
       ${pools.length ? pools.map(p => {
-        const rows = poolRows(p, e => this.#srcOf(e));
-        const order = { missing: 0, renamed: 1, ok: 2 };
-        rows.sort((a, b) => order[a.status] - order[b.status]);
-        const missing = rows.filter(r => r.status === "missing").length;
+        const rows = this.#rowsOf(p);
+        const view = this.#viewOf(p);
         return `
         <article class="lc-pool" data-drop-pool="${esc(p.id)}">
-          <header>
-            <strong>${esc(p.name)}</strong>
-            <span class="lc-pool__count" aria-live="polite">${poolCount(p, rows)}</span>
-            <span class="lc-tabs__spacer"></span>
-            <span class="lc-pool__unset">${unsetButton(p, sources)}</span>
-            <button type="button" data-action="bulkAdd" data-pool="${esc(p.id)}" title="Add every item in a compendium that matches a filter"><i class="fas fa-book"></i> Add from compendium</button>
-            <button type="button" data-action="editPool" data-pool="${esc(p.id)}" aria-label="Rename ${esc(p.name)}"><i class="fas fa-pen"></i></button>
-            <button type="button" data-action="deletePool" data-pool="${esc(p.id)}" aria-label="Delete ${esc(p.name)}"><i class="fas fa-trash"></i></button>
-          </header>
-          <p class="lc-pool__hint">Drop items, an Items folder, a compendium or a roll table here.${missing ? " Drop an item on a missing row to relink it." : ""}</p>
-          <ul class="lc-entries">${rows.map(r => entryRow(p.id, r)).join("")}</ul>
+          <details class="lc-pool__details" data-pool="${esc(p.id)}"${view.open ? " open" : ""}>
+            ${poolSummary(p, rows, esc)}
+            <div class="lc-pool__body">${view.open ? poolBody(p, rows, view, esc) : ""}</div>
+          </details>
         </article>`;
       }).join("") : `<p class="lc-empty">No pools. A pool is the set of items a box can give out.</p>`}`;
   }
@@ -431,16 +578,54 @@ export class CrateManager extends ApplicationV2 {
     return `<table class="lc-table"><thead><tr><th>When</th><th>Who</th><th>Box</th><th>Got</th><th></th></tr></thead><tbody>
       ${log.map(r => `<tr class="${r.refunded ? "lc-row--refunded" : ""}">
         <td>${new Date(r.at).toLocaleString()}</td><td>${esc(r.actorName)}</td><td>${esc(r.boxName)} (${esc(formatPrice(r.price))})</td>
-        <td class="lc-rarity-${esc(r.rarity)}"><span class="lc-dot"></span>${esc(r.name)}${r.pity ? " · pity" : ""}</td>
-        <td>${r.refunded ? "refunded" : `<button type="button" data-action="refund" data-row="${esc(r.id)}">Refund</button>`}</td>
+        <td class="lc-rarity-${esc(r.rarity)}"><span class="lc-dot"></span>${r.refunded ? `<s>${esc(r.name)}</s>` : esc(r.name)}${r.pity ? " · pity" : ""}${logRarityNote(r)}</td>
+        <td>${r.refunded ? `refunded ${esc(refundTime(r.refunded))}` : `<button type="button" data-action="refund" data-row="${esc(r.id)}">Refund</button>`}</td>
       </tr>`).join("")}</tbody></table>`;
   }
 
-  _replaceHTML(result, content) { content.replaceChildren(result); }
+  #searchTimer = null;
+
+  // A full render (a source check landing late, a rename, a refund) keeps
+  // focus on the same control when it is drawn again, and the caret in a
+  // search, instead of sending a keyboard or screen-reader user to the top.
+  _replaceHTML(result, content) {
+    const active = content.contains(document.activeElement) ? document.activeElement : null;
+    const key = active ? focusKey(active) : null;
+    const caret = active?.matches?.("input[type=search]") ? [active.selectionStart, active.selectionEnd] : null;
+    content.replaceChildren(result);
+    if (!key) return;
+    const again = content.querySelector(key.selector) ?? (key.pool && content.querySelector(`.lc-pool__details[data-pool="${CSS.escape(key.pool)}"] > summary`));
+    if (!again) return;
+    again.focus();
+    if (caret && again.setSelectionRange) try { again.setSelectionRange(...caret); } catch { /* not a text input */ }
+  }
 }
 
-const FALLBACK_IMG = "icons/svg/item-bag.svg";
+// A selector that finds the same control in a fresh render: its tag, its
+// search class, and whichever of the data attributes that identify it are set.
+const FOCUS_ATTRS = ["action", "curate", "pool", "uuid", "chip", "tab", "box", "row"];
+function focusKey(el) {
+  if (el.matches("summary")) {
+    const pool = el.closest(".lc-pool__details")?.dataset.pool;
+    return pool ? { selector: `.lc-pool__details[data-pool="${CSS.escape(pool)}"] > summary`, pool } : null;
+  }
+  const attrs = FOCUS_ATTRS.filter(a => el.dataset[a] != null).map(a => `[data-${a}="${CSS.escape(el.dataset[a])}"]`);
+  const search = el.classList.contains("lc-pool__search") ? ".lc-pool__search" : "";
+  if (!attrs.length && !search) return null;
+  return { selector: `${el.tagName.toLowerCase()}${search}${attrs.join("")}`, pool: el.dataset.pool ?? el.closest(".lc-pool__details")?.dataset.pool ?? null };
+}
+
+// "Legendary, set by GM (source Uncommon)" under a log row whose rarity the GM
+// set over its source's. Rows from before this was recorded carry nothing.
+const rarityName = r => RARITY_LABEL[normalizeRarity(r)] ?? String(r);
+export function logRarityNote(row) {
+  if (!Array.isArray(row?.sourceRarity)) return "";
+  const from = row.sourceRarity.length ? `source ${row.sourceRarity.map(rarityName).join(" or ")}` : "source had none";
+  return `<small class="lc-log__rarity">${esc(`${rarityName(row.rarity)}, set by GM (${from})`)}</small>`;
+}
+
 const PREVIEW_ROWS = 50;
+const SEARCH_DELAY_MS = 150;
 
 const SKIPPED_NAMES = { spell: ["spell", "spells"], feat: ["feature", "features"], class: ["class", "classes"], subclass: ["subclass", "subclasses"], background: ["background", "backgrounds"], race: ["species", "species"], facility: ["facility", "facilities"] };
 // "14 already in this pool, skipped", "3 spells and 2 features skipped (not loot)".
@@ -453,113 +638,7 @@ function describeSkipped({ duplicates = 0, notLoot = {}, notItems = 0 } = {}) {
   return lines;
 }
 
-// Each entry of a pool with what the editor knows of its source and how the
-// two compare: "ok", "renamed" (the source's name or rarity changed since
-// it was added) or "missing" (the source is gone).
-function poolRows(pool, srcOf) {
-  return (pool.entries ?? []).map(e => { const src = srcOf(e); return { e, src, status: sourceStatus(e, src) }; });
-}
-
-// Whether an entry's source has no rarity at all. An entry added before
-// sourceRarity was stored learns it from the source check, when that check
-// read the rarity and found nothing else changed.
-function sourceBlank(e, src) {
-  if (e.sourceRarity != null) return e.sourceRarity === "";
-  return !!src && src.rawRarity === "" && sourceStatus(e, src) === "ok";
-}
-const hasOverride = e => RARITIES.includes(e.rarityOverride);
-const isUnset = (e, src) => !e.missing && !hasOverride(e) && sourceBlank(e, src);
-
-function uuidsUnset(pool, sources) {
-  return (pool.entries ?? []).filter(e => isUnset(e, sources?.get(e.uuid))).map(e => e.uuid);
-}
-
-function unsetButton(pool, sources) {
-  const n = uuidsUnset(pool, sources).length;
-  if (!n) return "";
-  return `<button type="button" data-action="setUnsetRarity" data-pool="${esc(pool.id)}" title="Pick one rarity for every item here whose source has none">Set rarity for ${n} unset</button>`;
-}
-
-// "12 items · 8 common, 3 rare · 1 never drops · 2 missing, 1 renamed, 4 no rarity set".
-// The rarity counts are what the box can draw, at each entry's own rarity.
-function poolCount(pool, rows) {
-  const n = (pool.entries ?? []).length;
-  const live = rows.filter(r => r.status !== "missing");
-  const drawn = live.filter(r => entryWeight(r.e) > 0).map(r => r.e);
-  const never = live.length - drawn.length;
-  const missing = rows.filter(r => r.status === "missing").length;
-  const renamed = rows.filter(r => r.status === "renamed").length;
-  const unset = live.filter(r => isUnset(r.e, r.src)).length;
-  const problems = [missing && `${missing} missing`, renamed && `${renamed} renamed`, unset && `${unset} no rarity set`].filter(Boolean).join(", ");
-  return `${n} item${n === 1 ? "" : "s"}${drawn.length ? " · " + rarityCounts(drawn) : ""}${never ? ` · ${never} never drop${never === 1 ? "s" : ""}` : ""}${problems ? ` · <span class="lc-pool__problems">${problems}</span>` : ""}`;
-}
-
-// The rarity select and weight input on a live row.
-function curateControls(poolId, e, src, status, name) {
-  const ids = `data-pool="${esc(poolId)}" data-uuid="${esc(e.uuid)}"`;
-  const blank = sourceBlank(e, src);
-  const fromSource = sourceRarityOf(e);
-  const current = hasOverride(e) ? e.rarityOverride : "";
-  // Teach an older entry its source's raw rarity as it is edited.
-  const learn = e.sourceRarity == null && status === "ok" && src?.rawRarity != null ? ` data-source-rarity="${esc(src.rawRarity)}"` : "";
-  const options = [
-    `<option value="" ${current === "" ? "selected" : ""}>${blank ? "Not set (Common)" : `${RARITY_LABEL[fromSource]} (source)`}</option>`,
-    ...RARITIES.filter(r => blank || r !== fromSource).map(r => `<option value="${r}" ${current === r ? "selected" : ""}>${RARITY_LABEL[r]}</option>`),
-  ].join("");
-  return `<select class="lc-entry__rarity" data-curate="rarity" ${ids}${learn} aria-label="Rarity of ${esc(name)}">${options}</select>
-    <input class="lc-entry__weight" type="number" min="0" step="1" inputmode="numeric" value="${entryWeight(e)}" data-curate="weight" ${ids}${learn} aria-label="Weight of ${esc(name)}, 0 never drops" title="Weight against items of the same rarity; 0 never drops">`;
-}
-
-// A live row's class and its name-and-status block, rebuilt after an edit.
-function entryParts(poolId, { e, src, status }) {
-  const rarity = effectiveRarity(e);
-  const name = status === "renamed" ? src.name : e.name;
-  const never = entryWeight(e) === 0;
-  const unset = isUnset(e, src);
-  const notes = [];
-  if (status === "renamed") {
-    if (src.name !== e.name) notes.push(`was ${e.name}`);
-    if (src.rarity != null && normalizeRarity(src.rarity) !== sourceRarityOf(e)) notes.push(`now ${RARITY_LABEL[normalizeRarity(src.rarity)]} at the source`);
-  }
-  if (unset) notes.push("No rarity set");
-  if (never) notes.push("Never drops");
-  return {
-    name,
-    className: ["lc-entry", `lc-rarity-${rarity}`, status === "renamed" && "lc-entry--renamed", never && "lc-entry--never", unset && "lc-entry--unset"].filter(Boolean).join(" "),
-    text: `<span class="lc-entry__text"><span class="lc-entry__name" title="${esc(name)}">${esc(name)}</span>${notes.length ? `<small class="lc-entry__status">${esc(notes.join(" · "))}</small>` : ""}</span>`,
-  };
-}
-
 const htmlNode = html => { const t = document.createElement("template"); t.innerHTML = html.trim(); return t.content.firstElementChild; };
-
-// One pool entry. A missing one can only be relinked or removed; a live one
-// shows the rarity it is drawn at and its weight, both editable.
-function entryRow(poolId, row) {
-  const { e, src, status } = row;
-  const ids = `data-pool="${esc(poolId)}" data-uuid="${esc(e.uuid)}"`;
-  if (status === "missing") {
-    const remove = `<button type="button" class="lc-entry__remove" data-action="removeEntry" ${ids} aria-label="Remove ${esc(e.name)}" title="Remove">&times;</button>`;
-    return `<li class="lc-entry lc-entry--missing lc-rarity-${effectiveRarity(e)}" data-pool="${esc(poolId)}" data-relink="${esc(e.uuid)}" title="Drop an item here to relink it">
-      <img src="${esc(e.img || FALLBACK_IMG)}" alt="">
-      <span class="lc-entry__text"><span class="lc-entry__name">${esc(e.name)}</span><small class="lc-entry__status">Source missing, not drawn. Drop an item here to relink.</small></span>
-      <button type="button" class="lc-entry__update" data-action="relinkEntry" ${ids} aria-label="Relink ${esc(e.name)}">Relink</button>
-      ${remove}</li>`;
-  }
-  const parts = entryParts(poolId, row);
-  const remove = `<button type="button" class="lc-entry__remove" data-action="removeEntry" ${ids} aria-label="Remove ${esc(parts.name)}" title="Remove">&times;</button>`;
-  const update = status === "renamed" ? `<button type="button" class="lc-entry__update" data-action="updateEntry" ${ids} aria-label="Update ${esc(e.name)} to ${esc(parts.name)}">Update</button>` : "";
-  return `<li class="${parts.className}">
-    <img src="${esc((status === "renamed" && src.img) || e.img || FALLBACK_IMG)}" alt="">
-    ${parts.text}
-    ${curateControls(poolId, e, src, status, parts.name)}
-    ${update}${remove}</li>`;
-}
-
-function rarityCounts(entries) {
-  const n = {};
-  for (const e of entries) n[effectiveRarity(e)] = (n[effectiveRarity(e)] ?? 0) + 1;
-  return RARITIES.filter(r => n[r]).map(r => `${n[r]} ${RARITY_LABEL[r].toLowerCase()}`).join(", ");
-}
 
 // A small form in a DialogV2; resolves to the form's values or null.
 async function promptForm(title, fieldsHtml) {

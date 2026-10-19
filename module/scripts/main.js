@@ -9,7 +9,7 @@
   currency.js, strip.js, spin.js) are.
 */
 import { MODULE_ID } from "./config.js";
-import { registerSettings, getPools, getBoxes, getLog, savePool, saveBox, entriesFromCompendium, entryFromItem, enqueueWrite, refreshMissing, reportMissing } from "./store.js";
+import { registerSettings, registerIndexFields, getPools, getBoxes, getLog, savePool, saveBox, entriesFromCompendium, entryFromItem, enqueueWrite, refreshMissing, reportMissing } from "./store.js";
 import { registerSocket, requestPull, isActiveGM } from "./socket.js";
 import { openShop, refreshShop } from "./shop.js";
 import { openManager, CrateManager } from "./manager.js";
@@ -20,6 +20,7 @@ import { buildStrip } from "./strip.js";
 
 Hooks.once("init", () => {
   registerSettings();
+  registerIndexFields();
   game.settings.registerMenu(MODULE_ID, "manager", {
     name: "Pools, boxes and pulls",
     label: "Open Loot Crates",
