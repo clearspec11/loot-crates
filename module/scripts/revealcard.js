@@ -17,6 +17,17 @@ export const REVEAL_HEIGHT = 384;
 export const CASCADE_STEP = 32;
 export const CASCADE_WRAP = 4;
 const GUTTER = 16;
+// How long after landing a click on the button (now Close) is still taken as
+// the tail of a Skip.
+export const CLOSE_GRACE_MS = 500;
+
+// The lowest cascade slot no open reveal holds; when all are taken, the
+// next one round (slots wrap at CASCADE_WRAP anyway).
+export function freeSlot(used = []) {
+  const taken = new Set(used.filter(Number.isInteger).map(n => n % CASCADE_WRAP));
+  for (let k = 0; k < CASCADE_WRAP; k++) if (!taken.has(k)) return k;
+  return used.length;
+}
 
 /*
   Where the nth open reveal window goes in a viewport { width, height }: the

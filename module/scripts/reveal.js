@@ -21,17 +21,17 @@
 import { MODULE_ID, SETTINGS } from "./config.js";
 import { mountSpin } from "./spin.js";
 import { formatPrice } from "./currency.js";
-import { cascadeOffset, canSeePurse, resultHTML } from "./revealcard.js";
+import { cascadeOffset, canSeePurse, resultHTML, freeSlot, CLOSE_GRACE_MS } from "./revealcard.js";
 import { playTick, playSlow, playReveal } from "./sound.js";
 
 const { ApplicationV2 } = foundry.applications.api;
 const esc = s => foundry.utils.escapeHTML(String(s ?? ""));
 
-// Reveal windows already open or opening, found by class rather than id (the
-// id carries the requestId).
-function openReveals() {
+// The cascade slots of reveal windows already open or opening, found by
+// class rather than id (the id carries the requestId).
+function usedSlots() {
   const apps = foundry.applications.instances?.values?.() ?? [];
-  return [...apps].filter(app => app.options?.classes?.includes("lc-reveal") && app.state > 0).length;
+  return [...apps].filter(app => app.options?.classes?.includes("lc-reveal") && app.state > 0).map(app => app.slot);
 }
 
 // Focus is ours to move when nothing else has it, or it's already in here.
@@ -46,18 +46,23 @@ export class CrateReveal extends ApplicationV2 {
     classes: ["loot-crates", "lc-reveal"],
     window: { title: "Opening a crate", resizable: false },
     position: { width: 720, height: "auto" },
-    actions: { close: CrateReveal.#close, skip: CrateReveal.#skip, openItem: CrateReveal.#openItem },
+    actions: { dismiss: CrateReveal.#dismiss, skip: CrateReveal.#skip, openItem: CrateReveal.#openItem },
   };
 
   #resolveLanded;
   #spin = null;
   #slowTimer = null;
   #closed = false;
+  #landedAt = -Infinity;
   landed = new Promise(resolve => { this.#resolveLanded = resolve; });
 
   constructor(reveal, options = {}) {
-    const position = { height: "auto", ...cascadeOffset(openReveals(), { width: window.innerWidth, height: window.innerHeight }) };
+    // The first free slot, so a third window doesn't land on the second
+    // after the first has closed.
+    const slot = freeSlot(usedSlots());
+    const position = { height: "auto", ...cascadeOffset(slot, { width: window.innerWidth, height: window.innerHeight }) };
     super({ ...(reveal.requestId ? { id: `loot-crates-reveal-${reveal.requestId}` } : {}), position, ...options });
+    this.slot = slot;
     this.reveal = reveal;
   }
 
@@ -65,7 +70,15 @@ export class CrateReveal extends ApplicationV2 {
     return canSeePurse(this.reveal, { isGM: game.user.isGM, userId: game.user.id });
   }
 
-  static #close() { this.close(); }
+  // Skip turns into Close on the next frame, so the second click of a
+  // double-click on Skip (or a held Enter) would close the window before the
+  // result was seen: ignore Close for a moment after landing. The action is
+  // "dismiss" because ApplicationV2 handles a data-action of "close" itself,
+  // before any handler here would run.
+  static #dismiss(event) {
+    if (event?.detail > 1 || performance.now() - this.#landedAt < CLOSE_GRACE_MS) return;
+    this.close();
+  }
   static #skip() { this.#spin?.skip(); }
 
   static async #openItem(_event, button) {
@@ -128,9 +141,10 @@ export class CrateReveal extends ApplicationV2 {
         clearTimeout(this.#slowTimer);
         this.#resolveLanded();
         if (this.#closed) return;
+        this.#landedAt = performance.now();
         out.innerHTML = resultHTML(r, { esc, canSee: this.canSee });
         open.hidden = !this.#itemStillThere();
-        btn.dataset.action = "close";
+        btn.dataset.action = "dismiss";
         btn.textContent = "Close";
         if (focusIsFree(root)) btn.focus({ preventScroll: true });
         if (sound) playReveal(r.result.rarity);

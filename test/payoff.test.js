@@ -6,7 +6,7 @@
 */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { mountSpin, CARD_WIDTH, CARD_GAP, DEFAULT_DURATION } from "../module/scripts/spin.js";
-import { cascadeOffset, canSeePurse, resultHTML, CASCADE_STEP } from "../module/scripts/revealcard.js";
+import { cascadeOffset, canSeePurse, resultHTML, CASCADE_STEP, freeSlot } from "../module/scripts/revealcard.js";
 import { formatGold } from "../module/scripts/currency.js";
 import { buildStrip } from "../module/scripts/strip.js";
 import { draw, seededRng } from "../module/scripts/odds.js";
@@ -182,5 +182,17 @@ describe("the chat card", () => {
     await postPullCard(reveal(null));
     expect(created.content).toContain('class="content-link"');
     expect(created.content).toContain('data-uuid="Compendium.dnd5e.items.Item.src"');
+  });
+});
+
+describe("freeSlot", () => {
+  it("takes the lowest slot no open reveal holds", () => {
+    expect(freeSlot([])).toBe(0);
+    expect(freeSlot([0])).toBe(1);
+    // The first window closed while the second is still spinning: the third
+    // goes back to slot 0, not on top of the second.
+    expect(freeSlot([1])).toBe(0);
+    expect(freeSlot([0, 1, 2, 3])).toBe(4);
+    expect(freeSlot([undefined])).toBe(0);
   });
 });
