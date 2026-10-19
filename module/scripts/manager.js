@@ -88,6 +88,7 @@ export class CrateManager extends ApplicationV2 {
   // Renamed at the source: take its current name, image and rarity.
   static async #updateEntry(_e, t) {
     const src = (await checkSources([{ uuid: t.dataset.uuid }], { rarity: true })).get(t.dataset.uuid);
+    if (src === undefined) return ui.notifications.warn("Couldn't read that item's compendium just now; try again.");
     if (!src) { ui.notifications.warn("That item's source is gone; drop an item on the row to relink it."); return this.render(); }
     await patchEntry(t.dataset.pool, t.dataset.uuid, { name: src.name, img: src.img, rarity: src.rarity });
     this.render(); refreshShop();
@@ -317,7 +318,9 @@ export class CrateManager extends ApplicationV2 {
     return `
       <div class="lc-toolbar"><button type="button" data-action="addPool"><i class="fas fa-plus"></i> New pool</button>${this.checking ? `<span class="lc-pool__hint" role="status">Checking each item against its source…</span>` : ""}</div>
       ${pools.length ? pools.map(p => {
-        const rows = p.entries.map(e => ({ e, src: sources.get(e.uuid), status: sourceStatus(e, sources.get(e.uuid)) }));
+        // An entry the check couldn't answer for shows its stored flag.
+        const srcOf = e => (sources.has(e.uuid) ? sources.get(e.uuid) : e.missing ? null : { name: e.name, img: e.img, rarity: null });
+        const rows = p.entries.map(e => ({ e, src: srcOf(e), status: sourceStatus(e, srcOf(e)) }));
         const order = { missing: 0, renamed: 1, ok: 2 };
         rows.sort((a, b) => order[a.status] - order[b.status]);
         const missing = rows.filter(r => r.status === "missing").length;

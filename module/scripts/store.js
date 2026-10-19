@@ -333,14 +333,17 @@ export async function resolveEntry(entry) {
 
 /*
   What each entry's source looks like now, as a Map uuid -> { name, img,
-  rarity } (rarity null when unknown) or null when the source is gone. Cheap enough to run before every
-  pull and on every render of the pool editor: a compendium reference is read
+  rarity } (rarity null when unknown) or null when the source is gone; a
+  uuid that couldn't be checked (its pack's index failed) has no answer.
+  Cheap enough to run before every pull and on every render of the pool
+  editor: a compendium reference is read
   from the pack's index (Foundry caches it after the first load), a world item
   from game.items; only other kinds of reference fall back to fromUuid.
   `rarity: true` asks the pack index for rarities too (the pool editor wants
   them to spot a changed rarity; the pre-pull sweep only needs liveness, and
   the extra field costs a fetch of the whole index the first time).
 */
+const UNCHECKED = Symbol("unchecked");
 export async function checkSources(entries, { rarity: withRarity = false } = {}) {
   const out = new Map();
   const indexes = new Map();
@@ -348,7 +351,13 @@ export async function checkSources(entries, { rarity: withRarity = false } = {})
     if (!indexes.has(packId)) {
       const pack = globalThis.game?.packs?.get(packId);
       const opts = withRarity ? { fields: ["system.rarity"] } : undefined;
-      indexes.set(packId, pack ? pack.getIndex(opts).catch(() => null) : Promise.resolve(null));
+      // No such pack (its module is off): its entries are gone. A pack whose
+      // index failed to load: no answer, so a dropped connection can't flag
+      // every entry in it missing and warn the GM about all of them.
+      indexes.set(packId, pack ? pack.getIndex(opts).catch(err => {
+        console.warn(`loot-crates | could not read the index of ${packId}; its pool entries were not checked`, err);
+        return UNCHECKED;
+      }) : Promise.resolve(null));
     }
     return indexes.get(packId);
   };
@@ -356,7 +365,9 @@ export async function checkSources(entries, { rarity: withRarity = false } = {})
     const parts = String(uuid ?? "").split(".");
     let doc;
     if (parts[0] === "Compendium" && parts.length === 5 && parts[3] === "Item") {
-      doc = (await packIndex(`${parts[1]}.${parts[2]}`))?.get(parts[4]);
+      const index = await packIndex(`${parts[1]}.${parts[2]}`);
+      if (index === UNCHECKED) continue;
+      doc = index?.get(parts[4]);
     } else if (parts[0] === "Item" && parts.length === 2 && globalThis.game?.items) {
       doc = game.items.get(parts[1]);
     } else {
@@ -371,7 +382,8 @@ export async function checkSources(entries, { rarity: withRarity = false } = {})
   return out;
 }
 
-// Which of these entries' sources are gone, as a Set of uuids.
+// Which of these entries' sources are gone, as a Set of uuids (an entry
+// that couldn't be checked is not in it).
 export async function findMissing(entries) {
   const sources = await checkSources(entries);
   return new Set([...sources].filter(([, src]) => !src).map(([uuid]) => uuid));
@@ -399,11 +411,12 @@ export async function refreshMissing(poolIds) {
   const seen = new Set();
   for (const id of new Set(poolIds)) entries.push(...flattenPool(id, pools, seen, { includeMissing: true }));
   if (!entries.length) return [];
-  const dead = await findMissing(entries);
+  const sources = await checkSources(entries);
   const found = [];
   const changes = new Map();
   for (const e of entries) {
-    const isDead = dead.has(e.uuid);
+    if (!sources.has(e.uuid)) continue; // not checked: keep its flag
+    const isDead = !sources.get(e.uuid);
     if (isDead === !!e.missing) continue;
     const c = changes.get(e.poolId) ?? { dead: [], revived: [] };
     (isDead ? c.dead : c.revived).push(e.uuid);

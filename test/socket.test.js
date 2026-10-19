@@ -328,6 +328,26 @@ describe("a pool entry whose source is gone", () => {
     expect(warnings).toEqual([]);
   });
 
+  it("leaves the flags alone when a pack's index can't be read", async () => {
+    const actor = makeActor();
+    const { game, emitted, deliver } = makeWorld({ user: GM, actor });
+    game.packs = { get: () => ({ getIndex: async () => { throw new Error("socket closed"); } }) };
+    globalThis.fromUuid = async uuid => item(uuid);
+    globalThis.CONFIG = { Dice: { randomUniform: seededRng(3) } };
+    const pools = structuredClone(POOLS);
+    pools.loot.entries[3].missing = true; // the legendary, flagged by an earlier sweep
+    await game.settings.set("loot-crates", "pools", pools);
+    await game.settings.set("loot-crates", "boxes", { box: BOX });
+    const warn = console.warn;
+    console.warn = () => {};
+    try { await deliver({ type: "pull", requestId: "r1", boxId: "box", actorId: "actor1", userId: "p1" }); } finally { console.warn = warn; }
+    // Nothing newly flagged, nothing revived, no warning to the GM; the sale goes ahead.
+    const saved = game.settings.get("loot-crates", "pools").loot.entries;
+    expect(saved.filter(e => e.missing).map(e => e.name)).toEqual(["Vorpal Sword"]);
+    expect(warnings).toEqual([]);
+    expect(emitted.filter(m => m.type === "reveal")).toHaveLength(1);
+  });
+
   it("re-rolls once when a source vanishes after the sweep, and charges only for a live one", async () => {
     const actor = makeActor();
     const events = [];
