@@ -7,6 +7,11 @@
     { type: "pull", requestId, boxId, actorId, userId }   player -> GM
     { type: "reveal", requestId, ... }                     GM -> everyone
     { type: "error", requestId, userId, message }          GM -> the buyer
+
+  The GM client runs pulls one at a time (see `queue`): every store write is a
+  read-modify-write across awaits, so two requests arriving together would
+  both see the same stock, purse and log. The queue is per GM client; a second
+  GM is already excluded by `isActiveGM`.
 */
 import { SOCKET } from "./config.js";
 import { performPull, PullError } from "./pull.js";
@@ -14,6 +19,9 @@ import { getBoxes, getPools, getActorState, setActorState, appendLog, isShopOpen
 import { showReveal } from "./reveal.js";
 import { postPullCard } from "./chat.js";
 
+export const GM_TIMEOUT_MS = 30000;
+
+// The buyer's unanswered requests: requestId -> { resolve, reject, timer }.
 const pending = new Map();
 const uid = () => foundry.utils.randomID(12);
 
@@ -22,33 +30,53 @@ export function isActiveGM() {
   return !!gm && gm.id === game.user.id;
 }
 
+// Answers one pending request (once) and clears its timeout, so a late reveal
+// or error can't fire a stale rejection afterwards.
+function settle(requestId, answer) {
+  const entry = pending.get(requestId);
+  if (!entry) return;
+  pending.delete(requestId);
+  clearTimeout(entry.timer);
+  answer(entry);
+}
+
 export function registerSocket() {
-  game.socket.on(SOCKET, async msg => {
+  game.socket.on(SOCKET, msg => {
     if (msg.type === "pull" && isActiveGM()) return handlePull(msg);
-    if (msg.type === "reveal") return showReveal(msg);
+    if (msg.type === "reveal") {
+      if (msg.userId === game.user.id) settle(msg.requestId, p => p.resolve(msg));
+      return showReveal(msg);
+    }
     if (msg.type === "error" && msg.userId === game.user.id) {
-      pending.get(msg.requestId)?.reject(new PullError(msg.message));
-      pending.delete(msg.requestId);
+      settle(msg.requestId, p => p.reject(new PullError(msg.message)));
     }
   });
 }
 
-// The player's side. Resolves once the GM has granted the item; the reveal
-// itself arrives as a broadcast like everyone else's.
+// The player's side. Resolves on the GM's reveal broadcast (the same message
+// everyone else gets), rejects on the GM's error reply or after GM_TIMEOUT_MS.
 export function requestPull({ boxId, actorId }) {
   if (!game.users.activeGM) return Promise.reject(new PullError("The shop is closed until a GM is online."));
   const msg = { type: "pull", requestId: uid(), boxId, actorId, userId: game.user.id };
   if (isActiveGM()) return handlePull(msg);
   return new Promise((resolve, reject) => {
-    pending.set(msg.requestId, { resolve, reject });
+    const timer = setTimeout(() => settle(msg.requestId, p => p.reject(new PullError("The GM didn't answer in time."))), GM_TIMEOUT_MS);
+    pending.set(msg.requestId, { resolve, reject, timer });
     game.socket.emit(SOCKET, msg);
-    setTimeout(() => {
-      if (pending.has(msg.requestId)) { pending.delete(msg.requestId); reject(new PullError("The GM didn't answer in time.")); }
-    }, 30000);
   });
 }
 
-async function handlePull(msg) {
+// The GM's side. Pulls run strictly one after another, whether they came over
+// the socket or from this client's own shop, so stock, purse, state and log
+// are read after the previous pull has finished writing.
+let queue = Promise.resolve();
+function handlePull(msg) {
+  const run = queue.catch(() => {}).then(() => doPull(msg));
+  queue = run;
+  return run;
+}
+
+async function doPull(msg) {
   const reply = payload => {
     if (msg.userId === game.user.id) return;
     game.socket.emit(SOCKET, { ...payload, requestId: msg.requestId });
@@ -71,7 +99,6 @@ async function handlePull(msg) {
     game.socket.emit(SOCKET, reveal);
     await showReveal(reveal);
     await postPullCard(reveal);
-    if (msg.userId === game.user.id) { pending.get(msg.requestId)?.resolve(reveal); pending.delete(msg.requestId); }
     return reveal;
   } catch (err) {
     const message = err instanceof PullError ? err.message : "The crate jammed. Check the GM's console.";
