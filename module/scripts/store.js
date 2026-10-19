@@ -4,11 +4,12 @@
   handler is the one place that writes on a player's behalf.
 
   Pools hold references (UUIDs), never copies, so an item edited at its source
-  is what gets granted. A reference whose source is gone resolves to null and
-  the editors show it as missing.
+  is what gets granted. A reference whose source is gone resolves to null; the
+  sweep below flags its entry `missing: true`, which takes it out of the roll,
+  the odds and the strip (odds.js flattenPool), and warns the GM.
 */
 import { MODULE_ID, SETTINGS } from "./config.js";
-import { normalizeRarity } from "./odds.js";
+import { normalizeRarity, flattenPool, markEntriesMissing } from "./odds.js";
 
 const uid = () => (globalThis.foundry?.utils?.randomID?.(10)) ?? Math.random().toString(36).slice(2, 12);
 
@@ -138,4 +139,87 @@ export async function entriesFromCompendium(packId, filter = {}) {
 
 export async function resolveEntry(entry) {
   try { return await fromUuid(entry.uuid); } catch { return null; }
+}
+
+/*
+  Which of these entries' sources are gone, as a Set of uuids. Cheap enough to
+  run before every pull: a compendium reference is checked against the pack's
+  index (Foundry caches it after the first load), a world item against
+  game.items; only other kinds of reference fall back to fromUuid.
+*/
+export async function findMissing(entries) {
+  const missing = new Set();
+  const indexes = new Map();
+  const packIndex = packId => {
+    if (!indexes.has(packId)) {
+      const pack = globalThis.game?.packs?.get(packId);
+      indexes.set(packId, pack ? pack.getIndex().catch(() => null) : Promise.resolve(null));
+    }
+    return indexes.get(packId);
+  };
+  for (const uuid of new Set(entries.map(e => e.uuid))) {
+    const parts = String(uuid ?? "").split(".");
+    let live;
+    if (parts[0] === "Compendium" && parts.length === 5 && parts[3] === "Item") {
+      const index = await packIndex(`${parts[1]}.${parts[2]}`);
+      live = !!index?.has(parts[4]);
+    } else if (parts[0] === "Item" && parts.length === 2 && globalThis.game?.items) {
+      live = game.items.has(parts[1]);
+    } else {
+      live = !!(await resolveEntry({ uuid }));
+    }
+    if (!live) missing.add(uuid);
+  }
+  return missing;
+}
+
+// Sets (or clears) `missing` on the entries of one pool, read fresh so a
+// write in between is never lost. GM only, through enqueueWrite.
+export async function markMissing(poolId, uuids, flag = true) {
+  const pools = getPools();
+  if (!pools[poolId] || !uuids.length) return pools;
+  const next = markEntriesMissing(pools, poolId, uuids, flag);
+  await set(SETTINGS.POOLS, next);
+  return next;
+}
+
+/*
+  Checks every entry the given pools can produce (missing ones included, so a
+  source that came back is noticed), flags the dead ones and clears the flag
+  on revived ones. Returns the entries newly found missing, each with its
+  pool's name, for reportMissing.
+*/
+export async function refreshMissing(poolIds) {
+  const pools = getPools();
+  const entries = [];
+  const seen = new Set();
+  for (const id of new Set(poolIds)) entries.push(...flattenPool(id, pools, seen, { includeMissing: true }));
+  if (!entries.length) return [];
+  const dead = await findMissing(entries);
+  const found = [];
+  const changes = new Map();
+  for (const e of entries) {
+    const isDead = dead.has(e.uuid);
+    if (isDead === !!e.missing) continue;
+    const c = changes.get(e.poolId) ?? { dead: [], revived: [] };
+    (isDead ? c.dead : c.revived).push(e.uuid);
+    changes.set(e.poolId, c);
+    if (isDead) found.push({ poolId: e.poolId, poolName: pools[e.poolId]?.name ?? e.poolId, uuid: e.uuid, name: e.name });
+  }
+  for (const [poolId, c] of changes) {
+    if (c.dead.length) await markMissing(poolId, c.dead, true);
+    if (c.revived.length) {
+      await markMissing(poolId, c.revived, false);
+      console.info(`loot-crates | ${c.revived.length} entr${c.revived.length === 1 ? "y" : "ies"} in pool ${pools[poolId]?.name ?? poolId} have their source back`);
+    }
+  }
+  return found;
+}
+
+// Tells the GM, once per sweep, which entries were taken out of the roll.
+export function reportMissing(found) {
+  if (!found?.length) return;
+  for (const f of found) console.warn(`loot-crates | ${f.name} (${f.uuid}) in pool ${f.poolName} has no source; it won't be drawn until it is fixed or removed`);
+  const list = found.map(f => `${f.name} in ${f.poolName}`).join(", ");
+  globalThis.ui?.notifications?.warn(`Loot Crates: ${list} ${found.length === 1 ? "is" : "are"} missing ${found.length === 1 ? "its source and is" : "their sources and are"} no longer drawn. Fix or remove ${found.length === 1 ? "it" : "them"} in the pool editor.`);
 }

@@ -57,3 +57,31 @@ describe("buildStrip", () => {
     expect(counts.common / total).toBeCloseTo(0.55, 1);
   });
 });
+
+describe("buildStrip with missing entries", () => {
+  const entry = (uuid, rarity, extra = {}) => ({ uuid, name: uuid, img: "", rarity, weight: 1, ...extra });
+  const pools = {
+    p: { id: "p", name: "P", pools: [], entries: [entry("c1", "common"), entry("c2", "common"), entry("u1", "uncommon"), entry("r1", "rare", { missing: true }), entry("l1", "legendary", { missing: true })] },
+  };
+  const box = { id: "b", name: "B", price: 1, pools: [{ id: "p", share: 1 }], weights: { common: 60, uncommon: 20, rare: 15, legendary: 5 }, rules: {} };
+
+  it("never shows a missing entry as a filler or as the near-miss tease, across 200 seeds", () => {
+    let teases = 0;
+    for (let seed = 1; seed <= 200; seed++) {
+      const rng = seededRng(seed);
+      const result = draw({ box, pools, rng });
+      const strip = buildStrip({ result, box, pools, rng });
+      for (const c of strip.cards) expect(["c1", "c2", "u1"]).toContain(c.uuid);
+      if (strip.nearMiss) {
+        teases++;
+        expect(strip.cards[LAND_INDEX + 1].uuid).toBe("u1");
+      }
+    }
+    // The tease still happens, one rank up from a common, from a live entry.
+    expect(teases).toBeGreaterThan(0);
+  });
+
+  it("fillerSource offers no rarity whose only entries are missing", () => {
+    expect(fillerSource(box, pools).rarities).toEqual(["common", "uncommon"]);
+  });
+});

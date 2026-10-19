@@ -16,6 +16,7 @@ const { registerSocket, requestPull, GM_TIMEOUT_MS } = await import("../module/s
 const { registerSettings, appendLog } = await import("../module/scripts/store.js");
 const { refundPull } = await import("../module/scripts/refund.js");
 const { PullError } = await import("../module/scripts/pull.js");
+const { seededRng, oddsTable } = await import("../module/scripts/odds.js");
 const { showReveal } = await import("../module/scripts/reveal.js");
 const { postPullCard } = await import("../module/scripts/chat.js");
 
@@ -255,5 +256,107 @@ describe("the GM client", () => {
     expect(actor.items).toHaveLength(1);
     // The GM's own failure is thrown to its shop, never sent over the socket.
     expect(emitted.filter(m => m.type === "error")).toHaveLength(0);
+  });
+});
+
+describe("a pool entry whose source is gone", () => {
+  const PACK = "Compendium.dnd5e.items.Item.";
+  const entry = (id, name, rarity) => ({ uuid: PACK + id, name, img: "", rarity, weight: 1 });
+  const POOLS = { loot: { id: "loot", name: "Treasure", pools: [], entries: [
+    entry("c1", "Torch", "common"), entry("c2", "Rope", "common"),
+    entry("r1", "Flame Tongue", "rare"), entry("l1", "Vorpal Sword", "legendary"),
+  ] } };
+  const BOX = { id: "box", name: "Test Crate", price: 10, pools: [{ id: "loot", share: 1 }], weights: { common: 60, rare: 30, legendary: 10 }, rules: {} };
+  const item = uuid => ({ name: uuid, img: "", toObject: () => ({ name: uuid, type: "loot", flags: {} }) });
+
+  let warnings;
+  beforeEach(() => {
+    warnings = [];
+    globalThis.ui = { notifications: { warn: m => warnings.push(m) } };
+  });
+  afterEach(() => { delete globalThis.ui; delete globalThis.CONFIG; });
+
+  it("is never drawn: 1000 seeded pulls with a dead rare and legendary all succeed, and both get flagged", async () => {
+    const actor = makeActor(1000 * 10);
+    const { game, emitted, deliver } = makeWorld({ user: GM, actor });
+    const live = new Set(["c1", "c2"]);
+    game.packs = { get: id => (id === "dnd5e.items" ? { getIndex: async () => new Map([...live].map(k => [k, { _id: k }])) } : undefined) };
+    globalThis.fromUuid = async uuid => (live.has(uuid.slice(PACK.length)) ? item(uuid) : null);
+    globalThis.CONFIG = { Dice: { randomUniform: seededRng(1) } };
+    await game.settings.set("loot-crates", "pools", structuredClone(POOLS));
+    await game.settings.set("loot-crates", "boxes", { box: BOX });
+    // Before any sweep the shop still advertises the dead rarities: that's the bug.
+    expect(oddsTable(BOX, game.settings.get("loot-crates", "pools")).map(o => o.rarity)).toEqual(["common", "rare", "legendary"]);
+
+    const warn = console.warn;
+    console.warn = () => {};
+    try {
+      for (let i = 0; i < 1000; i++) await deliver({ type: "pull", requestId: `r${i}`, boxId: "box", actorId: "actor1", userId: "p1" });
+    } finally { console.warn = warn; }
+
+    expect(emitted.filter(m => m.type === "error")).toEqual([]);
+    const reveals = emitted.filter(m => m.type === "reveal");
+    expect(reveals).toHaveLength(1000);
+    for (const r of reveals) {
+      expect(r.result.rarity).toBe("common");
+      for (const c of r.strip.cards) expect(live.has(c.uuid.slice(PACK.length))).toBe(true);
+    }
+    expect(actor.system.currency.gp).toBe(0);
+    expect(actor.items).toHaveLength(1000);
+
+    const saved = game.settings.get("loot-crates", "pools").loot.entries;
+    expect(saved.filter(e => e.missing).map(e => e.name)).toEqual(["Flame Tongue", "Vorpal Sword"]);
+    expect(oddsTable(BOX, game.settings.get("loot-crates", "pools"))).toEqual([{ rarity: "common", chance: 1 }]);
+    // Reported once, naming the pool and the entries, not once per pull.
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("Flame Tongue in Treasure");
+    expect(warnings[0]).toContain("Vorpal Sword in Treasure");
+  }, 60000);
+
+  it("clears the flag when the source comes back", async () => {
+    const { game, deliver } = makeWorld({ user: GM });
+    const live = new Set(["c1", "c2", "r1", "l1"]);
+    game.packs = { get: () => ({ getIndex: async () => new Map([...live].map(k => [k, { _id: k }])) }) };
+    const pools = structuredClone(POOLS);
+    pools.loot.entries[2].missing = true;
+    await game.settings.set("loot-crates", "pools", pools);
+    await game.settings.set("loot-crates", "boxes", { box: BOX });
+    const info = console.info;
+    console.info = () => {};
+    try { await deliver({ type: "pull", requestId: "r1", boxId: "box", actorId: "actor1", userId: "p1" }); } finally { console.info = info; }
+    expect(game.settings.get("loot-crates", "pools").loot.entries.some(e => e.missing)).toBe(false);
+    expect(warnings).toEqual([]);
+  });
+
+  it("re-rolls once when a source vanishes after the sweep, and charges only for a live one", async () => {
+    const actor = makeActor();
+    const events = [];
+    const origUpdate = actor.update;
+    actor.update = async data => { events.push("charge"); return origUpdate(data); };
+    const { game, emitted, deliver } = makeWorld({ user: GM, actor });
+    // The sweep sees every world item as present...
+    game.items = { has: () => true };
+    // ...but the rare's document is gone by the time the roll resolves it.
+    globalThis.fromUuid = async uuid => { events.push(`resolve ${uuid}`); return uuid === "Item.rare" ? null : item(uuid); };
+    globalThis.CONFIG = { Dice: { randomUniform: () => 0.5 } };
+    const pools = { loot: { id: "loot", name: "Treasure", pools: [], entries: [
+      { uuid: "Item.common", name: "Torch", img: "", rarity: "common", weight: 1 },
+      { uuid: "Item.rare", name: "Flame Tongue", img: "", rarity: "rare", weight: 1 },
+    ] } };
+    await game.settings.set("loot-crates", "pools", pools);
+    await game.settings.set("loot-crates", "boxes", { box: { ...BOX, weights: { common: 1, rare: 100 } } });
+
+    const warn = console.warn;
+    console.warn = () => {};
+    try { await deliver({ type: "pull", requestId: "r1", boxId: "box", actorId: "actor1", userId: "p1" }); } finally { console.warn = warn; }
+
+    expect(emitted.filter(m => m.type === "error")).toEqual([]);
+    expect(emitted.find(m => m.type === "reveal").result.uuid).toBe("Item.common");
+    expect(events).toEqual(["resolve Item.rare", "resolve Item.common", "charge"]);
+    expect(actor.updates).toBe(1);
+    expect(actor.system.currency.gp).toBe(490);
+    expect(game.settings.get("loot-crates", "pools").loot.entries.find(e => e.uuid === "Item.rare").missing).toBe(true);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("Flame Tongue in Treasure");
   });
 });

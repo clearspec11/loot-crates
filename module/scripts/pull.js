@@ -4,7 +4,7 @@
   so the live check (foundry-dev/checks) can run it against a world where the
   module isn't installed, and the socket handler wraps it with the stores.
 */
-import { draw, nextState } from "./odds.js";
+import { draw, nextState, markEntriesMissing } from "./odds.js";
 import { buildStrip } from "./strip.js";
 import { charge, canAfford } from "./currency.js";
 
@@ -15,7 +15,18 @@ export function rollRng() {
   return typeof r === "function" ? r : Math.random;
 }
 
-export async function performPull({ box, pools, actor, state = {}, rng = rollRng(), grant = true }) {
+async function resolveSource(uuid) {
+  try { return await fromUuid(uuid); } catch { return null; }
+}
+
+/*
+  `onMissing(entry)` is told about a rolled entry whose source turned out to be
+  gone (the socket handler marks it in the pool setting and warns the GM).
+  The caller is expected to have swept the box for dead sources already, so
+  this only happens when one vanished in between: the entry is excluded and the
+  roll is made once more. Nothing is charged until a live source is in hand.
+*/
+export async function performPull({ box, pools, actor, state = {}, rng = rollRng(), grant = true, onMissing = null }) {
   if (!box) throw new PullError("That box no longer exists.");
   if (!actor) throw new PullError("No character to buy with.");
   if (box.rules?.stock != null && box.rules.stock <= 0) throw new PullError(`${box.name} is sold out.`);
@@ -25,11 +36,21 @@ export async function performPull({ box, pools, actor, state = {}, rng = rollRng
   const purse = { ...(actor.system?.currency ?? {}) };
   if (!canAfford(purse, box.price)) throw new PullError(`${actor.name} can't afford ${box.name}.`);
 
-  const result = draw({ box, pools, rng, state });
+  let result = draw({ box, pools, rng, state });
+  let source = result && await resolveSource(result.entry.uuid);
+  if (result && !source) {
+    const lost = result.entry;
+    console.warn(`loot-crates | ${lost.name} (${lost.uuid}) in pool ${lost.poolId} has no source; excluding it and rolling again`);
+    await onMissing?.(lost);
+    pools = markEntriesMissing(pools, lost.poolId, [lost.uuid], true);
+    result = draw({ box, pools, rng, state });
+    source = result && await resolveSource(result.entry.uuid);
+    if (result && !source) {
+      await onMissing?.(result.entry);
+      throw new PullError(`${result.entry.name} is missing from its compendium. Tell the GM.`);
+    }
+  }
   if (!result) throw new PullError(`${box.name} has nothing left to give ${actor.name}.`);
-
-  const source = await fromUuid(result.entry.uuid);
-  if (!source) throw new PullError(`${result.entry.name} is missing from its compendium. Tell the GM.`);
 
   const nextPurse = charge(purse, box.price);
   const strip = buildStrip({ result, box, pools, rng });

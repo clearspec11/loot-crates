@@ -16,10 +16,14 @@
   on Foundry v14 `render` resolves only once the spin has landed (6 to 7 s),
   and a queue that waited on it would hold every later buyer behind each
   spin until their 30 s timeout fired while the GM still charged them.
+
+  Before each roll the GM sweeps the box's pools for entries whose source is
+  gone and flags them (store.js refreshMissing), so a dead item is taken out of
+  the roll, the odds and the strip instead of failing after the buyer clicked.
 */
 import { SOCKET } from "./config.js";
 import { performPull, PullError } from "./pull.js";
-import { getBoxes, getPools, getActorState, setActorState, appendLog, isShopOpen, saveBox, enqueueWrite } from "./store.js";
+import { getBoxes, getPools, getActorState, setActorState, appendLog, isShopOpen, saveBox, enqueueWrite, refreshMissing, markMissing, reportMissing } from "./store.js";
 import { showReveal } from "./reveal.js";
 import { postPullCard } from "./chat.js";
 
@@ -87,6 +91,16 @@ function showAndPost(reveal) {
     .catch(err => console.error(`loot-crates | reveal failed`, err));
 }
 
+// A failed sweep doesn't stop the sale: performPull still re-rolls past a
+// source it can't resolve.
+async function sweepBox(box) {
+  try {
+    reportMissing(await refreshMissing((box.pools ?? []).map(ref => ref.id)));
+  } catch (err) {
+    console.error(`loot-crates | checking ${box.name} for missing items failed`, err);
+  }
+}
+
 async function doPull(msg) {
   const reply = payload => {
     if (msg.userId === game.user.id) return;
@@ -99,8 +113,15 @@ async function doPull(msg) {
     const buyer = game.users.get(msg.userId);
     if (!actor || !buyer || !actor.testUserPermission(buyer, "OWNER")) throw new PullError("You don't own that character.");
 
+    if (box) await sweepBox(box);
     const state = getActorState(msg.actorId, msg.boxId);
-    const out = await performPull({ box, pools: getPools(), actor, state });
+    const onMissing = async entry => {
+      try {
+        await markMissing(entry.poolId, [entry.uuid], true);
+        reportMissing([{ poolId: entry.poolId, poolName: getPools()[entry.poolId]?.name ?? entry.poolId, uuid: entry.uuid, name: entry.name }]);
+      } catch (err) { console.error(`loot-crates | could not flag ${entry.uuid} as missing`, err); }
+    };
+    const out = await performPull({ box, pools: getPools(), actor, state, onMissing });
     await setActorState(msg.actorId, msg.boxId, out.state);
     if (box.rules?.stock != null) await saveBox({ ...box, rules: { ...box.rules, stock: box.rules.stock - 1 } });
     const log = { boxId: box.id, boxName: box.name, actorId: actor.id, actorName: actor.name, userId: msg.userId, itemId: out.itemId, name: out.result.name, uuid: out.result.uuid, rarity: out.result.rarity, price: box.price, pity: out.result.pity };

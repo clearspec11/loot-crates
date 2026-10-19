@@ -68,4 +68,33 @@ describe("performPull", () => {
     expect(actor.system.currency).toEqual({ pp: 0, gp: 487, ep: 0, sp: 5, cp: 0 });
     expect(actor.items[0].flags["loot-crates"].sourceUuid).toBe(out.result.uuid);
   });
+
+  it("re-rolls once past an entry whose source vanished, and charges only after a live source is found", async () => {
+    const pools = { pool: { id: "pool", name: "Pool", pools: [], entries: [
+      { uuid: "gone", name: "Flame Tongue", img: "", rarity: "rare", weight: 1 },
+      { uuid: "live", name: "Potion", img: "", rarity: "common", weight: 1 },
+    ] } };
+    const box = { ...BOX, weights: { common: 1, rare: 100 } };
+    const events = [];
+    globalThis.fromUuid = async uuid => {
+      events.push(`resolve ${uuid}`);
+      return uuid === "gone" ? null : { name: "Potion", img: "", toObject: () => ({ name: "Potion", type: "consumable", flags: {} }) };
+    };
+    const actor = makeActor();
+    const origUpdate = actor.update;
+    actor.update = async data => { events.push("charge"); return origUpdate(data); };
+    const lost = [];
+    const warn = console.warn;
+    console.warn = () => {};
+    try {
+      const out = await performPull({ box, pools, actor, state: {}, rng: () => 0.5, onMissing: async e => { lost.push(e.uuid); } });
+      expect(out.result.uuid).toBe("live");
+    } finally { console.warn = warn; }
+    expect(events).toEqual(["resolve gone", "resolve live", "charge"]);
+    expect(lost).toEqual(["gone"]);
+    expect(actor.writes).toHaveLength(1);
+    expect(actor.items).toHaveLength(1);
+    // The caller's pools are not mutated; the exclusion is local to this pull.
+    expect(pools.pool.entries[0].missing).toBeUndefined();
+  });
 });

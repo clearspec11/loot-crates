@@ -1,7 +1,7 @@
 /*
   The pull itself, with no Foundry in it, so Vitest can prove the maths.
 
-  A Pool: { id, name, entries: [{ uuid, name, img, rarity, weight }], pools: [childPoolId] }
+  A Pool: { id, name, entries: [{ uuid, name, img, rarity, weight, missing? }], pools: [childPoolId] }
   A Box:  { id, name, price, pools: [{ id, share }], weights: { rarity: n },
             rules: { pity: { after, minRarity }, noDuplicates, stock } }
 
@@ -9,6 +9,11 @@
   pools actually hold), then a pool among those holding that rarity (by share),
   then an entry inside it (by weight). Rarity odds are therefore exactly what the
   box editor shows, whatever the pools' sizes.
+
+  An entry flagged `missing: true` (its source is gone; store.js sets the flag
+  on the GM client) is invisible to everything here: it is never drawn, never
+  counted in the odds and never used as a strip filler or tease, because all of
+  those read entries through flattenPool. The odds shown are the odds granted.
 */
 import { RARITIES, DEFAULT_WEIGHTS } from "./config.js";
 
@@ -42,14 +47,32 @@ export function weightedPick(items, weightOf, rng) {
 }
 
 // Every entry a pool can produce, including nested pools, with cycles ignored.
-export function flattenPool(poolId, pools, seen = new Set()) {
+// Entries flagged missing are left out unless `includeMissing` (the liveness
+// sweep needs them, to notice a source that came back).
+export function flattenPool(poolId, pools, seen = new Set(), { includeMissing = false } = {}) {
   if (seen.has(poolId)) return [];
   seen.add(poolId);
   const pool = pools[poolId];
   if (!pool) return [];
-  const own = (pool.entries ?? []).map(e => ({ ...e, rarity: normalizeRarity(e.rarity), weight: e.weight ?? 1, poolId }));
-  const nested = (pool.pools ?? []).flatMap(childId => flattenPool(childId, pools, seen));
+  const own = (pool.entries ?? [])
+    .filter(e => includeMissing || !e.missing)
+    .map(e => ({ ...e, rarity: normalizeRarity(e.rarity), weight: e.weight ?? 1, poolId }));
+  const nested = (pool.pools ?? []).flatMap(childId => flattenPool(childId, pools, seen, { includeMissing }));
   return own.concat(nested);
+}
+
+// A copy of `pools` with `missing` set (or cleared) on the entries of `poolId`
+// whose uuid is in `uuids`. The other pools are shared, not copied.
+export function markEntriesMissing(pools, poolId, uuids, flag = true) {
+  const pool = pools[poolId];
+  if (!pool) return pools;
+  const hit = new Set(uuids);
+  const entries = (pool.entries ?? []).map(e => {
+    if (!hit.has(e.uuid)) return e;
+    const { missing: _drop, ...rest } = e;
+    return flag ? { ...rest, missing: true } : rest;
+  });
+  return { ...pools, [poolId]: { ...pool, entries } };
 }
 
 // The rarities a box can land on and the chance of each, as the editor shows.

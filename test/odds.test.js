@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { draw, nextState, oddsTable, flattenPool, normalizeRarity, seededRng, weightedPick } from "../module/scripts/odds.js";
+import { draw, nextState, oddsTable, flattenPool, normalizeRarity, seededRng, weightedPick, markEntriesMissing } from "../module/scripts/odds.js";
 import { POOLS, BOX } from "../harness/sample.js";
 
 const tally = (n, fn) => {
@@ -138,5 +138,48 @@ describe("seededRng", () => {
       expect(x).toBeGreaterThanOrEqual(0);
       expect(x).toBeLessThan(1);
     }
+  });
+});
+
+describe("entries whose source is gone", () => {
+  const entry = (uuid, rarity, extra = {}) => ({ uuid, name: uuid, img: "", rarity, weight: 1, ...extra });
+  const pools = {
+    live: { id: "live", name: "Live", pools: ["child"], entries: [entry("c1", "common"), entry("c2", "common"), entry("r1", "rare", { missing: true })] },
+    child: { id: "child", name: "Child", pools: [], entries: [entry("l1", "legendary", { missing: true }), entry("u1", "uncommon")] },
+  };
+  const box = { id: "b", name: "B", price: 1, pools: [{ id: "live", share: 1 }], weights: { common: 60, uncommon: 0, rare: 30, legendary: 10 }, rules: {} };
+
+  it("flattenPool leaves them out, nested pools included, unless asked", () => {
+    expect(flattenPool("live", pools).map(e => e.uuid)).toEqual(["c1", "c2", "u1"]);
+    expect(flattenPool("live", pools, new Set(), { includeMissing: true }).map(e => e.uuid)).toEqual(["c1", "c2", "r1", "l1", "u1"]);
+  });
+
+  it("oddsTable shows no row for a rarity whose only entries are missing", () => {
+    const odds = oddsTable(box, pools);
+    expect(odds.map(o => o.rarity)).toEqual(["common", "uncommon"]);
+    expect(odds.find(o => o.rarity === "legendary")).toBeUndefined();
+    expect(odds.reduce((n, o) => n + o.chance, 0)).toBeCloseTo(1, 6);
+  });
+
+  it("draw never lands on one, across 2000 seeds", () => {
+    const rng = seededRng(13);
+    for (let i = 0; i < 2000; i++) {
+      const r = draw({ box, pools, rng });
+      expect(["c1", "c2", "u1"]).toContain(r.entry.uuid);
+    }
+  });
+
+  it("draw gives nothing when every entry is missing", () => {
+    const dead = { p: { id: "p", name: "P", pools: [], entries: [entry("x", "rare", { missing: true })] } };
+    expect(draw({ box: { ...box, pools: [{ id: "p", share: 1 }] }, pools: dead, rng: seededRng(1) })).toBeNull();
+  });
+
+  it("markEntriesMissing sets and clears the flag on one pool without touching the input", () => {
+    const marked = markEntriesMissing(pools, "live", ["c1"], true);
+    expect(marked.live.entries[0].missing).toBe(true);
+    expect(pools.live.entries[0].missing).toBeUndefined();
+    expect(marked.child).toBe(pools.child);
+    const cleared = markEntriesMissing(marked, "live", ["c1", "r1"], false);
+    expect(cleared.live.entries.some(e => "missing" in e)).toBe(false);
   });
 });
