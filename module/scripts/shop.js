@@ -2,10 +2,9 @@
   The player's Crate Shop: the boxes on offer, what each costs, whether this
   character can afford it, and a Buy button that asks the GM to do the pull.
 */
-import { RARITY_LABEL } from "./config.js";
 import { getBoxes, getPools, isShopOpen } from "./store.js";
-import { oddsTable } from "./odds.js";
-import { canAfford, formatPrice, toCopper } from "./currency.js";
+import { formatGold } from "./currency.js";
+import { boxCard } from "./boxcard.js";
 import { requestPull } from "./socket.js";
 
 const { ApplicationV2 } = foundry.applications.api;
@@ -68,7 +67,7 @@ export class CrateShop extends ApplicationV2 {
     root.innerHTML = `
       <div class="lc-shop__head">
         ${picker}
-        <span class="lc-shop__purse" title="Your coins, as gold">${actor ? esc((toCopper(purse) / 100).toFixed(toCopper(purse) % 100 ? 2 : 0)) + " gp" : ""}</span>
+        <span class="lc-shop__purse" title="Your coins, as gold">${actor ? esc(formatGold(purse)) : ""}</span>
         ${open ? "" : `<span class="lc-shop__closed">${game.users.activeGM ? "The GM has closed the shop." : "Closed until a GM is online."}</span>`}
       </div>
       <div class="lc-shop__grid">
@@ -79,21 +78,10 @@ export class CrateShop extends ApplicationV2 {
   }
 
   #boxCard(box, pools, purse, open) {
-    const odds = oddsTable(box, pools);
-    const afford = this.actor && canAfford(purse, box.price);
-    const soldOut = box.rules?.stock != null && box.rules.stock <= 0;
-    const top = odds.length ? odds[odds.length - 1].rarity : "common";
-    const reasons = [!open && "closed", soldOut && "sold out", !this.actor && "no character", this.actor && !afford && "can't afford"].filter(Boolean);
-    return `
-      <div class="lc-box lc-rarity-${esc(top)}">
-        <div class="lc-box__art"><i class="fas fa-box-open"></i></div>
-        <div class="lc-box__name">${esc(box.name)}</div>
-        <div class="lc-box__odds">${odds.map(o => `<span class="lc-odd lc-rarity-${o.rarity}" title="${esc(RARITY_LABEL[o.rarity])}">${Math.round(o.chance * 100)}%</span>`).join("")}</div>
-        ${box.rules?.stock != null ? `<div class="lc-box__stock">${box.rules.stock} left</div>` : ""}
-        <button type="button" class="lc-box__buy" data-action="buy" data-box="${esc(box.id)}" ${reasons.length || this.busy ? "disabled" : ""} title="${esc(reasons.join(", "))}">
-          ${this.busy ? "Opening…" : `Open for ${esc(formatPrice(box.price))}`}
-        </button>
-      </div>`;
+    return boxCard(box, pools, {
+      purse, open, gmOnline: !!game.users.activeGM, hasActor: !!this.actor,
+      busy: this.busy, art: `<i class="fas fa-box-open"></i>`, esc,
+    });
   }
 
   _replaceHTML(result, content) { content.replaceChildren(result); }

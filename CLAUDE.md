@@ -8,7 +8,7 @@ Loot Crates is a Foundry VTT module (v13/v14, dnd5e 5/6) for GM-curated item poo
 
 ## Rules that keep it working
 
-- **Pure first.** `odds.js`, `currency.js`, `strip.js` and `spin.js` must not touch Foundry globals (`game`, `Hooks`, `ui`, `foundry`, `fromUuid`), so Vitest and the harness can run them. Put anything Foundry-aware in the other scripts.
+- **Pure first.** `odds.js`, `currency.js`, `boxcard.js`, `revealcard.js`, `strip.js` and `spin.js` must not touch Foundry globals (`game`, `Hooks`, `ui`, `foundry`, `fromUuid`), so Vitest and the harness can run them. Put anything Foundry-aware in the other scripts.
 - **The result is rolled before the strip is built** (`pull.js` then `strip.js`). The animation never decides the outcome.
 - **Only a GM client writes.** Players send a `pull` over the socket; `socket.js` on the active GM does the purse check, the roll, the grant and the log, then broadcasts the reveal. Don't add client-side writes to actors, settings or compendia.
 - **Pools hold UUID references, not copies.** A missing source resolves to null and must be reported, not silently skipped.

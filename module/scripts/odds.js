@@ -1,7 +1,13 @@
 /*
   The pull itself, with no Foundry in it, so Vitest can prove the maths.
 
-  A Pool: { id, name, entries: [{ uuid, name, img, rarity, weight }], pools: [childPoolId] }
+  A Pool: { id, name, entries: [Entry], pools: [childPoolId] }
+  An Entry: { uuid, name, img, rarity, sourceRarity, rarityOverride?, weight, missing? }
+    sourceRarity  the source's system.rarity as added, "" when it had none
+    rarity        normalizeRarity(sourceRarity), kept for entries added before
+                  sourceRarity existed
+    rarityOverride  a dnd5e rarity key the GM chose, or absent; it wins
+    weight        0 means the entry never drops
   A Box:  { id, name, price, pools: [{ id, share }], weights: { rarity: n },
             rules: { pity: { after, minRarity }, noDuplicates, stock } }
 
@@ -9,6 +15,14 @@
   pools actually hold), then a pool among those holding that rarity (by share),
   then an entry inside it (by weight). Rarity odds are therefore exactly what the
   box editor shows, whatever the pools' sizes.
+
+  An entry flagged `missing: true` (its source is gone; store.js sets the flag
+  on the GM client) is invisible to everything here: it is never drawn, never
+  counted in the odds and never used as a strip filler or tease, because all of
+  those read entries through flattenPool. The odds shown are the odds granted.
+  The same goes for an entry weighing 0, and flattenPool hands everything
+  else its effective rarity (the GM's override, else the source's), so the
+  roll, the odds and the strip all follow the pool editor.
 */
 import { RARITIES, DEFAULT_WEIGHTS } from "./config.js";
 
@@ -41,15 +55,112 @@ export function weightedPick(items, weightOf, rng) {
   return items[items.length - 1] ?? null;
 }
 
-// Every entry a pool can produce, including nested pools, with cycles ignored.
-export function flattenPool(poolId, pools, seen = new Set()) {
+// The rarity an entry is drawn at: the GM's override, else its source's.
+export function effectiveRarity(entry) {
+  if (RARITIES.includes(entry?.rarityOverride)) return entry.rarityOverride;
+  return normalizeRarity(entry?.sourceRarity ?? entry?.rarity);
+}
+
+// The rarity its source gave it, which is what a source check compares.
+export const sourceRarityOf = entry => normalizeRarity(entry?.sourceRarity ?? entry?.rarity);
+
+// Its source had no rarity at all and the GM hasn't picked one.
+export const rarityUnset = entry => entry?.sourceRarity === "" && !RARITIES.includes(entry?.rarityOverride);
+
+// A whole number, 0 or more; a missing weight is 1.
+export function entryWeight(entry) {
+  if (entry?.weight == null) return 1;
+  return Math.max(0, Math.floor(Number(entry.weight)) || 0);
+}
+
+// Every entry a pool can produce, including nested pools, with cycles ignored,
+// each with its effective rarity. Entries flagged missing or weighing 0 are
+// left out unless `includeMissing` (the liveness sweep needs every entry, to
+// notice a source that came back).
+export function flattenPool(poolId, pools, seen = new Set(), { includeMissing = false } = {}) {
   if (seen.has(poolId)) return [];
   seen.add(poolId);
   const pool = pools[poolId];
   if (!pool) return [];
-  const own = (pool.entries ?? []).map(e => ({ ...e, rarity: normalizeRarity(e.rarity), weight: e.weight ?? 1, poolId }));
-  const nested = (pool.pools ?? []).flatMap(childId => flattenPool(childId, pools, seen));
+  const own = (pool.entries ?? [])
+    .filter(e => includeMissing || (!e.missing && entryWeight(e) > 0))
+    .map(e => ({ ...e, rarity: effectiveRarity(e), weight: entryWeight(e), poolId }));
+  const nested = (pool.pools ?? []).flatMap(childId => flattenPool(childId, pools, seen, { includeMissing }));
   return own.concat(nested);
+}
+
+// A copy of `pools` with `missing` set (or cleared) on the entries of `poolId`
+// whose uuid is in `uuids`. The other pools are shared, not copied.
+export function markEntriesMissing(pools, poolId, uuids, flag = true) {
+  const pool = pools[poolId];
+  if (!pool) return pools;
+  const hit = new Set(uuids);
+  const entries = (pool.entries ?? []).map(e => {
+    if (!hit.has(e.uuid)) return e;
+    const { missing: _drop, ...rest } = e;
+    return flag ? { ...rest, missing: true } : rest;
+  });
+  return { ...pools, [poolId]: { ...pool, entries } };
+}
+
+/*
+  How a pool entry compares with its source now. `source` is null when the
+  source is gone, else { name, img, rarity } as read from the pack index or the
+  world; a null rarity is unknown and not compared. "renamed" means the name
+  or the source's rarity changed since the entry was added, so the GM sees
+  "Wand of Sparks" becoming "Wand of Sparking" instead of a silent miss. The
+  rarity compared is the one the source gave the entry, never the GM's
+  override: overriding is curation, not drift.
+*/
+export function sourceStatus(entry, source) {
+  if (!source) return "missing";
+  if (source.name !== entry.name) return "renamed";
+  if (source.rarity != null && normalizeRarity(source.rarity) !== sourceRarityOf(entry)) return "renamed";
+  return "ok";
+}
+
+/*
+  The pool editor's per-entry curation, applied to `entries` (a pool's own
+  list) for the uuids given: `change.rarityOverride` a rarity key sets it,
+  null (or the source's own rarity) clears it; `change.weight` becomes a
+  whole number, 0 or more; `change.sourceRarity` fills in the source's raw
+  rarity on an older entry that never stored it. Returns a new list; other
+  entries are shared.
+*/
+export function curateEntries(entries, uuids, change = {}) {
+  const hit = new Set(uuids);
+  return (entries ?? []).map(e => {
+    if (!hit.has(e.uuid)) return e;
+    const next = { ...e };
+    // An entry added before sourceRarity existed learns it from a check.
+    if (typeof change.sourceRarity === "string" && next.sourceRarity == null) next.sourceRarity = change.sourceRarity;
+    if ("rarityOverride" in change) {
+      const r = change.rarityOverride;
+      // Picking the source's own rarity clears the override, unless the
+      // source has none: then "common" is a real choice, not the default.
+      // Read `next`, not `e`: an older entry learns sourceRarity "" in this
+      // same change, and its Common must stick.
+      if (RARITIES.includes(r) && (r !== sourceRarityOf(next) || next.sourceRarity === "")) next.rarityOverride = r;
+      else delete next.rarityOverride;
+    }
+    if ("weight" in change) next.weight = entryWeight({ weight: change.weight });
+    return next;
+  });
+}
+
+// A copy of `pools` whose `missing` flags follow `sources` (uuid -> source or
+// null, from store.js checkSources) instead of the last sweep, for views that
+// have just checked. Entries with no answer in `sources` keep their flag.
+export function withSources(pools, sources) {
+  const out = {};
+  for (const [id, pool] of Object.entries(pools)) {
+    out[id] = { ...pool, entries: (pool.entries ?? []).map(e => {
+      if (!sources.has(e.uuid)) return e;
+      const { missing: _drop, ...rest } = e;
+      return sources.get(e.uuid) ? rest : { ...rest, missing: true };
+    }) };
+  }
+  return out;
 }
 
 // The rarities a box can land on and the chance of each, as the editor shows.
@@ -60,6 +171,43 @@ export function oddsTable(box, pools) {
   const rows = RARITIES.filter(r => available.has(r)).map(r => ({ rarity: r, weight: Math.max(0, Number(weights[r]) || 0) }));
   const total = rows.reduce((n, row) => n + row.weight, 0);
   return rows.map(row => ({ rarity: row.rarity, chance: total > 0 ? row.weight / total : 0 }));
+}
+
+/*
+  The odds a buyer sees: { rows: [{ rarity, chance, label }], top }. Unlike
+  oddsTable it drops rarities the box weighs at 0 (they can never land), and
+  when every rarity the pools hold weighs 0 it shows them at equal chance,
+  which is what draw() falls back to. Labels are whole percents that sum to
+  100 (largest remainder, so 62.5/37.5 reads 63/37, not 63/38), and never
+  read "0%" or "100%" for a chance that isn't: under 1% is "<1%", over 99% is
+  ">99%". `top` is the best rarity the box can actually drop, null when none.
+*/
+export function shopOdds(box, pools) {
+  const table = oddsTable(box, pools);
+  const live = table.filter(row => row.chance > 0);
+  const rows = live.length ? live : table.map(row => ({ ...row, chance: 1 / table.length }));
+  const pcts = wholePercents(rows.map(row => row.chance));
+  return {
+    rows: rows.map((row, i) => ({ ...row, label: chanceLabel(row.chance, pcts[i]) })),
+    top: rows.length ? rows[rows.length - 1].rarity : null,
+  };
+}
+
+// Whole percents for chances summing to 1, adding up to exactly 100.
+export function wholePercents(chances) {
+  const raw = chances.map(c => c * 100);
+  const out = raw.map(Math.floor);
+  let left = Math.round(raw.reduce((n, x) => n + x, 0)) - out.reduce((n, x) => n + x, 0);
+  const order = raw.map((x, i) => [x - Math.floor(x), i]).sort((a, b) => b[0] - a[0]);
+  for (const [, i] of order) { if (left <= 0) break; out[i]++; left--; }
+  return out;
+}
+
+export function chanceLabel(chance, pct = Math.round(chance * 100)) {
+  if (chance <= 0) return "0%";
+  if (chance < 0.01) return "<1%";
+  if (pct >= 100 && chance < 1) return ">99%";
+  return `${Math.max(1, pct)}%`;
 }
 
 function pityFloor(box, state) {
