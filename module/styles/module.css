@@ -251,6 +251,11 @@
 .lc-chat__name { font-weight: 700; }
 .lc-chat__rarity { font-size: 11px; color: var(--lc-rarity); }
 .lc-chat__refund { font-size: 12px; margin-top: 4px; }
+/* A refunded pull's card: the win is withdrawn, so no rarity colour. */
+.loot-crates.lc-chat--refunded { --lc-rarity: var(--lc-ink-mute); }
+.lc-chat--refunded .lc-chat__item img { filter: grayscale(1); opacity: .5; }
+.lc-chat--refunded .lc-chat__name, .lc-chat--refunded .lc-chat__rarity { color: var(--lc-ink-mute); }
+.lc-chat--refunded .lc-chat__refund { color: var(--lc-ink-soft); }
 
 @media (prefers-reduced-motion: reduce) {
   .lc-card { transition: none; }

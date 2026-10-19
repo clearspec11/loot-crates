@@ -2,7 +2,7 @@
   Refunding a logged pull with a fake `game`: coin-exact in whole coins, once
   only, removes only the item it granted, and puts the box's stock back.
 */
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { registerSettings, appendLog, getLog, getBoxes } from "../module/scripts/store.js";
 import { refundPull, describeRefund, grantedItem } from "../module/scripts/refund.js";
 import { toCopper, isWholeCoins } from "../module/scripts/currency.js";
@@ -110,5 +110,121 @@ describe("refundPull", () => {
     expect((await refundPull("nope")).status).toBe("missing");
     expect((await refundPull(rowId)).status).toBe("no-actor");
     expect(getLog()[0].refunded).toBeUndefined();
+  });
+});
+
+/*
+  The pull's chat card after a refund: the one card announcing this row is
+  rewritten once (muted, struck through, linked to the pool's source, with
+  the time), and no other card is touched.
+*/
+const { refundedCardContent, findPullCard, LEGACY_WINDOW_MS } = await import("../module/scripts/chatcard.js");
+
+const escapeHTML = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+const CARD = `
+    <div class="loot-crates lc-chat lc-rarity-rare">
+      <div class="lc-chat__head">Crate Tester opened <strong>Test Crate</strong> <span class="lc-chat__price">17 gp 3 sp 5 cp</span></div>
+      <div class="lc-chat__item">
+        <img src="icons/wand.webp" alt="">
+        <div>
+          <div class="lc-chat__name"><a class="content-link" draggable="true" data-link data-uuid="Actor.actor1.Item.item1" data-type="Item" data-tooltip="Item"><i class="fa-solid fa-suitcase" inert></i>Wand</a></div>
+          <div class="lc-chat__rarity">Rare</div>
+        </div>
+      </div>
+    </div>`;
+
+function message(id, flags, { actor = "actor1", timestamp = Date.now(), content = CARD } = {}) {
+  const msg = {
+    id, content, timestamp, speaker: { actor }, flags: { "loot-crates": flags },
+    update: vi.fn(async data => { await tick(); msg.content = data.content; msg.flags["loot-crates"].refundedAt = data["flags.loot-crates.refundedAt"]; }),
+  };
+  return msg;
+}
+
+async function seedWithChat(actor, messages) {
+  const rowId = await seed(actor);
+  globalThis.game.messages = { contents: messages(rowId) };
+  globalThis.foundry.utils.escapeHTML = escapeHTML;
+  return rowId;
+}
+
+describe("the refunded pull's chat card", () => {
+  it("rewrites exactly the card carrying this row's logId, once", async () => {
+    const actor = makeActor({ gp: 500 }, [GRANTED]);
+    let mine, other;
+    const rowId = await seedWithChat(actor, id => [
+      (mine = message("m1", { uuid: ROW.uuid, boxId: "box", logId: id })),
+      (other = message("m2", { uuid: ROW.uuid, boxId: "box", logId: "someone-else" })),
+    ]);
+    const out = await refundPull(rowId);
+    expect(out.card).toBe(true);
+    expect(mine.update).toHaveBeenCalledTimes(1);
+    expect(other.update).not.toHaveBeenCalled();
+    expect(mine.content).toContain("lc-chat--refunded");
+    expect(mine.content).not.toContain('data-uuid="Actor.');
+    expect(mine.content).toContain(`data-uuid="${ROW.uuid}"`);
+    expect(mine.content).toContain("<s>Wand</s>");
+    expect(mine.content).toMatch(/Refunded <time datetime="[^"]+">[^<]+<\/time>/);
+    expect(mine.flags["loot-crates"].refundedAt).toBe(getLog()[0].refunded);
+    expect(other.content).toBe(CARD);
+
+    expect((await refundPull(rowId)).status).toBe("already");
+    expect(mine.update).toHaveBeenCalledTimes(1);
+  });
+
+  it("matches a card from before logId by source, buyer and time, and leaves near misses alone", async () => {
+    const actor = makeActor({ gp: 500 }, [GRANTED]);
+    const now = Date.now();
+    let legacy, refundCard, otherActor, tooOld;
+    const rowId = await seedWithChat(actor, () => [
+      (tooOld = message("m0", { uuid: ROW.uuid, boxId: "box" }, { timestamp: now - LEGACY_WINDOW_MS - 5000 })),
+      (legacy = message("m1", { uuid: ROW.uuid, boxId: "box" }, { timestamp: now + 7000 })),
+      (otherActor = message("m2", { uuid: ROW.uuid, boxId: "box" }, { actor: "actor2", timestamp: now + 8000 })),
+      (refundCard = message("m3", { uuid: ROW.uuid, boxId: "box", refunded: true }, { timestamp: now + 9000 })),
+    ]);
+    await refundPull(rowId);
+    expect(legacy.update).toHaveBeenCalledTimes(1);
+    expect(legacy.content).toContain("lc-chat--refunded");
+    for (const m of [tooOld, otherActor, refundCard]) expect(m.update).not.toHaveBeenCalled();
+  });
+
+  it("refunds anyway when there is no card, or the card write fails", async () => {
+    const actor = makeActor({ gp: 500 }, [GRANTED]);
+    const rowId = await seedWithChat(actor, () => []);
+    expect((await refundPull(rowId)).card).toBe(false);
+
+    const actor2 = makeActor({ gp: 500 }, [GRANTED]);
+    let broken;
+    const rowId2 = await seedWithChat(actor2, id => [(broken = message("m1", { uuid: ROW.uuid, logId: id }))]);
+    broken.update.mockRejectedValue(new Error("socket down"));
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    const out = await refundPull(rowId2);
+    expect(out).toMatchObject({ status: "refunded", card: false, removedItem: "Wand" });
+    expect(err).toHaveBeenCalled();
+    err.mockRestore();
+  });
+});
+
+describe("refundedCardContent", () => {
+  const row = { id: "r1", name: "Wand <of> \"Doom\"", uuid: "Compendium.dnd5e.items.Item.abc", refunded: Date.UTC(2026, 9, 20, 14, 5) };
+
+  it("mutes the card, strikes the name, links the source and stamps the time", () => {
+    const out = refundedCardContent(CARD, row, { esc: escapeHTML, when: "20 Oct 2026, 14:05" });
+    expect(out).toContain('class="loot-crates lc-chat lc-rarity-rare lc-chat--refunded"');
+    expect(out).not.toMatch(/data-uuid="Actor\./);
+    expect(out).toContain('data-uuid="Compendium.dnd5e.items.Item.abc"');
+    expect(out).toContain("<s>Wand &lt;of&gt; &quot;Doom&quot;</s>");
+    expect(out).toContain('Refunded <time datetime="2026-10-20T14:05:00.000Z">20 Oct 2026, 14:05</time>');
+    expect(out.trim().endsWith("</div>")).toBe(true);
+  });
+
+  it("is idempotent", () => {
+    const once = refundedCardContent(CARD, row, { esc: escapeHTML, when: "x" });
+    expect(refundedCardContent(once, row, { esc: escapeHTML, when: "y" })).toBe(once);
+  });
+
+  it("finds nothing in an empty chat", () => {
+    expect(findPullCard([], row)).toBeNull();
+    expect(findPullCard(undefined, row)).toBeNull();
   });
 });

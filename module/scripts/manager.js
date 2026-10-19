@@ -44,6 +44,7 @@ import { formatPrice } from "./currency.js";
 import { refreshShop } from "./shop.js";
 import { describeRefund, refundPull } from "./refund.js";
 import { postRefundCard } from "./chat.js";
+import { refundTime } from "./chatcard.js";
 
 const { ApplicationV2, DialogV2 } = foundry.applications.api;
 const esc = s => foundry.utils.escapeHTML(String(s ?? ""));
@@ -575,7 +576,7 @@ export class CrateManager extends ApplicationV2 {
       ${log.map(r => `<tr class="${r.refunded ? "lc-row--refunded" : ""}">
         <td>${new Date(r.at).toLocaleString()}</td><td>${esc(r.actorName)}</td><td>${esc(r.boxName)} (${esc(formatPrice(r.price))})</td>
         <td class="lc-rarity-${esc(r.rarity)}"><span class="lc-dot"></span>${esc(r.name)}${r.pity ? " · pity" : ""}${logRarityNote(r)}</td>
-        <td>${r.refunded ? "refunded" : `<button type="button" data-action="refund" data-row="${esc(r.id)}">Refund</button>`}</td>
+        <td>${r.refunded ? `refunded ${esc(refundTime(r.refunded))}` : `<button type="button" data-action="refund" data-row="${esc(r.id)}">Refund</button>`}</td>
       </tr>`).join("")}</tbody></table>`;
   }
 

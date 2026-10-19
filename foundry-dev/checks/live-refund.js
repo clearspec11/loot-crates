@@ -3,17 +3,23 @@
 // before the pull, after the pull and after the refund (which must equal
 // before in copper and be whole coins), that the granted item is gone, that
 // the box's stock went back up, and that a second refund changes nothing.
+// It posts the pull's chat card the way socket.js does (with the log row's
+// id) and reports that card after the refund: marked lc-chat--refunded, no
+// link to the deleted Actor.* copy, a link to the compendium source, the
+// "Refunded <time>" line, and that the second refund left it alone.
 //
 //   FOUNDRY_URL=http://192.168.0.57:30000 MODULE_BASE=http://192.168.0.190:8766/ \
 //     NODE_PATH=$(npm root -g) node foundry-dev/headless/run.cjs foundry-dev/checks/live-refund.js
 //
 // Deletes only the item this run granted (by its loot-crates flag). Writes the
-// module's own settings (one box, one log row).
+// module's own settings (one box, one log row) and posts two chat cards (the
+// pull's and the refund's); it deletes no message.
 const { performPull } = await import(MODULE_BASE + "scripts/pull.js");
 const store = await import(MODULE_BASE + "scripts/store.js");
 const { refundPull, describeRefund } = await import(MODULE_BASE + "scripts/refund.js");
 const { toCopper, isWholeCoins } = await import(MODULE_BASE + "scripts/currency.js");
 const { seededRng } = await import(MODULE_BASE + "scripts/odds.js");
+const { postPullCard, postRefundCard } = await import(MODULE_BASE + "scripts/chat.js");
 
 try { store.registerSettings(); } catch (e) { if (!/already registered/i.test(String(e))) throw e; }
 store.registerIndexFields();
@@ -39,8 +45,11 @@ const out = await performPull({ box, pools, actor, state: {}, rng: seededRng(Dat
 const afterPull = foundry.utils.deepClone(actor.system.currency);
 // What socket.js's doPull does after performPull: decrement stock, write the log row.
 await store.saveBox({ ...box, rules: { ...box.rules, stock: box.rules.stock - 1 } });
-await store.appendLog({ boxId: box.id, boxName: box.name, actorId: actor.id, actorName: actor.name, userId: game.user.id, itemId: out.itemId, name: out.result.name, uuid: out.result.uuid, rarity: out.result.rarity, price: box.price, pity: out.result.pity });
+const logId = await store.appendLog({ boxId: box.id, boxName: box.name, actorId: actor.id, actorName: actor.name, userId: game.user.id, itemId: out.itemId, name: out.result.name, uuid: out.result.uuid, rarity: out.result.rarity, price: box.price, pity: out.result.pity });
 const rowId = store.getLog()[0].id;
+const itemUuid = out.itemId ? `Actor.${actor.id}.Item.${out.itemId}` : null;
+const card = await postPullCard({ actorId: actor.id, actorName: actor.name, box: { id: box.id, name: box.name, price: box.price }, result: out.result, itemId: out.itemId, itemUuid, logId });
+const cardBefore = game.messages.get(card.id).content;
 const stockAfterPull = store.getBoxes()[box.id].rules.stock;
 
 const plan = describeRefund(rowId);
@@ -49,9 +58,14 @@ const first = await refundPull(rowId);
 const afterRefund = foundry.utils.deepClone(actor.system.currency);
 const itemsAfterRefund = actor.items.size;
 const stockAfterRefund = store.getBoxes()[box.id].rules.stock;
+// What the manager does after a refund.
+await postRefundCard({ row: first.row, actor, removedItem: first.removedItem });
+const cardAfter = game.messages.get(card.id).content;
 
 const second = await refundPull(rowId);
 const afterSecond = foundry.utils.deepClone(actor.system.currency);
+const cardAfterSecond = game.messages.get(card.id).content;
+const links = html => [...html.matchAll(/data-uuid="([^"]+)"/g)].map(m => m[1]);
 
 return {
   pack: packId, poolSize: entries.length, price: box.price,
@@ -66,4 +80,17 @@ return {
   second: { status: second.status },
   secondChangedNothing: toCopper(afterSecond) === toCopper(afterRefund) && actor.items.size === itemsAfterRefund && store.getBoxes()[box.id].rules.stock === stockAfterRefund,
   logRow: (({ refunded, name, price }) => ({ refunded: !!refunded, name, price }))(store.getLog().find(r => r.id === rowId)),
+  pullCard: {
+    logIdReturned: logId === rowId,
+    flagLogId: game.messages.get(card.id).flags?.["loot-crates"]?.logId === rowId,
+    linksBefore: links(cardBefore),
+    linksAfter: links(cardAfter),
+    refundedClass: cardAfter.includes("lc-chat--refunded"),
+    noActorLink: !links(cardAfter).some(u => u.startsWith("Actor.")),
+    linksSource: links(cardAfter).includes(out.result.uuid) && out.result.uuid.startsWith("Compendium."),
+    struck: cardAfter.includes(`<s>${foundry.utils.escapeHTML(out.result.name)}</s>`),
+    refundLine: (cardAfter.match(/Refunded <time[^>]*>[^<]*<\/time>/) ?? [null])[0],
+    reportedUpdated: first.card,
+    untouchedBySecondRefund: cardAfterSecond === cardAfter,
+  },
 };

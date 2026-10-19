@@ -230,6 +230,9 @@ describe("the GM client", () => {
     await tick();
     expect(postPullCard).toHaveBeenCalledTimes(1);
     expect(postPullCard.mock.calls[0][0]).toMatchObject({ type: "reveal", requestId: "r1" });
+    // The card gets the id of the log row this pull wrote, for the refund.
+    const rowId = game.settings.get("loot-crates", "pullLog")[0].id;
+    expect(postPullCard.mock.calls[0][0].logId).toBe(rowId);
   });
 
   it("runs a refund and a pull on the same character one after the other, losing neither write", async () => {

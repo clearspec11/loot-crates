@@ -149,10 +149,14 @@ export async function setActorState(actorId, boxId, state) {
   await set(SETTINGS.STATE, all);
 }
 
+// Returns the new row's id, which the pull's chat card keeps (flags logId)
+// so a refund can find the card that announced it.
 export async function appendLog(entry) {
   const log = getLog();
-  log.unshift({ id: uid(), at: Date.now(), ...entry });
+  const id = uid();
+  log.unshift({ id, at: Date.now(), ...entry });
   await set(SETTINGS.LOG, log.slice(0, 500));
+  return id;
 }
 
 export async function updateLog(id, patch) {
