@@ -26,6 +26,7 @@ const { oddsTable } = await import(MODULE_BASE + "scripts/odds.js");
 const { toCopper } = await import(MODULE_BASE + "scripts/currency.js");
 
 try { store.registerSettings(); } catch (e) { if (!/already registered/i.test(String(e))) throw e; }
+store.registerIndexFields();
 try { registerSocket(); } catch { /* registered on an earlier run of the same page */ }
 
 const FOLDER = "Loot Crates Test";
@@ -92,6 +93,11 @@ const boxRow = [...app.element.querySelectorAll(".lc-table tbody tr")].find(tr =
 const oddsBoxesTab = [...(boxRow?.querySelectorAll(".lc-odd") ?? [])].map(el => `${el.title} ${el.textContent}`);
 app.tab = "pools"; app.render();
 await wait(2000);
+// The render's sweep is queued behind the editor's own render of every pool
+// in the world; wait for its write rather than a fixed time.
+const t2 = performance.now();
+await until(() => store.getPools()[pool.id].entries.find(e => e.uuid === DEAD2)?.missing === true, 10000);
+const flagWaitMs = Math.round(performance.now() - t2);
 const poolEl = () => app.element.querySelector(`[data-drop-pool="${pool.id}"]`);
 const rowText = uuid => poolEl()?.querySelector(`[data-uuid="${CSS.escape(uuid)}"]`)?.closest("li")?.innerText.replace(/\s+/g, " ").trim();
 const rows = { dead: rowText(DEAD), dead2: rowText(DEAD2), renamed1: rowText(r1.uuid), renamed2: rowText(r2.uuid) };
@@ -128,5 +134,5 @@ return {
   before, after, spentGp: (toCopper(before) - toCopper(after)) / 100, charges,
   itemsBefore, itemsAfter: actor.items.size,
   deadEntry,
-  editor: { header, problemRows, rows, oddsStored, oddsBoxesTab, dead2FlaggedByRender: dead2Flagged, updatedName, expectedName: r2.name, relinked: relinked && { uuid: relinked.uuid, name: relinked.name, weight: relinked.weight } },
+  editor: { header, problemRows, rows, oddsStored, oddsBoxesTab, dead2FlaggedByRender: dead2Flagged, flagWaitMs, updatedName, expectedName: r2.name, relinked: relinked && { uuid: relinked.uuid, name: relinked.name, weight: relinked.weight } },
 };

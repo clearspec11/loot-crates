@@ -3,7 +3,8 @@
 
   A Pool: { id, name, entries: [Entry], pools: [childPoolId] }
   An Entry: { uuid, name, img, rarity, sourceRarity, rarityOverride?, weight, missing? }
-    sourceRarity  the source's system.rarity as added, "" when it had none
+    sourceRarity  the source's raw rarity as added (rawRarityOf), "" when it
+                  had none
     rarity        normalizeRarity(sourceRarity), kept for entries added before
                   sourceRarity existed
     rarityOverride  a dnd5e rarity key the GM chose, or absent; it wins
@@ -53,6 +54,26 @@ export function weightedPick(items, weightOf, rng) {
     r -= w;
   }
   return items[items.length - 1] ?? null;
+}
+
+/*
+  An item's own rarity as dnd5e stores it, read the same way from a loaded
+  document's system data and from a compendium index row. dnd5e 6 keeps a
+  set, system.rarities (system.rarity is a getter returning its first
+  member, so a Set or an index row's Array gives that same first member);
+  dnd5e 5 and packs that predate dnd5e 6's migration keep the string
+  system.rarity. Returns the raw value ("" when the item has none) or null
+  when neither is there, which means unknown, not common: an index row
+  fetched without the rarity fields.
+*/
+export function rawRarityOf(system) {
+  const set = system?.rarities;
+  if (Array.isArray(set) || set instanceof Set) {
+    for (const r of set) return String(r ?? "");
+    return "";
+  }
+  const legacy = system?.rarity;
+  return legacy == null ? null : String(legacy);
 }
 
 // The rarity an entry is drawn at: the GM's override, else its source's.

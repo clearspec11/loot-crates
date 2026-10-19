@@ -9,6 +9,10 @@
    spin, the way the reveal window is sized after its first frame in Foundry,
    and the result must still land under the marker.
 
+   On a near-miss strip the card under the marker at the peak must be the
+   teased one (landIndex + 1) and the final card the result; otherwise the
+   peak must stay on the result card.
+
    Exit code 1 when any of those fail. */
 import path from "node:path";
 import { createRequire } from "node:module";
@@ -54,16 +58,26 @@ try {
     const centreError = Math.abs((cr.left + cr.width / 2) - (vr.left + vr.width / 2));
     const final = xs[xs.length - 1];
     const peak = Math.max(...xs);
+    // The card under the marker, by the same rule spin.js's onTick uses.
+    const track = document.querySelector(".lc-spin__track");
+    const step = parseFloat(track.style.getPropertyValue("--lc-card-w")) + parseFloat(track.style.getPropertyValue("--lc-card-gap"));
+    // Track the marker's position along the strip, not raw x: x shifts by
+    // half the width change when the viewport resizes mid-spin.
+    const marks = xs.map((x, i) => x + widths[i] / 2);
+    const peakIndex = Math.floor(Math.max(...marks) / step);
+    const finalIndex = Math.floor(marks[marks.length - 1] / step);
     const speeds = xs.slice(1).map((v, i) => v - xs[i]);
     const firstHalf = speeds.slice(0, Math.floor(speeds.length / 2)).reduce((a, b) => a + b, 0);
     const secondHalf = speeds.slice(Math.floor(speeds.length / 2)).reduce((a, b) => a + b, 0);
-    return { frames: xs.length, start: xs[0], final, peak, overshoot: peak - final, nearMiss: strip.nearMiss, centreError, decelerated: firstHalf > secondHalf, widthFirst: widths[0], widthEnd: widths[widths.length - 1], landedRarity: landed.dataset.rarity, resultRarity: strip.cards[strip.landIndex].rarity };
+    return { frames: xs.length, start: xs[0], final, peak, overshoot: Math.max(...marks) - marks[marks.length - 1], nearMiss: strip.nearMiss, landIndex: strip.landIndex, peakIndex, finalIndex, teaseRarity: strip.nearMiss ? strip.cards[strip.landIndex + 1].rarity : null, centreError, decelerated: firstHalf > secondHalf, widthFirst: widths[0], widthEnd: widths[widths.length - 1], landedRarity: landed.dataset.rarity, resultRarity: strip.cards[strip.landIndex].rarity };
   });
   const problems = [];
   if (out.frames < 20) problems.push(`only ${out.frames} frames`);
   if (out.final - out.start < 500) problems.push("strip barely moved");
   if (!out.decelerated) problems.push("did not decelerate");
-  if (out.nearMiss && out.overshoot < 20) problems.push(`near-miss strip but overshoot only ${out.overshoot.toFixed(1)}px`);
+  if (out.nearMiss && out.peakIndex !== out.landIndex + 1) problems.push(`near-miss strip but the marker peaked on card ${out.peakIndex}, not the teased card ${out.landIndex + 1}`);
+  if (!out.nearMiss && out.peakIndex !== out.landIndex) problems.push(`no near-miss but the marker overshot onto card ${out.peakIndex}`);
+  if (out.finalIndex !== out.landIndex) problems.push(`marker ended on card ${out.finalIndex}, not the result ${out.landIndex}`);
   if (out.centreError > 2) problems.push(`result ${out.centreError.toFixed(1)}px off the marker`);
   if (out.landedRarity !== out.resultRarity) problems.push("landed card is not the result");
   if (resize && out.widthEnd - out.widthFirst < 200) problems.push(`viewport only grew ${out.widthFirst}px to ${out.widthEnd}px; the resize case did not resize`);

@@ -20,6 +20,7 @@ const { openManager } = await import(MODULE_BASE + "scripts/manager.js");
 const { openShop } = await import(MODULE_BASE + "scripts/shop.js");
 
 try { store.registerSettings(); } catch (e) { if (!/already registered/i.test(String(e))) throw e; }
+store.registerIndexFields();
 try { registerSocket(); } catch { /* registered on an earlier run of the same page */ }
 
 // Seed a pool and a box if the world has none yet, so the windows show something.

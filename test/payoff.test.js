@@ -177,6 +177,24 @@ describe("the chat card", () => {
     expect(created.content).toMatch(/<a class="content-link"[^>]* data-uuid="Actor\.a1\.Item\.i1"[^>]*>.*Flame Tongue<\/a>/);
   });
 
+  it("writes the log row's id into the card's flags, so a refund can find it", async () => {
+    const { postPullCard } = await import("../module/scripts/chat.js");
+    globalThis.foundry.utils.deepClone = v => structuredClone(v);
+    globalThis.game.settings = { get: () => [{ id: "row1", at: 1 }] };
+    await postPullCard({ ...reveal("i1"), logId: "row1" });
+    expect(created.flags["loot-crates"]).toEqual({ uuid: "Compendium.dnd5e.items.Item.src", boxId: "b", logId: "row1" });
+    expect(created.content).not.toContain("lc-chat--refunded");
+  });
+
+  it("posts the card already refunded when the refund beat the spin", async () => {
+    const { postPullCard } = await import("../module/scripts/chat.js");
+    globalThis.foundry.utils.deepClone = v => structuredClone(v);
+    globalThis.game.settings = { get: () => [{ id: "row1", at: 1, refunded: 2, name: "Flame Tongue", uuid: "Compendium.dnd5e.items.Item.src" }] };
+    await postPullCard({ ...reveal("i1"), logId: "row1" });
+    expect(created.content).toContain("lc-chat--refunded");
+    expect(created.content).not.toContain('data-uuid="Actor.');
+  });
+
   it("falls back to the pool's source when nothing was granted", async () => {
     const { postPullCard } = await import("../module/scripts/chat.js");
     await postPullCard(reveal(null));

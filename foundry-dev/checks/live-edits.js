@@ -17,6 +17,7 @@
 // settings only (one pool, one box).
 const store = await import(MODULE_BASE + "scripts/store.js");
 try { store.registerSettings(); } catch (e) { if (!/already registered/i.test(String(e))) throw e; }
+store.registerIndexFields();
 if (!document.querySelector("link[data-loot-crates]")) {
   const link = Object.assign(document.createElement("link"), { rel: "stylesheet", href: MODULE_BASE + "styles/module.css" });
   link.dataset.lootCrates = "1";

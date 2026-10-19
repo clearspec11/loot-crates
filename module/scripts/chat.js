@@ -1,5 +1,7 @@
 import { RARITY_LABEL } from "./config.js";
 import { formatPrice } from "./currency.js";
+import { refundedCardContent } from "./chatcard.js";
+import { getLog } from "./store.js";
 
 const esc = s => foundry.utils.escapeHTML(String(s ?? ""));
 
@@ -13,9 +15,10 @@ function itemLink(uuid, name) {
 }
 
 // The chat card everyone keeps after the spin: who opened what and got what.
+// flags.logId ties it to its log row, so a refund can mark this card.
 export async function postPullCard(reveal) {
   const r = reveal.result;
-  const content = `
+  let content = `
     <div class="loot-crates lc-chat lc-rarity-${esc(r.rarity)}">
       <div class="lc-chat__head">${esc(reveal.actorName)} opened <strong>${esc(reveal.box.name)}</strong> <span class="lc-chat__price">${esc(formatPrice(reveal.box.price))}</span></div>
       <div class="lc-chat__item">
@@ -26,11 +29,17 @@ export async function postPullCard(reveal) {
         </div>
       </div>
     </div>`;
+  // The card posts when the spin lands; a refund made before that found no
+  // card to mark, so the card is posted already refunded.
+  const row = reveal.logId ? getLog().find(x => x.id === reveal.logId) : null;
+  if (row?.refunded) content = refundedCardContent(content, row, { esc });
   const actor = game.actors.get(reveal.actorId);
+  const flags = { uuid: r.uuid, boxId: reveal.box.id };
+  if (reveal.logId) flags.logId = reveal.logId;
   return ChatMessage.create({
     content,
     speaker: ChatMessage.getSpeaker({ actor }),
-    flags: { "loot-crates": { uuid: r.uuid, boxId: reveal.box.id } },
+    flags: { "loot-crates": flags },
   });
 }
 

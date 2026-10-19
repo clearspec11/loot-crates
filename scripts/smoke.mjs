@@ -1,4 +1,4 @@
-/* Visual smoke: the harness's shop and a landed spin, at a desktop and a
+/* Visual smoke: the harness's shop, a landed spin and the pool editor, at a desktop and a
    phone width. Screenshots land in screenshots/smoke/<width>/<state>.png.
    The run fails when a page throws or scrolls sideways.
 
@@ -27,7 +27,41 @@ const STATES = [
   ["landed", "state=landed&seed=7"],
   ["landed-legendary", "state=landed&seed=23&box=royal"],
   ["landed-buyer", "state=landed&seed=7&buyer=1"],
+  ["manager", "state=manager"],
 ];
+
+// The pool editor as a craft table, read from the DOM: an open pool draws at
+// most a page of controls, a collapsed one none (its census still shown),
+// one status line and no per-pool live regions, and the "No rarity set" chip
+// shows only unset rows and says it is pressed.
+async function managerProblems() {
+  const out = [];
+  const pools = [...document.querySelectorAll(".lc-pool__details")];
+  if (pools.length < 3) out.push(`expected 3 sample pools, got ${pools.length}`);
+  for (const d of pools) {
+    const selects = d.querySelectorAll("select.lc-entry__rarity").length;
+    if (d.open && selects > 50) out.push(`${d.dataset.pool}: ${selects} rarity selects drawn`);
+    if (!d.open && d.querySelector(".lc-entry")) out.push(`${d.dataset.pool}: collapsed but rows drawn`);
+    if (!/\d+ items?/.test(d.querySelector("summary .lc-pool__count")?.textContent ?? "")) out.push(`${d.dataset.pool}: no census in the summary`);
+  }
+  const everything = document.querySelector('.lc-pool__details[data-pool="everything"]');
+  if (everything?.open) out.push("the 200-entry pool should start collapsed");
+  if (document.querySelectorAll('[role="status"]').length !== 1) out.push("expected one role=status");
+  if (document.querySelector(".lc-manager__body [aria-live]")) out.push("a per-pool aria-live region is back");
+  const big = document.querySelector('.lc-pool__details[data-pool="compendium"]');
+  if (!/Show 50 more \(\d+ left\)/.test(big?.querySelector(".lc-pool__more")?.textContent ?? "")) out.push("no Show 50 more on the open 130-entry pool");
+  const chip = big?.querySelector('[data-chip="unset"]');
+  if (!chip) return [...out, "no 'No rarity set' chip"];
+  const n = Number(chip.textContent.match(/\d+/)?.[0]);
+  chip.click();
+  await new Promise(r => requestAnimationFrame(r));
+  const rows = [...big.querySelectorAll(".lc-entry")];
+  if (big.querySelector('[data-chip="unset"]')?.getAttribute("aria-pressed") !== "true") out.push("the pressed chip doesn't say so");
+  if (!rows.length || rows.some(li => !li.classList.contains("lc-entry--unset"))) out.push("the 'No rarity set' chip shows other rows");
+  if (rows.length !== Math.min(50, n)) out.push(`chip says ${n}, shows ${rows.length}`);
+  big.querySelector('[data-chip="unset"]').click();
+  return out;
+}
 
 // The payoff, read from the DOM: everyone sees where the item went; only the
 // buyer (and GMs) see the gold left and Open item; Close is the focused button.
@@ -81,9 +115,11 @@ try {
       page.on("console", m => { if (m.type() === "error") errors.push(m.text()); });
       await page.goto(`http://localhost:${PORT}/harness/?${query}`, { waitUntil: "networkidle" });
       if (name.startsWith("landed")) await page.waitForSelector("body[data-landed]", { timeout: 10000 });
+      if (name === "manager") await page.waitForSelector("body[data-ready]", { timeout: 10000 });
       await page.waitForTimeout(500);
       const wide = await page.evaluate(() => document.scrollingElement.scrollWidth > document.scrollingElement.clientWidth + 1);
       if (name === "shop") problems0.push(...await page.evaluate(shopProblems));
+      else if (name === "manager") problems0.push(...await page.evaluate(managerProblems));
       else problems0.push(...await page.evaluate(revealProblems, name === "landed-buyer"));
       await page.screenshot({ path: path.join(OUT, w.tag, `${name}.png`), fullPage: true });
       const problems = [...errors, ...problems0, ...(wide ? ["page scrolls sideways"] : [])];

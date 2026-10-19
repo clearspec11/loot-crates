@@ -27,6 +27,7 @@ const { registerSocket, requestPull } = await import(MODULE_BASE + "scripts/sock
 const { showReveal } = await import(MODULE_BASE + "scripts/reveal.js");
 const { postPullCard } = await import(MODULE_BASE + "scripts/chat.js");
 try { store.registerSettings(); } catch (e) { if (!/already registered/i.test(String(e))) throw e; }
+store.registerIndexFields();
 try { registerSocket(); } catch { /* registered on an earlier run of the same page */ }
 
 const wait = ms => new Promise(r => setTimeout(r, ms));

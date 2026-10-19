@@ -5,7 +5,7 @@
 
   Messages on SOCKET:
     { type: "pull", requestId, boxId, actorId, userId }   player -> GM
-    { type: "reveal", requestId, itemId, itemUuid, purse, ... }  GM -> everyone
+    { type: "reveal", requestId, itemId, itemUuid, logId, purse, ... }  GM -> everyone
     { type: "error", requestId, userId, message }          GM -> the buyer
 
   The GM client runs pulls one at a time, through the same queue refunds use
@@ -125,12 +125,15 @@ async function doPull(msg) {
     await setActorState(msg.actorId, msg.boxId, out.state);
     if (box.rules?.stock != null) await saveBox({ ...box, rules: { ...box.rules, stock: box.rules.stock - 1 } });
     const log = { boxId: box.id, boxName: box.name, actorId: actor.id, actorName: actor.name, userId: msg.userId, itemId: out.itemId, name: out.result.name, uuid: out.result.uuid, rarity: out.result.rarity, price: box.price, pity: out.result.pity };
-    await appendLog(log);
+    // Provenance for a GM-set rarity: the source's own, only when it differs.
+    const src = out.sourceRarity ?? [];
+    if (out.rarityOverride && !(src.length === 1 && src[0] === out.result.rarity)) log.sourceRarity = src;
+    const logId = await appendLog(log);
 
     // itemUuid is the granted copy on the sheet, which the reveal's Open item
     // and the chat card's link point at (the pool's source is r.result.uuid).
     const itemUuid = out.itemId ? `Actor.${actor.id}.Item.${out.itemId}` : null;
-    const reveal = { type: "reveal", requestId: msg.requestId, userId: msg.userId, actorId: actor.id, actorName: actor.name, box: { id: box.id, name: box.name, price: box.price }, result: out.result, strip: out.strip, purse: out.purse, itemId: out.itemId, itemUuid };
+    const reveal = { type: "reveal", requestId: msg.requestId, userId: msg.userId, actorId: actor.id, actorName: actor.name, box: { id: box.id, name: box.name, price: box.price }, result: out.result, strip: out.strip, purse: out.purse, itemId: out.itemId, itemUuid, logId };
     game.socket.emit(SOCKET, reveal);
     showAndPost(reveal);
     return reveal;
