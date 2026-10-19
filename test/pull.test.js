@@ -138,7 +138,7 @@ describe("performPull", () => {
 
 describe("performPull and a GM's rarity", () => {
   it("grants the copy at the rarity the GM set, and leaves an unedited one as its source", async () => {
-    globalThis.fromUuid = async uuid => ({ name: uuid, img: "", toObject: () => ({ name: uuid, type: "loot", flags: {}, system: { rarity: "uncommon" } }) });
+    globalThis.fromUuid = async uuid => ({ name: uuid, img: "", toObject: () => ({ name: uuid, type: "loot", flags: {}, system: uuid === "set6" ? { rarities: ["uncommon"] } : { rarity: "uncommon" } }) });
     const pools = { pool: { id: "pool", name: "Pool", pools: [], entries: [
       { uuid: "set", name: "set", img: "", rarity: "uncommon", sourceRarity: "uncommon", rarityOverride: "legendary", weight: 1 },
     ] } };
@@ -147,6 +147,13 @@ describe("performPull and a GM's rarity", () => {
     const out = await performPull({ box, pools, actor, state: {}, rng: () => 0.5 });
     expect(out.result.rarity).toBe("legendary");
     expect(actor.items[0].system.rarity).toBe("legendary");
+
+    // dnd5e 6 keeps a set of rarities rather than one string.
+    const six = { pool: { ...pools.pool, entries: [{ ...pools.pool.entries[0], uuid: "set6" }] } };
+    const actor6 = makeActor();
+    await performPull({ box, pools: six, actor: actor6, state: {}, rng: () => 0.5 });
+    expect(actor6.items[0].system.rarities).toEqual(["legendary"]);
+    expect(actor6.items[0].system.rarity).toBeUndefined();
 
     const plain = { pool: { ...pools.pool, entries: [{ uuid: "plain", name: "plain", img: "", rarity: "uncommon", sourceRarity: "uncommon", weight: 1 }] } };
     const actor2 = makeActor();

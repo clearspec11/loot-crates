@@ -65,8 +65,13 @@ export async function performPull({ box, pools, actor, state = {}, rng = rollRng
     delete data.folder;
     data.flags = { ...(data.flags ?? {}), "loot-crates": { boxId: box.id, sourceUuid: result.entry.uuid, at: Date.now() } };
     // A rarity the GM set in the pool editor is the one the reveal and chat
-    // announce, so the copy on the sheet says it too.
-    if (RARITIES.includes(result.entry.rarityOverride) && data.system && "rarity" in data.system) data.system.rarity = result.rarity;
+    // announce, so the copy on the sheet says it too. dnd5e 6 stores a set,
+    // system.rarities (system.rarity is a getter on it); dnd5e 5 a string.
+    if (RARITIES.includes(result.entry.rarityOverride)) {
+      data.system ??= {};
+      if (Array.isArray(data.system.rarities)) data.system.rarities = [result.rarity];
+      else data.system.rarity = result.rarity;
+    }
     await actor.update({ "system.currency": nextPurse });
     try {
       [created] = await actor.createEmbeddedDocuments("Item", [data]);
