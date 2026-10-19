@@ -34,11 +34,11 @@ export function formatPrice(priceGp) {
   return parts.join(" ");
 }
 
-// A purse as one gold figure, the way the shop's header shows it: "450 gp",
-// or "450.53 gp" when there's silver or copper in it.
+// A purse as gold, the way the shop's header and the reveal show it, in the
+// same coins as every price beside it: "450 gp", or "450 gp 5 sp 3 cp" when
+// there's silver or copper in it (never "450.53 gp" next to "12 gp 5 sp").
 export function formatGold(purse = {}) {
-  const cp = toCopper(purse);
-  return `${(cp / 100).toFixed(cp % 100 ? 2 : 0)} gp`;
+  return formatPrice(toCopper(purse) / 100);
 }
 
 export function charge(purse = {}, priceGp) {

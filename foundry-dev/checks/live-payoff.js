@@ -115,7 +115,7 @@ await appB.close();
 await Promise.race([chainB, wait(3000)]);
 
 const ok = !midSpin.landed && midSpin.enabled && midSpin.label === "Skip" && midSpin.stripHidden === "true"
-  && /inventory/.test(afterLand.text) && /gp left/.test(afterLand.text) && afterLand.label === "Close" && afterLand.focusOnClose
+  && /inventory/.test(afterLand.text) && /[gsc]p left/.test(afterLand.text) && afterLand.label === "Close" && afterLand.focusOnClose
   && afterLand.openItemShown && sheetOpened && chat.resolvesToGranted
   && (origins.a.left !== origins.b.left || origins.a.top !== origins.b.top) && !aLandedBeforeClose && aCardPosted && bStillSpinning;
 return {

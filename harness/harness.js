@@ -11,7 +11,7 @@ import { POOLS, BOX, BOXES } from "./sample.js";
 import { draw, seededRng } from "../module/scripts/odds.js";
 import { buildStrip } from "../module/scripts/strip.js";
 import { mountSpin } from "../module/scripts/spin.js";
-import { charge, formatPrice } from "../module/scripts/currency.js";
+import { charge, formatPrice, formatGold } from "../module/scripts/currency.js";
 import { resultHTML } from "../module/scripts/revealcard.js";
 import { boxCard } from "../module/scripts/boxcard.js";
 
@@ -42,7 +42,7 @@ const stage = document.getElementById("stage");
 function renderShop() {
   stage.innerHTML = `
     <div class="lc-shop__body">
-      <div class="lc-shop__head"><span class="lc-shop__who">Tam Thornwick</span><span class="lc-shop__purse">420 gp</span></div>
+      <div class="lc-shop__head"><span class="lc-shop__who">Tam Thornwick</span><span class="lc-shop__purse">${formatGold(purse)}</span></div>
       <div class="lc-shop__grid">
         ${BOXES.map(b => boxCard(b, POOLS, { purse, hasActor: true, open: true, art: "▣" })).join("")}
       </div>

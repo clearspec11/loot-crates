@@ -104,6 +104,7 @@
 /* Where it went and the gold left come in after the card's 420 ms lift, so
    the name lands first. */
 .lc-reveal__where { margin-top: 6px; font-size: 12px; color: var(--lc-ink-soft); animation: lc-reveal-after 240ms ease 420ms both; }
+.lc-reveal__gold { white-space: nowrap; }
 @keyframes lc-reveal-after { from { opacity: 0; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .lc-reveal__where { animation: none; } }
 .lc-reveal__actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }

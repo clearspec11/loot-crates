@@ -36,7 +36,7 @@ function revealProblems(buyer) {
   const shown = el => !!el && !el.hidden && el.getBoundingClientRect().height > 0;
   const text = document.querySelector(".lc-reveal__result")?.innerText ?? "";
   if (!/Added to .+'s inventory/.test(text)) out.push(`reveal doesn't say where the item went: "${text}"`);
-  if (buyer !== /\d gp left/.test(text)) out.push(buyer ? "buyer can't see the gold left" : "the table can see the buyer's gold");
+  if (buyer !== /\d [gsc]p left/.test(text)) out.push(buyer ? "buyer can't see the gold left" : "the table can see the buyer's gold");
   if (buyer !== shown(document.querySelector(".lc-reveal__open"))) out.push(buyer ? "no Open item for the buyer" : "Open item shown to the table");
   const close = document.querySelector(".lc-reveal__close");
   if (close?.textContent !== "Close" || close.disabled) out.push("landed reveal has no enabled Close");
