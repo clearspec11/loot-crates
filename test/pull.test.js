@@ -97,4 +97,41 @@ describe("performPull", () => {
     // The caller's pools are not mutated; the exclusion is local to this pull.
     expect(pools.pool.entries[0].missing).toBeUndefined();
   });
+
+  it("redraws up to three times past sources that vanished, then charges once for the live one", async () => {
+    const pools = { pool: { id: "pool", name: "Pool", pools: [], entries: [
+      ...["g1", "g2", "g3"].map(u => ({ uuid: u, name: u, img: "", rarity: "legendary", weight: 1 })),
+      { uuid: "live", name: "Potion", img: "", rarity: "common", weight: 1 },
+    ] } };
+    const box = { ...BOX, weights: { common: 1, legendary: 1000 } };
+    globalThis.fromUuid = async uuid => (uuid === "live" ? { name: "Potion", img: "", toObject: () => ({ name: "Potion", type: "consumable", flags: {} }) } : null);
+    const actor = makeActor();
+    const lost = [];
+    const warn = console.warn;
+    console.warn = () => {};
+    try {
+      const out = await performPull({ box, pools, actor, state: {}, rng: () => 0.5, onMissing: async e => { lost.push(e.uuid); } });
+      expect(out.result.uuid).toBe("live");
+    } finally { console.warn = warn; }
+    expect(lost.sort()).toEqual(["g1", "g2", "g3"]);
+    expect(actor.writes).toHaveLength(1);
+    expect(actor.items).toHaveLength(1);
+  });
+
+  it("gives up after three redraws and writes nothing when the sources keep vanishing", async () => {
+    const pools = { pool: { id: "pool", name: "Pool", pools: [], entries:
+      ["g1", "g2", "g3", "g4", "g5"].map(u => ({ uuid: u, name: u, img: "", rarity: "rare", weight: 1 })) } };
+    globalThis.fromUuid = async () => null;
+    const actor = makeActor();
+    const lost = [];
+    const warn = console.warn;
+    console.warn = () => {};
+    try {
+      const promise = performPull({ box: { ...BOX, weights: { rare: 1 } }, pools, actor, state: {}, rng: () => 0.5, onMissing: async e => { lost.push(e.uuid); } });
+      await expect(promise).rejects.toThrow("is missing from its compendium. Tell the GM.");
+    } finally { console.warn = warn; }
+    expect(lost).toHaveLength(4);
+    expect(actor.writes).toHaveLength(0);
+    expect(actor.items).toHaveLength(0);
+  });
 });

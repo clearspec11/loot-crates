@@ -6,7 +6,9 @@
   Pools hold references (UUIDs), never copies, so an item edited at its source
   is what gets granted. A reference whose source is gone resolves to null; the
   sweep below flags its entry `missing: true`, which takes it out of the roll,
-  the odds and the strip (odds.js flattenPool), and warns the GM.
+  the odds and the strip (odds.js flattenPool), and warns the GM. The pool
+  editor checks the sources again on every render (checkSources) and shows
+  each entry as missing or renamed, with Remove, Update and Relink.
 */
 import { MODULE_ID, SETTINGS } from "./config.js";
 import { normalizeRarity, flattenPool, markEntriesMissing } from "./odds.js";
@@ -142,35 +144,49 @@ export async function resolveEntry(entry) {
 }
 
 /*
-  Which of these entries' sources are gone, as a Set of uuids. Cheap enough to
-  run before every pull: a compendium reference is checked against the pack's
-  index (Foundry caches it after the first load), a world item against
-  game.items; only other kinds of reference fall back to fromUuid.
+  What each entry's source looks like now, as a Map uuid -> { name, img,
+  rarity } (rarity null when unknown) or null when the source is gone. Cheap enough to run before every
+  pull and on every render of the pool editor: a compendium reference is read
+  from the pack's index (Foundry caches it after the first load), a world item
+  from game.items; only other kinds of reference fall back to fromUuid.
+  `rarity: true` asks the pack index for rarities too (the pool editor wants
+  them to spot a changed rarity; the pre-pull sweep only needs liveness, and
+  the extra field costs a fetch of the whole index the first time).
 */
-export async function findMissing(entries) {
-  const missing = new Set();
+export async function checkSources(entries, { rarity: withRarity = false } = {}) {
+  const out = new Map();
   const indexes = new Map();
   const packIndex = packId => {
     if (!indexes.has(packId)) {
       const pack = globalThis.game?.packs?.get(packId);
-      indexes.set(packId, pack ? pack.getIndex().catch(() => null) : Promise.resolve(null));
+      const opts = withRarity ? { fields: ["system.rarity"] } : undefined;
+      indexes.set(packId, pack ? pack.getIndex(opts).catch(() => null) : Promise.resolve(null));
     }
     return indexes.get(packId);
   };
   for (const uuid of new Set(entries.map(e => e.uuid))) {
     const parts = String(uuid ?? "").split(".");
-    let live;
+    let doc;
     if (parts[0] === "Compendium" && parts.length === 5 && parts[3] === "Item") {
-      const index = await packIndex(`${parts[1]}.${parts[2]}`);
-      live = !!index?.has(parts[4]);
+      doc = (await packIndex(`${parts[1]}.${parts[2]}`))?.get(parts[4]);
     } else if (parts[0] === "Item" && parts.length === 2 && globalThis.game?.items) {
-      live = game.items.has(parts[1]);
+      doc = game.items.get(parts[1]);
     } else {
-      live = !!(await resolveEntry({ uuid }));
+      doc = await resolveEntry({ uuid });
     }
-    if (!live) missing.add(uuid);
+    // A pack's index row loses `system` once its document has been loaded
+    // (Foundry swaps in a slimmer row), so a rarity it doesn't carry is
+    // unknown, not common.
+    const rarity = doc?.system?.rarity;
+    out.set(uuid, doc ? { name: doc.name, img: doc.img, rarity: rarity == null ? null : normalizeRarity(rarity) } : null);
   }
-  return missing;
+  return out;
+}
+
+// Which of these entries' sources are gone, as a Set of uuids.
+export async function findMissing(entries) {
+  const sources = await checkSources(entries);
+  return new Set([...sources].filter(([, src]) => !src).map(([uuid]) => uuid));
 }
 
 // Sets (or clears) `missing` on the entries of one pool, read fresh so a
@@ -222,4 +238,37 @@ export function reportMissing(found) {
   for (const f of found) console.warn(`loot-crates | ${f.name} (${f.uuid}) in pool ${f.poolName} has no source; it won't be drawn until it is fixed or removed`);
   const list = found.map(f => `${f.name} in ${f.poolName}`).join(", ");
   globalThis.ui?.notifications?.warn(`Loot Crates: ${list} ${found.length === 1 ? "is" : "are"} missing ${found.length === 1 ? "its source and is" : "their sources and are"} no longer drawn. Fix or remove ${found.length === 1 ? "it" : "them"} in the pool editor.`);
+}
+
+/*
+  The pool editor's per-entry fixes. Each reads the pools fresh inside the
+  shared write queue, so a pull's sweep writing the same setting can't undo
+  them or be undone by them.
+*/
+export function removeEntry(poolId, uuid) {
+  return enqueueWrite(async () => {
+    const pools = getPools();
+    const pool = pools[poolId];
+    if (!pool) return null;
+    pool.entries = (pool.entries ?? []).filter(e => e.uuid !== uuid);
+    await set(SETTINGS.POOLS, pools);
+    return pool;
+  });
+}
+
+// Update: copy the source's current name, image and rarity into the entry.
+// Relink: point the entry at another item (`patch.uuid`), keeping its weight.
+// Either way the entry is live again, so its missing flag goes.
+export function patchEntry(poolId, uuid, patch) {
+  return enqueueWrite(async () => {
+    const pools = getPools();
+    const pool = pools[poolId];
+    const entry = pool?.entries?.find(e => e.uuid === uuid);
+    if (!entry) return null;
+    if (patch.uuid && patch.uuid !== uuid && pool.entries.some(e => e.uuid === patch.uuid)) return null;
+    delete entry.missing;
+    Object.assign(entry, patch, { rarity: normalizeRarity(patch.rarity ?? entry.rarity) });
+    await set(SETTINGS.POOLS, pools);
+    return entry;
+  });
 }

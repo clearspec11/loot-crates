@@ -24,8 +24,10 @@ async function resolveSource(uuid) {
   gone (the socket handler marks it in the pool setting and warns the GM).
   The caller is expected to have swept the box for dead sources already, so
   this only happens when one vanished in between: the entry is excluded and the
-  roll is made once more. Nothing is charged until a live source is in hand.
+  roll is made again, up to MAX_REDRAWS times. Nothing is charged until a live
+  source is in hand.
 */
+const MAX_REDRAWS = 3;
 export async function performPull({ box, pools, actor, state = {}, rng = rollRng(), grant = true, onMissing = null }) {
   if (!box) throw new PullError("That box no longer exists.");
   if (!actor) throw new PullError("No character to buy with.");
@@ -38,18 +40,18 @@ export async function performPull({ box, pools, actor, state = {}, rng = rollRng
 
   let result = draw({ box, pools, rng, state });
   let source = result && await resolveSource(result.entry.uuid);
-  if (result && !source) {
-    const lost = result.entry;
-    console.warn(`loot-crates | ${lost.name} (${lost.uuid}) in pool ${lost.poolId} has no source; excluding it and rolling again`);
+  let lost = null;
+  for (let redraws = 0; result && !source; redraws++) {
+    lost = result.entry;
     await onMissing?.(lost);
+    if (redraws === MAX_REDRAWS) throw new PullError(`${lost.name} is missing from its compendium. Tell the GM.`);
+    console.warn(`loot-crates | ${lost.name} (${lost.uuid}) in pool ${lost.poolId} has no source; excluding it and rolling again`);
     pools = markEntriesMissing(pools, lost.poolId, [lost.uuid], true);
     result = draw({ box, pools, rng, state });
     source = result && await resolveSource(result.entry.uuid);
-    if (result && !source) {
-      await onMissing?.(result.entry);
-      throw new PullError(`${result.entry.name} is missing from its compendium. Tell the GM.`);
-    }
   }
+  // Every entry left was dead: say so rather than "nothing left".
+  if (!result && lost) throw new PullError(`${lost.name} is missing from its compendium. Tell the GM.`);
   if (!result) throw new PullError(`${box.name} has nothing left to give ${actor.name}.`);
 
   const nextPurse = charge(purse, box.price);

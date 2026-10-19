@@ -75,6 +75,35 @@ export function markEntriesMissing(pools, poolId, uuids, flag = true) {
   return { ...pools, [poolId]: { ...pool, entries } };
 }
 
+/*
+  How a pool entry compares with its source now. `source` is null when the
+  source is gone, else { name, img, rarity } as read from the pack index or the
+  world; a null rarity is unknown and not compared. "renamed" means the name or the rarity changed since the entry was
+  added, so the GM sees "Wand of Sparks" becoming "Wand of Sparking" instead
+  of a silent miss.
+*/
+export function sourceStatus(entry, source) {
+  if (!source) return "missing";
+  if (source.name !== entry.name) return "renamed";
+  if (source.rarity != null && normalizeRarity(source.rarity) !== normalizeRarity(entry.rarity)) return "renamed";
+  return "ok";
+}
+
+// A copy of `pools` whose `missing` flags follow `sources` (uuid -> source or
+// null, from store.js checkSources) instead of the last sweep, for views that
+// have just checked. Entries with no answer in `sources` keep their flag.
+export function withSources(pools, sources) {
+  const out = {};
+  for (const [id, pool] of Object.entries(pools)) {
+    out[id] = { ...pool, entries: (pool.entries ?? []).map(e => {
+      if (!sources.has(e.uuid)) return e;
+      const { missing: _drop, ...rest } = e;
+      return sources.get(e.uuid) ? rest : { ...rest, missing: true };
+    }) };
+  }
+  return out;
+}
+
 // The rarities a box can land on and the chance of each, as the editor shows.
 export function oddsTable(box, pools) {
   const weights = { ...DEFAULT_WEIGHTS, ...(box.weights ?? {}) };

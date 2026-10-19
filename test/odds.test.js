@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { draw, nextState, oddsTable, flattenPool, normalizeRarity, seededRng, weightedPick, markEntriesMissing } from "../module/scripts/odds.js";
+import { draw, nextState, oddsTable, flattenPool, normalizeRarity, seededRng, weightedPick, markEntriesMissing, sourceStatus, withSources } from "../module/scripts/odds.js";
 import { POOLS, BOX } from "../harness/sample.js";
 
 const tally = (n, fn) => {
@@ -181,5 +181,50 @@ describe("entries whose source is gone", () => {
     expect(marked.child).toBe(pools.child);
     const cleared = markEntriesMissing(marked, "live", ["c1", "r1"], false);
     expect(cleared.live.entries.some(e => "missing" in e)).toBe(false);
+  });
+});
+
+describe("checking entries against their sources", () => {
+  const entry = (uuid, rarity, extra = {}) => ({ uuid, name: uuid, img: "", rarity, weight: 1, ...extra });
+
+  it("sourceStatus tells ok, missing and renamed apart", () => {
+    const e = { uuid: "w", name: "Wand of Sparks", rarity: "rare" };
+    expect(sourceStatus(e, { name: "Wand of Sparks", rarity: "rare" })).toBe("ok");
+    expect(sourceStatus(e, { name: "Wand of Sparks", rarity: "Rare" })).toBe("ok");
+    expect(sourceStatus(e, null)).toBe("missing");
+    expect(sourceStatus(e, undefined)).toBe("missing");
+    expect(sourceStatus(e, { name: "Wand of Sparking", rarity: "rare" })).toBe("renamed");
+    expect(sourceStatus(e, { name: "Wand of Sparks", rarity: "veryRare" })).toBe("renamed");
+    // A pack index row without a rarity says nothing about it.
+    expect(sourceStatus(e, { name: "Wand of Sparks", rarity: null })).toBe("ok");
+  });
+
+  const pools = {
+    p: { id: "p", name: "P", pools: [], entries: [entry("c1", "common"), entry("r1", "rare"), entry("dead-l", "legendary"), entry("back", "uncommon", { missing: true })] },
+  };
+  const box = { id: "b", name: "B", price: 1, pools: [{ id: "p", share: 1 }], weights: { common: 40, uncommon: 10, rare: 10, legendary: 40 }, rules: {} };
+  const sources = new Map([["c1", { name: "c1" }], ["r1", { name: "r1" }], ["dead-l", null], ["back", { name: "back" }]]);
+
+  it("withSources flags what is gone now and clears what came back, without touching the input", () => {
+    const view = withSources(pools, sources);
+    expect(view.p.entries.find(e => e.uuid === "dead-l").missing).toBe(true);
+    expect("missing" in view.p.entries.find(e => e.uuid === "back")).toBe(false);
+    expect(pools.p.entries.find(e => e.uuid === "dead-l").missing).toBeUndefined();
+    expect(withSources(pools, new Map()).p.entries.find(e => e.uuid === "back").missing).toBe(true);
+  });
+
+  it("oddsTable omits a rarity held only by a dead entry", () => {
+    expect(oddsTable(box, pools).map(o => o.rarity)).toContain("legendary");
+    const odds = oddsTable(box, withSources(pools, sources));
+    expect(odds.map(o => o.rarity)).toEqual(["common", "uncommon", "rare"]);
+    expect(odds.reduce((n, o) => n + o.chance, 0)).toBeCloseTo(1, 6);
+  });
+
+  it("draw never returns a dead entry over 1000 seeded draws", () => {
+    const view = withSources(pools, sources);
+    const rng = seededRng(77);
+    const got = tally(1000, () => draw({ box, pools: view, rng }).entry.uuid);
+    expect(got["dead-l"]).toBeUndefined();
+    expect(Object.keys(got).sort()).toEqual(["back", "c1", "r1"]);
   });
 });

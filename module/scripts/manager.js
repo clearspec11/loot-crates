@@ -6,10 +6,16 @@
   Deliberately plain for v0.1: lists with Add, Edit (a form dialog), Delete,
   a drop target on each pool for items dragged from anywhere, and a bulk
   "Add from compendium" filter.
+
+  Every render checks each entry against its source (store.js checkSources).
+  An entry whose source is gone is struck through with "Source missing" and
+  takes a dropped item to relink it (same weight); one whose source changed
+  name or rarity shows "was <old name>" with Update. Both sort to the top of
+  their pool, and the Boxes tab's odds leave the missing ones out.
 */
 import { RARITIES, RARITY_LABEL, DEFAULT_WEIGHTS, DEFAULT_PRICE_GP } from "./config.js";
-import { getPools, getBoxes, getLog, savePool, deletePool, saveBox, deleteBox, entryFromItem, entriesFromCompendium, isShopOpen, setShopOpen } from "./store.js";
-import { oddsTable, normalizeRarity } from "./odds.js";
+import { getPools, getBoxes, getLog, savePool, deletePool, saveBox, deleteBox, entryFromItem, entriesFromCompendium, isShopOpen, setShopOpen, enqueueWrite, checkSources, refreshMissing, removeEntry, patchEntry } from "./store.js";
+import { oddsTable, normalizeRarity, flattenPool, sourceStatus, withSources } from "./odds.js";
 import { formatPrice } from "./currency.js";
 import { refreshShop } from "./shop.js";
 import { describeRefund, refundPull } from "./refund.js";
@@ -28,13 +34,29 @@ export class CrateManager extends ApplicationV2 {
     actions: {
       tab: CrateManager.#tab,
       addPool: CrateManager.#addPool, editPool: CrateManager.#editPool, deletePool: CrateManager.#deletePool,
-      bulkAdd: CrateManager.#bulkAdd, removeEntry: CrateManager.#removeEntry,
+      bulkAdd: CrateManager.#bulkAdd, removeEntry: CrateManager.#removeEntry, updateEntry: CrateManager.#updateEntry,
       addBox: CrateManager.#addBox, editBox: CrateManager.#editBox, deleteBox: CrateManager.#deleteBox,
       refund: CrateManager.#refund, toggleShop: CrateManager.#toggleShop,
     },
   };
 
   tab = "pools";
+
+  // The last finished source check, so a render never waits long on a cold
+  // compendium index (a first getIndex can take seconds): after a short wait
+  // it shows what it has (or the stored missing flags) and renders again
+  // when the check lands.
+  #sources = null;
+  checking = false;
+  async #checkedSources(entries) {
+    const run = checkSources(entries, { rarity: true });
+    const got = await Promise.race([run, new Promise(r => setTimeout(() => r(null), 400))]);
+    if (got) { this.checking = false; return (this.#sources = got); }
+    this.checking = true;
+    run.then(found => { this.#sources = found; this.checking = false; if (this.rendered) this.render(); })
+      .catch(err => { this.checking = false; console.error(`loot-crates | checking pool sources failed`, err); });
+    return this.#sources ?? new Map(entries.map(e => [e.uuid, e.missing ? null : { name: e.name, img: e.img, rarity: null }]));
+  }
 
   static #tab(_e, t) { this.tab = t.dataset.tab; this.render(); }
 
@@ -54,9 +76,16 @@ export class CrateManager extends ApplicationV2 {
   }
 
   static async #removeEntry(_e, t) {
-    const pool = getPools()[t.dataset.pool];
-    pool.entries = pool.entries.filter(e => e.uuid !== t.dataset.uuid);
-    await savePool(pool); this.render();
+    await removeEntry(t.dataset.pool, t.dataset.uuid);
+    this.render(); refreshShop();
+  }
+
+  // Renamed at the source: take its current name, image and rarity.
+  static async #updateEntry(_e, t) {
+    const src = (await checkSources([{ uuid: t.dataset.uuid }], { rarity: true })).get(t.dataset.uuid);
+    if (!src) { ui.notifications.warn("That item's source is gone; drop an item on the row to relink it."); return this.render(); }
+    await patchEntry(t.dataset.pool, t.dataset.uuid, { name: src.name, img: src.img, rarity: src.rarity });
+    this.render(); refreshShop();
   }
 
   static async #bulkAdd(_e, t) {
@@ -159,11 +188,16 @@ export class CrateManager extends ApplicationV2 {
         <span class="lc-tabs__spacer"></span>
         <button type="button" data-action="toggleShop" class="lc-shop-toggle">${isShopOpen() ? "Shop is open" : "Shop is closed"}</button>
       </nav>
-      <section class="lc-tab">${this[`_${this.tab}`]()}</section>`;
+      <section class="lc-tab">${await this[`_${this.tab}`]()}</section>`;
     root.querySelectorAll("[data-drop-pool]").forEach(el => {
       el.addEventListener("dragover", e => { e.preventDefault(); el.classList.add("lc-drop--over"); });
       el.addEventListener("dragleave", () => el.classList.remove("lc-drop--over"));
       el.addEventListener("drop", e => this.#onDrop(e, el.dataset.dropPool));
+    });
+    root.querySelectorAll("[data-relink]").forEach(el => {
+      el.addEventListener("dragover", e => { e.preventDefault(); e.stopPropagation(); el.classList.add("lc-drop--over"); });
+      el.addEventListener("dragleave", () => el.classList.remove("lc-drop--over"));
+      el.addEventListener("drop", e => { e.stopPropagation(); this.#onRelink(e, el.dataset.pool, el.dataset.relink); });
     });
     return root;
   }
@@ -175,35 +209,72 @@ export class CrateManager extends ApplicationV2 {
     if (data?.type !== "Item" || !data.uuid) return ui.notifications.warn("Drop an item.");
     const item = await fromUuid(data.uuid);
     if (!item) return;
-    const pool = getPools()[poolId];
-    if (pool.entries.some(e => e.uuid === item.uuid)) return ui.notifications.info(`${item.name} is already in ${pool.name}.`);
-    pool.entries.push(entryFromItem(item));
-    await savePool(pool);
-    this.render();
+    const added = await enqueueWrite(async () => {
+      const pool = getPools()[poolId];
+      if (pool.entries.some(e => e.uuid === item.uuid)) { ui.notifications.info(`${item.name} is already in ${pool.name}.`); return false; }
+      pool.entries.push(entryFromItem(item));
+      await savePool(pool);
+      return true;
+    });
+    if (added) { this.render(); refreshShop(); }
   }
 
-  _pools() {
+  // An item dropped on a missing row replaces its source; the weight stays.
+  async #onRelink(event, poolId, uuid) {
+    event.preventDefault();
+    let data;
+    try { data = dragData(event); } catch { return; }
+    if (data?.type !== "Item" || !data.uuid) return ui.notifications.warn("Drop an item to relink this entry.");
+    const item = await fromUuid(data.uuid);
+    if (!item) return;
+    const { name, img, rarity } = entryFromItem(item);
+    const done = await patchEntry(poolId, uuid, { uuid: item.uuid, name, img, rarity });
+    if (!done) ui.notifications.info(`${item.name} is already in ${getPools()[poolId]?.name ?? "that pool"}; remove the missing entry instead.`);
+    this.render(); refreshShop();
+  }
+
+  async _pools() {
     const pools = Object.values(getPools());
+    const sources = await this.#checkedSources(pools.flatMap(p => p.entries ?? []));
+    // The editor just looked: if a flag the shop reads is stale, sweep now.
+    const stale = !this.checking && pools.some(p => p.entries.some(e => sources.has(e.uuid) && !!e.missing !== !sources.get(e.uuid)));
+    if (stale) {
+      enqueueWrite(() => refreshMissing(pools.map(p => p.id)))
+        .then(() => refreshShop())
+        .catch(err => console.error(`loot-crates | checking pools for missing items failed`, err));
+    }
     return `
-      <div class="lc-toolbar"><button type="button" data-action="addPool"><i class="fas fa-plus"></i> New pool</button></div>
-      ${pools.length ? pools.map(p => `
+      <div class="lc-toolbar"><button type="button" data-action="addPool"><i class="fas fa-plus"></i> New pool</button>${this.checking ? `<span class="lc-pool__hint" role="status">Checking each item against its source…</span>` : ""}</div>
+      ${pools.length ? pools.map(p => {
+        const rows = p.entries.map(e => ({ e, src: sources.get(e.uuid), status: sourceStatus(e, sources.get(e.uuid)) }));
+        const order = { missing: 0, renamed: 1, ok: 2 };
+        rows.sort((a, b) => order[a.status] - order[b.status]);
+        const missing = rows.filter(r => r.status === "missing").length;
+        const renamed = rows.filter(r => r.status === "renamed").length;
+        const live = rows.filter(r => r.status !== "missing").map(r => r.e);
+        const problems = [missing && `${missing} missing`, renamed && `${renamed} renamed`].filter(Boolean).join(", ");
+        return `
         <article class="lc-pool" data-drop-pool="${esc(p.id)}">
           <header>
             <strong>${esc(p.name)}</strong>
-            <span class="lc-pool__count">${p.entries.length} item${p.entries.length === 1 ? "" : "s"}${p.entries.length ? " · " + rarityCounts(p.entries) : ""}</span>
+            <span class="lc-pool__count">${p.entries.length} item${p.entries.length === 1 ? "" : "s"}${live.length ? " · " + rarityCounts(live) : ""}${problems ? ` · <span class="lc-pool__problems">${problems}</span>` : ""}</span>
             <span class="lc-tabs__spacer"></span>
             <button type="button" data-action="bulkAdd" data-pool="${esc(p.id)}" title="Add every item in a compendium that matches a filter"><i class="fas fa-book"></i> Add from compendium</button>
-            <button type="button" data-action="editPool" data-pool="${esc(p.id)}"><i class="fas fa-pen"></i></button>
-            <button type="button" data-action="deletePool" data-pool="${esc(p.id)}"><i class="fas fa-trash"></i></button>
+            <button type="button" data-action="editPool" data-pool="${esc(p.id)}" aria-label="Rename ${esc(p.name)}"><i class="fas fa-pen"></i></button>
+            <button type="button" data-action="deletePool" data-pool="${esc(p.id)}" aria-label="Delete ${esc(p.name)}"><i class="fas fa-trash"></i></button>
           </header>
-          <p class="lc-pool__hint">Drag items here from a compendium or the Items sidebar.</p>
-          <ul class="lc-entries">${p.entries.map(e => `<li class="lc-entry lc-rarity-${normalizeRarity(e.rarity)}"><img src="${esc(e.img)}" alt=""><span>${esc(e.name)}</span><em>${RARITY_LABEL[normalizeRarity(e.rarity)]}</em><button type="button" data-action="removeEntry" data-pool="${esc(p.id)}" data-uuid="${esc(e.uuid)}" title="Remove">&times;</button></li>`).join("")}</ul>
-        </article>`).join("") : `<p class="lc-empty">No pools. A pool is the set of items a box can give out.</p>`}`;
+          <p class="lc-pool__hint">Drag items here from a compendium or the Items sidebar.${missing ? " Drop an item on a missing row to relink it." : ""}</p>
+          <ul class="lc-entries">${rows.map(r => entryRow(p.id, r)).join("")}</ul>
+        </article>`;
+      }).join("") : `<p class="lc-empty">No pools. A pool is the set of items a box can give out.</p>`}`;
   }
 
-  _boxes() {
+  async _boxes() {
     const boxes = Object.values(getBoxes());
-    const pools = getPools();
+    const stored = getPools();
+    // The odds as of now, not as of the last pull's sweep.
+    const entries = Object.keys(stored).flatMap(id => flattenPool(id, stored, new Set(), { includeMissing: true }));
+    const pools = withSources(stored, await this.#checkedSources(entries));
     return `
       <div class="lc-toolbar"><button type="button" data-action="addBox"><i class="fas fa-plus"></i> New box</button></div>
       ${boxes.length ? `<table class="lc-table"><thead><tr><th>Box</th><th>Price</th><th>Pools</th><th>Odds</th><th>Rules</th><th></th></tr></thead><tbody>
@@ -228,6 +299,34 @@ export class CrateManager extends ApplicationV2 {
   }
 
   _replaceHTML(result, content) { content.replaceChildren(result); }
+}
+
+const FALLBACK_IMG = "icons/svg/item-bag.svg";
+
+// One pool entry. `status` is "ok", "renamed" (the source's name or rarity
+// changed since it was added) or "missing" (the source is gone).
+// The rarity shown is the entry's own, since that is what the box draws it at.
+function entryRow(poolId, { e, src, status }) {
+  const rarity = normalizeRarity(e.rarity);
+  const name = status === "renamed" ? src.name : e.name;
+  const ids = `data-pool="${esc(poolId)}" data-uuid="${esc(e.uuid)}"`;
+  const remove = `<button type="button" class="lc-entry__remove" data-action="removeEntry" ${ids} aria-label="Remove ${esc(name)}" title="Remove">&times;</button>`;
+  if (status === "missing") {
+    return `<li class="lc-entry lc-entry--missing lc-rarity-${rarity}" data-pool="${esc(poolId)}" data-relink="${esc(e.uuid)}" title="Drop an item here to relink it">
+      <img src="${esc(e.img || FALLBACK_IMG)}" alt="">
+      <span class="lc-entry__text"><span class="lc-entry__name">${esc(e.name)}</span><small class="lc-entry__status">Source missing, not drawn. Drop an item here to relink.</small></span>
+      ${remove}</li>`;
+  }
+  if (status === "renamed") {
+    const was = [src.name !== e.name ? `was ${e.name}` : "", src.rarity != null && normalizeRarity(src.rarity) !== rarity ? `now ${RARITY_LABEL[normalizeRarity(src.rarity)]} at the source` : ""].filter(Boolean).join(" · ");
+    return `<li class="lc-entry lc-entry--renamed lc-rarity-${rarity}">
+      <img src="${esc(src.img || e.img || FALLBACK_IMG)}" alt="">
+      <span class="lc-entry__text"><span class="lc-entry__name">${esc(name)}</span><small class="lc-entry__status">${esc(was)}</small></span>
+      <em>${RARITY_LABEL[rarity]}</em>
+      <button type="button" class="lc-entry__update" data-action="updateEntry" ${ids} aria-label="Update ${esc(e.name)} to ${esc(name)}">Update</button>
+      ${remove}</li>`;
+  }
+  return `<li class="lc-entry lc-rarity-${rarity}"><img src="${esc(e.img || FALLBACK_IMG)}" alt=""><span class="lc-entry__name">${esc(name)}</span><em>${RARITY_LABEL[rarity]}</em>${remove}</li>`;
 }
 
 function rarityCounts(entries) {

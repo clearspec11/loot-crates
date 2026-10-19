@@ -129,7 +129,7 @@
 .lc-tabs button.active { border-color: var(--lc-accent); color: var(--lc-accent); }
 .lc-tabs__spacer { flex: 1; }
 .lc-tab { overflow: auto; }
-.lc-toolbar { display: flex; gap: 6px; margin-bottom: 8px; }
+.lc-toolbar { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
 .lc-pool { border: 1px dashed var(--lc-line); border-radius: var(--lc-radius); padding: 8px; margin-bottom: 10px; }
 .lc-pool.lc-drop--over { border-color: var(--lc-accent); background: color-mix(in srgb, var(--lc-accent) 8%, transparent); }
 .lc-pool header { display: flex; align-items: center; gap: 8px; }
@@ -137,9 +137,20 @@
 .lc-entries { list-style: none; margin: 6px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 4px; }
 .lc-entry { display: flex; align-items: center; gap: 6px; padding: 3px 6px; border-radius: 6px; background: var(--lc-bg-2); border-left: 3px solid var(--lc-rarity); font-size: 12px; }
 .lc-entry img { width: 22px; height: 22px; border: 0; }
-.lc-entry span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lc-entry__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lc-entry em { color: var(--lc-rarity); font-style: normal; font-size: 11px; }
-.lc-entry button { width: 22px; height: 22px; line-height: 1; padding: 0; }
+.lc-entry button { width: 22px; height: 22px; line-height: 1; padding: 0; flex: none; }
+/* Entries whose source is gone or changed: full width at the top of the pool. */
+.lc-entry--missing, .lc-entry--renamed { grid-column: 1 / -1; padding: 5px 6px; }
+.lc-entry__text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.lc-entry__text .lc-entry__name { flex: none; }
+.lc-entry__status { font-size: 11px; color: var(--lc-accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lc-entry--missing { border-left-style: dashed; border-left-color: var(--lc-ink-mute); outline: 1px dashed transparent; }
+.lc-entry--missing img { opacity: .4; filter: grayscale(1); }
+.lc-entry--missing .lc-entry__name { text-decoration: line-through; color: var(--lc-ink-mute); }
+.lc-entry--missing.lc-drop--over { outline-color: var(--lc-accent); background: color-mix(in srgb, var(--lc-accent) 10%, var(--lc-bg-2)); }
+.lc-entry .lc-entry__update { width: auto; padding: 0 8px; font-size: 11px; }
+.lc-pool__problems { color: var(--lc-accent); }
 .lc-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .lc-table th, .lc-table td { padding: 6px; border-bottom: 1px solid var(--lc-line); text-align: left; vertical-align: middle; }
 .lc-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--lc-rarity); margin-right: 6px; }

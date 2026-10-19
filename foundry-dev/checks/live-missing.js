@@ -1,10 +1,18 @@
-// Live check: a pool entry whose source is gone is never drawn. Saves a test
+// Live check: a pool entry whose source is gone is never drawn, and the pool
+// editor shows it. Part 1 (the draw) saves a test
 // pool of real uncommon/rare items from dnd5e's compendium plus one entry at
 // the box's top rarity (legendary) pointing at a UUID that doesn't exist,
 // then buys one crate through the GM's own socket path (requestPull, which
 // sweeps the box before rolling). Reports the odds before and after, the
 // purse before and after (charged once), and that the pool setting now flags
 // the dead entry `missing: true`.
+//
+// Part 2 (the editor) adds a second dead entry the sweep hasn't seen and two
+// entries whose snapshot name is stale, opens the manager on Boxes (odds as
+// of now) and on Pools, and reports each problem row's status text, that the
+// render flagged the new dead entry for the shop, that Update copied the
+// source's name, and that dropping an item on a missing row relinked it with
+// its weight kept. --shot shows the pool with one missing and one renamed row.
 //
 //   FOUNDRY_URL=http://192.168.0.57:30000 MODULE_BASE=http://192.168.0.190:8766/ \
 //     NODE_PATH=$(npm root -g) node foundry-dev/headless/run.cjs foundry-dev/checks/live-missing.js
@@ -54,14 +62,71 @@ try {
   if (!wasOpen) await store.setShopOpen(false);
 }
 const after = foundry.utils.deepClone(actor.system.currency);
+const oddsAfterPull = odds();
 const deadEntry = store.getPools()[pool.id].entries.find(e => e.uuid === DEAD);
+const drawOk = !!reveal && !error && charges === 1 && toCopper(before) - toCopper(after) === 5000 && deadEntry?.missing === true && !odds().some(o => o.startsWith("legendary"));
+
+// ---- Part 2: the pool editor ----
+if (!document.querySelector("link[data-loot-crates]")) {
+  const link = Object.assign(document.createElement("link"), { rel: "stylesheet", href: MODULE_BASE + "styles/module.css" });
+  link.dataset.lootCrates = "1";
+  document.head.appendChild(link);
+}
+const { openManager } = await import(MODULE_BASE + "scripts/manager.js");
+const DEAD2 = "Compendium.dnd5e.items.Item.deadbeef00000002";
+const [r1, r2, relinkTo] = live.slice(30, 33);
+const fresh = store.getPools()[pool.id];
+await store.savePool({ ...fresh, entries: [
+  ...fresh.entries.filter(e => ![DEAD2, r1.uuid, r2.uuid, relinkTo.uuid].includes(e.uuid)),
+  { uuid: DEAD2, name: "Old Wand", img: "", rarity: "veryRare", weight: 3 },
+  { ...r1, name: `${r1.name} (old)` },
+  { ...r2, name: `${r2.name} (old)` },
+] });
+const oddsStored = odds();
+const wait = ms => new Promise(r => setTimeout(r, ms));
+const until = async (fn, ms = 6000) => { for (let t = 0; t < ms && !fn(); t += 100) await wait(100); return fn(); };
+const app = openManager();
+app.tab = "boxes"; app.render({ force: true });
+await wait(1500);
+const boxRow = [...app.element.querySelectorAll(".lc-table tbody tr")].find(tr => tr.textContent.includes(box.name));
+const oddsBoxesTab = [...(boxRow?.querySelectorAll(".lc-odd") ?? [])].map(el => `${el.title} ${el.textContent}`);
+app.tab = "pools"; app.render();
+await wait(2000);
+const poolEl = () => app.element.querySelector(`[data-drop-pool="${pool.id}"]`);
+const rowText = uuid => poolEl()?.querySelector(`[data-uuid="${CSS.escape(uuid)}"]`)?.closest("li")?.innerText.replace(/\s+/g, " ").trim();
+const rows = { dead: rowText(DEAD), dead2: rowText(DEAD2), renamed1: rowText(r1.uuid), renamed2: rowText(r2.uuid) };
+const header = poolEl()?.querySelector(".lc-pool__count")?.textContent.trim();
+const problemRows = [...poolEl().querySelectorAll(".lc-entry--missing, .lc-entry--renamed")].map(li => li.innerText.replace(/\s+/g, " ").trim());
+const dead2Flagged = store.getPools()[pool.id].entries.find(e => e.uuid === DEAD2)?.missing === true;
+
+poolEl().querySelector(`[data-action="updateEntry"][data-uuid="${CSS.escape(r2.uuid)}"]`).click();
+await until(() => store.getPools()[pool.id].entries.find(e => e.uuid === r2.uuid)?.name === r2.name);
+const updatedName = store.getPools()[pool.id].entries.find(e => e.uuid === r2.uuid)?.name;
+
+const dt = new DataTransfer();
+dt.setData("text/plain", JSON.stringify({ type: "Item", uuid: relinkTo.uuid }));
+poolEl().querySelector(`[data-relink="${CSS.escape(DEAD2)}"]`).dispatchEvent(new DragEvent("drop", { dataTransfer: dt, bubbles: true, cancelable: true }));
+await until(() => store.getPools()[pool.id].entries.some(e => e.uuid === relinkTo.uuid));
+await wait(1000);
+const entriesNow = store.getPools()[pool.id].entries;
+const relinked = entriesNow.find(e => e.uuid === relinkTo.uuid);
+// Put the editor in front for --shot: close this run's reveal windows.
+for (const w of foundry.applications.instances.values()) if (w.id?.startsWith("loot-crates-reveal")) await w.close({ animate: false });
+app.bringToFront?.();
+poolEl()?.scrollIntoView({ block: "start" });
+await wait(500);
+
+const editorOk = /Source missing/.test(rows.dead ?? "") && /Source missing/.test(rows.dead2 ?? "") && /was .*\(old\)/.test(rows.renamed1 ?? "")
+  && oddsStored.some(o => o.startsWith("veryRare")) && !oddsBoxesTab.some(o => o.startsWith("Very Rare")) && dead2Flagged
+  && updatedName === r2.name && !!relinked && relinked.weight === 3 && !entriesNow.some(e => e.uuid === DEAD2);
 
 return {
-  ok: !!reveal && !error && charges === 1 && toCopper(before) - toCopper(after) === 5000 && deadEntry?.missing === true && !odds().some(o => o.startsWith("legendary")),
-  oddsBefore, oddsAfter: odds(),
+  ok: drawOk && editorOk, drawOk, editorOk,
+  oddsBefore, oddsAfter: oddsAfterPull,
   result: reveal?.result ?? null, error,
   stripHasDead: !!reveal?.strip.cards.some(c => c.uuid === DEAD),
   before, after, spentGp: (toCopper(before) - toCopper(after)) / 100, charges,
   itemsBefore, itemsAfter: actor.items.size,
   deadEntry,
+  editor: { header, problemRows, rows, oddsStored, oddsBoxesTab, dead2FlaggedByRender: dead2Flagged, updatedName, expectedName: r2.name, relinked: relinked && { uuid: relinked.uuid, name: relinked.name, weight: relinked.weight } },
 };
