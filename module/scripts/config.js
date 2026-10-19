@@ -22,6 +22,16 @@ export const RARITY_LABEL = {
   artifact: "Artifact",
 };
 
+// Short names for the shop's odds pills, so six of them fit a phone-width card.
+export const RARITY_SHORT = {
+  common: "Common",
+  uncommon: "Uncommon",
+  rare: "Rare",
+  veryRare: "V. rare",
+  legendary: "Legendary",
+  artifact: "Artifact",
+};
+
 // Odds of a pull landing on each rarity, before the box narrows them.
 export const DEFAULT_WEIGHTS = { common: 60, uncommon: 26, rare: 10, veryRare: 3, legendary: 1, artifact: 0 };
 

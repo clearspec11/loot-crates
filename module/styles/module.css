@@ -118,8 +118,21 @@
 .lc-box__art { font-size: 36px; color: var(--lc-rarity); }
 .lc-box__name { font-weight: 700; }
 .lc-box__odds, .lc-odds { display: flex; gap: 4px; justify-content: center; flex-wrap: wrap; }
-.lc-odd { font-size: 11px; padding: 1px 6px; border-radius: 999px; background: color-mix(in srgb, var(--lc-rarity) 22%, transparent); color: var(--lc-rarity); }
+/* Odds pill: the name and chance in ink, the rarity as a dot and an edge. */
+.lc-odd {
+  display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;
+  font-size: 11px; line-height: 16px; padding: 1px 7px 1px 6px; border-radius: 999px;
+  background: color-mix(in srgb, var(--lc-rarity) 16%, var(--lc-bg-3));
+  border: 1px solid color-mix(in srgb, var(--lc-rarity) 55%, transparent);
+  color: var(--lc-ink);
+}
+.lc-odd::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--lc-rarity); flex: none; }
 .lc-box__stock { font-size: 11px; color: var(--lc-ink-mute); }
+.lc-box--empty { --lc-rarity: var(--lc-line); }
+.lc-box--empty .lc-box__art { color: var(--lc-ink-mute); }
+.lc-box__nothing { font-size: 12px; color: var(--lc-ink-mute); }
+/* Why a Buy is off, on screen rather than in a tooltip. */
+.lc-box__why { font-size: 11px; color: var(--lc-ink-mute); margin-top: -4px; }
 .lc-box__buy { background: var(--lc-accent); color: #1a1200; border: 0; border-radius: 6px; padding: 8px 10px; font-weight: 700; cursor: pointer; }
 .lc-box__buy:disabled { background: var(--lc-bg-3); color: var(--lc-ink-mute); cursor: not-allowed; }
 

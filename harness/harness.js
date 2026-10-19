@@ -6,11 +6,12 @@
   "landed" plays the spin at zero duration, for deterministic screenshots.
 */
 import { POOLS, BOX, BOXES } from "./sample.js";
-import { draw, oddsTable, seededRng } from "../module/scripts/odds.js";
+import { draw, seededRng } from "../module/scripts/odds.js";
 import { buildStrip } from "../module/scripts/strip.js";
 import { mountSpin } from "../module/scripts/spin.js";
 import { RARITY_LABEL } from "../module/scripts/config.js";
-import { formatPrice, canAfford } from "../module/scripts/currency.js";
+import { formatPrice } from "../module/scripts/currency.js";
+import { boxCard } from "../module/scripts/boxcard.js";
 
 const q = new URLSearchParams(location.search);
 const state = q.get("state") ?? "shop";
@@ -34,21 +35,10 @@ function renderShop() {
     <div class="lc-shop__body">
       <div class="lc-shop__head"><span class="lc-shop__who">Tam Thornwick</span><span class="lc-shop__purse">420 gp</span></div>
       <div class="lc-shop__grid">
-        ${BOXES.map(b => {
-          const odds = oddsTable(b, POOLS);
-          const top = odds.length ? odds[odds.length - 1].rarity : "common";
-          const ok = canAfford(purse, b.price) && !(b.rules?.stock != null && b.rules.stock <= 0);
-          return `<div class="lc-box lc-rarity-${top}">
-            <div class="lc-box__art">▣</div>
-            <div class="lc-box__name">${b.name}</div>
-            <div class="lc-box__odds">${odds.map(o => `<span class="lc-odd lc-rarity-${o.rarity}" title="${RARITY_LABEL[o.rarity]}">${Math.round(o.chance * 100)}%</span>`).join("")}</div>
-            ${b.rules?.stock != null ? `<div class="lc-box__stock">${b.rules.stock} left</div>` : ""}
-            <button type="button" class="lc-box__buy" data-box="${b.id}" ${ok ? "" : "disabled"}>Open for ${formatPrice(b.price)}</button>
-          </div>`;
-        }).join("")}
+        ${BOXES.map(b => boxCard(b, POOLS, { purse, hasActor: true, open: true, art: "▣" })).join("")}
       </div>
     </div>`;
-  stage.querySelectorAll(".lc-box__buy").forEach(btn => btn.addEventListener("click", () => { location.search = `?state=spin&seed=${Date.now() % 100000}&box=${btn.dataset.box}`; }));
+  stage.querySelectorAll(".lc-box__buy:not([disabled])").forEach(btn => btn.addEventListener("click", () => { location.search = `?state=spin&seed=${Date.now() % 100000}&box=${btn.dataset.box}`; }));
 }
 
 async function renderSpin() {

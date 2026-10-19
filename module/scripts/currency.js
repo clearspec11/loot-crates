@@ -15,6 +15,11 @@ export function canAfford(purse, priceGp) {
   return toCopper(purse) >= Math.round(priceGp * 100);
 }
 
+// How much more the purse needs for priceGp, in gp (0 when it can afford it).
+export function shortfall(purse, priceGp) {
+  return Math.max(0, Math.round(priceGp * 100) - toCopper(purse)) / 100;
+}
+
 // A price in the coins charge() takes for it: 12.5 gp is "12 gp 5 sp", not
 // "125 sp", so what the button says is what leaves the purse.
 export function formatPrice(priceGp) {

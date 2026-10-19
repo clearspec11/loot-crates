@@ -114,6 +114,43 @@ export function oddsTable(box, pools) {
   return rows.map(row => ({ rarity: row.rarity, chance: total > 0 ? row.weight / total : 0 }));
 }
 
+/*
+  The odds a buyer sees: { rows: [{ rarity, chance, label }], top }. Unlike
+  oddsTable it drops rarities the box weighs at 0 (they can never land), and
+  when every rarity the pools hold weighs 0 it shows them at equal chance,
+  which is what draw() falls back to. Labels are whole percents that sum to
+  100 (largest remainder, so 62.5/37.5 reads 63/37, not 63/38), and never
+  read "0%" or "100%" for a chance that isn't: under 1% is "<1%", over 99% is
+  ">99%". `top` is the best rarity the box can actually drop, null when none.
+*/
+export function shopOdds(box, pools) {
+  const table = oddsTable(box, pools);
+  const live = table.filter(row => row.chance > 0);
+  const rows = live.length ? live : table.map(row => ({ ...row, chance: 1 / table.length }));
+  const pcts = wholePercents(rows.map(row => row.chance));
+  return {
+    rows: rows.map((row, i) => ({ ...row, label: chanceLabel(row.chance, pcts[i]) })),
+    top: rows.length ? rows[rows.length - 1].rarity : null,
+  };
+}
+
+// Whole percents for chances summing to 1, adding up to exactly 100.
+export function wholePercents(chances) {
+  const raw = chances.map(c => c * 100);
+  const out = raw.map(Math.floor);
+  let left = Math.round(raw.reduce((n, x) => n + x, 0)) - out.reduce((n, x) => n + x, 0);
+  const order = raw.map((x, i) => [x - Math.floor(x), i]).sort((a, b) => b[0] - a[0]);
+  for (const [, i] of order) { if (left <= 0) break; out[i]++; left--; }
+  return out;
+}
+
+export function chanceLabel(chance, pct = Math.round(chance * 100)) {
+  if (chance <= 0) return "0%";
+  if (chance < 0.01) return "<1%";
+  if (pct >= 100 && chance < 1) return ">99%";
+  return `${Math.max(1, pct)}%`;
+}
+
 function pityFloor(box, state) {
   const pity = box.rules?.pity;
   if (!pity?.after || !pity.minRarity) return -1;

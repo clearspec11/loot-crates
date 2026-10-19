@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { draw, nextState, oddsTable, flattenPool, normalizeRarity, seededRng, weightedPick, markEntriesMissing, sourceStatus, withSources } from "../module/scripts/odds.js";
-import { POOLS, BOX } from "../harness/sample.js";
+import { draw, nextState, oddsTable, shopOdds, chanceLabel, wholePercents, flattenPool, normalizeRarity, seededRng, weightedPick, markEntriesMissing, sourceStatus, withSources } from "../module/scripts/odds.js";
+import { POOLS, BOX, BOXES } from "../harness/sample.js";
 
 const tally = (n, fn) => {
   const out = {};
@@ -48,6 +48,57 @@ describe("oddsTable", () => {
   it("drops a rarity no pool holds even if weighted", () => {
     const box = { pools: [{ id: "homebrew", share: 1 }], weights: { common: 50, rare: 50, legendary: 50 } };
     expect(oddsTable(box, POOLS).map(r => r.rarity)).toEqual(["uncommon", "rare", "legendary"]);
+  });
+});
+
+describe("shopOdds", () => {
+  const byId = id => BOXES.find(b => b.id === id);
+  it("drops rarities the box weighs at 0", () => {
+    const { rows, top } = shopOdds(byId("common"), POOLS);
+    expect(rows.map(r => r.rarity)).toEqual(["common", "uncommon"]);
+    expect(rows.map(r => r.label)).toEqual(["85%", "15%"]);
+    expect(top).toBe("uncommon");
+  });
+  it("tops Royal Vault at legendary with no common row", () => {
+    const { rows, top } = shopOdds(byId("royal"), POOLS);
+    expect(rows.map(r => r.rarity)).not.toContain("common");
+    expect(rows.every(r => r.chance > 0 && r.label !== "0%")).toBe(true);
+    expect(top).toBe("legendary");
+  });
+  it("shows equal chances summing to 1 when every rarity weighs 0, as draw() does", () => {
+    const box = { pools: [{ id: "homebrew", share: 1 }], weights: { common: 0, uncommon: 0, rare: 0, veryRare: 0, legendary: 0 } };
+    const { rows, top } = shopOdds(box, POOLS);
+    expect(rows.map(r => r.rarity)).toEqual(["uncommon", "rare", "legendary"]);
+    for (const r of rows) expect(r.chance).toBeCloseTo(1 / 3, 9);
+    expect(rows.reduce((n, r) => n + r.chance, 0)).toBeCloseTo(1, 9);
+    expect(top).toBe("legendary");
+    const rng = seededRng(5);
+    const got = new Set(Array.from({ length: 200 }, () => draw({ box, pools: POOLS, rng }).rarity));
+    expect([...got].sort()).toEqual(["legendary", "rare", "uncommon"]);
+  });
+  it("labels a 0.4% row '<1%' rather than 0%", () => {
+    const box = { pools: [{ id: "core", share: 1 }], weights: { common: 996, legendary: 4, uncommon: 0, rare: 0, veryRare: 0 } };
+    const { rows } = shopOdds(box, POOLS);
+    expect(rows.find(r => r.rarity === "legendary")).toMatchObject({ chance: 0.004, label: "<1%" });
+    expect(rows.find(r => r.rarity === "common").label).toBe(">99%");
+  });
+  it("gives rows [] and top null for an empty box", () => {
+    expect(shopOdds(byId("empty"), POOLS)).toEqual({ rows: [], top: null });
+    expect(shopOdds({ pools: [] }, POOLS)).toEqual({ rows: [], top: null });
+  });
+  it("leaves out a rarity held only by missing entries", () => {
+    const pools = { p: { id: "p", entries: [{ uuid: "a", rarity: "common" }, { uuid: "b", rarity: "legendary", missing: true }] } };
+    expect(shopOdds({ pools: [{ id: "p" }] }, pools)).toMatchObject({ rows: [{ rarity: "common", label: "100%" }], top: "common" });
+  });
+  it("labels sum to 100 rather than 101", () => {
+    const box = { pools: [{ id: "core", share: 1 }], weights: { uncommon: 50, rare: 30, common: 0, veryRare: 0, legendary: 0 } };
+    expect(shopOdds(box, POOLS).rows.map(r => r.label)).toEqual(["63%", "37%"]);
+    expect(wholePercents([1 / 3, 1 / 3, 1 / 3]).reduce((a, b) => a + b)).toBe(100);
+  });
+  it("chanceLabel rounds in between", () => {
+    expect(chanceLabel(0.124)).toBe("12%");
+    expect(chanceLabel(0.01)).toBe("1%");
+    expect(chanceLabel(1)).toBe("100%");
   });
 });
 
