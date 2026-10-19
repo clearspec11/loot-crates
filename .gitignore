@@ -4,7 +4,7 @@ screenshots/
 *.log
 .DS_Store
 .claude/plans/
-.impeccable/
-
-# Impeccable review captures (regenerated; screenshots/ holds the smoke set)
+# Impeccable: keep the product record, critique, surface briefs and design.json;
+# ignore regenerated review captures and live-mode state.
 .impeccable/review/
+.impeccable/live/
