@@ -471,15 +471,18 @@ export class CrateManager extends ApplicationV2 {
     });
     this.#wireRelinks(root);
     root.querySelectorAll(".lc-pool__details").forEach(d => d.addEventListener("toggle", () => this.#onToggle(d)));
+    // The typed text goes into the view at once, so a full render that lands
+    // before the debounce (a late source check) redraws it instead of
+    // dropping it; only the redraw of the rows waits.
     root.addEventListener("input", e => {
       const el = e.target.closest?.(".lc-pool__search");
       if (!el) return;
+      const pool = getPools()[el.dataset.pool];
+      if (pool) this.#viewOf(pool).q = el.value;
       clearTimeout(this.#searchTimer);
       this.#searchTimer = setTimeout(() => {
-        const pool = getPools()[el.dataset.pool];
-        if (!pool || !el.isConnected) return;
-        this.#viewOf(pool).q = el.value;
-        this.#refilter(pool.id);
+        const live = this.#poolEl(el.dataset.pool)?.querySelector(".lc-pool__search");
+        if (live && getPools()[el.dataset.pool]) this.#refilter(el.dataset.pool);
       }, SEARCH_DELAY_MS);
     });
     return root;
@@ -582,7 +585,34 @@ export class CrateManager extends ApplicationV2 {
 
   #searchTimer = null;
 
-  _replaceHTML(result, content) { content.replaceChildren(result); }
+  // A full render (a source check landing late, a rename, a refund) keeps
+  // focus on the same control when it is drawn again, and the caret in a
+  // search, instead of sending a keyboard or screen-reader user to the top.
+  _replaceHTML(result, content) {
+    const active = content.contains(document.activeElement) ? document.activeElement : null;
+    const key = active ? focusKey(active) : null;
+    const caret = active?.matches?.("input[type=search]") ? [active.selectionStart, active.selectionEnd] : null;
+    content.replaceChildren(result);
+    if (!key) return;
+    const again = content.querySelector(key.selector) ?? (key.pool && content.querySelector(`.lc-pool__details[data-pool="${CSS.escape(key.pool)}"] > summary`));
+    if (!again) return;
+    again.focus();
+    if (caret && again.setSelectionRange) try { again.setSelectionRange(...caret); } catch { /* not a text input */ }
+  }
+}
+
+// A selector that finds the same control in a fresh render: its tag, its
+// search class, and whichever of the data attributes that identify it are set.
+const FOCUS_ATTRS = ["action", "curate", "pool", "uuid", "chip", "tab", "box", "row"];
+function focusKey(el) {
+  if (el.matches("summary")) {
+    const pool = el.closest(".lc-pool__details")?.dataset.pool;
+    return pool ? { selector: `.lc-pool__details[data-pool="${CSS.escape(pool)}"] > summary`, pool } : null;
+  }
+  const attrs = FOCUS_ATTRS.filter(a => el.dataset[a] != null).map(a => `[data-${a}="${CSS.escape(el.dataset[a])}"]`);
+  const search = el.classList.contains("lc-pool__search") ? ".lc-pool__search" : "";
+  if (!attrs.length && !search) return null;
+  return { selector: `${el.tagName.toLowerCase()}${search}${attrs.join("")}`, pool: el.dataset.pool ?? el.closest(".lc-pool__details")?.dataset.pool ?? null };
 }
 
 // "Legendary, set by GM (source Uncommon)" under a log row whose rarity the GM
