@@ -26,6 +26,19 @@ export function registerSettings() {
   });
 }
 
+// Every GM-side write path (a pull from socket.js, a refund from refund.js)
+// runs through this one queue, one task at a time. Each of those is a
+// read-modify-write of the purse, the stock and the log across awaits, so two
+// of them in flight together would both read the same purse and one write
+// would be lost: a refund landing during a pull on the same actor handed the
+// item over for free. A task's failure doesn't block the next one.
+let tail = Promise.resolve();
+export function enqueueWrite(task) {
+  const run = tail.catch(() => {}).then(task);
+  tail = run;
+  return run;
+}
+
 const get = key => foundry.utils.deepClone(game.settings.get(MODULE_ID, key));
 const set = (key, value) => game.settings.set(MODULE_ID, key, value);
 

@@ -8,7 +8,7 @@
   it will ever delete is the one carrying this pull's own loot-crates flag.
 */
 import { refund } from "./currency.js";
-import { getLog, updateLog, getBoxes, saveBox } from "./store.js";
+import { getLog, updateLog, getBoxes, saveBox, enqueueWrite } from "./store.js";
 
 // The item this row granted, if the actor still has it. Matching on the
 // sourceUuid flag written at grant time means a reused id, or an item the
@@ -31,14 +31,11 @@ export function describeRefund(rowId) {
   return { status: "ready", row, actor, item: grantedItem(row, actor), box: getBoxes()[row.boxId] ?? null };
 }
 
-// Refunds run strictly one after another, like pulls in socket.js, so two
-// clicks on the same row (or two rows for one actor) never read the same
-// log, purse or stock.
-let queue = Promise.resolve();
+// Refunds run strictly one after another, in the same queue as pulls, so two
+// clicks on the same row, two rows for one actor, or a refund landing while
+// that actor's purchase is being charged never read the same purse or stock.
 export function refundPull(rowId) {
-  const run = queue.catch(() => {}).then(() => doRefund(rowId));
-  queue = run;
-  return run;
+  return enqueueWrite(() => doRefund(rowId));
 }
 
 async function doRefund(rowId) {

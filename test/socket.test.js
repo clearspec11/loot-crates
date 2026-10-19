@@ -7,13 +7,17 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // reveal.js reads foundry.applications.api at module top level and chat.js
 // needs ChatMessage, so both are mocked rather than stubbed.
-vi.mock("../module/scripts/reveal.js", () => ({ showReveal: vi.fn(async () => null) }));
+// showReveal resolves to the window, whose `landed` settles when the spin
+// ends; tests swap it for a window that never lands when that matters.
+vi.mock("../module/scripts/reveal.js", () => ({ showReveal: vi.fn(async () => ({ landed: Promise.resolve() })) }));
 vi.mock("../module/scripts/chat.js", () => ({ postPullCard: vi.fn(async () => null) }));
 
 const { registerSocket, requestPull, GM_TIMEOUT_MS } = await import("../module/scripts/socket.js");
-const { registerSettings } = await import("../module/scripts/store.js");
+const { registerSettings, appendLog } = await import("../module/scripts/store.js");
+const { refundPull } = await import("../module/scripts/refund.js");
 const { PullError } = await import("../module/scripts/pull.js");
 const { showReveal } = await import("../module/scripts/reveal.js");
+const { postPullCard } = await import("../module/scripts/chat.js");
 
 const tick = () => new Promise(r => setTimeout(r, 0));
 
@@ -84,6 +88,8 @@ async function seed(game, rules) {
 
 afterEach(() => {
   vi.useRealTimers();
+  showReveal.mockReset().mockImplementation(async () => ({ landed: Promise.resolve() }));
+  postPullCard.mockClear();
   delete globalThis.game;
   delete globalThis.foundry;
   delete globalThis.fromUuid;
@@ -180,6 +186,62 @@ describe("the GM client", () => {
     expect(actor.updates).toBe(1);
     expect(actor.system.currency.gp).toBe(490);
     expect(actor.items).toHaveLength(1);
+  });
+
+  it("refuses a player who doesn't own the character, without charging", async () => {
+    const actor = makeActor();
+    actor.testUserPermission = (user, level) => level === "OWNER" && user.id === "gm";
+    const { game, emitted, deliver } = makeWorld({ user: GM, actor });
+    await seed(game, {});
+    await deliver({ type: "pull", requestId: "r1", boxId: "box", actorId: "actor1", userId: "p1" });
+    expect(emitted).toEqual([{ type: "error", requestId: "r1", userId: "p1", message: "You don't own that character." }]);
+    expect(actor.updates).toBe(0);
+    expect(actor.items).toHaveLength(0);
+    expect(game.settings.get("loot-crates", "pullLog")).toHaveLength(0);
+  });
+
+  it("does not hold the next pull behind the previous reveal's spin", async () => {
+    // On Foundry v14 render() resolves only once the spin has landed, so a
+    // queue that awaited the reveal would stall every later buyer.
+    showReveal.mockImplementation(async () => ({ landed: new Promise(() => {}) }));
+    const { game, actor, emitted, deliver } = makeWorld({ user: GM });
+    await seed(game, { stock: 2 });
+    await deliver({ type: "pull", requestId: "r1", boxId: "box", actorId: "actor1", userId: "p1" });
+    await deliver({ type: "pull", requestId: "r2", boxId: "box", actorId: "actor1", userId: "p1" });
+    expect(emitted.filter(m => m.type === "reveal").map(m => m.requestId)).toEqual(["r1", "r2"]);
+    expect(actor.items).toHaveLength(2);
+    expect(actor.system.currency.gp).toBe(480);
+  });
+
+  it("posts the chat card only once the reveal has landed, so chat never spoils the spin", async () => {
+    let land;
+    showReveal.mockImplementation(async () => ({ landed: new Promise(r => { land = r; }) }));
+    const { game, deliver } = makeWorld({ user: GM });
+    await seed(game, {});
+    await deliver({ type: "pull", requestId: "r1", boxId: "box", actorId: "actor1", userId: "p1" });
+    await tick();
+    expect(postPullCard).not.toHaveBeenCalled();
+    land();
+    await tick();
+    expect(postPullCard).toHaveBeenCalledTimes(1);
+    expect(postPullCard.mock.calls[0][0]).toMatchObject({ type: "reveal", requestId: "r1" });
+  });
+
+  it("runs a refund and a pull on the same character one after the other, losing neither write", async () => {
+    const { game, actor, emitted, deliver } = makeWorld({ user: GM });
+    await seed(game, { stock: 5 });
+    await appendLog({ boxId: "box", boxName: "Test Crate", actorId: "actor1", itemId: null, name: "a", uuid: "a", rarity: "common", price: 10 });
+    const rowId = game.settings.get("loot-crates", "pullLog")[0].id;
+    const [, refund] = await Promise.all([
+      deliver({ type: "pull", requestId: "r1", boxId: "box", actorId: "actor1", userId: "p1" }),
+      refundPull(rowId),
+    ]);
+    expect(refund.status).toBe("refunded");
+    expect(emitted.filter(m => m.type === "reveal")).toHaveLength(1);
+    // 500 - 10 (the pull) + 10 (the refund): with separate queues the refund
+    // read the purse before the charge landed and the item went out free.
+    expect(actor.system.currency.gp).toBe(500);
+    expect(game.settings.get("loot-crates", "boxes").box.rules.stock).toBe(5);
   });
 
   it("queues its own buy behind a player's so the second one is refused", async () => {

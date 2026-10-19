@@ -49,6 +49,16 @@ describe("performPull", () => {
     expect(errors.some(e => e.startsWith("loot-crates |"))).toBe(true);
   });
 
+  it("charges nothing when the rolled entry's source is gone from its compendium", async () => {
+    globalThis.fromUuid = async () => null;
+    const actor = makeActor();
+    const promise = performPull({ box: BOX, pools: POOLS, actor, state: {}, rng: () => 0.5 });
+    await expect(promise).rejects.toBeInstanceOf(PullError);
+    await expect(promise).rejects.toThrow("is missing from its compendium");
+    expect(actor.writes).toHaveLength(0);
+    expect(actor.items).toHaveLength(0);
+  });
+
   it("charges and grants together when the grant succeeds", async () => {
     globalThis.fromUuid = async uuid => ({ name: `Item ${uuid}`, img: "", toObject: () => ({ name: `Item ${uuid}`, type: "loot", flags: {} }) });
     const actor = makeActor();

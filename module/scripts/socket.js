@@ -8,14 +8,18 @@
     { type: "reveal", requestId, ... }                     GM -> everyone
     { type: "error", requestId, userId, message }          GM -> the buyer
 
-  The GM client runs pulls one at a time (see `queue`): every store write is a
-  read-modify-write across awaits, so two requests arriving together would
-  both see the same stock, purse and log. The queue is per GM client; a second
-  GM is already excluded by `isActiveGM`.
+  The GM client runs pulls one at a time, through the same queue refunds use
+  (store.js enqueueWrite): every store write is a read-modify-write across
+  awaits, so two requests arriving together would both see the same stock,
+  purse and log. The queue is per GM client; a second GM is already excluded
+  by `isActiveGM`. Only the writes are queued: the reveal window is not, since
+  on Foundry v14 `render` resolves only once the spin has landed (6 to 7 s),
+  and a queue that waited on it would hold every later buyer behind each
+  spin until their 30 s timeout fired while the GM still charged them.
 */
 import { SOCKET } from "./config.js";
 import { performPull, PullError } from "./pull.js";
-import { getBoxes, getPools, getActorState, setActorState, appendLog, isShopOpen, saveBox } from "./store.js";
+import { getBoxes, getPools, getActorState, setActorState, appendLog, isShopOpen, saveBox, enqueueWrite } from "./store.js";
 import { showReveal } from "./reveal.js";
 import { postPullCard } from "./chat.js";
 
@@ -68,12 +72,19 @@ export function requestPull({ boxId, actorId }) {
 
 // The GM's side. Pulls run strictly one after another, whether they came over
 // the socket or from this client's own shop, so stock, purse, state and log
-// are read after the previous pull has finished writing.
-let queue = Promise.resolve();
+// are read after the previous pull (or refund) has finished writing.
 function handlePull(msg) {
-  const run = queue.catch(() => {}).then(() => doPull(msg));
-  queue = run;
-  return run;
+  return enqueueWrite(() => doPull(msg));
+}
+
+// The table's side of a pull: open the reveal here too, and post the chat
+// card once the spin has landed so the log never spoils the result. Not
+// awaited by the caller: the writes are done, the next pull can start.
+function showAndPost(reveal) {
+  showReveal(reveal)
+    .then(app => app?.landed)
+    .then(() => postPullCard(reveal))
+    .catch(err => console.error(`loot-crates | reveal failed`, err));
 }
 
 async function doPull(msg) {
@@ -97,8 +108,7 @@ async function doPull(msg) {
 
     const reveal = { type: "reveal", requestId: msg.requestId, userId: msg.userId, actorId: actor.id, actorName: actor.name, box: { id: box.id, name: box.name, price: box.price }, result: out.result, strip: out.strip, purse: out.purse };
     game.socket.emit(SOCKET, reveal);
-    await showReveal(reveal);
-    await postPullCard(reveal);
+    showAndPost(reveal);
     return reveal;
   } catch (err) {
     const message = err instanceof PullError ? err.message : "The crate jammed. Check the GM's console.";

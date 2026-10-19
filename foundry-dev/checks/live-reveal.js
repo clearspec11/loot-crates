@@ -43,7 +43,7 @@ const reveal = {
 let widthFirst = null;
 const firstFrame = new Promise(resolve => {
   const look = () => {
-    const v = document.querySelector("#loot-crates-reveal .lc-spin__viewport");
+    const v = document.querySelector(".lc-reveal .lc-spin__viewport");
     if (v) { widthFirst = v.clientWidth; resolve(); } else requestAnimationFrame(look);
   };
   requestAnimationFrame(look);
@@ -54,7 +54,7 @@ await firstFrame;
 await new Promise((resolve, reject) => {
   const giveUp = setTimeout(() => reject(new Error("no landed card after 12s")), 12000);
   const look = () => {
-    if (document.querySelector("#loot-crates-reveal .lc-card--landed")) { clearTimeout(giveUp); resolve(); } else requestAnimationFrame(look);
+    if (document.querySelector(".lc-reveal .lc-card--landed")) { clearTimeout(giveUp); resolve(); } else requestAnimationFrame(look);
   };
   requestAnimationFrame(look);
 });
