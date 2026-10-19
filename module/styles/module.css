@@ -160,6 +160,15 @@
 .lc-form .lc-row { display: flex; align-items: center; gap: 8px; }
 .lc-form .lc-row input[type=number] { width: 72px; }
 .lc-form fieldset { border: 1px solid var(--lc-line); border-radius: 6px; }
+/* The add preview: what a folder, compendium or table drop would put in. */
+.lc-preview { display: grid; gap: 8px; font-size: 12px; }
+.lc-preview p { margin: 0; }
+.lc-preview__lead { font-size: 13px; }
+.lc-preview__rarities { display: flex; flex-wrap: wrap; gap: 4px; }
+.lc-preview__skipped { margin: 0; padding-left: 16px; color: var(--lc-ink-mute); }
+.lc-preview__list { list-style: none; margin: 0; padding: 0 4px 0 0; display: grid; gap: 3px; max-height: 260px; overflow-y: auto; }
+.lc-preview__weight { font-size: 11px; color: var(--lc-ink-mute); }
+.lc-preview__more { color: var(--lc-ink-mute); }
 
 /* ---------- Chat card ---------- */
 .lc-chat { border-left: 3px solid var(--lc-rarity); padding: 6px 8px; border-radius: 4px; }

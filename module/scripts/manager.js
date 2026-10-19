@@ -4,8 +4,13 @@
   game.modules.get("loot-crates").api.openManager().
 
   Deliberately plain for v0.1: lists with Add, Edit (a form dialog), Delete,
-  a drop target on each pool for items dragged from anywhere, and a bulk
-  "Add from compendium" filter.
+  a drop target on each pool, and a bulk "Add from compendium" filter.
+
+  A pool takes a dropped item at once. A dropped Items folder, compendium or
+  roll table, and the bulk filter, first show a preview (store.js
+  entriesFromDrop): how many items, by rarity, what was skipped (already in
+  the pool, spells and other non-loot), the first names; nothing is written
+  until Add.
 
   Every render checks each entry against its source (store.js checkSources).
   An entry whose source is gone is struck through with "Source missing" and
@@ -14,7 +19,7 @@
   their pool, and the Boxes tab's odds leave the missing ones out.
 */
 import { RARITIES, RARITY_LABEL, DEFAULT_WEIGHTS, DEFAULT_PRICE_GP } from "./config.js";
-import { getPools, getBoxes, getLog, savePool, deletePool, saveBox, deleteBox, entryFromItem, entriesFromCompendium, isShopOpen, setShopOpen, enqueueWrite, checkSources, refreshMissing, removeEntry, patchEntry } from "./store.js";
+import { getPools, getBoxes, getLog, savePool, deletePool, saveBox, deleteBox, entryFromItem, entriesFromDrop, addEntries, packHasLoot, LOOT_TYPES, isShopOpen, setShopOpen, enqueueWrite, checkSources, refreshMissing, removeEntry, patchEntry } from "./store.js";
 import { oddsTable, normalizeRarity, flattenPool, sourceStatus, withSources } from "./odds.js";
 import { formatPrice } from "./currency.js";
 import { refreshShop } from "./shop.js";
@@ -88,23 +93,59 @@ export class CrateManager extends ApplicationV2 {
     this.render(); refreshShop();
   }
 
+  // Only packs and types that can hold loot are offered: a pool should never
+  // fill up with spells or class features.
   static async #bulkAdd(_e, t) {
     const pool = getPools()[t.dataset.pool];
-    const packs = game.packs.filter(p => p.documentName === "Item");
-    const types = Object.keys(CONFIG.Item.typeLabels ?? {}).filter(k => k !== "base");
+    const packs = game.packs.filter(packHasLoot);
+    if (!packs.length) return ui.notifications.warn("No compendium holds weapons, equipment, consumables, tools, loot or containers.");
+    const types = LOOT_TYPES.filter(k => k in (CONFIG.Item.typeLabels ?? {}));
     const data = await promptForm("Add from compendium", `
       <label>Compendium <select name="pack">${packs.map(p => `<option value="${esc(p.collection)}">${esc(p.metadata.label)} (${esc(p.collection)})</option>`).join("")}</select></label>
       <label>Types <select name="types" multiple size="5">${types.map(k => `<option value="${esc(k)}" ${["weapon", "equipment", "consumable", "tool"].includes(k) ? "selected" : ""}>${esc(game.i18n.localize(CONFIG.Item.typeLabels[k]))}</option>`).join("")}</select></label>
       <label>Rarities <select name="rarities" multiple size="6">${RARITIES.map(r => `<option value="${r}" ${r === "common" ? "" : "selected"}>${RARITY_LABEL[r]}</option>`).join("")}</select></label>
       <label>Name contains <input name="name" placeholder="wand"></label>`);
     if (!data) return;
-    const found = await entriesFromCompendium(data.pack, { types: data.types, rarities: data.rarities, name: data.name });
-    const known = new Set(pool.entries.map(e => e.uuid));
-    const fresh = found.filter(e => !known.has(e.uuid));
-    pool.entries.push(...fresh);
-    await savePool(pool);
-    ui.notifications.info(`Added ${fresh.length} item${fresh.length === 1 ? "" : "s"} to ${pool.name}.`);
-    this.render();
+    const filter = { types: data.types, rarities: data.rarities, name: data.name };
+    const plan = await entriesFromDrop({ type: "Compendium", collection: data.pack, filter }, { known: pool.entries.map(e => e.uuid) });
+    if (plan) await this.#previewAdd(pool.id, plan);
+  }
+
+  // The preview before a folder, compendium, table or filter goes in.
+  async #previewAdd(poolId, plan) {
+    const pool = getPools()[poolId];
+    const n = plan.entries.length;
+    const skipped = describeSkipped(plan.skipped);
+    if (!n) {
+      ui.notifications.info(`Nothing to add to ${pool.name} from ${plan.label}${skipped.length ? `: ${skipped.join("; ")}` : ""}.`);
+      return false;
+    }
+    const counts = {};
+    for (const e of plan.entries) counts[normalizeRarity(e.rarity)] = (counts[normalizeRarity(e.rarity)] ?? 0) + 1;
+    const shown = plan.entries.slice(0, PREVIEW_ROWS);
+    const items = `${n} item${n === 1 ? "" : "s"}`;
+    const action = await DialogV2.wait({
+      window: { title: `Add to ${pool.name}` },
+      classes: ["loot-crates", "lc-dialog"],
+      position: { width: 460 },
+      content: `<div class="lc-preview">
+        <p class="lc-preview__lead">Add <strong>${items}</strong> from <strong>${esc(plan.label)}</strong> to <strong>${esc(pool.name)}</strong>.</p>
+        <p class="lc-preview__rarities" aria-label="By rarity">${RARITIES.filter(r => counts[r]).map(r => `<span class="lc-odd lc-rarity-${r}">${counts[r]} ${RARITY_LABEL[r].toLowerCase()}</span>`).join("")}</p>
+        ${skipped.length ? `<ul class="lc-preview__skipped">${skipped.map(line => `<li>${esc(line)}</li>`).join("")}</ul>` : ""}
+        <ul class="lc-preview__list">${shown.map(e => `<li class="lc-entry lc-rarity-${normalizeRarity(e.rarity)}"><img src="${esc(e.img || FALLBACK_IMG)}" alt=""><span class="lc-entry__name">${esc(e.name)}</span>${e.weight > 1 ? `<small class="lc-preview__weight">weight ${esc(e.weight)}</small>` : ""}<em>${RARITY_LABEL[normalizeRarity(e.rarity)]}</em></li>`).join("")}</ul>
+        ${n > shown.length ? `<p class="lc-preview__more">and ${n - shown.length} more</p>` : ""}
+      </div>`,
+      buttons: [
+        { action: "add", label: `Add ${items}`, icon: "fas fa-plus", default: true },
+        { action: "cancel", label: "Cancel" },
+      ],
+      rejectClose: false,
+    });
+    if (action !== "add") return false;
+    const added = await addEntries(poolId, plan.entries);
+    ui.notifications.info(`Added ${added} item${added === 1 ? "" : "s"} from ${plan.label} to ${pool.name}.`);
+    this.render(); refreshShop();
+    return true;
   }
 
   static async #addBox() { await saveBox({ name: "New box", price: DEFAULT_PRICE_GP, weights: { ...DEFAULT_WEIGHTS } }); this.render(); refreshShop(); }
@@ -192,7 +233,7 @@ export class CrateManager extends ApplicationV2 {
     root.querySelectorAll("[data-drop-pool]").forEach(el => {
       el.addEventListener("dragover", e => { e.preventDefault(); el.classList.add("lc-drop--over"); });
       el.addEventListener("dragleave", () => el.classList.remove("lc-drop--over"));
-      el.addEventListener("drop", e => this.#onDrop(e, el.dataset.dropPool));
+      el.addEventListener("drop", e => { el.classList.remove("lc-drop--over"); this.#onDrop(e, el.dataset.dropPool); });
     });
     root.querySelectorAll("[data-relink]").forEach(el => {
       el.addEventListener("dragover", e => { e.preventDefault(); e.stopPropagation(); el.classList.add("lc-drop--over"); });
@@ -202,21 +243,23 @@ export class CrateManager extends ApplicationV2 {
     return root;
   }
 
+  // One item goes straight in; a folder, compendium or roll table is
+  // previewed first.
   async #onDrop(event, poolId) {
     event.preventDefault();
     let data;
     try { data = dragData(event); } catch { return; }
-    if (data?.type !== "Item" || !data.uuid) return ui.notifications.warn("Drop an item.");
-    const item = await fromUuid(data.uuid);
-    if (!item) return;
-    const added = await enqueueWrite(async () => {
-      const pool = getPools()[poolId];
-      if (pool.entries.some(e => e.uuid === item.uuid)) { ui.notifications.info(`${item.name} is already in ${pool.name}.`); return false; }
-      pool.entries.push(entryFromItem(item));
-      await savePool(pool);
-      return true;
-    });
-    if (added) { this.render(); refreshShop(); }
+    const pool = getPools()[poolId];
+    if (!pool) return;
+    const plan = await entriesFromDrop(data, { known: pool.entries.map(e => e.uuid) });
+    if (!plan) return ui.notifications.warn("Drop an item, an Items folder, an item compendium or a roll table.");
+    if (data.type !== "Item") return this.#previewAdd(poolId, plan);
+    if (!plan.entries.length) {
+      if (plan.skipped.duplicates) return ui.notifications.info(`${plan.label} is already in ${pool.name}.`);
+      const type = Object.keys(plan.skipped.notLoot)[0];
+      return ui.notifications.warn(`${plan.label} is a ${SKIPPED_NAMES[type]?.[0] ?? type}, not loot. A pool takes weapons, equipment, consumables, tools, loot and containers.`);
+    }
+    if (await addEntries(poolId, plan.entries)) { this.render(); refreshShop(); }
   }
 
   // An item dropped on a missing row replaces its source; the weight stays.
@@ -263,7 +306,7 @@ export class CrateManager extends ApplicationV2 {
             <button type="button" data-action="editPool" data-pool="${esc(p.id)}" aria-label="Rename ${esc(p.name)}"><i class="fas fa-pen"></i></button>
             <button type="button" data-action="deletePool" data-pool="${esc(p.id)}" aria-label="Delete ${esc(p.name)}"><i class="fas fa-trash"></i></button>
           </header>
-          <p class="lc-pool__hint">Drag items here from a compendium or the Items sidebar.${missing ? " Drop an item on a missing row to relink it." : ""}</p>
+          <p class="lc-pool__hint">Drop items, an Items folder, a compendium or a roll table here.${missing ? " Drop an item on a missing row to relink it." : ""}</p>
           <ul class="lc-entries">${rows.map(r => entryRow(p.id, r)).join("")}</ul>
         </article>`;
       }).join("") : `<p class="lc-empty">No pools. A pool is the set of items a box can give out.</p>`}`;
@@ -302,6 +345,18 @@ export class CrateManager extends ApplicationV2 {
 }
 
 const FALLBACK_IMG = "icons/svg/item-bag.svg";
+const PREVIEW_ROWS = 50;
+
+const SKIPPED_NAMES = { spell: ["spell", "spells"], feat: ["feature", "features"], class: ["class", "classes"], subclass: ["subclass", "subclasses"], background: ["background", "backgrounds"], race: ["species", "species"], facility: ["facility", "facilities"] };
+// "14 already in this pool, skipped", "3 spells and 2 features skipped (not loot)".
+function describeSkipped({ duplicates = 0, notLoot = {}, notItems = 0 } = {}) {
+  const lines = [];
+  if (duplicates) lines.push(`${duplicates} already in this pool, skipped`);
+  const kinds = Object.entries(notLoot).map(([type, n]) => `${n} ${(SKIPPED_NAMES[type] ?? [type, `${type}s`])[n === 1 ? 0 : 1]}`);
+  if (kinds.length) lines.push(`${kinds.join(", ")} skipped, not loot`);
+  if (notItems) lines.push(`${notItems} table result${notItems === 1 ? "" : "s"} that ${notItems === 1 ? "isn't an item" : "aren't items"}, skipped`);
+  return lines;
+}
 
 // One pool entry. `status` is "ok", "renamed" (the source's name or rarity
 // changed since it was added) or "missing" (the source is gone).

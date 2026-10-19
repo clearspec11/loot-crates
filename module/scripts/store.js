@@ -118,13 +118,31 @@ export function entryFromItem(item, uuid = item.uuid) {
 }
 
 /*
+  Item types that can sit in an inventory as loot (dnd5e's physical types).
+  Spells, features, classes, subclasses, backgrounds, species and facilities
+  are documents a GM can drag but never something a crate should hand out.
+*/
+export const LOOT_TYPES = ["weapon", "equipment", "consumable", "tool", "loot", "container"];
+const LOOT = new Set(LOOT_TYPES);
+export const isLootType = type => LOOT.has(type);
+
+const INDEX_FIELDS = ["system.rarity", "img", "folder"];
+const compendiumUuid = (packId, row) => row.uuid ?? `Compendium.${packId}.Item.${row._id}`;
+const entryFromRow = (packId, row) => ({ uuid: compendiumUuid(packId, row), name: row.name, img: row.img, rarity: normalizeRarity(row.system?.rarity), weight: 1 });
+
+/*
   Bulk source: every item in a compendium that passes the filter.
   filter: { types: ["weapon", "equipment"], rarities: ["uncommon"], name: "wand" }
 */
 export async function entriesFromCompendium(packId, filter = {}) {
+  return (await compendiumEntries(packId, filter)).map(({ type: _type, ...e }) => e);
+}
+
+// The same, each entry carrying its item type so a drop can count what it skips.
+async function compendiumEntries(packId, filter = {}) {
   const pack = game.packs.get(packId);
   if (!pack || pack.documentName !== "Item") return [];
-  const index = await pack.getIndex({ fields: ["system.rarity", "system.type.value", "img"] });
+  const index = await pack.getIndex({ fields: INDEX_FIELDS });
   const types = new Set(filter.types ?? []);
   const rarities = new Set((filter.rarities ?? []).map(normalizeRarity));
   const needle = (filter.name ?? "").trim().toLowerCase();
@@ -134,9 +152,128 @@ export async function entriesFromCompendium(packId, filter = {}) {
     const rarity = normalizeRarity(row.system?.rarity);
     if (rarities.size && !rarities.has(rarity)) continue;
     if (needle && !row.name.toLowerCase().includes(needle)) continue;
-    out.push({ uuid: row.uuid ?? `Compendium.${packId}.Item.${row._id}`, name: row.name, img: row.img, rarity, weight: 1 });
+    out.push({ ...entryFromRow(packId, row), type: row.type });
   }
   return out;
+}
+
+// Whether a compendium is a pack of loot: at least half its items are
+// physical. Reads the index Foundry loads at startup, so the compendium picker
+// can leave out packs of spells and class features. "Any physical item" isn't
+// enough: dnd5e's spell and feature packs each carry a stray weapon (a
+// conjured blade, an unarmed strike) and monster features are mostly bites.
+export function packHasLoot(pack) {
+  if (pack?.documentName !== "Item") return false;
+  let loot = 0, all = 0;
+  for (const row of pack.index ?? []) { all++; if (isLootType(row.type)) loot++; }
+  return loot > 0 && loot * 2 >= all;
+}
+
+/*
+  What a drop on a pool would add, before anything is written:
+    { label, entries, skipped: { duplicates, notLoot: { spell: 3, ... }, notItems } }
+  `data` is Foundry's drag data:
+    Item        { type: "Item", uuid }                    one item
+    Folder      { type: "Folder", uuid }                  an Items folder (world or
+                inside a compendium) with all its subfolders, or a sidebar folder
+                of compendiums (every Item pack in it)
+    Compendium  { type: "Compendium", collection }         a whole pack (the bulk
+                filter passes `filter` too, as for entriesFromCompendium)
+    RollTable   { type: "RollTable", uuid }               the table's Item results,
+                each result's weight as the entry's weight; text results and
+                results pointing at other documents are counted in notItems
+  Anything that isn't a physical item type is left out and counted by type;
+  so are entries whose uuid is in `known` (already in the pool) or repeats
+  within the drop (a table's repeats add their weights together).
+  Returns null for drag data this can't use.
+*/
+export async function entriesFromDrop(data, { known = [] } = {}) {
+  const found = await collectDrop(data);
+  if (!found) return null;
+  const have = new Set(known);
+  const skipped = { duplicates: 0, notLoot: {}, notItems: found.notItems ?? 0 };
+  const byUuid = new Map();
+  for (const { type, ...entry } of found.entries) {
+    if (type && !isLootType(type)) { skipped.notLoot[type] = (skipped.notLoot[type] ?? 0) + 1; continue; }
+    if (have.has(entry.uuid)) { skipped.duplicates++; continue; }
+    const seen = byUuid.get(entry.uuid);
+    if (seen) { if (found.sumWeights) seen.weight += entry.weight; continue; }
+    byUuid.set(entry.uuid, entry);
+  }
+  return { label: found.label, kind: data.type, entries: [...byUuid.values()], skipped };
+}
+
+async function collectDrop(data) {
+  switch (data?.type) {
+    case "Item": {
+      const item = data.uuid ? await resolveEntry(data) : null;
+      if (!item) return null;
+      return { label: item.name, entries: [{ ...entryFromItem(item), type: item.type }] };
+    }
+    case "Compendium": {
+      const pack = game.packs.get(data.collection ?? data.id);
+      if (pack?.documentName !== "Item") return null;
+      return { label: pack.metadata?.label ?? pack.collection, entries: await compendiumEntries(pack.collection, data.filter) };
+    }
+    case "Folder": {
+      const folder = data.uuid ? await resolveEntry(data) : null;
+      if (!folder) return null;
+      if (folder.type === "Compendium") {
+        const ids = new Set([folder.id, ...folder.getSubfolders(true).map(f => f.id)]);
+        const packs = game.packs.filter(p => p.documentName === "Item" && ids.has(p.folder?.id ?? p.folder));
+        const entries = [];
+        for (const p of packs) entries.push(...await compendiumEntries(p.collection));
+        return { label: folder.name, entries };
+      }
+      if (folder.type !== "Item") return null;
+      const folders = [folder, ...folder.getSubfolders(true)];
+      if (folder.pack) {
+        const ids = new Set(folders.map(f => f.id));
+        const index = await game.packs.get(folder.pack)?.getIndex({ fields: INDEX_FIELDS });
+        const rows = [...(index ?? [])].filter(r => ids.has(r.folder?.id ?? r.folder));
+        return { label: folder.name, entries: rows.map(r => ({ ...entryFromRow(folder.pack, r), type: r.type })) };
+      }
+      return { label: folder.name, entries: folders.flatMap(f => f.contents ?? []).map(item => ({ ...entryFromItem(item), type: item.type })) };
+    }
+    case "RollTable": {
+      const table = data.uuid ? await resolveEntry(data) : null;
+      if (!table) return null;
+      const entries = [];
+      let notItems = 0;
+      for (const r of table.results ?? []) {
+        const uuid = r.documentUuid ?? (r.documentCollection && r.documentId ? tableResultUuid(r) : null);
+        const item = uuid && r.type !== "text" ? await resolveEntry({ uuid }) : null;
+        if (item?.documentName !== "Item") { notItems++; continue; }
+        entries.push({ ...entryFromItem(item), weight: Math.max(1, Number(r.weight) || 1), type: item.type });
+      }
+      return { label: table.name, entries, notItems, sumWeights: true };
+    }
+    default: return null;
+  }
+}
+
+// v12-style results name their document by collection and id.
+function tableResultUuid(r) {
+  const c = r.documentCollection;
+  return c.includes(".") ? `Compendium.${c}.Item.${r.documentId}` : `${c}.${r.documentId}`;
+}
+
+/*
+  Adds entries to a pool through the shared write queue, reading the pool
+  fresh so an entry added meanwhile isn't added twice. Returns how many went in.
+*/
+export function addEntries(poolId, entries) {
+  return enqueueWrite(async () => {
+    const pools = getPools();
+    const pool = pools[poolId];
+    if (!pool) return 0;
+    const have = new Set((pool.entries ?? []).map(e => e.uuid));
+    const fresh = entries.filter(e => !have.has(e.uuid)).map(({ type: _type, ...e }) => e);
+    if (!fresh.length) return 0;
+    pool.entries = [...(pool.entries ?? []), ...fresh];
+    await set(SETTINGS.POOLS, pools);
+    return fresh.length;
+  });
 }
 
 export async function resolveEntry(entry) {
