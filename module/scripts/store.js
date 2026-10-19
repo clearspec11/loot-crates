@@ -11,7 +11,7 @@
   each entry as missing or renamed, with Remove, Update and Relink.
 */
 import { MODULE_ID, SETTINGS } from "./config.js";
-import { normalizeRarity, flattenPool, markEntriesMissing } from "./odds.js";
+import { normalizeRarity, flattenPool, markEntriesMissing, rawRarityOf, sourceRarityOf, curateEntries } from "./odds.js";
 
 const uid = () => (globalThis.foundry?.utils?.randomID?.(10)) ?? Math.random().toString(36).slice(2, 12);
 
@@ -27,6 +27,28 @@ export function registerSettings() {
     hint: "Play the tick, slow-down and reveal sounds when a crate opens.",
     scope: "client", config: true, type: Boolean, default: true,
   });
+}
+
+/*
+  The rarity fields every compendium index read here asks for, also added to
+  the fields Foundry indexes for every Item pack (dnd5e does the same with
+  its own at init). Foundry v14's getIndex reuses a pack's index only when
+  the fields asked for are a subset of the last fetch's, and replaces that
+  set rather than merging it, so two callers asking for different lists (the
+  pool editor, the pre-pull sweep, dnd5e's compendium browser) each throw
+  the other's index away and refetch the whole pack, seconds each time.
+  With both fields registered, the index Foundry builds at load already has
+  them and every read here is a cache hit. system.rarities is dnd5e 6's;
+  system.rarity is what packs built before its migration (dnd5e.items among
+  them) and dnd5e 5 still store.
+*/
+export const RARITY_FIELDS = ["system.rarities", "system.rarity"];
+export const INDEX_FIELDS = [...RARITY_FIELDS, "img", "folder"];
+
+export function registerIndexFields() {
+  const fields = globalThis.CONFIG?.Item?.compendiumIndexFields;
+  if (!Array.isArray(fields)) return;
+  for (const f of RARITY_FIELDS) if (!fields.includes(f)) fields.push(f);
 }
 
 // Every GM-side write path (a pull from socket.js, a refund from refund.js)
@@ -144,7 +166,7 @@ export async function updateLog(id, patch) {
 // source's rarity is kept as it was ("" when unset) so the pool editor can
 // tell "no rarity set" from a real Common; `rarity` is its dnd5e key.
 export function entryFromItem(item, uuid = item.uuid) {
-  const sourceRarity = String(item.system?.rarity ?? "");
+  const sourceRarity = rawRarityOf(item.system) ?? "";
   return {
     uuid,
     name: item.name,
@@ -164,25 +186,43 @@ export const LOOT_TYPES = ["weapon", "equipment", "consumable", "tool", "loot", 
 const LOOT = new Set(LOOT_TYPES);
 export const isLootType = type => LOOT.has(type);
 
-const INDEX_FIELDS = ["system.rarity", "img", "folder"];
 const compendiumUuid = (packId, row) => row.uuid ?? `Compendium.${packId}.Item.${row._id}`;
 const entryFromRow = (packId, row) => entryFromItem(row, compendiumUuid(packId, row));
 
 /*
-  A pack's index rows, each physical item's row sure to carry system.rarity.
-  Foundry only keeps the fields in pack.indexFields when it re-indexes a
-  document it has loaded (a pull, the spin, an opened sheet), and dnd5e's
-  list has no rarity, so such a row drops `system.rarity` and asking
-  getIndex for the field again returns the same cached row. Read as is, that
-  item would go into a pool as common and a rarity filter would skip it.
-  The rows that lost it are read from their documents (cached once loaded).
+  A pack's index with INDEX_FIELDS, fetched at most once at a time. When
+  Foundry has already indexed every field it is configured for and those
+  include ours (registerIndexFields ran at init), pack.index is used as it
+  is; otherwise one getIndex with the one field list, shared by every caller
+  that asks while it is in flight.
+*/
+const fetching = new WeakMap();
+function loadIndex(pack) {
+  const have = pack.indexFields;
+  if (pack.indexed && have?.has && INDEX_FIELDS.every(f => have.has(f))) return Promise.resolve(pack.index);
+  let run = fetching.get(pack);
+  if (!run) {
+    run = pack.getIndex({ fields: INDEX_FIELDS }).finally(() => fetching.delete(pack));
+    fetching.set(pack, run);
+  }
+  return run;
+}
+
+/*
+  A pack's index rows, each physical item's row sure to carry its rarity.
+  Foundry re-indexes a document it has loaded (a pull, the spin, an opened
+  sheet) with only the fields of the last index fetch, so a row indexed
+  without our fields (a fetch before registerIndexFields ran) has neither
+  rarity field. Read as is, that item would go into a pool as common and a
+  rarity filter would skip it. Only those rows are read from their documents
+  (cached once loaded); a row whose rarity is "" or an empty set is known.
 */
 async function indexWithRarity(pack) {
-  const index = await pack.getIndex({ fields: INDEX_FIELDS });
-  const lost = [...index].filter(r => isLootType(r.type) && r.system?.rarity === undefined);
+  const index = await loadIndex(pack);
+  const lost = [...index].filter(r => isLootType(r.type) && rawRarityOf(r.system) === null);
   if (!lost.length) return index;
   const docs = await pack.getDocuments({ _id__in: lost.map(r => r._id) });
-  const rarity = new Map(docs.map(d => [d.id, d.system?.rarity]));
+  const rarity = new Map(docs.map(d => [d.id, rawRarityOf(d.system) ?? ""]));
   const fixed = new Map(lost.map(r => [r._id, { ...r, system: { ...r.system, rarity: rarity.get(r._id) } }]));
   return [...index].map(r => fixed.get(r._id) ?? r);
 }
@@ -206,7 +246,7 @@ async function compendiumEntries(packId, filter = {}) {
   const out = [];
   for (const row of index) {
     if (types.size && !types.has(row.type)) continue;
-    const rarity = normalizeRarity(row.system?.rarity);
+    const rarity = normalizeRarity(rawRarityOf(row.system));
     if (rarities.size && !rarities.has(rarity)) continue;
     if (needle && !row.name.toLowerCase().includes(needle)) continue;
     out.push({ ...entryFromRow(packId, row), type: row.type });
@@ -344,25 +384,23 @@ export async function resolveEntry(entry) {
   value, "" when it has none) or null when the source is gone; a
   uuid that couldn't be checked (its pack's index failed) has no answer.
   Cheap enough to run before every pull and on every render of the pool
-  editor: a compendium reference is read
-  from the pack's index (Foundry caches it after the first load), a world item
-  from game.items; only other kinds of reference fall back to fromUuid.
-  `rarity: true` asks the pack index for rarities too (the pool editor wants
-  them to spot a changed rarity; the pre-pull sweep only needs liveness, and
-  the extra field costs a fetch of the whole index the first time).
+  editor: a compendium reference is read from the pack's index with the one
+  field list every reader here shares (loadIndex), so the sweep and the
+  editor never evict each other's index; a world item from game.items; only
+  other kinds of reference fall back to fromUuid. Rarity is read through
+  rawRarityOf, so a dnd5e 6 rarities set and a legacy string both count.
 */
 const UNCHECKED = Symbol("unchecked");
-export async function checkSources(entries, { rarity: withRarity = false } = {}) {
+export async function checkSources(entries) {
   const out = new Map();
   const indexes = new Map();
   const packIndex = packId => {
     if (!indexes.has(packId)) {
       const pack = globalThis.game?.packs?.get(packId);
-      const opts = withRarity ? { fields: ["system.rarity"] } : undefined;
       // No such pack (its module is off): its entries are gone. A pack whose
       // index failed to load: no answer, so a dropped connection can't flag
       // every entry in it missing and warn the GM about all of them.
-      indexes.set(packId, pack ? pack.getIndex(opts).catch(err => {
+      indexes.set(packId, pack ? loadIndex(pack).catch(err => {
         console.warn(`loot-crates | could not read the index of ${packId}; its pool entries were not checked`, err);
         return UNCHECKED;
       }) : Promise.resolve(null));
@@ -381,11 +419,10 @@ export async function checkSources(entries, { rarity: withRarity = false } = {})
     } else {
       doc = await resolveEntry({ uuid });
     }
-    // A pack's index row loses `system` once its document has been loaded
-    // (Foundry swaps in a slimmer row), so a rarity it doesn't carry is
-    // unknown, not common.
-    const rarity = doc?.system?.rarity;
-    out.set(uuid, doc ? { name: doc.name, img: doc.img, rarity: rarity == null ? null : normalizeRarity(rarity), rawRarity: rarity == null ? null : String(rarity) } : null);
+    // A row indexed without the rarity fields (see indexWithRarity) carries
+    // neither, so its rarity is unknown, not common.
+    const raw = doc ? rawRarityOf(doc.system) : null;
+    out.set(uuid, doc ? { name: doc.name, img: doc.img, rarity: raw == null ? null : normalizeRarity(raw), rawRarity: raw } : null);
   }
   return out;
 }
@@ -410,8 +447,13 @@ export async function markMissing(poolId, uuids, flag = true) {
 /*
   Checks every entry the given pools can produce (missing ones included, so a
   source that came back is noticed), flags the dead ones and clears the flag
-  on revived ones. Returns the entries newly found missing, each with its
-  pool's name, for reportMissing.
+  on revived ones. An entry added before sourceRarity was stored learns its
+  source's raw rarity in the same write, when the source still has the
+  rarity the entry was added at (else the editor shows the change), so an
+  older entry whose source has none reads "No rarity set" after a sweep. A
+  stored sourceRarity is never touched. Returns the entries newly found
+  missing, each with its pool's name, for reportMissing. GM only, through
+  enqueueWrite.
 */
 export async function refreshMissing(poolIds) {
   const pools = getPools();
@@ -420,24 +462,44 @@ export async function refreshMissing(poolIds) {
   for (const id of new Set(poolIds)) entries.push(...flattenPool(id, pools, seen, { includeMissing: true }));
   if (!entries.length) return [];
   const sources = await checkSources(entries);
+  // flattenPool replaces `rarity` with the effective one; learning compares
+  // the entry as stored.
+  const stored = new Map();
+  for (const id of seen) for (const e of pools[id]?.entries ?? []) stored.set(`${id}\n${e.uuid}`, e);
   const found = [];
   const changes = new Map();
+  const changeOf = poolId => {
+    if (!changes.has(poolId)) changes.set(poolId, { dead: [], revived: [], learn: new Map() });
+    return changes.get(poolId);
+  };
   for (const e of entries) {
     if (!sources.has(e.uuid)) continue; // not checked: keep its flag
-    const isDead = !sources.get(e.uuid);
-    if (isDead === !!e.missing) continue;
-    const c = changes.get(e.poolId) ?? { dead: [], revived: [] };
-    (isDead ? c.dead : c.revived).push(e.uuid);
-    changes.set(e.poolId, c);
-    if (isDead) found.push({ poolId: e.poolId, poolName: pools[e.poolId]?.name ?? e.poolId, uuid: e.uuid, name: e.name });
-  }
-  for (const [poolId, c] of changes) {
-    if (c.dead.length) await markMissing(poolId, c.dead, true);
-    if (c.revived.length) {
-      await markMissing(poolId, c.revived, false);
-      console.info(`loot-crates | ${c.revived.length} entr${c.revived.length === 1 ? "y" : "ies"} in pool ${pools[poolId]?.name ?? poolId} have their source back`);
+    const src = sources.get(e.uuid);
+    const isDead = !src;
+    if (isDead !== !!e.missing) {
+      const c = changeOf(e.poolId);
+      (isDead ? c.dead : c.revived).push(e.uuid);
+      if (isDead) found.push({ poolId: e.poolId, poolName: pools[e.poolId]?.name ?? e.poolId, uuid: e.uuid, name: e.name });
+    }
+    const own = stored.get(`${e.poolId}\n${e.uuid}`);
+    if (src && own && own.sourceRarity == null && src.rawRarity != null && normalizeRarity(src.rawRarity) === sourceRarityOf(own)) {
+      const learn = changeOf(e.poolId).learn;
+      learn.set(src.rawRarity, [...(learn.get(src.rawRarity) ?? []), e.uuid]);
     }
   }
+  if (!changes.size) return found;
+  let next = getPools();
+  for (const [poolId, c] of changes) {
+    if (c.dead.length) next = markEntriesMissing(next, poolId, c.dead, true);
+    if (c.revived.length) {
+      next = markEntriesMissing(next, poolId, c.revived, false);
+      console.info(`loot-crates | ${c.revived.length} entr${c.revived.length === 1 ? "y" : "ies"} in pool ${pools[poolId]?.name ?? poolId} have their source back`);
+    }
+    for (const [raw, uuids] of c.learn) {
+      if (next[poolId]) next = { ...next, [poolId]: { ...next[poolId], entries: curateEntries(next[poolId].entries, uuids, { sourceRarity: raw }) } };
+    }
+  }
+  await set(SETTINGS.POOLS, next);
   return found;
 }
 

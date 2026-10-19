@@ -63,7 +63,7 @@ export class CrateManager extends ApplicationV2 {
   #sources = null;
   checking = false;
   async #checkedSources(entries) {
-    const run = checkSources(entries, { rarity: true });
+    const run = checkSources(entries);
     const got = await Promise.race([run, new Promise(r => setTimeout(() => r(null), 400))]);
     if (got) { this.checking = false; return (this.#sources = got); }
     this.checking = true;
@@ -96,7 +96,7 @@ export class CrateManager extends ApplicationV2 {
 
   // Renamed at the source: take its current name, image and rarity.
   static async #updateEntry(_e, t) {
-    const src = (await checkSources([{ uuid: t.dataset.uuid }], { rarity: true })).get(t.dataset.uuid);
+    const src = (await checkSources([{ uuid: t.dataset.uuid }])).get(t.dataset.uuid);
     if (src === undefined) return ui.notifications.warn("Couldn't read that item's compendium just now; try again.");
     if (!src) { ui.notifications.warn("That item's source is gone; drop an item on the row to relink it."); return this.render(); }
     await patchEntry(t.dataset.pool, t.dataset.uuid, { name: src.name, img: src.img, rarity: src.rarity, sourceRarity: src.rawRarity ?? undefined });

@@ -20,6 +20,7 @@ const { registerSocket } = await import(MODULE_BASE + "scripts/socket.js");
 const { oddsTable, shopOdds, sourceStatus, draw, seededRng } = await import(MODULE_BASE + "scripts/odds.js");
 
 try { store.registerSettings(); } catch (e) { if (!/already registered/i.test(String(e))) throw e; }
+store.registerIndexFields();
 try { registerSocket(); } catch { /* registered on an earlier run of the same page */ }
 if (!document.querySelector("link[data-loot-crates]")) {
   const link = Object.assign(document.createElement("link"), { rel: "stylesheet", href: MODULE_BASE + "styles/module.css" });

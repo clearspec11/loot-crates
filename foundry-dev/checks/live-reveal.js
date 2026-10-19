@@ -23,6 +23,7 @@ const { draw, seededRng } = await import(MODULE_BASE + "scripts/odds.js");
 const { buildStrip } = await import(MODULE_BASE + "scripts/strip.js");
 const { showReveal } = await import(MODULE_BASE + "scripts/reveal.js");
 try { store.registerSettings(); } catch (e) { if (!/already registered/i.test(String(e))) throw e; }
+store.registerIndexFields();
 
 const packId = game.packs.find(p => p.collection === "dnd5e.items" || (p.documentName === "Item" && /items/i.test(p.collection)))?.collection;
 const entries = await store.entriesFromCompendium(packId, { types: ["weapon", "equipment", "consumable"] });

@@ -20,6 +20,7 @@ const { registerSocket } = await import(MODULE_BASE + "scripts/socket.js");
 const { openShop } = await import(MODULE_BASE + "scripts/shop.js");
 const { shopOdds } = await import(MODULE_BASE + "scripts/odds.js");
 try { store.registerSettings(); } catch (e) { if (!/already registered/i.test(String(e))) throw e; }
+store.registerIndexFields();
 try { registerSocket(); } catch { /* registered on an earlier run of the same page */ }
 
 const folder = game.folders.find(f => f.type === "Actor" && f.name === "Loot Crates Test");

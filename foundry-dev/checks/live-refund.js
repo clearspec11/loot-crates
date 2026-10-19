@@ -16,6 +16,7 @@ const { toCopper, isWholeCoins } = await import(MODULE_BASE + "scripts/currency.
 const { seededRng } = await import(MODULE_BASE + "scripts/odds.js");
 
 try { store.registerSettings(); } catch (e) { if (!/already registered/i.test(String(e))) throw e; }
+store.registerIndexFields();
 
 const FOLDER = "Loot Crates Test";
 let folder = game.folders.find(f => f.type === "Actor" && f.name === FOLDER);
