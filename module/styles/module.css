@@ -145,14 +145,23 @@
 .lc-toolbar { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
 .lc-pool { border: 1px dashed var(--lc-line); border-radius: var(--lc-radius); padding: 8px; margin-bottom: 10px; }
 .lc-pool.lc-drop--over { border-color: var(--lc-accent); background: color-mix(in srgb, var(--lc-accent) 8%, transparent); }
-.lc-pool header { display: flex; align-items: center; gap: 8px; }
+.lc-pool header { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.lc-pool__unset:empty { display: none; }
 .lc-pool__count, .lc-pool__hint { font-size: 12px; color: var(--lc-ink-mute); }
-.lc-entries { list-style: none; margin: 6px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 4px; }
+.lc-entries { list-style: none; margin: 6px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 330px), 1fr)); gap: 4px; }
 .lc-entry { display: flex; align-items: center; gap: 6px; padding: 3px 6px; border-radius: 6px; background: var(--lc-bg-2); border-left: 3px solid var(--lc-rarity); font-size: 12px; }
 .lc-entry img { width: 22px; height: 22px; border: 0; }
 .lc-entry__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lc-entry em { color: var(--lc-rarity); font-style: normal; font-size: 11px; }
 .lc-entry button { width: 22px; height: 22px; line-height: 1; padding: 0; flex: none; }
+/* In-place curation: the rarity the entry is drawn at, and its weight. */
+.lc-entry select.lc-entry__rarity { flex: none; width: 11.5em; height: 24px; padding: 0 2px 0 4px; font-size: 11px; color: var(--lc-rarity); background: var(--lc-bg-3); border: 1px solid var(--lc-line); border-radius: 4px; }
+.lc-entry select.lc-entry__rarity option { color: var(--lc-ink); background: var(--lc-bg-2); }
+.lc-entry input.lc-entry__weight { flex: none; width: 3.6em; height: 24px; padding: 0 4px; font-size: 11px; text-align: right; color: var(--lc-ink); background: var(--lc-bg-3); border: 1px solid var(--lc-line); border-radius: 4px; }
+.lc-entry select.lc-entry__rarity:focus-visible, .lc-entry input.lc-entry__weight:focus-visible { outline: 2px solid var(--lc-accent); outline-offset: 1px; }
+.lc-entry--never { border-left-style: dotted; }
+.lc-entry--never img, .lc-entry--never .lc-entry__name { opacity: .5; }
+.lc-entry--never .lc-entry__status { color: var(--lc-ink-mute); }
 /* Entries whose source is gone or changed: full width at the top of the pool. */
 .lc-entry--missing, .lc-entry--renamed { grid-column: 1 / -1; padding: 5px 6px; }
 .lc-entry__text { flex: 1; min-width: 0; display: flex; flex-direction: column; }

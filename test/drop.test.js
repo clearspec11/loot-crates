@@ -90,7 +90,7 @@ describe("entriesFromDrop", () => {
   it("adds one dropped item as it is", async () => {
     const plan = await entriesFromDrop({ type: "Item", uuid: "Item.ring" });
     expect(plan.label).toBe("Ring of Protection");
-    expect(plan.entries).toEqual([{ uuid: "Item.ring", name: "Ring of Protection", img: "icons/ring.webp", rarity: "rare", weight: 1 }]);
+    expect(plan.entries).toEqual([{ uuid: "Item.ring", name: "Ring of Protection", img: "icons/ring.webp", rarity: "rare", sourceRarity: "rare", weight: 1 }]);
   });
 
   it("refuses a single spell, counting it as not loot", async () => {

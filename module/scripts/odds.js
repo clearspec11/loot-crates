@@ -1,7 +1,13 @@
 /*
   The pull itself, with no Foundry in it, so Vitest can prove the maths.
 
-  A Pool: { id, name, entries: [{ uuid, name, img, rarity, weight, missing? }], pools: [childPoolId] }
+  A Pool: { id, name, entries: [Entry], pools: [childPoolId] }
+  An Entry: { uuid, name, img, rarity, sourceRarity, rarityOverride?, weight, missing? }
+    sourceRarity  the source's system.rarity as added, "" when it had none
+    rarity        normalizeRarity(sourceRarity), kept for entries added before
+                  sourceRarity existed
+    rarityOverride  a dnd5e rarity key the GM chose, or absent; it wins
+    weight        0 means the entry never drops
   A Box:  { id, name, price, pools: [{ id, share }], weights: { rarity: n },
             rules: { pity: { after, minRarity }, noDuplicates, stock } }
 
@@ -14,6 +20,9 @@
   on the GM client) is invisible to everything here: it is never drawn, never
   counted in the odds and never used as a strip filler or tease, because all of
   those read entries through flattenPool. The odds shown are the odds granted.
+  The same goes for an entry weighing 0, and flattenPool hands everything
+  else its effective rarity (the GM's override, else the source's), so the
+  roll, the odds and the strip all follow the pool editor.
 */
 import { RARITIES, DEFAULT_WEIGHTS } from "./config.js";
 
@@ -46,17 +55,36 @@ export function weightedPick(items, weightOf, rng) {
   return items[items.length - 1] ?? null;
 }
 
-// Every entry a pool can produce, including nested pools, with cycles ignored.
-// Entries flagged missing are left out unless `includeMissing` (the liveness
-// sweep needs them, to notice a source that came back).
+// The rarity an entry is drawn at: the GM's override, else its source's.
+export function effectiveRarity(entry) {
+  if (RARITIES.includes(entry?.rarityOverride)) return entry.rarityOverride;
+  return normalizeRarity(entry?.sourceRarity ?? entry?.rarity);
+}
+
+// The rarity its source gave it, which is what a source check compares.
+export const sourceRarityOf = entry => normalizeRarity(entry?.sourceRarity ?? entry?.rarity);
+
+// Its source had no rarity at all and the GM hasn't picked one.
+export const rarityUnset = entry => entry?.sourceRarity === "" && !RARITIES.includes(entry?.rarityOverride);
+
+// A whole number, 0 or more; a missing weight is 1.
+export function entryWeight(entry) {
+  if (entry?.weight == null) return 1;
+  return Math.max(0, Math.floor(Number(entry.weight)) || 0);
+}
+
+// Every entry a pool can produce, including nested pools, with cycles ignored,
+// each with its effective rarity. Entries flagged missing or weighing 0 are
+// left out unless `includeMissing` (the liveness sweep needs every entry, to
+// notice a source that came back).
 export function flattenPool(poolId, pools, seen = new Set(), { includeMissing = false } = {}) {
   if (seen.has(poolId)) return [];
   seen.add(poolId);
   const pool = pools[poolId];
   if (!pool) return [];
   const own = (pool.entries ?? [])
-    .filter(e => includeMissing || !e.missing)
-    .map(e => ({ ...e, rarity: normalizeRarity(e.rarity), weight: e.weight ?? 1, poolId }));
+    .filter(e => includeMissing || (!e.missing && entryWeight(e) > 0))
+    .map(e => ({ ...e, rarity: effectiveRarity(e), weight: entryWeight(e), poolId }));
   const nested = (pool.pools ?? []).flatMap(childId => flattenPool(childId, pools, seen, { includeMissing }));
   return own.concat(nested);
 }
@@ -78,15 +106,44 @@ export function markEntriesMissing(pools, poolId, uuids, flag = true) {
 /*
   How a pool entry compares with its source now. `source` is null when the
   source is gone, else { name, img, rarity } as read from the pack index or the
-  world; a null rarity is unknown and not compared. "renamed" means the name or the rarity changed since the entry was
-  added, so the GM sees "Wand of Sparks" becoming "Wand of Sparking" instead
-  of a silent miss.
+  world; a null rarity is unknown and not compared. "renamed" means the name
+  or the source's rarity changed since the entry was added, so the GM sees
+  "Wand of Sparks" becoming "Wand of Sparking" instead of a silent miss. The
+  rarity compared is the one the source gave the entry, never the GM's
+  override: overriding is curation, not drift.
 */
 export function sourceStatus(entry, source) {
   if (!source) return "missing";
   if (source.name !== entry.name) return "renamed";
-  if (source.rarity != null && normalizeRarity(source.rarity) !== normalizeRarity(entry.rarity)) return "renamed";
+  if (source.rarity != null && normalizeRarity(source.rarity) !== sourceRarityOf(entry)) return "renamed";
   return "ok";
+}
+
+/*
+  The pool editor's per-entry curation, applied to `entries` (a pool's own
+  list) for the uuids given: `change.rarityOverride` a rarity key sets it,
+  null (or the source's own rarity) clears it; `change.weight` becomes a
+  whole number, 0 or more; `change.sourceRarity` fills in the source's raw
+  rarity on an older entry that never stored it. Returns a new list; other
+  entries are shared.
+*/
+export function curateEntries(entries, uuids, change = {}) {
+  const hit = new Set(uuids);
+  return (entries ?? []).map(e => {
+    if (!hit.has(e.uuid)) return e;
+    const next = { ...e };
+    // An entry added before sourceRarity existed learns it from a check.
+    if (typeof change.sourceRarity === "string" && next.sourceRarity == null) next.sourceRarity = change.sourceRarity;
+    if ("rarityOverride" in change) {
+      const r = change.rarityOverride;
+      // Picking the source's own rarity clears the override, unless the
+      // source has none: then "common" is a real choice, not the default.
+      if (RARITIES.includes(r) && (r !== sourceRarityOf(e) || e.sourceRarity === "")) next.rarityOverride = r;
+      else delete next.rarityOverride;
+    }
+    if ("weight" in change) next.weight = entryWeight({ weight: change.weight });
+    return next;
+  });
 }
 
 // A copy of `pools` whose `missing` flags follow `sources` (uuid -> source or

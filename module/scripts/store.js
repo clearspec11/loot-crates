@@ -89,7 +89,9 @@ export async function deleteBox(id) {
   copy read when the dialog opened: a pull can lower a box's stock, a sweep
   can flag an entry missing and a drop can add hundreds of entries while a
   dialog is open, and writing that stale copy back would undo them.
-  `edit(fresh)` returns the new box from the current one.
+  `edit(fresh)` returns the new box from the current one; updatePool takes
+  either a patch or such a function (the per-entry rarity and weight edits
+  use one, so they change only the entries the GM touched).
 */
 export const createPool = pool => enqueueWrite(() => savePool(pool));
 export const removePool = id => enqueueWrite(() => deletePool(id));
@@ -99,7 +101,8 @@ export function updatePool(id, patch) {
   return enqueueWrite(async () => {
     const pools = getPools();
     if (!pools[id]) return null;
-    pools[id] = { ...pools[id], ...patch, id };
+    const next = typeof patch === "function" ? patch(pools[id]) : { ...pools[id], ...patch };
+    pools[id] = { ...next, id };
     await set(SETTINGS.POOLS, pools);
     return pools[id];
   });
@@ -137,13 +140,17 @@ export async function updateLog(id, patch) {
   await set(SETTINGS.LOG, log);
 }
 
-// A pool entry from an Item document or a compendium index row.
+// A pool entry from an Item document or a compendium index row. The
+// source's rarity is kept as it was ("" when unset) so the pool editor can
+// tell "no rarity set" from a real Common; `rarity` is its dnd5e key.
 export function entryFromItem(item, uuid = item.uuid) {
+  const sourceRarity = String(item.system?.rarity ?? "");
   return {
     uuid,
     name: item.name,
     img: item.img,
-    rarity: normalizeRarity(item.system?.rarity),
+    rarity: normalizeRarity(sourceRarity),
+    sourceRarity,
     weight: 1,
   };
 }
@@ -159,7 +166,7 @@ export const isLootType = type => LOOT.has(type);
 
 const INDEX_FIELDS = ["system.rarity", "img", "folder"];
 const compendiumUuid = (packId, row) => row.uuid ?? `Compendium.${packId}.Item.${row._id}`;
-const entryFromRow = (packId, row) => ({ uuid: compendiumUuid(packId, row), name: row.name, img: row.img, rarity: normalizeRarity(row.system?.rarity), weight: 1 });
+const entryFromRow = (packId, row) => entryFromItem(row, compendiumUuid(packId, row));
 
 /*
   A pack's index rows, each physical item's row sure to carry system.rarity.
@@ -333,7 +340,8 @@ export async function resolveEntry(entry) {
 
 /*
   What each entry's source looks like now, as a Map uuid -> { name, img,
-  rarity } (rarity null when unknown) or null when the source is gone; a
+  rarity, rawRarity } (both null when unknown; rawRarity is the source's own
+  value, "" when it has none) or null when the source is gone; a
   uuid that couldn't be checked (its pack's index failed) has no answer.
   Cheap enough to run before every pull and on every render of the pool
   editor: a compendium reference is read
@@ -377,7 +385,7 @@ export async function checkSources(entries, { rarity: withRarity = false } = {})
     // (Foundry swaps in a slimmer row), so a rarity it doesn't carry is
     // unknown, not common.
     const rarity = doc?.system?.rarity;
-    out.set(uuid, doc ? { name: doc.name, img: doc.img, rarity: rarity == null ? null : normalizeRarity(rarity) } : null);
+    out.set(uuid, doc ? { name: doc.name, img: doc.img, rarity: rarity == null ? null : normalizeRarity(rarity), rawRarity: rarity == null ? null : String(rarity) } : null);
   }
   return out;
 }
@@ -459,7 +467,8 @@ export function removeEntry(poolId, uuid) {
 
 // Update: copy the source's current name, image and rarity into the entry.
 // Relink: point the entry at another item (`patch.uuid`), keeping its weight.
-// Either way the entry is live again, so its missing flag goes.
+// Either way the entry is live again, so its missing flag goes. A GM's rarity
+// override stays: it is curation of this slot, not a copy of the source.
 export function patchEntry(poolId, uuid, patch) {
   return enqueueWrite(async () => {
     const pools = getPools();
@@ -468,7 +477,8 @@ export function patchEntry(poolId, uuid, patch) {
     if (!entry) return null;
     if (patch.uuid && patch.uuid !== uuid && pool.entries.some(e => e.uuid === patch.uuid)) return null;
     delete entry.missing;
-    Object.assign(entry, patch, { rarity: normalizeRarity(patch.rarity ?? entry.rarity) });
+    Object.assign(entry, patch, { rarity: normalizeRarity(patch.sourceRarity ?? patch.rarity ?? entry.rarity) });
+    if (patch.sourceRarity == null && patch.rarity != null) delete entry.sourceRarity;
     await set(SETTINGS.POOLS, pools);
     return entry;
   });

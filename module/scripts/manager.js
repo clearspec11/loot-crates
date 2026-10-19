@@ -17,11 +17,19 @@
   takes a dropped item to relink it (same weight); one whose source changed
   name or rarity shows "was <old name>" with Update. Both sort to the top of
   their pool, and the Boxes tab's odds leave the missing ones out.
+
+  Each live entry's rarity and weight are edited in place: a select of
+  dnd5e's rarities (the source's own marked "from source"; picking it drops
+  the override) and a whole-number weight (0 never drops). An entry whose
+  source has no rarity says so instead of passing as Common, and a pool with
+  any offers "Set rarity for unset items". An edit saves through updatePool
+  in the write queue and updates only its row and its pool's header, so
+  focus stays where the GM is typing.
 */
 import { RARITIES, RARITY_LABEL, DEFAULT_WEIGHTS, DEFAULT_PRICE_GP } from "./config.js";
 import { oddsPills } from "./boxcard.js";
 import { getPools, getBoxes, getLog, createPool, updatePool, removePool, createBox, updateBox, removeBox, entryFromItem, entriesFromDrop, addEntries, packHasLoot, LOOT_TYPES, isLootType, isShopOpen, setShopOpen, enqueueWrite, checkSources, refreshMissing, removeEntry, patchEntry } from "./store.js";
-import { shopOdds, normalizeRarity, flattenPool, sourceStatus, withSources } from "./odds.js";
+import { shopOdds, normalizeRarity, flattenPool, sourceStatus, withSources, effectiveRarity, sourceRarityOf, entryWeight, curateEntries } from "./odds.js";
 import { formatPrice } from "./currency.js";
 import { refreshShop } from "./shop.js";
 import { describeRefund, refundPull } from "./refund.js";
@@ -40,7 +48,7 @@ export class CrateManager extends ApplicationV2 {
     actions: {
       tab: CrateManager.#tab,
       addPool: CrateManager.#addPool, editPool: CrateManager.#editPool, deletePool: CrateManager.#deletePool,
-      bulkAdd: CrateManager.#bulkAdd, removeEntry: CrateManager.#removeEntry, updateEntry: CrateManager.#updateEntry, relinkEntry: CrateManager.#relinkEntry,
+      bulkAdd: CrateManager.#bulkAdd, setUnsetRarity: CrateManager.#setUnsetRarity, removeEntry: CrateManager.#removeEntry, updateEntry: CrateManager.#updateEntry, relinkEntry: CrateManager.#relinkEntry,
       addBox: CrateManager.#addBox, editBox: CrateManager.#editBox, deleteBox: CrateManager.#deleteBox,
       refund: CrateManager.#refund, toggleShop: CrateManager.#toggleShop,
     },
@@ -91,7 +99,7 @@ export class CrateManager extends ApplicationV2 {
     const src = (await checkSources([{ uuid: t.dataset.uuid }], { rarity: true })).get(t.dataset.uuid);
     if (src === undefined) return ui.notifications.warn("Couldn't read that item's compendium just now; try again.");
     if (!src) { ui.notifications.warn("That item's source is gone; drop an item on the row to relink it."); return this.render(); }
-    await patchEntry(t.dataset.pool, t.dataset.uuid, { name: src.name, img: src.img, rarity: src.rarity });
+    await patchEntry(t.dataset.pool, t.dataset.uuid, { name: src.name, img: src.img, rarity: src.rarity, sourceRarity: src.rawRarity ?? undefined });
     this.render(); refreshShop();
   }
 
@@ -105,6 +113,61 @@ export class CrateManager extends ApplicationV2 {
       <label>Item UUID <input name="uuid" required placeholder="Compendium.dnd5e.items.Item.…" autocomplete="off"></label>
       <p class="lc-form__hint">Copy it from an item sheet's ID button, or drag the item onto the row instead.</p>`);
     if (data?.uuid) await this.#relink(t.dataset.pool, t.dataset.uuid, String(data.uuid).trim());
+  }
+
+  // One rarity for every entry in the pool whose source has none.
+  static async #setUnsetRarity(_e, t) {
+    const poolId = t.dataset.pool;
+    const pool = getPools()[poolId];
+    if (!pool) return this.render();
+    const unset = uuidsUnset(pool, this.#sources);
+    if (!unset.length) return this.render();
+    const n = unset.length;
+    const data = await promptForm(`Set rarity in ${pool.name}`, `
+      <p>${n} item${n === 1 ? " has" : "s have"} no rarity at the source and draw${n === 1 ? "s" : ""} as Common until you pick one.</p>
+      <label>Rarity <select name="rarity">${RARITIES.map(r => `<option value="${r}">${RARITY_LABEL[r]}</option>`).join("")}</select></label>
+      <p class="lc-form__hint">Each item's rarity can still be changed on its own row.</p>`);
+    if (!RARITIES.includes(data?.rarity)) return;
+    const saved = await updatePool(poolId, fresh => ({ ...fresh, entries: curateEntries(fresh.entries, unset, { sourceRarity: "", rarityOverride: data.rarity }) }));
+    if (saved) ui.notifications.info(`${n} item${n === 1 ? "" : "s"} in ${pool.name} set to ${RARITY_LABEL[data.rarity]}.`);
+    this.render(); refreshShop();
+  }
+
+  // A rarity or weight changed on a row: save just that, then update the row
+  // and its pool's header in place (a full render would drop focus).
+  async #onCurate(el) {
+    const { pool: poolId, uuid } = el.dataset;
+    const change = {};
+    if (el.dataset.curate === "weight") {
+      const n = Number(el.value);
+      if (el.value.trim() === "" || !Number.isFinite(n)) { el.value = el.defaultValue; return; }
+      change.weight = Math.max(0, Math.floor(n));
+      el.value = change.weight;
+    } else {
+      change.rarityOverride = RARITIES.includes(el.value) ? el.value : null;
+    }
+    if (el.dataset.sourceRarity != null) change.sourceRarity = el.dataset.sourceRarity;
+    const saved = await updatePool(poolId, fresh => ({ ...fresh, entries: curateEntries(fresh.entries, [uuid], change) }));
+    const entry = saved?.entries?.find(x => x.uuid === uuid);
+    const row = el.closest(".lc-entry");
+    const poolEl = el.closest(".lc-pool");
+    if (!entry || !row || !poolEl) { this.render(); refreshShop(); return; }
+    const src = this.#srcOf(entry);
+    const fresh = entryParts(poolId, { e: entry, src, status: sourceStatus(entry, src) });
+    row.className = fresh.className;
+    row.querySelector(".lc-entry__text")?.replaceWith(htmlNode(fresh.text));
+    if (el.dataset.curate === "weight") el.defaultValue = String(entryWeight(entry));
+    poolEl.querySelector(".lc-pool__count").innerHTML = poolCount(saved, poolRows(saved, src => this.#srcOf(src)));
+    poolEl.querySelector(".lc-pool__unset").innerHTML = unsetButton(saved, this.#sources);
+    refreshShop();
+  }
+
+  // What the editor knows of an entry's source: the last check, else its
+  // stored flag (a check that couldn't answer).
+  #srcOf(e) {
+    const sources = this.#sources;
+    if (sources?.has(e.uuid)) return sources.get(e.uuid);
+    return e.missing ? null : { name: e.name, img: e.img, rarity: null, rawRarity: null };
   }
 
   // Only packs and types that can hold loot are offered: a pool should never
@@ -259,6 +322,10 @@ export class CrateManager extends ApplicationV2 {
       el.addEventListener("dragleave", () => el.classList.remove("lc-drop--over"));
       el.addEventListener("drop", e => { el.classList.remove("lc-drop--over"); this.#onDrop(e, el.dataset.dropPool); });
     });
+    root.addEventListener("change", e => {
+      const el = e.target.closest?.("[data-curate]");
+      if (el) this.#onCurate(el).catch(err => { console.error(`loot-crates | saving that entry failed`, err); this.render(); });
+    });
     root.querySelectorAll("[data-relink]").forEach(el => {
       el.addEventListener("dragover", e => { e.preventDefault(); e.stopPropagation(); el.classList.add("lc-drop--over"); });
       el.addEventListener("dragleave", () => el.classList.remove("lc-drop--over"));
@@ -300,8 +367,8 @@ export class CrateManager extends ApplicationV2 {
     try { item = await fromUuid(newUuid); } catch { /* reported below */ }
     if (item?.documentName !== "Item") return ui.notifications.warn(`No item has the UUID ${newUuid}.`);
     if (!isLootType(item.type)) return ui.notifications.warn(`${item.name} is not loot. A pool takes weapons, equipment, consumables, tools, loot and containers.`);
-    const { name, img, rarity } = entryFromItem(item);
-    const done = await patchEntry(poolId, uuid, { uuid: item.uuid, name, img, rarity });
+    const { name, img, rarity, sourceRarity } = entryFromItem(item);
+    const done = await patchEntry(poolId, uuid, { uuid: item.uuid, name, img, rarity, sourceRarity });
     if (!done) ui.notifications.info(`${item.name} is already in ${getPools()[poolId]?.name ?? "that pool"}; remove the missing entry instead.`);
     this.render(); refreshShop();
   }
@@ -319,21 +386,17 @@ export class CrateManager extends ApplicationV2 {
     return `
       <div class="lc-toolbar"><button type="button" data-action="addPool"><i class="fas fa-plus"></i> New pool</button>${this.checking ? `<span class="lc-pool__hint" role="status">Checking each item against its source…</span>` : ""}</div>
       ${pools.length ? pools.map(p => {
-        // An entry the check couldn't answer for shows its stored flag.
-        const srcOf = e => (sources.has(e.uuid) ? sources.get(e.uuid) : e.missing ? null : { name: e.name, img: e.img, rarity: null });
-        const rows = p.entries.map(e => ({ e, src: srcOf(e), status: sourceStatus(e, srcOf(e)) }));
+        const rows = poolRows(p, e => this.#srcOf(e));
         const order = { missing: 0, renamed: 1, ok: 2 };
         rows.sort((a, b) => order[a.status] - order[b.status]);
         const missing = rows.filter(r => r.status === "missing").length;
-        const renamed = rows.filter(r => r.status === "renamed").length;
-        const live = rows.filter(r => r.status !== "missing").map(r => r.e);
-        const problems = [missing && `${missing} missing`, renamed && `${renamed} renamed`].filter(Boolean).join(", ");
         return `
         <article class="lc-pool" data-drop-pool="${esc(p.id)}">
           <header>
             <strong>${esc(p.name)}</strong>
-            <span class="lc-pool__count">${p.entries.length} item${p.entries.length === 1 ? "" : "s"}${live.length ? " · " + rarityCounts(live) : ""}${problems ? ` · <span class="lc-pool__problems">${problems}</span>` : ""}</span>
+            <span class="lc-pool__count" aria-live="polite">${poolCount(p, rows)}</span>
             <span class="lc-tabs__spacer"></span>
+            <span class="lc-pool__unset">${unsetButton(p, sources)}</span>
             <button type="button" data-action="bulkAdd" data-pool="${esc(p.id)}" title="Add every item in a compendium that matches a filter"><i class="fas fa-book"></i> Add from compendium</button>
             <button type="button" data-action="editPool" data-pool="${esc(p.id)}" aria-label="Rename ${esc(p.name)}"><i class="fas fa-pen"></i></button>
             <button type="button" data-action="deletePool" data-pool="${esc(p.id)}" aria-label="Delete ${esc(p.name)}"><i class="fas fa-trash"></i></button>
@@ -390,36 +453,111 @@ function describeSkipped({ duplicates = 0, notLoot = {}, notItems = 0 } = {}) {
   return lines;
 }
 
-// One pool entry. `status` is "ok", "renamed" (the source's name or rarity
-// changed since it was added) or "missing" (the source is gone).
-// The rarity shown is the entry's own, since that is what the box draws it at.
-function entryRow(poolId, { e, src, status }) {
-  const rarity = normalizeRarity(e.rarity);
-  const name = status === "renamed" ? src.name : e.name;
+// Each entry of a pool with what the editor knows of its source and how the
+// two compare: "ok", "renamed" (the source's name or rarity changed since
+// it was added) or "missing" (the source is gone).
+function poolRows(pool, srcOf) {
+  return (pool.entries ?? []).map(e => { const src = srcOf(e); return { e, src, status: sourceStatus(e, src) }; });
+}
+
+// Whether an entry's source has no rarity at all. An entry added before
+// sourceRarity was stored learns it from the source check, when that check
+// read the rarity and found nothing else changed.
+function sourceBlank(e, src) {
+  if (e.sourceRarity != null) return e.sourceRarity === "";
+  return !!src && src.rawRarity === "" && sourceStatus(e, src) === "ok";
+}
+const hasOverride = e => RARITIES.includes(e.rarityOverride);
+const isUnset = (e, src) => !e.missing && !hasOverride(e) && sourceBlank(e, src);
+
+function uuidsUnset(pool, sources) {
+  return (pool.entries ?? []).filter(e => isUnset(e, sources?.get(e.uuid))).map(e => e.uuid);
+}
+
+function unsetButton(pool, sources) {
+  const n = uuidsUnset(pool, sources).length;
+  if (!n) return "";
+  return `<button type="button" data-action="setUnsetRarity" data-pool="${esc(pool.id)}" title="Pick one rarity for every item here whose source has none">Set rarity for ${n} unset</button>`;
+}
+
+// "12 items · 8 common, 3 rare · 1 never drops · 2 missing, 1 renamed, 4 no rarity set".
+// The rarity counts are what the box can draw, at each entry's own rarity.
+function poolCount(pool, rows) {
+  const n = (pool.entries ?? []).length;
+  const live = rows.filter(r => r.status !== "missing");
+  const drawn = live.filter(r => entryWeight(r.e) > 0).map(r => r.e);
+  const never = live.length - drawn.length;
+  const missing = rows.filter(r => r.status === "missing").length;
+  const renamed = rows.filter(r => r.status === "renamed").length;
+  const unset = live.filter(r => isUnset(r.e, r.src)).length;
+  const problems = [missing && `${missing} missing`, renamed && `${renamed} renamed`, unset && `${unset} no rarity set`].filter(Boolean).join(", ");
+  return `${n} item${n === 1 ? "" : "s"}${drawn.length ? " · " + rarityCounts(drawn) : ""}${never ? ` · ${never} never drop${never === 1 ? "s" : ""}` : ""}${problems ? ` · <span class="lc-pool__problems">${problems}</span>` : ""}`;
+}
+
+// The rarity select and weight input on a live row.
+function curateControls(poolId, e, src, status, name) {
   const ids = `data-pool="${esc(poolId)}" data-uuid="${esc(e.uuid)}"`;
-  const remove = `<button type="button" class="lc-entry__remove" data-action="removeEntry" ${ids} aria-label="Remove ${esc(name)}" title="Remove">&times;</button>`;
+  const blank = sourceBlank(e, src);
+  const fromSource = sourceRarityOf(e);
+  const current = hasOverride(e) ? e.rarityOverride : "";
+  // Teach an older entry its source's raw rarity as it is edited.
+  const learn = e.sourceRarity == null && status === "ok" && src?.rawRarity != null ? ` data-source-rarity="${esc(src.rawRarity)}"` : "";
+  const options = [
+    `<option value="" ${current === "" ? "selected" : ""}>${blank ? "Not set (Common)" : `${RARITY_LABEL[fromSource]} (source)`}</option>`,
+    ...RARITIES.filter(r => blank || r !== fromSource).map(r => `<option value="${r}" ${current === r ? "selected" : ""}>${RARITY_LABEL[r]}</option>`),
+  ].join("");
+  return `<select class="lc-entry__rarity" data-curate="rarity" ${ids}${learn} aria-label="Rarity of ${esc(name)}">${options}</select>
+    <input class="lc-entry__weight" type="number" min="0" step="1" inputmode="numeric" value="${entryWeight(e)}" data-curate="weight" ${ids}${learn} aria-label="Weight of ${esc(name)}, 0 never drops" title="Weight against items of the same rarity; 0 never drops">`;
+}
+
+// A live row's class and its name-and-status block, rebuilt after an edit.
+function entryParts(poolId, { e, src, status }) {
+  const rarity = effectiveRarity(e);
+  const name = status === "renamed" ? src.name : e.name;
+  const never = entryWeight(e) === 0;
+  const unset = isUnset(e, src);
+  const notes = [];
+  if (status === "renamed") {
+    if (src.name !== e.name) notes.push(`was ${e.name}`);
+    if (src.rarity != null && normalizeRarity(src.rarity) !== sourceRarityOf(e)) notes.push(`now ${RARITY_LABEL[normalizeRarity(src.rarity)]} at the source`);
+  }
+  if (unset) notes.push("No rarity set");
+  if (never) notes.push("Never drops");
+  return {
+    name,
+    className: ["lc-entry", `lc-rarity-${rarity}`, status === "renamed" && "lc-entry--renamed", never && "lc-entry--never", unset && "lc-entry--unset"].filter(Boolean).join(" "),
+    text: `<span class="lc-entry__text"><span class="lc-entry__name" title="${esc(name)}">${esc(name)}</span>${notes.length ? `<small class="lc-entry__status">${esc(notes.join(" · "))}</small>` : ""}</span>`,
+  };
+}
+
+const htmlNode = html => { const t = document.createElement("template"); t.innerHTML = html.trim(); return t.content.firstElementChild; };
+
+// One pool entry. A missing one can only be relinked or removed; a live one
+// shows the rarity it is drawn at and its weight, both editable.
+function entryRow(poolId, row) {
+  const { e, src, status } = row;
+  const ids = `data-pool="${esc(poolId)}" data-uuid="${esc(e.uuid)}"`;
   if (status === "missing") {
-    return `<li class="lc-entry lc-entry--missing lc-rarity-${rarity}" data-pool="${esc(poolId)}" data-relink="${esc(e.uuid)}" title="Drop an item here to relink it">
+    const remove = `<button type="button" class="lc-entry__remove" data-action="removeEntry" ${ids} aria-label="Remove ${esc(e.name)}" title="Remove">&times;</button>`;
+    return `<li class="lc-entry lc-entry--missing lc-rarity-${effectiveRarity(e)}" data-pool="${esc(poolId)}" data-relink="${esc(e.uuid)}" title="Drop an item here to relink it">
       <img src="${esc(e.img || FALLBACK_IMG)}" alt="">
       <span class="lc-entry__text"><span class="lc-entry__name">${esc(e.name)}</span><small class="lc-entry__status">Source missing, not drawn. Drop an item here to relink.</small></span>
       <button type="button" class="lc-entry__update" data-action="relinkEntry" ${ids} aria-label="Relink ${esc(e.name)}">Relink</button>
       ${remove}</li>`;
   }
-  if (status === "renamed") {
-    const was = [src.name !== e.name ? `was ${e.name}` : "", src.rarity != null && normalizeRarity(src.rarity) !== rarity ? `now ${RARITY_LABEL[normalizeRarity(src.rarity)]} at the source` : ""].filter(Boolean).join(" · ");
-    return `<li class="lc-entry lc-entry--renamed lc-rarity-${rarity}">
-      <img src="${esc(src.img || e.img || FALLBACK_IMG)}" alt="">
-      <span class="lc-entry__text"><span class="lc-entry__name">${esc(name)}</span><small class="lc-entry__status">${esc(was)}</small></span>
-      <em>${RARITY_LABEL[rarity]}</em>
-      <button type="button" class="lc-entry__update" data-action="updateEntry" ${ids} aria-label="Update ${esc(e.name)} to ${esc(name)}">Update</button>
-      ${remove}</li>`;
-  }
-  return `<li class="lc-entry lc-rarity-${rarity}"><img src="${esc(e.img || FALLBACK_IMG)}" alt=""><span class="lc-entry__name">${esc(name)}</span><em>${RARITY_LABEL[rarity]}</em>${remove}</li>`;
+  const parts = entryParts(poolId, row);
+  const remove = `<button type="button" class="lc-entry__remove" data-action="removeEntry" ${ids} aria-label="Remove ${esc(parts.name)}" title="Remove">&times;</button>`;
+  const update = status === "renamed" ? `<button type="button" class="lc-entry__update" data-action="updateEntry" ${ids} aria-label="Update ${esc(e.name)} to ${esc(parts.name)}">Update</button>` : "";
+  return `<li class="${parts.className}">
+    <img src="${esc((status === "renamed" && src.img) || e.img || FALLBACK_IMG)}" alt="">
+    ${parts.text}
+    ${curateControls(poolId, e, src, status, parts.name)}
+    ${update}${remove}</li>`;
 }
 
 function rarityCounts(entries) {
   const n = {};
-  for (const e of entries) n[normalizeRarity(e.rarity)] = (n[normalizeRarity(e.rarity)] ?? 0) + 1;
+  for (const e of entries) n[effectiveRarity(e)] = (n[effectiveRarity(e)] ?? 0) + 1;
   return RARITIES.filter(r => n[r]).map(r => `${n[r]} ${RARITY_LABEL[r].toLowerCase()}`).join(", ");
 }
 
