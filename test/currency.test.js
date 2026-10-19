@@ -12,6 +12,9 @@ describe("currency", () => {
     expect(formatPrice(150)).toBe("150 gp");
     expect(formatPrice(0.5)).toBe("5 sp");
     expect(formatPrice(0.07)).toBe("7 cp");
+    expect(formatPrice(12.5)).toBe("12 gp 5 sp");
+    expect(formatPrice(17.35)).toBe("17 gp 3 sp 5 cp");
+    expect(formatPrice(0)).toBe("0 gp");
   });
 
   it("pays with exact smaller coins before breaking a larger one", () => {

@@ -15,11 +15,18 @@ export function canAfford(purse, priceGp) {
   return toCopper(purse) >= Math.round(priceGp * 100);
 }
 
+// A price in the coins charge() takes for it: 12.5 gp is "12 gp 5 sp", not
+// "125 sp", so what the button says is what leaves the purse.
 export function formatPrice(priceGp) {
-  const cp = Math.round(priceGp * 100);
-  if (cp % 100 === 0) return `${cp / 100} gp`;
-  if (cp % 10 === 0) return `${cp / 10} sp`;
-  return `${cp} cp`;
+  let cp = Math.round(priceGp * 100);
+  if (!(cp > 0)) return "0 gp";
+  const parts = [];
+  for (const c of ["gp", "sp", "cp"]) {
+    const n = Math.floor(cp / COPPER_PER[c]);
+    if (n) parts.push(`${n} ${c}`);
+    cp -= n * COPPER_PER[c];
+  }
+  return parts.join(" ");
 }
 
 export function charge(purse = {}, priceGp) {
