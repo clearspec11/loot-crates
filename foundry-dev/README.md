@@ -14,4 +14,6 @@ Needs Playwright with Chromium 146 or newer (Foundry v14 refuses older) and a Ga
 
 `checks/live-shop.js` makes no purchase and writes nothing: it opens the Crate Shop for Crate Tester and reports each box's pills, colour and Buy state, failing on any pill that reads 0% or has no rarity name, a box coloured above the best rarity it can drop, or a disabled Buy without an aria-describedby reason shown as visible text (`--shot` shows the shop).
 
+`checks/live-payoff.js` buys one crate as the GM through `requestPull` and reports, from the real reveal: the button reads Skip and is enabled mid-spin, the strip is aria-hidden, the result says "Added to <actor>'s inventory" and "<n> gp left", focus is on Close after landing, Open item renders the granted item's sheet, and the newest chat card's content link resolves via `fromUuid` to the granted item. It then opens two reveals with distinct requestIds (no purchase), reports their origins (cascaded, not stacked), closes the first mid-spin and confirms its chat card still posts.
+
 Rules for the dev world: test actors only in that folder, never delete anything, never touch other folders' actors.

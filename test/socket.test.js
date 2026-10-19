@@ -159,6 +159,10 @@ describe("the GM client", () => {
     expect(reveal).toMatchObject({ requestId: "r1", userId: "p1", actorId: "actor1", box: { id: "box", price: 10 } });
     expect(actor.system.currency.gp).toBe(490);
     expect(actor.items).toHaveLength(1);
+    // Where the item went, for the reveal's Open item and the chat card's link.
+    expect(reveal.itemId).toBe(actor.items[0].id);
+    expect(reveal.itemUuid).toBe(`Actor.actor1.Item.${actor.items[0].id}`);
+    expect(reveal.purse).toMatchObject({ gp: 490 });
     expect(game.settings.get("loot-crates", "pullLog")).toHaveLength(1);
     expect(showReveal).toHaveBeenCalledWith(reveal);
   });

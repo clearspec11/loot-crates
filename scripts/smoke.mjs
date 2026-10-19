@@ -26,7 +26,28 @@ const STATES = [
   ["shop", "state=shop"],
   ["landed", "state=landed&seed=7"],
   ["landed-legendary", "state=landed&seed=23&box=royal"],
+  ["landed-buyer", "state=landed&seed=7&buyer=1"],
 ];
+
+// The payoff, read from the DOM: everyone sees where the item went; only the
+// buyer (and GMs) see the gold left and Open item; Close is the focused button.
+function revealProblems(buyer) {
+  const out = [];
+  const shown = el => !!el && !el.hidden && el.getBoundingClientRect().height > 0;
+  const text = document.querySelector(".lc-reveal__result")?.innerText ?? "";
+  if (!/Added to .+'s inventory/.test(text)) out.push(`reveal doesn't say where the item went: "${text}"`);
+  if (buyer !== /\d gp left/.test(text)) out.push(buyer ? "buyer can't see the gold left" : "the table can see the buyer's gold");
+  if (buyer !== shown(document.querySelector(".lc-reveal__open"))) out.push(buyer ? "no Open item for the buyer" : "Open item shown to the table");
+  const close = document.querySelector(".lc-reveal__close");
+  if (close?.textContent !== "Close" || close.disabled) out.push("landed reveal has no enabled Close");
+  if (document.activeElement !== close) out.push("focus didn't move to Close on landing");
+  // The strip is wider than its clipped viewport by design; everything else must fit.
+  for (const el of document.querySelectorAll(".lc-reveal__body *:not(.lc-spin__viewport *)")) {
+    const r = el.getBoundingClientRect();
+    if (r.right > document.documentElement.clientWidth + 1) { out.push(`reveal overflows: ${el.className}`); break; }
+  }
+  return out;
+}
 
 // The shop's honesty rules, read from the DOM: no "0%" anywhere, every pill
 // names its rarity, every disabled Buy points at a visible reason.
@@ -63,6 +84,7 @@ try {
       await page.waitForTimeout(500);
       const wide = await page.evaluate(() => document.scrollingElement.scrollWidth > document.scrollingElement.clientWidth + 1);
       if (name === "shop") problems0.push(...await page.evaluate(shopProblems));
+      else problems0.push(...await page.evaluate(revealProblems, name === "landed-buyer"));
       await page.screenshot({ path: path.join(OUT, w.tag, `${name}.png`), fullPage: true });
       const problems = [...errors, ...problems0, ...(wide ? ["page scrolls sideways"] : [])];
       if (problems.length) { failures++; console.error(`FAIL ${w.tag}/${name}: ${problems.join("; ")}`); }

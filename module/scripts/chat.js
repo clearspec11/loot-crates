@@ -3,6 +3,15 @@ import { formatPrice } from "./currency.js";
 
 const esc = s => foundry.utils.escapeHTML(String(s ?? ""));
 
+// Foundry's own content link (what @UUID[...]{name} enriches to), written out
+// so the stored message carries it: it looks like every other link in chat,
+// opens the sheet on click and drags onto a sheet. Points at the granted copy
+// in the buyer's inventory, or at the pool's source when there isn't one.
+function itemLink(uuid, name) {
+  if (!uuid) return esc(name);
+  return `<a class="content-link" draggable="true" data-link data-uuid="${esc(uuid)}" data-type="Item" data-tooltip="Item"><i class="fa-solid fa-suitcase" inert></i>${esc(name)}</a>`;
+}
+
 // The chat card everyone keeps after the spin: who opened what and got what.
 export async function postPullCard(reveal) {
   const r = reveal.result;
@@ -12,7 +21,7 @@ export async function postPullCard(reveal) {
       <div class="lc-chat__item">
         <img src="${esc(r.img)}" alt="">
         <div>
-          <div class="lc-chat__name">${esc(r.name)}</div>
+          <div class="lc-chat__name">${itemLink(reveal.itemUuid ?? r.uuid, r.name)}</div>
           <div class="lc-chat__rarity">${esc(RARITY_LABEL[r.rarity] ?? r.rarity)}${r.pity ? " · pity" : ""}</div>
         </div>
       </div>

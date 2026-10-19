@@ -98,10 +98,17 @@
 .lc-reveal__head strong { color: var(--lc-ink); }
 .lc-reveal__price { margin-left: 6px; color: var(--lc-accent); }
 .lc-reveal__result { min-height: 48px; text-align: center; }
-.lc-reveal__name { font-size: 20px; font-weight: 700; }
+/* The name in its rarity colour is the moment; everything under it is quiet. */
+.lc-reveal__name { font-size: 20px; font-weight: 700; color: var(--lc-rarity, var(--lc-ink)); overflow-wrap: anywhere; }
 .lc-reveal__rarity { font-size: 12px; letter-spacing: .04em; color: var(--lc-ink-mute); }
-.lc-spin--landed + .lc-reveal__result .lc-reveal__name { color: var(--lc-ink); }
-.lc-reveal__actions { display: flex; justify-content: flex-end; }
+/* Where it went and the gold left come in after the card's 420 ms lift, so
+   the name lands first. */
+.lc-reveal__where { margin-top: 6px; font-size: 12px; color: var(--lc-ink-soft); animation: lc-reveal-after 240ms ease 420ms both; }
+@keyframes lc-reveal-after { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .lc-reveal__where { animation: none; } }
+.lc-reveal__actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.lc-reveal__actions button { flex: 0 0 auto; width: auto; min-width: 96px; }
+.lc-reveal__actions button[hidden] { display: none; }
 
 /* ---------- Shop ---------- */
 .lc-shop__body { display: grid; gap: 12px; }

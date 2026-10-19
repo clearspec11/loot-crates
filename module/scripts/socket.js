@@ -5,7 +5,7 @@
 
   Messages on SOCKET:
     { type: "pull", requestId, boxId, actorId, userId }   player -> GM
-    { type: "reveal", requestId, ... }                     GM -> everyone
+    { type: "reveal", requestId, itemId, itemUuid, purse, ... }  GM -> everyone
     { type: "error", requestId, userId, message }          GM -> the buyer
 
   The GM client runs pulls one at a time, through the same queue refunds use
@@ -13,9 +13,9 @@
   awaits, so two requests arriving together would both see the same stock,
   purse and log. The queue is per GM client; a second GM is already excluded
   by `isActiveGM`. Only the writes are queued: the reveal window is not, since
-  on Foundry v14 `render` resolves only once the spin has landed (6 to 7 s),
-  and a queue that waited on it would hold every later buyer behind each
-  spin until their 30 s timeout fired while the GM still charged them.
+  the spin takes 6 to 7 s to land, and a queue that waited on it would hold
+  every later buyer behind each spin until their 30 s timeout fired while the
+  GM still charged them.
 
   Before each roll the GM sweeps the box's pools for entries whose source is
   gone and flags them (store.js refreshMissing), so a dead item is taken out of
@@ -127,7 +127,10 @@ async function doPull(msg) {
     const log = { boxId: box.id, boxName: box.name, actorId: actor.id, actorName: actor.name, userId: msg.userId, itemId: out.itemId, name: out.result.name, uuid: out.result.uuid, rarity: out.result.rarity, price: box.price, pity: out.result.pity };
     await appendLog(log);
 
-    const reveal = { type: "reveal", requestId: msg.requestId, userId: msg.userId, actorId: actor.id, actorName: actor.name, box: { id: box.id, name: box.name, price: box.price }, result: out.result, strip: out.strip, purse: out.purse };
+    // itemUuid is the granted copy on the sheet, which the reveal's Open item
+    // and the chat card's link point at (the pool's source is r.result.uuid).
+    const itemUuid = out.itemId ? `Actor.${actor.id}.Item.${out.itemId}` : null;
+    const reveal = { type: "reveal", requestId: msg.requestId, userId: msg.userId, actorId: actor.id, actorName: actor.name, box: { id: box.id, name: box.name, price: box.price }, result: out.result, strip: out.strip, purse: out.purse, itemId: out.itemId, itemUuid };
     game.socket.emit(SOCKET, reveal);
     showAndPost(reveal);
     return reveal;

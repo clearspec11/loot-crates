@@ -8,6 +8,10 @@
 
     const spin = mountSpin(container, strip, { duration, reducedMotion, onTick, onLand });
     await spin.play();
+    spin.skip();   // land on the next frame, through the same land() path
+
+  The strip is aria-hidden: a screen reader would otherwise read every filler
+  card's name before the result the host announces.
 */
 import { RARITY_LABEL } from "./config.js";
 
@@ -58,6 +62,7 @@ export function mountSpin(container, strip, options = {}) {
   track.className = "lc-spin__track";
   track.style.setProperty("--lc-card-w", `${cardWidth}px`);
   track.style.setProperty("--lc-card-gap", `${gap}px`);
+  track.setAttribute("aria-hidden", "true");
   const marker = document.createElement("div");
   marker.className = "lc-spin__marker";
   marker.setAttribute("aria-hidden", "true");
@@ -85,7 +90,11 @@ export function mountSpin(container, strip, options = {}) {
     }
   };
 
+  let landed = false;
+  let skipped = false;
   const land = () => {
+    if (landed) return;
+    landed = true;
     const el = cards[strip.landIndex];
     el.classList.add("lc-card--landed");
     container.classList.add("lc-spin--landed");
@@ -106,7 +115,7 @@ export function mountSpin(container, strip, options = {}) {
 
   function play() {
     setX(start(width()));
-    if (reducedMotion || duration <= 0) {
+    if (reducedMotion || duration <= 0 || skipped) {
       setX(target(width()));
       land();
       return Promise.resolve();
@@ -119,11 +128,12 @@ export function mountSpin(container, strip, options = {}) {
         // Don't start the clock on a viewport that has no width yet, or the
         // first sized frame is a jump; give up waiting after a few frames so a
         // hidden host still lands.
-        if (!w && unsized++ < MAX_UNSIZED_FRAMES) { requestAnimationFrame(frame); return; }
+        if (!w && !skipped && unsized++ < MAX_UNSIZED_FRAMES) { requestAnimationFrame(frame); return; }
         t0 ??= now;
         const x0 = start(w);
         const x1 = target(w);
-        const p = Math.min(1, (now - t0) / duration);
+        // Skip is the clock running out early: the same frame, the same land.
+        const p = skipped ? 1 : Math.min(1, (now - t0) / duration);
         let x;
         if (p < split) {
           x = x0 + (x1 + overshoot - x0) * easeOutCubic(p / split);
@@ -139,5 +149,9 @@ export function mountSpin(container, strip, options = {}) {
     });
   }
 
-  return { play, viewport, track, cards };
+  // Ends the spin on the next frame. Before play() it makes play() land at
+  // once; after landing it does nothing.
+  function skip() { skipped = true; }
+
+  return { play, skip, viewport, track, cards, get landed() { return landed; } };
 }

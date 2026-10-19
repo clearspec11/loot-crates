@@ -3,7 +3,7 @@
   character can afford it, and a Buy button that asks the GM to do the pull.
 */
 import { getBoxes, getPools, isShopOpen } from "./store.js";
-import { toCopper } from "./currency.js";
+import { formatGold } from "./currency.js";
 import { boxCard } from "./boxcard.js";
 import { requestPull } from "./socket.js";
 
@@ -67,7 +67,7 @@ export class CrateShop extends ApplicationV2 {
     root.innerHTML = `
       <div class="lc-shop__head">
         ${picker}
-        <span class="lc-shop__purse" title="Your coins, as gold">${actor ? esc((toCopper(purse) / 100).toFixed(toCopper(purse) % 100 ? 2 : 0)) + " gp" : ""}</span>
+        <span class="lc-shop__purse" title="Your coins, as gold">${actor ? esc(formatGold(purse)) : ""}</span>
         ${open ? "" : `<span class="lc-shop__closed">${game.users.activeGM ? "The GM has closed the shop." : "Closed until a GM is online."}</span>`}
       </div>
       <div class="lc-shop__grid">

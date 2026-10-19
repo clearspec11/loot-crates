@@ -34,6 +34,13 @@ export function formatPrice(priceGp) {
   return parts.join(" ");
 }
 
+// A purse as one gold figure, the way the shop's header shows it: "450 gp",
+// or "450.53 gp" when there's silver or copper in it.
+export function formatGold(purse = {}) {
+  const cp = toCopper(purse);
+  return `${(cp / 100).toFixed(cp % 100 ? 2 : 0)} gp`;
+}
+
 export function charge(purse = {}, priceGp) {
   const cost = Math.round(priceGp * 100);
   if (cost < 0) return null;
