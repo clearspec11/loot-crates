@@ -389,3 +389,31 @@ describe("a pool entry whose source is gone", () => {
     expect(warnings[0]).toContain("Flame Tongue in Treasure");
   });
 });
+
+describe("the pull log and a GM's rarity", () => {
+  const entry = over => ({ uuid: "rope", name: "Rope", img: "", rarity: "uncommon", sourceRarity: "uncommon", weight: 1, ...over });
+  async function pullWith(e, sourceRarities) {
+    const { game, deliver } = makeWorld({ user: GM });
+    globalThis.fromUuid = async uuid => ({ name: "Rope", img: "", uuid, toObject: () => ({ name: "Rope", type: "loot", flags: {}, system: { rarities: sourceRarities } }) });
+    await game.settings.set("loot-crates", "pools", { pool: { ...POOL, entries: [e] } });
+    await game.settings.set("loot-crates", "boxes", { box: { ...box({}), weights: { [e.rarityOverride ?? e.rarity]: 1 } } });
+    await deliver({ type: "pull", requestId: "r1", boxId: "box", actorId: "actor1", userId: "p1" });
+    return game.settings.get("loot-crates", "pullLog")[0];
+  }
+
+  it("records the source's rarity when the GM's differs from it", async () => {
+    const row = await pullWith(entry({ rarityOverride: "legendary" }), ["uncommon"]);
+    expect(row.rarity).toBe("legendary");
+    expect(row.sourceRarity).toEqual(["uncommon"]);
+  });
+
+  it("leaves it off a row drawn at the source's own rarity", async () => {
+    expect(await pullWith(entry(), ["uncommon"])).not.toHaveProperty("sourceRarity");
+    expect(await pullWith(entry({ rarityOverride: "uncommon" }), ["uncommon"])).not.toHaveProperty("sourceRarity");
+  });
+
+  it("records an empty set when the source had no rarity", async () => {
+    const row = await pullWith(entry({ rarity: "common", sourceRarity: "", rarityOverride: "rare" }), []);
+    expect(row.sourceRarity).toEqual([]);
+  });
+});

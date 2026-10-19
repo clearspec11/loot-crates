@@ -125,6 +125,9 @@ async function doPull(msg) {
     await setActorState(msg.actorId, msg.boxId, out.state);
     if (box.rules?.stock != null) await saveBox({ ...box, rules: { ...box.rules, stock: box.rules.stock - 1 } });
     const log = { boxId: box.id, boxName: box.name, actorId: actor.id, actorName: actor.name, userId: msg.userId, itemId: out.itemId, name: out.result.name, uuid: out.result.uuid, rarity: out.result.rarity, price: box.price, pity: out.result.pity };
+    // Provenance for a GM-set rarity: the source's own, only when it differs.
+    const src = out.sourceRarity ?? [];
+    if (out.rarityOverride && !(src.length === 1 && src[0] === out.result.rarity)) log.sourceRarity = src;
     await appendLog(log);
 
     // itemUuid is the granted copy on the sheet, which the reveal's Open item

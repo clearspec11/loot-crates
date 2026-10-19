@@ -10,11 +10,17 @@
 // rows with the pool's "Set rarity for N unset" button. --shot shows the
 // pool editor.
 //
+// Then one live pull through the socket path (requestPull) for Crate Tester
+// on a box that can only drop the overridden entry, reporting the granted
+// copy's stored rarities, its rarity getter, its loot-crates provenance
+// flags, _stats.compendiumSource and the newest log row's sourceRarity, and
+// that the pool editor shows the "granted item carries" hint.
+//
 //   FOUNDRY_URL=http://192.168.0.57:30000 MODULE_BASE=http://192.168.0.190:8766/ \
 //     NODE_PATH=$(npm root -g) node foundry-dev/headless/run.cjs foundry-dev/checks/live-edit-entry.js --shot edit.png
 //
-// Makes no purchase and deletes nothing; writes the module's own settings
-// (one pool, one box).
+// Deletes nothing; writes the module's own settings (one pool, two boxes, one
+// log row), adds one item to the test actor and posts one chat card.
 const store = await import(MODULE_BASE + "scripts/store.js");
 const { registerSocket } = await import(MODULE_BASE + "scripts/socket.js");
 const { oddsTable, shopOdds, sourceStatus, draw, seededRng } = await import(MODULE_BASE + "scripts/odds.js");
@@ -97,7 +103,39 @@ app.bringToFront?.();
 poolEl()?.scrollIntoView({ block: "start" });
 await wait(400);
 
-const ok = stored?.rarityOverride === "legendary" && stored.weight === 3 && stored.sourceRarity === "uncommon"
+// The rarity consequence is visible before picking.
+const rarityHint = poolEl().querySelector(`#${CSS.escape(`lc-rarity-hint-${pool.id}`)}`)?.textContent.trim() ?? null;
+const describedBy = poolEl().querySelector(`select[data-uuid="${CSS.escape(target.uuid)}"]`)?.getAttribute("aria-describedby");
+
+// One live pull on a box that can only drop the overridden entry.
+const { requestPull } = await import(MODULE_BASE + "scripts/socket.js");
+const FOLDER = "Loot Crates Test";
+let folder = game.folders.find(f => f.type === "Actor" && f.name === FOLDER);
+folder ??= await Folder.create({ name: FOLDER, type: "Actor" });
+let actor = game.actors.find(a => a.name === "Crate Tester" && a.folder?.id === folder.id);
+actor ??= await Actor.create({ name: "Crate Tester", type: "character", folder: folder.id, system: { currency: { pp: 0, gp: 500, ep: 0, sp: 0, cp: 0 } } });
+if (actor.system.currency.gp < 50) await actor.update({ "system.currency.gp": 500 });
+const overrideBox = await store.saveBox({ id: "live-edit-entry-override", name: "Live Override Crate", price: 50, pools: [{ id: pool.id, share: 1 }], weights: { common: 0, uncommon: 0, rare: 0, veryRare: 0, legendary: 1, artifact: 0 }, rules: {} });
+if (!store.isShopOpen()) await store.setShopOpen(true);
+const reveal = await requestPull({ boxId: overrideBox.id, actorId: actor.id });
+const granted = actor.items.get(reveal.itemId);
+const logRow = store.getLog().find(r => r.itemId === reveal.itemId) ?? null;
+const pulled = {
+  name: granted?.name, sourceRarities: granted?._source.system.rarities, rarityGetter: granted?.system.rarity,
+  flags: granted?.flags["loot-crates"], compendiumSource: granted?._stats.compendiumSource,
+  revealRarity: reveal.result.rarity, logRow: logRow && { rarity: logRow.rarity, sourceRarity: logRow.sourceRarity },
+};
+app.tab = "log"; app.render(); await wait(1500);
+const logNote = [...(app.element?.querySelectorAll(".lc-log__rarity") ?? [])].map(el => el.textContent.trim())[0] ?? null;
+app.tab = "pools"; app.render(); await wait(1500);
+const pullOk = granted?.name === target.name && pulled.revealRarity === "legendary"
+  && JSON.stringify(pulled.sourceRarities) === '["legendary"]' && pulled.rarityGetter === "legendary"
+  && JSON.stringify(pulled.flags?.sourceRarity) === '["uncommon"]' && pulled.flags?.rarityOverride === true
+  && pulled.compendiumSource === target.uuid
+  && JSON.stringify(logRow?.sourceRarity) === '["uncommon"]' && /Legendary, set by GM \(source Uncommon\)/.test(logNote ?? "")
+  && /granted item carries/.test(rarityHint ?? "") && describedBy === `lc-rarity-hint-${pool.id}`;
+
+const ok = pullOk && stored?.rarityOverride === "legendary" && stored.weight === 3 && stored.sourceRarity === "uncommon"
   && entryOf(zeroed.uuid).weight === 0 && /lc-rarity-legendary/.test(targetRow.className ?? "") && /lc-entry--never/.test(zeroRow.className ?? "") && /Never drops/.test(zeroRow.text ?? "")
   && /legendary/.test(headerAfter) && /never drops/.test(headerAfter)
   && table.includes("legendary") && !oddsBefore.some(o => o.startsWith("legendary")) && oddsAfter.some(o => o.startsWith("legendary"))
@@ -116,4 +154,5 @@ return {
   oddsBefore, oddsAfter, oddsTable: table, boxesTabPills,
   draws: { zeroDrawn, legendaryHits, of: 400 },
   sweep: { statusAfterSweep, newlyMissing: newlyMissing.length, renamedRows, targetRowAfterSweep },
+  rarityHint, describedBy, pulled, logNote, pullOk,
 };

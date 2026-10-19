@@ -126,7 +126,7 @@ export class CrateManager extends ApplicationV2 {
     const data = await promptForm(`Set rarity in ${pool.name}`, `
       <p>${n} item${n === 1 ? " has" : "s have"} no rarity at the source and draw${n === 1 ? "s" : ""} as Common until you pick one.</p>
       <label>Rarity <select name="rarity">${RARITIES.map(r => `<option value="${r}">${RARITY_LABEL[r]}</option>`).join("")}</select></label>
-      <p class="lc-form__hint">Each item's rarity can still be changed on its own row.</p>`);
+      <p class="lc-form__hint">The granted item carries this rarity. Each item's rarity can still be changed on its own row.</p>`);
     if (!RARITIES.includes(data?.rarity)) return;
     const saved = await updatePool(poolId, fresh => ({ ...fresh, entries: curateEntries(fresh.entries, unset, { sourceRarity: "", rarityOverride: data.rarity }) }));
     if (saved) ui.notifications.info(`${n} item${n === 1 ? "" : "s"} in ${pool.name} set to ${RARITY_LABEL[data.rarity]}.`);
@@ -402,6 +402,7 @@ export class CrateManager extends ApplicationV2 {
             <button type="button" data-action="deletePool" data-pool="${esc(p.id)}" aria-label="Delete ${esc(p.name)}"><i class="fas fa-trash"></i></button>
           </header>
           <p class="lc-pool__hint">Drop items, an Items folder, a compendium or a roll table here.${missing ? " Drop an item on a missing row to relink it." : ""}</p>
+          ${p.entries?.length ? `<p class="lc-pool__hint" id="${esc(rarityHintId(p.id))}">The granted item carries the rarity picked on its row.</p>` : ""}
           <ul class="lc-entries">${rows.map(r => entryRow(p.id, r)).join("")}</ul>
         </article>`;
       }).join("") : `<p class="lc-empty">No pools. A pool is the set of items a box can give out.</p>`}`;
@@ -431,12 +432,21 @@ export class CrateManager extends ApplicationV2 {
     return `<table class="lc-table"><thead><tr><th>When</th><th>Who</th><th>Box</th><th>Got</th><th></th></tr></thead><tbody>
       ${log.map(r => `<tr class="${r.refunded ? "lc-row--refunded" : ""}">
         <td>${new Date(r.at).toLocaleString()}</td><td>${esc(r.actorName)}</td><td>${esc(r.boxName)} (${esc(formatPrice(r.price))})</td>
-        <td class="lc-rarity-${esc(r.rarity)}"><span class="lc-dot"></span>${esc(r.name)}${r.pity ? " · pity" : ""}</td>
+        <td class="lc-rarity-${esc(r.rarity)}"><span class="lc-dot"></span>${esc(r.name)}${r.pity ? " · pity" : ""}${logRarityNote(r)}</td>
         <td>${r.refunded ? "refunded" : `<button type="button" data-action="refund" data-row="${esc(r.id)}">Refund</button>`}</td>
       </tr>`).join("")}</tbody></table>`;
   }
 
   _replaceHTML(result, content) { content.replaceChildren(result); }
+}
+
+// "Legendary, set by GM (source Uncommon)" under a log row whose rarity the GM
+// set over its source's. Rows from before this was recorded carry nothing.
+const rarityName = r => RARITY_LABEL[normalizeRarity(r)] ?? String(r);
+export function logRarityNote(row) {
+  if (!Array.isArray(row?.sourceRarity)) return "";
+  const from = row.sourceRarity.length ? `source ${row.sourceRarity.map(rarityName).join(" or ")}` : "source had none";
+  return `<small class="lc-log__rarity">${esc(`${rarityName(row.rarity)}, set by GM (${from})`)}</small>`;
 }
 
 const FALLBACK_IMG = "icons/svg/item-bag.svg";
@@ -468,6 +478,7 @@ function sourceBlank(e, src) {
   return !!src && src.rawRarity === "" && sourceStatus(e, src) === "ok";
 }
 const hasOverride = e => RARITIES.includes(e.rarityOverride);
+const rarityHintId = poolId => `lc-rarity-hint-${poolId}`;
 const isUnset = (e, src) => !e.missing && !hasOverride(e) && sourceBlank(e, src);
 
 function uuidsUnset(pool, sources) {
@@ -506,7 +517,7 @@ function curateControls(poolId, e, src, status, name) {
     `<option value="" ${current === "" ? "selected" : ""}>${blank ? "Not set (Common)" : `${RARITY_LABEL[fromSource]} (source)`}</option>`,
     ...RARITIES.filter(r => blank || r !== fromSource).map(r => `<option value="${r}" ${current === r ? "selected" : ""}>${RARITY_LABEL[r]}</option>`),
   ].join("");
-  return `<select class="lc-entry__rarity" data-curate="rarity" ${ids}${learn} aria-label="Rarity of ${esc(name)}">${options}</select>
+  return `<select class="lc-entry__rarity" data-curate="rarity" ${ids}${learn} aria-label="Rarity of ${esc(name)}" aria-describedby="${esc(rarityHintId(poolId))}" title="The granted item carries this rarity.">${options}</select>
     <input class="lc-entry__weight" type="number" min="0" step="1" inputmode="numeric" value="${entryWeight(e)}" data-curate="weight" ${ids}${learn} aria-label="Weight of ${esc(name)}, 0 never drops" title="Weight against items of the same rarity; 0 never drops">`;
 }
 
