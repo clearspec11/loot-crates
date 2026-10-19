@@ -20,7 +20,9 @@ export async function performPull({ box, pools, actor, state = {}, rng = rollRng
   if (!actor) throw new PullError("No character to buy with.");
   if (box.rules?.stock != null && box.rules.stock <= 0) throw new PullError(`${box.name} is sold out.`);
 
-  const purse = actor.system?.currency ?? {};
+  // A copy: the live currency object is what actor.update rewrites, and the
+  // grant-failure branch below needs the purse as it was before the charge.
+  const purse = { ...(actor.system?.currency ?? {}) };
   if (!canAfford(purse, box.price)) throw new PullError(`${actor.name} can't afford ${box.name}.`);
 
   const result = draw({ box, pools, rng, state });
@@ -39,7 +41,20 @@ export async function performPull({ box, pools, actor, state = {}, rng = rollRng
     delete data.folder;
     data.flags = { ...(data.flags ?? {}), "loot-crates": { boxId: box.id, sourceUuid: result.entry.uuid, at: Date.now() } };
     await actor.update({ "system.currency": nextPurse });
-    [created] = await actor.createEmbeddedDocuments("Item", [data]);
+    try {
+      [created] = await actor.createEmbeddedDocuments("Item", [data]);
+    } catch (err) {
+      // Charged but not granted: put the coins back before telling anyone.
+      // A purchase either charges and grants, or does neither.
+      console.error(`loot-crates | granting ${source.name} to ${actor.name} failed after charging ${box.price} gp; returning the coins`, err);
+      try {
+        await actor.update({ "system.currency": purse });
+      } catch (restoreErr) {
+        console.error(`loot-crates | could not return ${box.price} gp to ${actor.name}; the GM must refund by hand`, restoreErr);
+        throw new PullError("The item couldn't be added and the coins couldn't be returned. Tell the GM.");
+      }
+      throw new PullError("The item couldn't be added; your coins were returned.");
+    }
   }
 
   return {

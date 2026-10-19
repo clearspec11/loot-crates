@@ -8,10 +8,11 @@
   "Add from compendium" filter.
 */
 import { RARITIES, RARITY_LABEL, DEFAULT_WEIGHTS, DEFAULT_PRICE_GP } from "./config.js";
-import { getPools, getBoxes, getLog, savePool, deletePool, saveBox, deleteBox, entryFromItem, entriesFromCompendium, updateLog, isShopOpen, setShopOpen } from "./store.js";
+import { getPools, getBoxes, getLog, savePool, deletePool, saveBox, deleteBox, entryFromItem, entriesFromCompendium, isShopOpen, setShopOpen } from "./store.js";
 import { oddsTable, normalizeRarity } from "./odds.js";
 import { formatPrice } from "./currency.js";
 import { refreshShop } from "./shop.js";
+import { describeRefund, refundPull } from "./refund.js";
 
 const { ApplicationV2, DialogV2 } = foundry.applications.api;
 const esc = s => foundry.utils.escapeHTML(String(s ?? ""));
@@ -120,18 +121,29 @@ export class CrateManager extends ApplicationV2 {
   }
 
   static async #refund(_e, t) {
-    const row = getLog().find(r => r.id === t.dataset.row);
-    const actor = game.actors.get(row?.actorId);
-    if (!row || !actor) return ui.notifications.warn("That character is gone.");
-    const item = row.itemId ? actor.items.get(row.itemId) : null;
-    const ok = await DialogV2.confirm({ window: { title: "Refund" }, content: `<p>Return ${esc(formatPrice(row.price))} to ${esc(actor.name)}${item ? ` and remove <strong>${esc(item.name)}</strong>` : " (the item is already gone)"}?</p>` });
+    const plan = describeRefund(t.dataset.row);
+    if (plan.status === "already") { ui.notifications.info("That pull was already refunded."); return this.render(); }
+    if (plan.status !== "ready") return ui.notifications.warn(plan.message);
+    const { row, actor, item, box } = plan;
+    const itemLine = item
+      ? `and remove <strong>${esc(item.name)}</strong> from their inventory`
+      : `(<strong>${esc(row.name)}</strong> is no longer in their inventory, so nothing is removed)`;
+    const stockLine = box?.rules?.stock != null ? ` ${esc(box.name)} goes back to ${box.rules.stock + 1} in stock.` : "";
+    const ok = await DialogV2.confirm({
+      window: { title: "Refund" },
+      content: `<p>Return <strong>${esc(formatPrice(row.price))}</strong> to ${esc(actor.name)} ${itemLine}?${stockLine}</p><p>A pull can only be refunded once.</p>`,
+    });
     if (!ok) return;
-    const purse = foundry.utils.deepClone(actor.system.currency);
-    purse.gp = (purse.gp ?? 0) + row.price;
-    await actor.update({ "system.currency": purse });
-    if (item) await item.delete();
-    await updateLog(row.id, { refunded: Date.now() });
-    this.render();
+    const done = await refundPull(row.id);
+    if (done.status === "refunded") {
+      const what = done.removedItem ? ` and ${done.removedItem} removed` : "";
+      ui.notifications.info(`${formatPrice(row.price)} returned to ${actor.name}${what}.`);
+    } else if (done.status === "already") {
+      ui.notifications.info("That pull was already refunded.");
+    } else {
+      ui.notifications.warn(done.message);
+    }
+    this.render(); refreshShop();
   }
 
   static async #toggleShop() { await setShopOpen(!isShopOpen()); this.render(); refreshShop(); }

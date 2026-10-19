@@ -52,3 +52,28 @@ export function charge(purse = {}, priceGp) {
   }
   return null;
 }
+
+// True when every coin in the purse is a whole, non-negative number: the only
+// shape charge() and refund() ever write, and what the dnd5e sheet shows.
+export function isWholeCoins(purse = {}) {
+  return ORDER.every(k => {
+    const n = Number(purse[k] ?? 0);
+    return Number.isInteger(n) && n >= 0;
+  });
+}
+
+// The inverse of charge(): gives priceGp back in whole gp/sp/cp on top of the
+// purse (never as a fractional gp), so toCopper(refund(charge(p, x), x)) is
+// toCopper(p). Coins are floored the way charge() floors them, so the result is
+// always whole coins. A zero or negative price returns the purse unchanged.
+export function refund(purse = {}, priceGp) {
+  const next = Object.fromEntries(ORDER.map(k => [k, Math.max(0, Math.floor(Number(purse[k]) || 0))]));
+  let owed = Math.round(priceGp * 100);
+  if (!(owed > 0)) return next;
+  for (const c of ["gp", "sp", "cp"]) {
+    const n = Math.floor(owed / COPPER_PER[c]);
+    next[c] += n;
+    owed -= n * COPPER_PER[c];
+  }
+  return next;
+}
