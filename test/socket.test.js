@@ -335,7 +335,7 @@ describe("a pool entry whose source is gone", () => {
     actor.update = async data => { events.push("charge"); return origUpdate(data); };
     const { game, emitted, deliver } = makeWorld({ user: GM, actor });
     // The sweep sees every world item as present...
-    game.items = { has: () => true };
+    game.items = { get: id => ({ id, name: id, img: "", system: {} }) };
     // ...but the rare's document is gone by the time the roll resolves it.
     globalThis.fromUuid = async uuid => { events.push(`resolve ${uuid}`); return uuid === "Item.rare" ? null : item(uuid); };
     globalThis.CONFIG = { Dice: { randomUniform: () => 0.5 } };
@@ -346,10 +346,15 @@ describe("a pool entry whose source is gone", () => {
     await game.settings.set("loot-crates", "pools", pools);
     await game.settings.set("loot-crates", "boxes", { box: { ...BOX, weights: { common: 1, rare: 100 } } });
 
-    const warn = console.warn;
+    const warn = console.warn, error = console.error;
+    const errors = [];
     console.warn = () => {};
-    try { await deliver({ type: "pull", requestId: "r1", boxId: "box", actorId: "actor1", userId: "p1" }); } finally { console.warn = warn; }
+    console.error = (...a) => errors.push(a.join(" "));
+    try { await deliver({ type: "pull", requestId: "r1", boxId: "box", actorId: "actor1", userId: "p1" }); } finally { console.warn = warn; console.error = error; }
 
+    // The sweep itself ran and saw the rare as live (a failed sweep would
+    // also reach the re-roll, and prove nothing about the race).
+    expect(errors).toEqual([]);
     expect(emitted.filter(m => m.type === "error")).toEqual([]);
     expect(emitted.find(m => m.type === "reveal").result.uuid).toBe("Item.common");
     expect(events).toEqual(["resolve Item.rare", "resolve Item.common", "charge"]);
