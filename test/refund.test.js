@@ -54,7 +54,7 @@ describe("refundPull", () => {
     const out = await refundPull(rowId);
     expect(out.status).toBe("refunded");
     expect(out.removedItem).toBe("Wand");
-    expect(actor.system.currency).toEqual({ pp: 0, gp: 499, ep: 0, sp: 9, cp: 10 });
+    expect(actor.system.currency).toEqual({ pp: 0, gp: 500, ep: 0, sp: 0, cp: 0 });
     expect(toCopper(actor.system.currency)).toBe(before + 1735);
     expect(isWholeCoins(actor.system.currency)).toBe(true);
     expect(actor.items.has("item1")).toBe(false);

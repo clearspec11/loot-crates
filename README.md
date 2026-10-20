@@ -17,11 +17,11 @@ npm install
 npm run lint          # eslint, 0 errors
 npm run test:run      # vitest: the odds, the currency maths, the strip
 npm run build         # checks module.json, parses every script, packs dist/module.zip
-NODE_PATH=$(npm root -g) npm run smoke   # harness screenshots at 1440 and 390 wide
-npm run harness       # serve the harness at http://localhost:5281/harness/
+NODE_PATH=$(npm root -g) npm run smoke   # harness screenshots at 1440 and 390 wide, dark and light
+npm run harness       # serve the harness at http://localhost:5281/harness/ (?theme=light for the light theme)
 ```
 
-The harness runs the module's pure scripts with sample data outside Foundry so the shop and the spin can be looked at without a world. `foundry-dev/` has the headless runner for a real check against a dev world.
+The harness runs the module's pure scripts and its stylesheet with sample data outside Foundry so the shop, the spin and the pool editor can be looked at without a world. The stylesheet borrows dnd5e's fonts and textures and Foundry's item icons; set `FOUNDRY_URL=http://<foundry>:30000` for `npm run harness` or `npm run smoke` and the harness passes those requests through to that world, so it renders with the real assets (without it, system fonts and plain grounds stand in). `foundry-dev/` has the headless runner for a real check against a dev world.
 
 ## Layout
 

@@ -1,0 +1,1098 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-19T15:09:55+00:00",
+  "title": "Design System: Loot Crates",
+  "extensions": {
+    "colorMeta": {
+      "paper-ground": {
+        "role": "neutral",
+        "displayName": "Paper Ground",
+        "canonical": "#f1ebe8",
+        "oklch": "oklch(94.4% 0.008 48.7)",
+        "cssVar": "--lc-ground",
+        "theme": "light",
+        "tonalRamp": [
+          "#0e0a08",
+          "#282422",
+          "#46413e",
+          "#65605d",
+          "#86817e",
+          "#a9a4a1",
+          "#cec8c5",
+          "#f3edea"
+        ]
+      },
+      "paper-card": {
+        "role": "neutral",
+        "displayName": "Paper Card",
+        "canonical": "#f8f4f1",
+        "oklch": "oklch(96.9% 0.006 59.7)",
+        "cssVar": "--lc-card",
+        "theme": "light",
+        "tonalRamp": [
+          "#0d0b09",
+          "#272422",
+          "#44413f",
+          "#64605e",
+          "#85817f",
+          "#a8a4a1",
+          "#ccc8c5",
+          "#f2eeeb"
+        ]
+      },
+      "paper-field": {
+        "role": "neutral",
+        "displayName": "Paper Field",
+        "canonical": "#fffdfb",
+        "oklch": "oklch(99.5% 0.003 67.8)",
+        "cssVar": "--lc-field",
+        "theme": "light",
+        "tonalRamp": [
+          "#0c0b0a",
+          "#262523",
+          "#434240",
+          "#62615f",
+          "#848280",
+          "#a6a5a3",
+          "#cbc9c7",
+          "#f0eeec"
+        ]
+      },
+      "paper-row-alt": {
+        "role": "neutral",
+        "displayName": "Paper Row Alt",
+        "canonical": "#efe9e3",
+        "oklch": "oklch(93.7% 0.010 67.7)",
+        "cssVar": "--lc-row-alt",
+        "theme": "light",
+        "tonalRamp": [
+          "#0e0a07",
+          "#292420",
+          "#46413c",
+          "#65605b",
+          "#87817c",
+          "#aaa49e",
+          "#cec8c2",
+          "#f3ede7"
+        ]
+      },
+      "gold-rule": {
+        "role": "secondary",
+        "displayName": "Gold Rule",
+        "canonical": "#9f9275",
+        "oklch": "oklch(66.4% 0.044 86.7)",
+        "cssVar": "--lc-rule",
+        "theme": "light",
+        "tonalRamp": [
+          "#130900",
+          "#2e2309",
+          "#4c4126",
+          "#6c6044",
+          "#8e8165",
+          "#b1a486",
+          "#d6c8a9",
+          "#fbedce"
+        ]
+      },
+      "paper-rule-soft": {
+        "role": "neutral",
+        "displayName": "Paper Soft Rule",
+        "canonical": "#c9c7b8",
+        "oklch": "oklch(82.7% 0.021 100.6)",
+        "cssVar": "--lc-rule-soft",
+        "theme": "light",
+        "tonalRamp": [
+          "#0d0b03",
+          "#27251a",
+          "#444236",
+          "#646254",
+          "#858375",
+          "#a8a697",
+          "#cccabb",
+          "#f1efe0"
+        ]
+      },
+      "sheet-ink": {
+        "role": "neutral",
+        "displayName": "Sheet Ink",
+        "canonical": "#191813",
+        "oklch": "oklch(20.8% 0.010 97.8)",
+        "cssVar": "--lc-ink",
+        "theme": "light",
+        "tonalRamp": [
+          "#0c0b07",
+          "#262520",
+          "#43423c",
+          "#63615b",
+          "#84827c",
+          "#a6a59e",
+          "#cbc9c2",
+          "#f0efe7"
+        ]
+      },
+      "sheet-ink-soft": {
+        "role": "neutral",
+        "displayName": "Sheet Ink Soft",
+        "canonical": "#3d3c36",
+        "oklch": "oklch(35.5% 0.010 99.2)",
+        "cssVar": "--lc-ink-soft",
+        "theme": "light",
+        "tonalRamp": [
+          "#0c0b07",
+          "#262520",
+          "#43423c",
+          "#62615b",
+          "#84827c",
+          "#a6a59e",
+          "#cbc9c2",
+          "#f0efe7"
+        ]
+      },
+      "sheet-ink-mute": {
+        "role": "neutral",
+        "displayName": "Sheet Ink Mute",
+        "canonical": "#5d5b52",
+        "oklch": "oklch(47.0% 0.014 96.6)",
+        "cssVar": "--lc-ink-mute",
+        "theme": "light",
+        "tonalRamp": [
+          "#0d0b05",
+          "#27251d",
+          "#44423a",
+          "#636158",
+          "#858279",
+          "#a7a59b",
+          "#ccc9bf",
+          "#f1efe4"
+        ]
+      },
+      "gold-ink": {
+        "role": "secondary",
+        "displayName": "Gold Ink",
+        "canonical": "#6b5a35",
+        "oklch": "oklch(47.5% 0.058 85.6)",
+        "cssVar": "--lc-gold-ink",
+        "theme": "light",
+        "tonalRamp": [
+          "#160800",
+          "#322200",
+          "#50401b",
+          "#705f3a",
+          "#92805a",
+          "#b5a37c",
+          "#dac79f",
+          "#ffecc3"
+        ]
+      },
+      "band-maroon": {
+        "role": "primary",
+        "displayName": "Sheet Maroon",
+        "canonical": "#741b2b",
+        "oklch": "oklch(37.6% 0.122 15.4)",
+        "cssVar": "--lc-band-1",
+        "theme": "light",
+        "tonalRamp": [
+          "#2d0000",
+          "#510010",
+          "#751c2c",
+          "#9a3f4a",
+          "#c0616a",
+          "#e7848c",
+          "#ffa7af",
+          "#ffccd3"
+        ]
+      },
+      "band-oxblood": {
+        "role": "primary",
+        "displayName": "Oxblood",
+        "canonical": "#44191a",
+        "oklch": "oklch(27.9% 0.067 21.0)",
+        "cssVar": "--lc-band-2",
+        "theme": "light",
+        "tonalRamp": [
+          "#200002",
+          "#401516",
+          "#613332",
+          "#835251",
+          "#a77271",
+          "#cc9593",
+          "#f2b9b6",
+          "#ffdedb"
+        ]
+      },
+      "band-ink": {
+        "role": "neutral",
+        "displayName": "Band Ink",
+        "canonical": "#fbf6ef",
+        "oklch": "oklch(97.5% 0.011 76.6)",
+        "cssVar": "--lc-band-ink",
+        "theme": "light",
+        "tonalRamp": [
+          "#0e0b07",
+          "#28241f",
+          "#45413c",
+          "#65615b",
+          "#86827b",
+          "#a9a49e",
+          "#cdc8c2",
+          "#f3eee7"
+        ]
+      },
+      "button-black": {
+        "role": "neutral",
+        "displayName": "Button Black",
+        "canonical": "#191813",
+        "oklch": "oklch(20.8% 0.010 97.8)",
+        "cssVar": "--lc-btn",
+        "theme": "light",
+        "tonalRamp": [
+          "#0c0b07",
+          "#262520",
+          "#43423c",
+          "#63615b",
+          "#84827c",
+          "#a6a59e",
+          "#cbc9c2",
+          "#f0efe7"
+        ]
+      },
+      "pin-gold": {
+        "role": "primary",
+        "displayName": "Pin Gold",
+        "canonical": "#e3ce9e",
+        "oklch": "oklch(85.7% 0.067 87.1)",
+        "cssVar": "--lc-pin",
+        "theme": "both",
+        "tonalRamp": [
+          "#170700",
+          "#332200",
+          "#513f10",
+          "#725f32",
+          "#948053",
+          "#b7a374",
+          "#dcc797",
+          "#ffecbc"
+        ]
+      },
+      "warn-amber": {
+        "role": "neutral",
+        "displayName": "Warn Amber",
+        "canonical": "#8a4b00",
+        "oklch": "oklch(47.9% 0.112 59.9)",
+        "cssVar": "--lc-warn",
+        "theme": "light",
+        "tonalRamp": [
+          "#280000",
+          "#490d00",
+          "#6b2f00",
+          "#8e4f08",
+          "#b37135",
+          "#d99359",
+          "#ffb87c",
+          "#ffdda1"
+        ]
+      },
+      "warn-wash": {
+        "role": "neutral",
+        "displayName": "Warn Wash",
+        "canonical": "#f6e7cf",
+        "oklch": "oklch(93.4% 0.036 79.7)",
+        "cssVar": "--lc-warn-bg",
+        "theme": "light",
+        "tonalRamp": [
+          "#130900",
+          "#2e2310",
+          "#4c402c",
+          "#6c5f4a",
+          "#8e806b",
+          "#b1a38c",
+          "#d6c7b0",
+          "#fbecd4"
+        ]
+      },
+      "ok-green": {
+        "role": "neutral",
+        "displayName": "OK Green",
+        "canonical": "#2f6b2a",
+        "oklch": "oklch(47.2% 0.116 142.1)",
+        "cssVar": "--lc-ok",
+        "theme": "light",
+        "tonalRamp": [
+          "#001400",
+          "#003100",
+          "#11500c",
+          "#357130",
+          "#579451",
+          "#79b773",
+          "#9ddd96",
+          "#c2ffba"
+        ]
+      },
+      "denim-ground": {
+        "role": "neutral",
+        "displayName": "Denim Ground",
+        "canonical": "#0d0b0b",
+        "oklch": "oklch(15.2% 0.003 17.5)",
+        "cssVar": "--lc-ground",
+        "theme": "dark",
+        "tonalRamp": [
+          "#0d0b0b",
+          "#272424",
+          "#444141",
+          "#636060",
+          "#848181",
+          "#a7a4a4",
+          "#cbc8c8",
+          "#f1eded"
+        ]
+      },
+      "slate-card": {
+        "role": "neutral",
+        "displayName": "Slate Card",
+        "canonical": "#252830",
+        "oklch": "oklch(27.7% 0.015 269.1)",
+        "cssVar": "--lc-card",
+        "theme": "dark",
+        "tonalRamp": [
+          "#090b12",
+          "#22252d",
+          "#3f424a",
+          "#5e616a",
+          "#7e828c",
+          "#a1a5af",
+          "#c5c9d4",
+          "#eaeef9"
+        ]
+      },
+      "slate-field": {
+        "role": "neutral",
+        "displayName": "Slate Field",
+        "canonical": "#1b1d24",
+        "oklch": "oklch(23.2% 0.014 272.7)",
+        "cssVar": "--lc-field",
+        "theme": "dark",
+        "tonalRamp": [
+          "#090b11",
+          "#23252c",
+          "#3f424a",
+          "#5e6169",
+          "#7f828b",
+          "#a2a5ae",
+          "#c6c9d2",
+          "#ebeef8"
+        ]
+      },
+      "slate-row-alt": {
+        "role": "neutral",
+        "displayName": "Slate Row Alt",
+        "canonical": "#2c2f38",
+        "oklch": "oklch(30.6% 0.017 270.8)",
+        "cssVar": "--lc-row-alt",
+        "theme": "dark",
+        "tonalRamp": [
+          "#090b12",
+          "#22252d",
+          "#3e424b",
+          "#5d616b",
+          "#7e828d",
+          "#a1a5b0",
+          "#c5c9d4",
+          "#eaeefa"
+        ]
+      },
+      "gold-rule-dark": {
+        "role": "secondary",
+        "displayName": "Gold Rule (dark)",
+        "canonical": "#8a7d5f",
+        "oklch": "oklch(59.4% 0.046 87.3)",
+        "cssVar": "--lc-rule",
+        "theme": "dark",
+        "tonalRamp": [
+          "#130900",
+          "#2f2307",
+          "#4c4124",
+          "#6c6043",
+          "#8e8163",
+          "#b1a485",
+          "#d6c8a8",
+          "#fcedcc"
+        ]
+      },
+      "slate-rule-soft": {
+        "role": "neutral",
+        "displayName": "Slate Soft Rule",
+        "canonical": "#434857",
+        "oklch": "oklch(40.3% 0.026 270.7)",
+        "cssVar": "--lc-rule-soft",
+        "theme": "dark",
+        "tonalRamp": [
+          "#070a16",
+          "#202432",
+          "#3d4150",
+          "#5b6171",
+          "#7c8293",
+          "#9fa5b6",
+          "#c2c9db",
+          "#e8eeff"
+        ]
+      },
+      "bone-ink": {
+        "role": "neutral",
+        "displayName": "Bone Ink",
+        "canonical": "#ece8e1",
+        "oklch": "oklch(93.2% 0.010 81.8)",
+        "cssVar": "--lc-ink",
+        "theme": "dark",
+        "tonalRamp": [
+          "#0d0b07",
+          "#28251f",
+          "#45423c",
+          "#64615b",
+          "#85827b",
+          "#a8a49e",
+          "#ccc9c2",
+          "#f2eee7"
+        ]
+      },
+      "bone-ink-soft": {
+        "role": "neutral",
+        "displayName": "Bone Ink Soft",
+        "canonical": "#cfcabe",
+        "oklch": "oklch(84.0% 0.017 88.0)",
+        "cssVar": "--lc-ink-soft",
+        "theme": "dark",
+        "tonalRamp": [
+          "#0e0b04",
+          "#29251b",
+          "#464238",
+          "#656156",
+          "#878277",
+          "#a9a599",
+          "#cec9bd",
+          "#f3eee2"
+        ]
+      },
+      "bone-ink-mute": {
+        "role": "neutral",
+        "displayName": "Bone Ink Mute",
+        "canonical": "#a7a397",
+        "oklch": "oklch(71.5% 0.018 91.6)",
+        "cssVar": "--lc-ink-mute",
+        "theme": "dark",
+        "tonalRamp": [
+          "#0e0b04",
+          "#28251b",
+          "#454237",
+          "#656156",
+          "#868277",
+          "#a9a599",
+          "#cdc9bd",
+          "#f3eee2"
+        ]
+      },
+      "gold-ink-dark": {
+        "role": "secondary",
+        "displayName": "Gold Ink (dark)",
+        "canonical": "#d9c495",
+        "oklch": "oklch(82.6% 0.066 86.7)",
+        "cssVar": "--lc-gold-ink",
+        "theme": "dark",
+        "tonalRamp": [
+          "#170700",
+          "#332200",
+          "#513f11",
+          "#725f33",
+          "#948053",
+          "#b7a375",
+          "#dcc798",
+          "#ffecbc"
+        ]
+      },
+      "band-maroon-dark": {
+        "role": "primary",
+        "displayName": "Sheet Maroon (dark)",
+        "canonical": "#6a1826",
+        "oklch": "oklch(35.2% 0.115 15.9)",
+        "cssVar": "--lc-band-1",
+        "theme": "dark",
+        "tonalRamp": [
+          "#2b0000",
+          "#4f0011",
+          "#72202d",
+          "#97424b",
+          "#bd636b",
+          "#e3868d",
+          "#ffaab0",
+          "#ffcfd4"
+        ]
+      },
+      "band-oxblood-dark": {
+        "role": "primary",
+        "displayName": "Oxblood (dark)",
+        "canonical": "#2c1013",
+        "oklch": "oklch(21.8% 0.046 15.1)",
+        "cssVar": "--lc-band-2",
+        "theme": "dark",
+        "tonalRamp": [
+          "#1b0305",
+          "#381b1e",
+          "#58383a",
+          "#795759",
+          "#9c7779",
+          "#c09a9c",
+          "#e6bebf",
+          "#ffe3e4"
+        ]
+      },
+      "button-black-dark": {
+        "role": "neutral",
+        "displayName": "Button Black (dark)",
+        "canonical": "#0d0b0b",
+        "oklch": "oklch(15.2% 0.003 17.5)",
+        "cssVar": "--lc-btn",
+        "theme": "dark",
+        "tonalRamp": [
+          "#0d0b0b",
+          "#272424",
+          "#444141",
+          "#636060",
+          "#848181",
+          "#a7a4a4",
+          "#cbc8c8",
+          "#f1eded"
+        ]
+      },
+      "warn-amber-dark": {
+        "role": "neutral",
+        "displayName": "Warn Amber (dark)",
+        "canonical": "#e9b867",
+        "oklch": "oklch(81.0% 0.114 78.6)",
+        "cssVar": "--lc-warn",
+        "theme": "dark",
+        "tonalRamp": [
+          "#220000",
+          "#411800",
+          "#623700",
+          "#845700",
+          "#a77922",
+          "#cc9c4a",
+          "#f2c06f",
+          "#ffe694"
+        ]
+      },
+      "warn-wash-dark": {
+        "role": "neutral",
+        "displayName": "Warn Wash (dark)",
+        "canonical": "#3a2c17",
+        "oklch": "oklch(30.4% 0.039 76.5)",
+        "cssVar": "--lc-warn-bg",
+        "theme": "dark",
+        "tonalRamp": [
+          "#140800",
+          "#30220d",
+          "#4e3f2a",
+          "#6e5f48",
+          "#908068",
+          "#b3a28a",
+          "#d8c6ad",
+          "#feecd2"
+        ]
+      },
+      "ok-green-dark": {
+        "role": "neutral",
+        "displayName": "OK Green (dark)",
+        "canonical": "#8fd48a",
+        "oklch": "oklch(80.6% 0.124 142.8)",
+        "cssVar": "--lc-ok",
+        "theme": "dark",
+        "tonalRamp": [
+          "#001400",
+          "#003200",
+          "#055106",
+          "#2f722d",
+          "#52954e",
+          "#75b970",
+          "#99de93",
+          "#bdffb8"
+        ]
+      },
+      "vault": {
+        "role": "neutral",
+        "displayName": "Vault",
+        "canonical": "#140d0f",
+        "oklch": "oklch(16.9% 0.013 359.6)",
+        "cssVar": "--lc-vault",
+        "theme": "both",
+        "tonalRamp": [
+          "#10090b",
+          "#2b2325",
+          "#483f42",
+          "#685e61",
+          "#897f82",
+          "#aca2a5",
+          "#d1c6c9",
+          "#f6ebee"
+        ]
+      },
+      "vault-glow": {
+        "role": "neutral",
+        "displayName": "Vault Glow",
+        "canonical": "#1d1417",
+        "oklch": "oklch(20.4% 0.016 356.7)",
+        "cssVar": "--lc-vault-2",
+        "theme": "both",
+        "tonalRamp": [
+          "#11080b",
+          "#2c2225",
+          "#493f42",
+          "#695e61",
+          "#8b7f82",
+          "#aea1a5",
+          "#d2c5c9",
+          "#f8eaef"
+        ]
+      },
+      "vault-card": {
+        "role": "neutral",
+        "displayName": "Vault Card",
+        "canonical": "#231b1e",
+        "oklch": "oklch(23.3% 0.014 353.7)",
+        "cssVar": "--lc-vault-card",
+        "theme": "both",
+        "tonalRamp": [
+          "#10090c",
+          "#2b2225",
+          "#483f42",
+          "#685e62",
+          "#897f83",
+          "#aca2a6",
+          "#d1c6ca",
+          "#f7ebef"
+        ]
+      },
+      "vault-line": {
+        "role": "neutral",
+        "displayName": "Vault Line",
+        "canonical": "#3c2f33",
+        "oklch": "oklch(32.1% 0.020 357.9)",
+        "cssVar": "--lc-vault-line",
+        "theme": "both",
+        "tonalRamp": [
+          "#12080b",
+          "#2d2125",
+          "#4b3e42",
+          "#6b5d61",
+          "#8d7e82",
+          "#b0a0a5",
+          "#d5c4c9",
+          "#fbe9ee"
+        ]
+      },
+      "vault-ink": {
+        "role": "neutral",
+        "displayName": "Vault Ink",
+        "canonical": "#efe9df",
+        "oklch": "oklch(93.6% 0.015 80.7)",
+        "cssVar": "--lc-vault-ink",
+        "theme": "both",
+        "tonalRamp": [
+          "#0e0b05",
+          "#29241d",
+          "#464139",
+          "#666058",
+          "#878279",
+          "#aaa49b",
+          "#cec8bf",
+          "#f4eee4"
+        ]
+      },
+      "vault-soft": {
+        "role": "neutral",
+        "displayName": "Vault Soft",
+        "canonical": "#cfc6b8",
+        "oklch": "oklch(83.0% 0.022 79.1)",
+        "cssVar": "--lc-vault-soft",
+        "theme": "both",
+        "tonalRamp": [
+          "#100a03",
+          "#2b2419",
+          "#484135",
+          "#686054",
+          "#898174",
+          "#aca496",
+          "#d1c8ba",
+          "#f6eddf"
+        ]
+      },
+      "gold-rim": {
+        "role": "secondary",
+        "displayName": "Gold Rim",
+        "canonical": "#a8955f",
+        "oklch": "oklch(67.4% 0.076 90.8)",
+        "cssVar": "--lc-gold-rim",
+        "theme": "both",
+        "tonalRamp": [
+          "#170700",
+          "#332200",
+          "#514003",
+          "#715f2a",
+          "#93814b",
+          "#b7a46d",
+          "#dcc890",
+          "#ffedb4"
+        ]
+      },
+      "rarity-common": {
+        "role": "tertiary",
+        "displayName": "Common",
+        "canonical": "#9aa5b5",
+        "oklch": "oklch(71.8% 0.026 257.7)",
+        "cssVar": "--lc-common",
+        "theme": "both",
+        "tonalRamp": [
+          "#050b16",
+          "#1d2632",
+          "#394350",
+          "#586271",
+          "#798393",
+          "#9ba6b6",
+          "#bfcadb",
+          "#e4f0ff"
+        ]
+      },
+      "rarity-uncommon": {
+        "role": "tertiary",
+        "displayName": "Uncommon",
+        "canonical": "#4b8ff2",
+        "oklch": "oklch(65.4% 0.163 257.9)",
+        "cssVar": "--lc-uncommon",
+        "theme": "both",
+        "tonalRamp": [
+          "#02004e",
+          "#001471",
+          "#003a96",
+          "#175dbb",
+          "#3d80e2",
+          "#60a5ff",
+          "#83caff",
+          "#a8f0ff"
+        ]
+      },
+      "rarity-rare": {
+        "role": "tertiary",
+        "displayName": "Rare",
+        "canonical": "#9b59f0",
+        "oklch": "oklch(61.3% 0.217 300.1)",
+        "cssVar": "--lc-rare",
+        "theme": "both",
+        "tonalRamp": [
+          "#220056",
+          "#3c007b",
+          "#5800a0",
+          "#782fc7",
+          "#9957ee",
+          "#bc7dff",
+          "#e1a2ff",
+          "#ffc8ff"
+        ]
+      },
+      "rarity-very-rare": {
+        "role": "tertiary",
+        "displayName": "Very Rare",
+        "canonical": "#ef5aa7",
+        "oklch": "oklch(68.4% 0.198 351.6)",
+        "cssVar": "--lc-veryRare",
+        "theme": "both",
+        "tonalRamp": [
+          "#370013",
+          "#5d002f",
+          "#84004d",
+          "#ac0d6e",
+          "#d4408f",
+          "#fd66b3",
+          "#ff8cd8",
+          "#ffb2fd"
+        ]
+      },
+      "rarity-legendary": {
+        "role": "tertiary",
+        "displayName": "Legendary",
+        "canonical": "#ef4b4b",
+        "oklch": "oklch(64.5% 0.201 24.8)",
+        "cssVar": "--lc-legendary",
+        "theme": "both",
+        "tonalRamp": [
+          "#3f0000",
+          "#670000",
+          "#900000",
+          "#b8001d",
+          "#e13d40",
+          "#ff6662",
+          "#ff8c85",
+          "#ffb2a9"
+        ]
+      },
+      "rarity-artifact": {
+        "role": "tertiary",
+        "displayName": "Artifact",
+        "canonical": "#f2c14e",
+        "oklch": "oklch(83.4% 0.141 85.4)",
+        "cssVar": "--lc-artifact",
+        "theme": "both",
+        "tonalRamp": [
+          "#230000",
+          "#421700",
+          "#633700",
+          "#855800",
+          "#a87a00",
+          "#cd9d1d",
+          "#f3c24f",
+          "#ffe777"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "The landed item's name in the vault, in its rarity colour (28px under 520px)."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "A crate's name on its maroon band."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Character, purse, pool, crate and item names in Roboto Slab (14 to 17px)."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Running window text; secondary lines at 12px."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "dnd5e field labels, upper case in gold ink; the 11px floor."
+      },
+      "data": {
+        "displayName": "Data",
+        "purpose": "Odds pills, filter chips, stock and prices."
+      }
+    },
+    "themes": [
+      {
+        "name": "light",
+        "selector": "@scope (.theme-light) to (.themed)",
+        "ground": "url(../../../systems/dnd5e/ui/texture-gray1.webp) no-repeat top left, url(../../../systems/dnd5e/ui/texture-gray2.webp) no-repeat bottom right, #f1ebe8",
+        "note": "Base; also the unscoped default."
+      },
+      {
+        "name": "dark",
+        "selector": "@scope (.theme-dark) to (.themed)",
+        "ground": "#0d0b0b url(../../../ui/denim075.png)",
+        "note": "Overrides the paper tokens; the vault and rarity ladder are shared."
+      }
+    ],
+    "shadows": [
+      {
+        "name": "card",
+        "value": "0 0 6px rgba(0, 0, 0, .45)",
+        "purpose": "dnd5e's soft card shadow: crate cards, pools, tables, chat cards, primary buttons."
+      },
+      {
+        "name": "peek",
+        "value": "0 2px 4px rgba(0, 0, 0, .35)",
+        "purpose": "Fanned item portraits on a crate card."
+      },
+      {
+        "name": "vault-frame",
+        "value": "inset 0 3px 0 -2px #e3ce9e, inset 0 -3px 0 -2px #e3ce9e, inset 0 10px 18px -12px #000, inset 0 -10px 18px -12px #000",
+        "purpose": "Gold hairlines and edge shade inside the vault."
+      },
+      {
+        "name": "landed-lift",
+        "value": "inset 0 0 0 1px var(--lc-rarity), 0 8px 16px rgba(0, 0, 0, .6)",
+        "purpose": "The winning strip card only: neutral lift, inset rarity ring."
+      },
+      {
+        "name": "landed-portrait",
+        "value": "0 0 0 2px #231b1e, 0 0 0 3px color-mix(in srgb, #e3ce9e 60%, transparent)",
+        "purpose": "Gold double frame on the landed card's portrait."
+      }
+    ],
+    "motion": [
+      {
+        "name": "control-state",
+        "value": "120ms ease",
+        "purpose": "Border, background and colour changes on buttons."
+      },
+      {
+        "name": "landing",
+        "value": "460ms cubic-bezier(.16, 1, .3, 1)",
+        "purpose": "Winning card lift (translateY -5px, scale 1.06); others fade to .45 over 300ms."
+      },
+      {
+        "name": "vault-wash",
+        "value": "600ms cubic-bezier(.16, 1, .3, 1) 120ms",
+        "purpose": "Rarity wash fades in to opacity .12 + rank x .12."
+      },
+      {
+        "name": "result-after",
+        "value": "260ms ease 460ms",
+        "purpose": "Where-it-went line rises 3px and fades in after the name lands."
+      },
+      {
+        "name": "spin",
+        "value": "6200ms default; easeOutCubic over the first 86% to target plus overshoot, easeInOutQuad settle over the last 14%",
+        "purpose": "One rAF loop, one translateX. Near-miss overshoot: half a card + gap + a quarter card into the teased card; otherwise 18% of a card. Unchanged by this redesign."
+      },
+      {
+        "name": "disclosure",
+        "value": "140ms ease",
+        "purpose": "Pool chevron rotation."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "none",
+        "purpose": "prefers-reduced-motion: skip to the landed state; card, wash, chevron transitions and the result-after animation removed."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "narrow",
+        "value": "520px",
+        "purpose": "Purse stacks left, strip fade widens to 22%/78%, result name 28px, entry rows wrap."
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "dnd5e's black button with an inset gold rule; the primary action, carrying its cost.",
+      "html": "<div class=\"ds-root\"><button class=\"ds-btn-primary\">Open for 150 gp</button> <button class=\"ds-btn-primary\" disabled>Open for 150 gp</button></div>",
+      "css": ".ds-root{--lc-display:\"Modesto Condensed\",\"Palatino Linotype\",serif;--lc-slab:\"Roboto Slab\",\"Signika\",serif;--lc-body:\"Roboto\",\"Signika\",system-ui,sans-serif;--lc-label:\"Roboto Condensed\",\"Roboto\",\"Signika\",sans-serif;--lc-card:#f8f4f1;--lc-field:#fffdfb;--lc-row-alt:#efe9e3;--lc-rule:#9f9275;--lc-rule-soft:#c9c7b8;--lc-ink:#191813;--lc-ink-mute:#5d5b52;--lc-gold-ink:#6b5a35;--lc-band-1:#741b2b;--lc-band-2:#44191a;--lc-band-ink:#fbf6ef;--lc-btn:#191813;--lc-btn-ink:#e3ce9e;--lc-btn-rule:#9f9275;--lc-focus:#741b2b;--lc-gold-rim:#a8955f;--lc-pin:#e3ce9e;--lc-vault:#140d0f;--lc-vault-2:#1d1417;--lc-vault-card:#231b1e;--lc-vault-line:#3c2f33;--lc-vault-ink:#efe9df;--lc-vault-soft:#cfc6b8;--lc-shadow:0 0 6px rgba(0,0,0,.45);font-family:var(--lc-body);color:var(--lc-ink);font-size:13px;padding:12px;background:#f1ebe8}.ds-r-common{--lc-rarity:#9aa5b5}.ds-r-uncommon{--lc-rarity:#4b8ff2}.ds-r-rare{--lc-rarity:#9b59f0}.ds-r-veryRare{--lc-rarity:#ef5aa7}.ds-r-legendary{--lc-rarity:#ef4b4b;--lc-rank:4}.ds-r-artifact{--lc-rarity:#f2c14e}.ds-btn-primary{position:relative;background:var(--lc-btn);color:var(--lc-btn-ink);border:none;font:700 13px var(--lc-body);min-height:36px;padding:0 16px;border-radius:4px;box-shadow:var(--lc-shadow);cursor:pointer}.ds-btn-primary::after{content:\"\";position:absolute;inset:3px;border:1px solid var(--lc-btn-rule);border-radius:3px;pointer-events:none}.ds-btn-primary:hover{color:#fff3d6}.ds-btn-primary:hover::after{border-color:var(--lc-btn-ink)}.ds-btn-primary:focus-visible{outline:2px solid var(--lc-focus);outline-offset:1px}.ds-btn-primary:disabled{background:var(--lc-row-alt);color:var(--lc-ink-mute);box-shadow:none;cursor:not-allowed}.ds-btn-primary:disabled::after{border:1px dashed var(--lc-rule-soft)}"
+    },
+    {
+      "name": "Quiet Button",
+      "kind": "button",
+      "refersTo": "button-quiet",
+      "description": "Outlined secondary action on the field ground; dashed when disabled.",
+      "html": "<div class=\"ds-root\"><button class=\"ds-btn\">New pool</button> <button class=\"ds-btn\" disabled>Skip</button></div>",
+      "css": ".ds-root{--lc-display:\"Modesto Condensed\",\"Palatino Linotype\",serif;--lc-slab:\"Roboto Slab\",\"Signika\",serif;--lc-body:\"Roboto\",\"Signika\",system-ui,sans-serif;--lc-label:\"Roboto Condensed\",\"Roboto\",\"Signika\",sans-serif;--lc-card:#f8f4f1;--lc-field:#fffdfb;--lc-row-alt:#efe9e3;--lc-rule:#9f9275;--lc-rule-soft:#c9c7b8;--lc-ink:#191813;--lc-ink-mute:#5d5b52;--lc-gold-ink:#6b5a35;--lc-band-1:#741b2b;--lc-band-2:#44191a;--lc-band-ink:#fbf6ef;--lc-btn:#191813;--lc-btn-ink:#e3ce9e;--lc-btn-rule:#9f9275;--lc-focus:#741b2b;--lc-gold-rim:#a8955f;--lc-pin:#e3ce9e;--lc-vault:#140d0f;--lc-vault-2:#1d1417;--lc-vault-card:#231b1e;--lc-vault-line:#3c2f33;--lc-vault-ink:#efe9df;--lc-vault-soft:#cfc6b8;--lc-shadow:0 0 6px rgba(0,0,0,.45);font-family:var(--lc-body);color:var(--lc-ink);font-size:13px;padding:12px;background:#f1ebe8}.ds-r-common{--lc-rarity:#9aa5b5}.ds-r-uncommon{--lc-rarity:#4b8ff2}.ds-r-rare{--lc-rarity:#9b59f0}.ds-r-veryRare{--lc-rarity:#ef5aa7}.ds-r-legendary{--lc-rarity:#ef4b4b;--lc-rank:4}.ds-r-artifact{--lc-rarity:#f2c14e}.ds-btn{font:13px var(--lc-body);min-height:30px;padding:0 12px;border-radius:4px;background:var(--lc-field);color:var(--lc-ink);border:1px solid var(--lc-rule-soft);cursor:pointer;transition:border-color 120ms ease}.ds-btn:hover:not(:disabled){border-color:var(--lc-rule)}.ds-btn:focus-visible{outline:2px solid var(--lc-focus);outline-offset:1px}.ds-btn:disabled{cursor:not-allowed;color:var(--lc-ink-mute);border-style:dashed}"
+    },
+    {
+      "name": "Labelled Field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "dnd5e field label (11px condensed bold upper case, gold ink) over a 30px field.",
+      "html": "<div class=\"ds-root\"><label class=\"ds-field\"><span class=\"ds-label\">Character</span><input class=\"ds-input\" placeholder=\"Search by name\"></label></div>",
+      "css": ".ds-root{--lc-display:\"Modesto Condensed\",\"Palatino Linotype\",serif;--lc-slab:\"Roboto Slab\",\"Signika\",serif;--lc-body:\"Roboto\",\"Signika\",system-ui,sans-serif;--lc-label:\"Roboto Condensed\",\"Roboto\",\"Signika\",sans-serif;--lc-card:#f8f4f1;--lc-field:#fffdfb;--lc-row-alt:#efe9e3;--lc-rule:#9f9275;--lc-rule-soft:#c9c7b8;--lc-ink:#191813;--lc-ink-mute:#5d5b52;--lc-gold-ink:#6b5a35;--lc-band-1:#741b2b;--lc-band-2:#44191a;--lc-band-ink:#fbf6ef;--lc-btn:#191813;--lc-btn-ink:#e3ce9e;--lc-btn-rule:#9f9275;--lc-focus:#741b2b;--lc-gold-rim:#a8955f;--lc-pin:#e3ce9e;--lc-vault:#140d0f;--lc-vault-2:#1d1417;--lc-vault-card:#231b1e;--lc-vault-line:#3c2f33;--lc-vault-ink:#efe9df;--lc-vault-soft:#cfc6b8;--lc-shadow:0 0 6px rgba(0,0,0,.45);font-family:var(--lc-body);color:var(--lc-ink);font-size:13px;padding:12px;background:#f1ebe8}.ds-r-common{--lc-rarity:#9aa5b5}.ds-r-uncommon{--lc-rarity:#4b8ff2}.ds-r-rare{--lc-rarity:#9b59f0}.ds-r-veryRare{--lc-rarity:#ef5aa7}.ds-r-legendary{--lc-rarity:#ef4b4b;--lc-rank:4}.ds-r-artifact{--lc-rarity:#f2c14e}.ds-field{display:grid;gap:3px;max-width:240px}.ds-label{font:700 11px var(--lc-label);letter-spacing:.03em;text-transform:uppercase;color:var(--lc-gold-ink)}.ds-input{font:13px var(--lc-body);min-height:30px;padding:0 8px;box-sizing:border-box;color:var(--lc-ink);background:var(--lc-field);border:1px solid var(--lc-rule-soft);border-radius:4px}.ds-input::placeholder{color:var(--lc-ink-mute)}.ds-input:hover{border-color:var(--lc-rule)}.ds-input:focus-visible{outline:2px solid var(--lc-focus);outline-offset:1px}"
+    },
+    {
+      "name": "Sheet Tabs",
+      "kind": "nav",
+      "refersTo": "tab",
+      "description": "dnd5e sheet tabs: upper-case condensed labels, the active one underlined in gold.",
+      "html": "<div class=\"ds-root\"><nav class=\"ds-tabs\"><button class=\"ds-tab is-active\">Pools</button><button class=\"ds-tab\">Boxes</button><button class=\"ds-tab\">Pull log</button></nav></div>",
+      "css": ".ds-root{--lc-display:\"Modesto Condensed\",\"Palatino Linotype\",serif;--lc-slab:\"Roboto Slab\",\"Signika\",serif;--lc-body:\"Roboto\",\"Signika\",system-ui,sans-serif;--lc-label:\"Roboto Condensed\",\"Roboto\",\"Signika\",sans-serif;--lc-card:#f8f4f1;--lc-field:#fffdfb;--lc-row-alt:#efe9e3;--lc-rule:#9f9275;--lc-rule-soft:#c9c7b8;--lc-ink:#191813;--lc-ink-mute:#5d5b52;--lc-gold-ink:#6b5a35;--lc-band-1:#741b2b;--lc-band-2:#44191a;--lc-band-ink:#fbf6ef;--lc-btn:#191813;--lc-btn-ink:#e3ce9e;--lc-btn-rule:#9f9275;--lc-focus:#741b2b;--lc-gold-rim:#a8955f;--lc-pin:#e3ce9e;--lc-vault:#140d0f;--lc-vault-2:#1d1417;--lc-vault-card:#231b1e;--lc-vault-line:#3c2f33;--lc-vault-ink:#efe9df;--lc-vault-soft:#cfc6b8;--lc-shadow:0 0 6px rgba(0,0,0,.45);font-family:var(--lc-body);color:var(--lc-ink);font-size:13px;padding:12px;background:#f1ebe8}.ds-r-common{--lc-rarity:#9aa5b5}.ds-r-uncommon{--lc-rarity:#4b8ff2}.ds-r-rare{--lc-rarity:#9b59f0}.ds-r-veryRare{--lc-rarity:#ef5aa7}.ds-r-legendary{--lc-rarity:#ef4b4b;--lc-rank:4}.ds-r-artifact{--lc-rarity:#f2c14e}.ds-tabs{display:flex;gap:4px;border-bottom:1px solid var(--lc-rule)}.ds-tab{background:none;border:0;border-bottom:2px solid transparent;margin-bottom:-1px;font:700 13px var(--lc-label);letter-spacing:.04em;text-transform:uppercase;color:var(--lc-ink-mute);min-height:34px;padding:0 12px;cursor:pointer}.ds-tab:hover{color:var(--lc-ink);border-bottom-color:var(--lc-rule-soft)}.ds-tab:focus-visible{outline:2px solid var(--lc-focus);outline-offset:-2px}.ds-tab.is-active{color:var(--lc-ink);border-bottom-color:var(--lc-rule)}"
+    },
+    {
+      "name": "Odds Pills and Filter Chip",
+      "kind": "chip",
+      "refersTo": "odds-pill",
+      "description": "Rarity and chance in ink, the rarity as a diamond; chips share the shape and fill black when pressed.",
+      "html": "<div class=\"ds-root\"><div class=\"ds-odds\"><span class=\"ds-odd ds-r-uncommon\">Uncommon 75%</span><span class=\"ds-odd ds-r-rare\">Rare 25%</span><button class=\"ds-odd ds-chip ds-r-rare\" aria-pressed=\"true\">23 rare</button></div></div>",
+      "css": ".ds-root{--lc-display:\"Modesto Condensed\",\"Palatino Linotype\",serif;--lc-slab:\"Roboto Slab\",\"Signika\",serif;--lc-body:\"Roboto\",\"Signika\",system-ui,sans-serif;--lc-label:\"Roboto Condensed\",\"Roboto\",\"Signika\",sans-serif;--lc-card:#f8f4f1;--lc-field:#fffdfb;--lc-row-alt:#efe9e3;--lc-rule:#9f9275;--lc-rule-soft:#c9c7b8;--lc-ink:#191813;--lc-ink-mute:#5d5b52;--lc-gold-ink:#6b5a35;--lc-band-1:#741b2b;--lc-band-2:#44191a;--lc-band-ink:#fbf6ef;--lc-btn:#191813;--lc-btn-ink:#e3ce9e;--lc-btn-rule:#9f9275;--lc-focus:#741b2b;--lc-gold-rim:#a8955f;--lc-pin:#e3ce9e;--lc-vault:#140d0f;--lc-vault-2:#1d1417;--lc-vault-card:#231b1e;--lc-vault-line:#3c2f33;--lc-vault-ink:#efe9df;--lc-vault-soft:#cfc6b8;--lc-shadow:0 0 6px rgba(0,0,0,.45);font-family:var(--lc-body);color:var(--lc-ink);font-size:13px;padding:12px;background:#f1ebe8}.ds-r-common{--lc-rarity:#9aa5b5}.ds-r-uncommon{--lc-rarity:#4b8ff2}.ds-r-rare{--lc-rarity:#9b59f0}.ds-r-veryRare{--lc-rarity:#ef5aa7}.ds-r-legendary{--lc-rarity:#ef4b4b;--lc-rank:4}.ds-r-artifact{--lc-rarity:#f2c14e}.ds-odds{display:flex;gap:4px;justify-content:center;flex-wrap:wrap}.ds-odd{display:inline-flex;align-items:center;gap:5px;white-space:nowrap;font:700 12px/18px var(--lc-label);padding:0 7px 0 6px;border-radius:3px;background:var(--lc-field);border:1px solid var(--lc-rule-soft);color:var(--lc-ink)}.ds-odd::before{content:\"\";width:6px;height:6px;flex:none;background:var(--lc-rarity);transform:rotate(45deg);box-shadow:0 0 0 1px rgba(25,24,19,.25)}.ds-chip{min-height:26px;cursor:pointer}.ds-chip:hover{border-color:var(--lc-rule)}.ds-chip[aria-pressed=true]{background:var(--lc-btn);color:var(--lc-btn-ink);border-color:var(--lc-btn)}"
+    },
+    {
+      "name": "Odds Ribbon",
+      "kind": "custom",
+      "refersTo": "",
+      "description": "The signature: one segmented, gold-rimmed bar of a crate's real drop chances.",
+      "html": "<div class=\"ds-root\"><div class=\"ds-ribbon\" style=\"max-width:320px\"><span class=\"ds-ribbon__seg ds-r-common\" style=\"flex-grow:.5\"></span><span class=\"ds-ribbon__seg ds-r-uncommon\" style=\"flex-grow:.3\"></span><span class=\"ds-ribbon__seg ds-r-rare\" style=\"flex-grow:.15\"></span><span class=\"ds-ribbon__seg ds-r-legendary\" style=\"flex-grow:.05\"></span></div></div>",
+      "css": ".ds-root{--lc-display:\"Modesto Condensed\",\"Palatino Linotype\",serif;--lc-slab:\"Roboto Slab\",\"Signika\",serif;--lc-body:\"Roboto\",\"Signika\",system-ui,sans-serif;--lc-label:\"Roboto Condensed\",\"Roboto\",\"Signika\",sans-serif;--lc-card:#f8f4f1;--lc-field:#fffdfb;--lc-row-alt:#efe9e3;--lc-rule:#9f9275;--lc-rule-soft:#c9c7b8;--lc-ink:#191813;--lc-ink-mute:#5d5b52;--lc-gold-ink:#6b5a35;--lc-band-1:#741b2b;--lc-band-2:#44191a;--lc-band-ink:#fbf6ef;--lc-btn:#191813;--lc-btn-ink:#e3ce9e;--lc-btn-rule:#9f9275;--lc-focus:#741b2b;--lc-gold-rim:#a8955f;--lc-pin:#e3ce9e;--lc-vault:#140d0f;--lc-vault-2:#1d1417;--lc-vault-card:#231b1e;--lc-vault-line:#3c2f33;--lc-vault-ink:#efe9df;--lc-vault-soft:#cfc6b8;--lc-shadow:0 0 6px rgba(0,0,0,.45);font-family:var(--lc-body);color:var(--lc-ink);font-size:13px;padding:12px;background:#f1ebe8}.ds-r-common{--lc-rarity:#9aa5b5}.ds-r-uncommon{--lc-rarity:#4b8ff2}.ds-r-rare{--lc-rarity:#9b59f0}.ds-r-veryRare{--lc-rarity:#ef5aa7}.ds-r-legendary{--lc-rarity:#ef4b4b;--lc-rank:4}.ds-r-artifact{--lc-rarity:#f2c14e}.ds-ribbon{display:flex;gap:1px;height:10px;padding:2px;box-sizing:border-box;background:var(--lc-gold-rim);border-radius:2px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.35)}.ds-ribbon__seg{flex:1 1 0;min-width:4px;background:var(--lc-rarity)}.ds-ribbon__seg:first-child{border-radius:1px 0 0 1px}.ds-ribbon__seg:last-child{border-radius:0 1px 1px 0}"
+    },
+    {
+      "name": "Crate Card",
+      "kind": "card",
+      "refersTo": "crate-card",
+      "description": "A dnd5e card: the name on a maroon band, the ribbon over named odds, the cost on the button.",
+      "html": "<div class=\"ds-root\"><article class=\"ds-box\"><header class=\"ds-box__band\"><h3 class=\"ds-box__name\">Adventurer's Crate</h3></header><div class=\"ds-box__body\"><div class=\"ds-ribbon\"><span class=\"ds-ribbon__seg ds-r-uncommon\" style=\"flex-grow:.75\"></span><span class=\"ds-ribbon__seg ds-r-rare\" style=\"flex-grow:.25\"></span></div><div class=\"ds-odds\"><span class=\"ds-odd ds-r-uncommon\">Uncommon 75%</span><span class=\"ds-odd ds-r-rare\">Rare 25%</span></div><span class=\"ds-box__stock\">4 left</span><button class=\"ds-btn-primary\">Open for 75 gp</button></div></article></div>",
+      "css": ".ds-root{--lc-display:\"Modesto Condensed\",\"Palatino Linotype\",serif;--lc-slab:\"Roboto Slab\",\"Signika\",serif;--lc-body:\"Roboto\",\"Signika\",system-ui,sans-serif;--lc-label:\"Roboto Condensed\",\"Roboto\",\"Signika\",sans-serif;--lc-card:#f8f4f1;--lc-field:#fffdfb;--lc-row-alt:#efe9e3;--lc-rule:#9f9275;--lc-rule-soft:#c9c7b8;--lc-ink:#191813;--lc-ink-mute:#5d5b52;--lc-gold-ink:#6b5a35;--lc-band-1:#741b2b;--lc-band-2:#44191a;--lc-band-ink:#fbf6ef;--lc-btn:#191813;--lc-btn-ink:#e3ce9e;--lc-btn-rule:#9f9275;--lc-focus:#741b2b;--lc-gold-rim:#a8955f;--lc-pin:#e3ce9e;--lc-vault:#140d0f;--lc-vault-2:#1d1417;--lc-vault-card:#231b1e;--lc-vault-line:#3c2f33;--lc-vault-ink:#efe9df;--lc-vault-soft:#cfc6b8;--lc-shadow:0 0 6px rgba(0,0,0,.45);font-family:var(--lc-body);color:var(--lc-ink);font-size:13px;padding:12px;background:#f1ebe8}.ds-r-common{--lc-rarity:#9aa5b5}.ds-r-uncommon{--lc-rarity:#4b8ff2}.ds-r-rare{--lc-rarity:#9b59f0}.ds-r-veryRare{--lc-rarity:#ef5aa7}.ds-r-legendary{--lc-rarity:#ef4b4b;--lc-rank:4}.ds-r-artifact{--lc-rarity:#f2c14e}.ds-ribbon{display:flex;gap:1px;height:10px;padding:2px;box-sizing:border-box;background:var(--lc-gold-rim);border-radius:2px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.35)}.ds-ribbon__seg{flex:1 1 0;min-width:4px;background:var(--lc-rarity)}.ds-ribbon__seg:first-child{border-radius:1px 0 0 1px}.ds-ribbon__seg:last-child{border-radius:0 1px 1px 0}.ds-odds{display:flex;gap:4px;justify-content:center;flex-wrap:wrap}.ds-odd{display:inline-flex;align-items:center;gap:5px;white-space:nowrap;font:700 12px/18px var(--lc-label);padding:0 7px 0 6px;border-radius:3px;background:var(--lc-field);border:1px solid var(--lc-rule-soft);color:var(--lc-ink)}.ds-odd::before{content:\"\";width:6px;height:6px;flex:none;background:var(--lc-rarity);transform:rotate(45deg);box-shadow:0 0 0 1px rgba(25,24,19,.25)}.ds-btn-primary{position:relative;background:var(--lc-btn);color:var(--lc-btn-ink);border:none;font:700 13px var(--lc-body);min-height:36px;padding:0 16px;border-radius:4px;box-shadow:var(--lc-shadow);cursor:pointer}.ds-btn-primary::after{content:\"\";position:absolute;inset:3px;border:1px solid var(--lc-btn-rule);border-radius:3px;pointer-events:none}.ds-btn-primary:hover{color:#fff3d6}.ds-btn-primary:hover::after{border-color:var(--lc-btn-ink)}.ds-btn-primary:focus-visible{outline:2px solid var(--lc-focus);outline-offset:1px}.ds-btn-primary:disabled{background:var(--lc-row-alt);color:var(--lc-ink-mute);box-shadow:none;cursor:not-allowed}.ds-btn-primary:disabled::after{border:1px dashed var(--lc-rule-soft)}.ds-box{width:200px;display:flex;flex-direction:column;overflow:hidden;background:var(--lc-card);border:1px solid var(--lc-rule);border-radius:4px;box-shadow:var(--lc-shadow)}.ds-box__band{background:linear-gradient(to right,var(--lc-band-1),var(--lc-band-2));border-bottom:1px solid var(--lc-rule);padding:8px 10px 6px;text-align:center}.ds-box__name{margin:0;font:700 21px/1.05 var(--lc-display);color:var(--lc-band-ink);letter-spacing:.01em}.ds-box__body{display:grid;gap:9px;padding:12px;text-align:center}.ds-box__stock{font:700 12px var(--lc-label);color:var(--lc-ink-mute)}"
+    },
+    {
+      "name": "Vault Result",
+      "kind": "custom",
+      "refersTo": "strip-card",
+      "description": "The always-dark vault: pin, landed strip card with neutral lift and inset rarity ring, rank-scaled wash, rarity-coloured Modesto name.",
+      "html": "<div class=\"ds-root\" style=\"padding:0\"><section class=\"ds-vault ds-r-legendary\"><div class=\"ds-pin\"></div><div class=\"ds-card ds-card--landed\"><div class=\"ds-card__art\">C</div><div class=\"ds-card__name\">Crown of the Pie King</div><div class=\"ds-card__bar\"></div></div><div class=\"ds-name\">Crown of the Pie King</div><div class=\"ds-rarity\">Legendary</div></section></div>",
+      "css": ".ds-root{--lc-display:\"Modesto Condensed\",\"Palatino Linotype\",serif;--lc-slab:\"Roboto Slab\",\"Signika\",serif;--lc-body:\"Roboto\",\"Signika\",system-ui,sans-serif;--lc-label:\"Roboto Condensed\",\"Roboto\",\"Signika\",sans-serif;--lc-card:#f8f4f1;--lc-field:#fffdfb;--lc-row-alt:#efe9e3;--lc-rule:#9f9275;--lc-rule-soft:#c9c7b8;--lc-ink:#191813;--lc-ink-mute:#5d5b52;--lc-gold-ink:#6b5a35;--lc-band-1:#741b2b;--lc-band-2:#44191a;--lc-band-ink:#fbf6ef;--lc-btn:#191813;--lc-btn-ink:#e3ce9e;--lc-btn-rule:#9f9275;--lc-focus:#741b2b;--lc-gold-rim:#a8955f;--lc-pin:#e3ce9e;--lc-vault:#140d0f;--lc-vault-2:#1d1417;--lc-vault-card:#231b1e;--lc-vault-line:#3c2f33;--lc-vault-ink:#efe9df;--lc-vault-soft:#cfc6b8;--lc-shadow:0 0 6px rgba(0,0,0,.45);font-family:var(--lc-body);color:var(--lc-ink);font-size:13px;padding:12px;background:#f1ebe8}.ds-r-common{--lc-rarity:#9aa5b5}.ds-r-uncommon{--lc-rarity:#4b8ff2}.ds-r-rare{--lc-rarity:#9b59f0}.ds-r-veryRare{--lc-rarity:#ef5aa7}.ds-r-legendary{--lc-rarity:#ef4b4b;--lc-rank:4}.ds-r-artifact{--lc-rarity:#f2c14e}.ds-vault{position:relative;isolation:isolate;padding:18px 16px 16px;text-align:center;color:var(--lc-vault-ink);background:radial-gradient(90% 120% at 50% 0%,var(--lc-vault-2),var(--lc-vault) 70%),var(--lc-vault);border-block:1px solid var(--lc-rule);box-shadow:inset 0 3px 0 -2px var(--lc-pin),inset 0 -3px 0 -2px var(--lc-pin),inset 0 10px 18px -12px #000,inset 0 -10px 18px -12px #000}.ds-vault::after{content:\"\";position:absolute;inset:0;z-index:-1;opacity:calc(.12 + var(--lc-rank,0) * .12);background:radial-gradient(60% 90% at 50% 38%,color-mix(in srgb,var(--lc-rarity) 55%,transparent),transparent 70%)}.ds-pin{position:absolute;top:0;bottom:0;left:50%;width:2px;margin-left:-1px;z-index:-1;background:var(--lc-pin);opacity:.55}.ds-card{width:120px;height:140px;box-sizing:border-box;margin:0 auto;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:6px;padding:10px 8px 0;overflow:hidden;background:var(--lc-vault-card);border:1px solid var(--lc-vault-line);border-radius:4px;color:var(--lc-vault-soft);transition:transform 460ms cubic-bezier(.16,1,.3,1)}.ds-card--landed{transform:translateY(-5px) scale(1.06);border-color:var(--lc-rarity);box-shadow:inset 0 0 0 1px var(--lc-rarity),0 8px 16px rgba(0,0,0,.6);background:color-mix(in srgb,var(--lc-rarity) 10%,var(--lc-vault-card))}.ds-card__art{width:70px;height:70px;display:grid;place-items:center;box-sizing:border-box;border:1px solid var(--lc-pin);border-radius:4px;background:color-mix(in srgb,var(--lc-rarity) 16%,var(--lc-vault));font:700 22px var(--lc-display);box-shadow:0 0 0 2px var(--lc-vault-card),0 0 0 3px color-mix(in srgb,var(--lc-pin) 60%,transparent)}.ds-card__name{font-size:12px;line-height:1.2;color:var(--lc-vault-ink)}.ds-card__bar{width:calc(100% + 16px);height:5px;margin:0 -8px;background:var(--lc-rarity)}.ds-name{margin-top:12px;font:700 34px/1 var(--lc-display);color:var(--lc-rarity)}.ds-rarity{margin-top:4px;font:700 12px var(--lc-label);letter-spacing:.08em;text-transform:uppercase;color:var(--lc-vault-soft)}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Sheet That Sells Treasure",
+    "overview": "**Creative North Star: \"The Sheet That Sells Treasure\"**\n\nLoot Crates speaks dnd5e's own sheet language so a player reads every window as part of the system: dnd5e's grey paper or denim ground, cards inside a 1px gold rule with a soft shadow, maroon header bands lettered in Modesto Condensed, bold upper-case condensed field labels in gold ink, and dnd5e's black button with an inset gold rule. The windows follow Foundry's light or dark theme exactly as dnd5e's sheets do, per window, by scoping theme tokens with `@scope (.theme-light) to (.themed)` and `@scope (.theme-dark) to (.themed)`; light is the base, dark overrides.\n\nIt owns one bespoke move: **the vault**, a dark, gold-ruled band that runs edge to edge across the reveal window and holds the odds ribbon, the strip, the pin and the result. The vault stays dark in both themes; it is the stage, not a panel, so the CS:GO rarity colours read the same for everyone at the table. Its signature companion is **the odds ribbon**: one segmented, gold-rimmed bar of a crate's real drop chances, shown on the shop's crate cards, in the manager's box table and along the vault's top edge.\n\ndnd5e is a required system, so its textures and fonts are referenced by relative path from the module's stylesheet (`../../../systems/dnd5e/ui/texture-gray1.webp`, `texture-gray2.webp`, Foundry's `../../../ui/denim075.png`), never copied into the module. Every rule is scoped under `.loot-crates`; Foundry's chrome and other modules are never styled. The world refuses the neon gamer-UI card grid and refuses a parchment costume: it is dnd5e's actual sheet, not an imitation of old paper.",
+    "keyCharacteristics": [
+      "dnd5e sheet language in both Foundry themes, switched per window with `@scope ... to (.themed)`.",
+      "dnd5e textures and fonts referenced by path, never copied.",
+      "One bespoke surface, the always-dark vault, where the spin runs and the result lands.",
+      "The odds ribbon as the signature device across shop, manager and reveal.",
+      "The CS:GO rarity ladder as a user pin, used on paper only as edges, diamonds and ribbon segments.",
+      "Quiet operating windows (shop, manager, chat card); the reveal is the one moment."
+    ],
+    "rules": [
+      {
+        "name": "The Edges-On-Paper Rule",
+        "body": "On paper and slate, rarity colour appears only as an edge, a diamond or a ribbon segment: the peek and chat portraits' 3px underline, the 6 to 7px rotated-square diamond on pills, chips, rows and the log, and the ribbon's segments. Rarity text on paper is ink, never the rarity colour.",
+        "section": "colors"
+      },
+      {
+        "name": "The Vault Speaks In Colour Rule",
+        "body": "Rarity-coloured text lives only inside the always-dark vault: the result name in its rarity, the strip card's foot bar, the landed card's ring and tint, and the vault's wash.",
+        "section": "colors"
+      },
+      {
+        "name": "The Warn Is Not Gold Rule",
+        "body": "Problems (missing, renamed, no rarity) are amber on a warm wash with a dashed border, never gold, so they never read as treasure.",
+        "section": "colors"
+      },
+      {
+        "name": "The Labels Not Kickers Rule",
+        "body": "Upper case belongs to dnd5e's own conventions: field labels above a control, tab labels, table headers, and the rarity name beneath the item it names. Never a caps line above a heading.",
+        "section": "typography"
+      },
+      {
+        "name": "The 11px Floor Rule",
+        "body": "No text below 11px; the field label is the floor, everything secondary is 12px.",
+        "section": "typography"
+      },
+      {
+        "name": "The Neutral Lift Rule",
+        "body": "The landing is a neutral lift (translateY -5px, scale 1.06, 460ms `cubic-bezier(.16,1,.3,1)`) with an inset rarity ring, a 10% rarity tint and a gold-framed portrait; the rest of the strip steps back to 45% opacity. No coloured glow.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Wash Carries The Escalation Rule",
+        "body": "Once landed, the vault takes a radial wash of the rarity colour (55% mix fading out by 70%) at opacity 0.12 + rank x 0.12, from barely tinted for a common to flooded for an artifact, fading in over 600ms after a 120ms delay.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do scope every rule under `.loot-crates`, and set theme tokens with `@scope (.theme-light) to (.themed)` and `@scope (.theme-dark) to (.themed)` so each window follows its nearest Foundry theme.",
+      "Do reference dnd5e's textures and fonts by relative path (`../../../systems/dnd5e/...`, `../../../ui/denim075.png`); never copy them into the module.",
+      "Do read rarity from `--lc-rarity` and `--lc-rank`; set them only through the six `lc-rarity-*` classes.",
+      "Do show a crate's bet as the odds ribbon plus named odds pills wherever a crate is shown.",
+      "Do keep the vault dark (`vault`) in both themes and let the rarity wash, scaled by rank, carry the escalation.",
+      "Do put the cost on the primary action (\"Open for 150 gp\") and the reason for a disabled action on screen, beneath it."
+    ],
+    "donts": [
+      "Don't colour text in a rarity colour on paper or slate; use edges, diamonds and ribbon segments.",
+      "Don't give the landed card a coloured glow; it lifts on a neutral shadow with an inset rarity ring.",
+      "Don't set caps kickers above headings; upper case is for dnd5e field labels, tabs, table headers and the rarity name under its item.",
+      "Don't set text smaller than 11px.",
+      "Don't use emoji in UI text; Font Awesome icons that Foundry ships are fine.",
+      "Don't change the spin's timing or near-miss behaviour as part of styling work.",
+      "Don't style Foundry's chrome, title bars or other modules."
+    ]
+  }
+}

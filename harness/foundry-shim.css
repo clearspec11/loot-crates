@@ -1,0 +1,53 @@
+/* Stand-ins for what a Foundry world provides around the module's windows,
+   so the harness renders the module's own stylesheet in context:
+   the fonts Foundry and dnd5e register (served through the harness's
+   FOUNDRY_URL pass-through when it is set, system fonts otherwise), the
+   canvas behind the windows, a window frame, and Foundry's form controls in
+   both themes. None of this ships; module/styles/module.css is the module. */
+@font-face { font-family: "Modesto Condensed"; src: url("/fonts/modesto-condensed/modesto-condensed.woff2") format("woff2"); }
+@font-face { font-family: "Modesto Condensed"; font-weight: 700; src: url("/fonts/modesto-condensed/modesto-condensed-bold.woff2") format("woff2"); }
+@font-face { font-family: "Signika"; src: url("/fonts/signika/signika-regular.woff2") format("woff2"); }
+@font-face { font-family: "Signika"; font-weight: 600; src: url("/fonts/signika/signika-semibold.woff2") format("woff2"); }
+@font-face { font-family: "Roboto"; src: url("/systems/dnd5e/fonts/roboto/Roboto-Regular.woff2") format("woff2"); }
+@font-face { font-family: "Roboto"; font-weight: 700; src: url("/systems/dnd5e/fonts/roboto/Roboto-Bold.woff2") format("woff2"); }
+@font-face { font-family: "Roboto Condensed"; src: url("/systems/dnd5e/fonts/roboto-condensed/RobotoCondensed-Regular.woff2") format("woff2"); }
+@font-face { font-family: "Roboto Condensed"; font-weight: 700; src: url("/systems/dnd5e/fonts/roboto-condensed/RobotoCondensed-Bold.woff2") format("woff2"); }
+@font-face { font-family: "Roboto Slab"; src: url("/systems/dnd5e/fonts/roboto-slab/RobotoSlab-Regular.ttf") format("truetype"); }
+@font-face { font-family: "Roboto Slab"; font-weight: 700; src: url("/systems/dnd5e/fonts/roboto-slab/RobotoSlab-Bold.ttf") format("truetype"); }
+
+html { color-scheme: dark; }
+body { margin: 0; min-height: 100vh; font-family: "Signika", system-ui, sans-serif; font-size: 14px;
+  background: radial-gradient(120% 80% at 50% 0%, #3a1d18, #120c0b 70%); color: #e7e3dc; }
+body.theme-light { color-scheme: light; }
+.page { max-width: 760px; margin: 0 auto; padding: 16px; box-sizing: border-box; }
+h1 { font-size: 13px; font-weight: 600; color: #b5a99a; margin: 0 0 10px; }
+.controls { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; font-size: 13px; }
+.controls a { color: #e3ce9e; border: 1px solid #5b4a3a; border-radius: 4px; padding: 3px 8px; text-decoration: none; }
+.controls a.active { background: #e3ce9e; color: #191813; }
+
+/* Foundry's application frame, roughly as v14 draws it. */
+.application { border-radius: 6px; box-shadow: 0 0 20px rgba(0, 0, 0, .8); overflow: hidden; }
+.window-header { display: flex; align-items: center; height: 36px; padding: 0 10px; background: #0b0a13; color: #fff; }
+.theme-light .window-header { background: #302831; }
+.window-title { margin: 0; font-size: 14px; font-weight: 400; font-family: "Signika", sans-serif; }
+.window-content { padding: 1rem; }
+
+@layer foundry {
+/* Foundry's own form controls (its CSS styles bare buttons, inputs and
+   selects in every window). */
+.application button { font: inherit; font-size: 13px; min-height: 28px; padding: 0 10px; border-radius: 4px; cursor: pointer;
+  background: #2b2d34; color: #e7e3dc; border: 1px solid #4a4d57; }
+.theme-light .application button { background: #ebe7e0; color: #191813; border-color: #b5b3a4; }
+.application input, .application select { font: inherit; font-size: 13px; min-height: 28px; border-radius: 4px;
+  background: #1d1f25; color: #e7e3dc; border: 1px solid #4a4d57; padding: 0 6px; }
+.theme-light .application input, .theme-light .application select { background: #fff; color: #191813; border-color: #b5b3a4; }
+}
+
+/* Font Awesome is loaded by Foundry, not here: small drawn stand-ins for the
+   icons the module uses, so the harness's buttons aren't empty. */
+.fa-xmark, .fa-pen, .fa-trash, .fa-plus, .fa-book, .fa-box-open { display: inline-block; width: 1em; height: 1em; background: currentColor; -webkit-mask: var(--icon) center / contain no-repeat; mask: var(--icon) center / contain no-repeat; }
+.fa-xmark { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3 3l10 10M13 3L3 13' stroke='black' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E"); }
+.fa-plus { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 2v12M2 8h12' stroke='black' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E"); }
+.fa-pen { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M2 14l1-4 8-8 3 3-8 8z' fill='black'/%3E%3C/svg%3E"); }
+.fa-trash { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M2 4h12M6 4V2h4v2M4 4l1 10h6l1-10' fill='none' stroke='black' stroke-width='1.6'/%3E%3C/svg%3E"); }
+.fa-book { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3 2h9a1 1 0 011 1v11H4a1 1 0 01-1-1z' fill='none' stroke='black' stroke-width='1.6'/%3E%3C/svg%3E"); }

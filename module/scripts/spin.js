@@ -1,8 +1,9 @@
 /*
-  The crate-opening reveal: a strip of item cards scrolls past a centre marker,
-  slows with an ease-out, overshoots into the next card when it outranks the
+  The crate-opening reveal: a strip of item cards picks up speed, runs past a
+  centre marker at a constant speed for a beat (the cards blur, the tick
+  rattles), slows with a long ease-out, overshoots into the next card when it outranks the
   result (the marker sits a quarter into it, then clicks back), settles, then
-  the winning card lifts and glows.
+  the winning card lifts out of the strip, ringed in its rarity colour.
 
   Pure DOM plus one requestAnimationFrame loop driving a single translateX.
   No Foundry globals, so the harness page can run it for screenshots.
@@ -10,6 +11,8 @@
     const spin = mountSpin(container, strip, { duration, reducedMotion, onTick, onLand });
     await spin.play();
     spin.skip();   // land on the next frame, through the same land() path
+    spin.skip({ now: true });   // land in this call, for a host that is hidden
+                                // (a hidden page runs no animation frames)
 
   The strip is aria-hidden: a screen reader would otherwise read every filler
   card's name before the result the host announces.
@@ -21,6 +24,27 @@ export const CARD_GAP = 8;
 export const DEFAULT_DURATION = 6200;
 
 const easeOutCubic = p => 1 - Math.pow(1 - p, 3);
+
+// The run to the overshoot point, as shares of its time: a short linear
+// run-up, a cruise at full speed, then the cubic ease-out. With the 86% split
+// below the cruise is about 39% of the whole spin.
+export const SPIN_ACCEL = 0.07;
+export const SPIN_CRUISE = 0.45;
+
+/* Share of the distance covered at share p of the run's time. Velocity is
+   continuous: it ramps from 0 to v, holds v, and the ease-out starts at v
+   (cubic ease-out's initial slope is 3, over a third of the distance it
+   covers per unit time) and ends at 0. v is whatever makes the total 1. */
+export function spinDistance(p, accel = SPIN_ACCEL, cruise = SPIN_CRUISE) {
+  if (p <= 0) return 0;
+  if (p >= 1) return 1;
+  const decel = 1 - accel - cruise;
+  const v = 1 / (accel / 2 + cruise + decel / 3);
+  if (p < accel) return v * p * p / (2 * accel);
+  if (p < accel + cruise) return v * (accel / 2 + p - accel);
+  return v * (accel / 2 + cruise + (decel / 3) * easeOutCubic((p - accel - cruise) / decel));
+}
+
 const easeInOutQuad = p => (p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2);
 
 // How far past the result's centre the marker travels on a near-miss: out of
@@ -111,7 +135,8 @@ export function mountSpin(container, strip, options = {}) {
     options.onLand?.(strip.cards[strip.landIndex]);
   };
 
-  // Phase 1 (most of the time): ease out to the target plus the overshoot.
+  // Phase 1 (most of the time): run up, cruise, then ease out to the target
+  // plus the overshoot (spinDistance).
   // Phase 2: settle back. On a near-miss the overshoot crosses the boundary
   // into the better card (half the result card plus the gap) and goes a
   // quarter card further, so the teased card really sits under the marker for
@@ -128,10 +153,13 @@ export function mountSpin(container, strip, options = {}) {
       land();
       return Promise.resolve();
     }
+    playing = true;
     return new Promise(resolve => {
       let t0 = null;
       let unsized = 0;
       const frame = now => {
+        // Landed by skip({ now }) while no frames ran: nothing left to draw.
+        if (landed) { resolve(); return; }
         const w = width();
         // Don't start the clock on a viewport that has no width yet, or the
         // first sized frame is a jump; give up waiting after a few frames so a
@@ -144,7 +172,7 @@ export function mountSpin(container, strip, options = {}) {
         const p = skipped ? 1 : Math.min(1, (now - t0) / duration);
         let x;
         if (p < split) {
-          x = x0 + (x1 + overshoot - x0) * easeOutCubic(p / split);
+          x = x0 + (x1 + overshoot - x0) * spinDistance(p / split);
         } else {
           x = x1 + overshoot - overshoot * easeInOutQuad((p - split) / (1 - split));
         }
@@ -158,8 +186,14 @@ export function mountSpin(container, strip, options = {}) {
   }
 
   // Ends the spin on the next frame. Before play() it makes play() land at
-  // once; after landing it does nothing.
-  function skip() { skipped = true; }
+  // once; after landing it does nothing. With `now`, a spin already playing
+  // lands in this call: a hidden page gets no next frame until it is shown
+  // again, and its viewer should come back to the result, not to a spin.
+  let playing = false;
+  function skip({ now = false } = {}) {
+    skipped = true;
+    if (now && playing && !landed) { setX(target(width())); land(); }
+  }
 
   return { play, skip, viewport, track, cards, get landed() { return landed; } };
 }

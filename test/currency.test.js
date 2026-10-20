@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { toCopper, canAfford, charge, formatPrice, refund, isWholeCoins } from "../module/scripts/currency.js";
+import { toCopper, canAfford, charge, formatPrice, refund, isWholeCoins, consolidate } from "../module/scripts/currency.js";
 
 describe("currency", () => {
   it("values a purse in copper", () => {
@@ -53,6 +53,31 @@ describe("currency", () => {
     expect(isWholeCoins(refund({ gp: 500 }, 17.35))).toBe(true);
   });
 
+  it("refunds in consolidated coins: 100 gp comes back as 100 gp, not 99 gp 10 sp", () => {
+    expect(refund({ gp: 0, sp: 9, cp: 10 }, 100)).toEqual({ pp: 0, gp: 101, ep: 0, sp: 0, cp: 0 });
+    expect(refund({ gp: 0, sp: 10 }, 99)).toEqual({ pp: 0, gp: 100, ep: 0, sp: 0, cp: 0 });
+    expect(refund({ gp: 4, sp: 9, cp: 9 }, 0.01)).toEqual({ pp: 0, gp: 5, ep: 0, sp: 0, cp: 0 });
+    expect(refund({ gp: 1, sp: 5, cp: 5 }, 0.55)).toEqual({ pp: 0, gp: 2, ep: 0, sp: 1, cp: 0 });
+  });
+
+  it("consolidating keeps the player's pp and ep and the copper value", () => {
+    expect(refund({ pp: 2, ep: 3, sp: 9 }, 0.1)).toEqual({ pp: 2, gp: 1, ep: 3, sp: 0, cp: 0 });
+    const purse = { pp: 3, gp: 7, ep: 5, sp: 47, cp: 123 };
+    const c = consolidate(purse);
+    expect(c).toEqual({ pp: 3, gp: 12, ep: 5, sp: 9, cp: 3 });
+    expect(toCopper(c)).toBe(toCopper(purse));
+  });
+
+  it("a 100 gp charge then refund on a purse of gold reads as gold again", () => {
+    const purse = { pp: 0, gp: 150, ep: 0, sp: 0, cp: 0 };
+    expect(refund(charge(purse, 100), 100)).toEqual(purse);
+    expect(refund(charge({ gp: 120 }, 99.95), 99.95)).toEqual({ pp: 0, gp: 120, ep: 0, sp: 0, cp: 0 });
+  });
+
+  it("change from a broken coin is consolidated", () => {
+    expect(charge({ gp: 0, sp: 15, cp: 7 }, 0.12)).toEqual({ pp: 0, gp: 1, ep: 0, sp: 4, cp: 5 });
+  });
+
   it("refund of nothing is the purse itself, floored to whole coins", () => {
     expect(refund({ gp: 1 }, 0)).toEqual({ pp: 0, gp: 1, ep: 0, sp: 0, cp: 0 });
     expect(refund({ gp: 1 }, -5)).toEqual({ pp: 0, gp: 1, ep: 0, sp: 0, cp: 0 });
@@ -77,6 +102,10 @@ describe("currency", () => {
       const back = refund(paid, price);
       expect(isWholeCoins(back)).toBe(true);
       expect(toCopper(back)).toBe(toCopper(purse));
+      if (Math.round(price * 100) > 0) {
+        expect(back.sp).toBeLessThan(10);
+        expect(back.cp).toBeLessThan(10);
+      }
     }
   });
 });

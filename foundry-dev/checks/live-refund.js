@@ -1,7 +1,7 @@
 // Live check: one real pull at a fractional price, then a refund, in the dev
 // world with the branch's scripts and no module installed. Reports the purse
 // before the pull, after the pull and after the refund (which must equal
-// before in copper and be whole coins), that the granted item is gone, that
+// before in copper and be whole, consolidated coins), that the granted item is gone, that
 // the box's stock went back up, and that a second refund changes nothing.
 // It posts the pull's chat card the way socket.js does (with the log row's
 // id) and reports that card after the refund: marked lc-chat--refunded, no
@@ -72,6 +72,8 @@ return {
   purse: { before, afterPull, afterRefund, afterSecond },
   copper: { before: toCopper(before), afterPull: toCopper(afterPull), afterRefund: toCopper(afterRefund), afterSecond: toCopper(afterSecond) },
   wholeCoinsAfterRefund: isWholeCoins(afterRefund),
+  // A refund carries 10 cp to 1 sp and 10 sp to 1 gp: never "99 gp 10 sp".
+  consolidatedAfterRefund: afterRefund.sp < 10 && afterRefund.cp < 10,
   conserved: toCopper(afterRefund) === toCopper(before) && toCopper(afterPull) === toCopper(before) - 1250,
   items: { before: itemsBefore, afterPull: actor.items.size + (first.removedItem ? 1 : 0), afterRefund: itemsAfterRefund, grantedStillThere: !!actor.items.get(out.itemId) },
   stock: { seeded: 3, afterPull: stockAfterPull, afterRefund: stockAfterRefund },

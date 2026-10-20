@@ -49,3 +49,20 @@ describe("a refunded row", () => {
     expect(html).not.toContain('data-action="refund"');
   });
 });
+
+describe("a row its buyer called off after the charge", () => {
+  it("is marked, with the Refund still there", () => {
+    log = [row({ lateCancel: 1 })];
+    const html = new CrateManager()._log();
+    expect(html).toContain('class="lc-row--late"');
+    expect(html).toContain("Called off by the buyer after the charge. Refund it if the table agrees.");
+    expect(html).toContain('data-action="refund"');
+  });
+
+  it("drops the mark once refunded", () => {
+    log = [row({ lateCancel: 1, refunded: 2 })];
+    const html = new CrateManager()._log();
+    expect(html).toContain('class="lc-row--refunded"');
+    expect(html).not.toContain("Called off by the buyer");
+  });
+});

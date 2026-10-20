@@ -1,19 +1,24 @@
-/* Loot Crates. Tokens are scoped to the module's own windows and chat cards
-   so Foundry's and other modules' styles are left alone. docs/DESIGN.md is
-   the source of truth for these values. */
+/* Loot Crates: dnd5e's sheet language with one bespoke move, the vault.
+
+   Every rule is scoped under .loot-crates (the module's windows and chat
+   cards), so Foundry's chrome and other modules are left alone. The windows
+   follow Foundry's light or dark theme the way dnd5e's sheets do: tokens are
+   set per theme with @scope (.theme-x) to (.themed), so a window takes the
+   nearest theme on the page. dnd5e is a required system, so its textures and
+   fonts are referenced, never copied: from /modules/loot-crates/styles/ the
+   path ../../../ is Foundry's root. docs/DESIGN.md is the source of truth. */
+
+/* ---------- Tokens ---------- */
 
 .loot-crates {
-  --lc-bg: #121417;
-  --lc-bg-2: #1a1d22;
-  --lc-bg-3: #23272e;
-  --lc-line: #30353d;
-  --lc-ink: #eef0f3;
-  --lc-ink-soft: #b7bdc7;
-  --lc-ink-mute: #8b929d;
-  --lc-accent: #e8b65a;
-  --lc-radius: 8px;
-  --lc-font: "Signika", "Plus Jakarta Sans", system-ui, sans-serif;
+  /* Type: dnd5e's own faces (Foundry ships Modesto; dnd5e registers Roboto). */
+  --lc-display: "Modesto Condensed", "Palatino Linotype", serif;
+  --lc-slab: "Roboto Slab", "Signika", serif;
+  --lc-body: "Roboto", "Signika", system-ui, sans-serif;
+  --lc-label: "Roboto Condensed", "Roboto", "Signika", sans-serif;
 
+  /* The CS:GO rarity ladder (a user pin). On parchment these are edges, dots
+     and ribbon segments only; rarity-coloured text lives in the vault. */
   --lc-common: #9aa5b5;
   --lc-uncommon: #4b8ff2;
   --lc-rare: #9b59f0;
@@ -21,246 +26,571 @@
   --lc-legendary: #ef4b4b;
   --lc-artifact: #f2c14e;
 
+  /* The vault is dark in both themes: it is the stage, not a panel. */
+  --lc-vault: #140d0f;
+  --lc-vault-2: #1d1417;
+  --lc-vault-ink: #efe9df;
+  --lc-vault-soft: #cfc6b8;
+  --lc-vault-card: #231b1e;
+  --lc-vault-line: #3c2f33;
+  --lc-pin: #e3ce9e;
+  --lc-pin-edge: #5c4a2a;
+  /* The ribbon's rim and the vault's frame are gold in both themes. */
+  --lc-gold-rim: #a8955f;
+
+  --lc-radius: 4px;
+  --lc-shadow: 0 0 6px rgba(0, 0, 0, .45);
+
+  /* Light theme (dnd5e's grey paper) is the base; the dark scope overrides. */
+  --lc-ground: url("../../../systems/dnd5e/ui/texture-gray1.webp") no-repeat top left, url("../../../systems/dnd5e/ui/texture-gray2.webp") no-repeat bottom right, #f1ebe8;
+  --lc-card: #f8f4f1;
+  --lc-field: #fffdfb;
+  --lc-row-alt: #efe9e3;
+  --lc-rule: #9f9275;
+  --lc-rule-soft: #c9c7b8;
+  --lc-ink: #191813;
+  --lc-ink-soft: #3d3c36;
+  --lc-ink-mute: #5d5b52;
+  --lc-gold-ink: #6b5a35;
+  --lc-band-1: #741b2b;
+  --lc-band-2: #44191a;
+  --lc-band-ink: #fbf6ef;
+  --lc-btn: #191813;
+  --lc-btn-ink: #e3ce9e;
+  --lc-btn-rule: #9f9275;
+  --lc-warn: #8a4b00;
+  --lc-warn-bg: #f6e7cf;
+  --lc-ok: #2f6b2a;
+  --lc-focus: #741b2b;
+
   color: var(--lc-ink);
-  font-family: var(--lc-font);
+  font-family: var(--lc-body);
+  --color-scrollbar: var(--lc-rule);
 }
 
-.loot-crates .window-content { background: var(--lc-bg); color: var(--lc-ink); }
+@scope (.theme-light) to (.themed) {
+  .loot-crates,
+  :where(:scope).loot-crates {
+    --lc-ground: url("../../../systems/dnd5e/ui/texture-gray1.webp") no-repeat top left, url("../../../systems/dnd5e/ui/texture-gray2.webp") no-repeat bottom right, #f1ebe8;
+    --lc-card: #f8f4f1;
+    --lc-field: #fffdfb;
+    --lc-row-alt: #efe9e3;
+    --lc-rule: #9f9275;
+    --lc-rule-soft: #c9c7b8;
+    --lc-ink: #191813;
+    --lc-ink-soft: #3d3c36;
+    --lc-ink-mute: #5d5b52;
+    --lc-gold-ink: #6b5a35;
+    --lc-band-1: #741b2b;
+    --lc-band-2: #44191a;
+    --lc-btn: #191813;
+    --lc-btn-ink: #e3ce9e;
+    --lc-btn-rule: #9f9275;
+    --lc-warn: #8a4b00;
+    --lc-warn-bg: #f6e7cf;
+    --lc-ok: #2f6b2a;
+    --lc-focus: #741b2b;
+  }
+}
 
-/* One rule per rarity sets --lc-rarity; everything else reads it. */
-.lc-rarity-common { --lc-rarity: var(--lc-common); }
-.lc-rarity-uncommon { --lc-rarity: var(--lc-uncommon); }
-.lc-rarity-rare { --lc-rarity: var(--lc-rare); }
-.lc-rarity-veryRare { --lc-rarity: var(--lc-veryRare); }
-.lc-rarity-legendary { --lc-rarity: var(--lc-legendary); }
-.lc-rarity-artifact { --lc-rarity: var(--lc-artifact); }
+@scope (.theme-dark) to (.themed) {
+  .loot-crates,
+  :where(:scope).loot-crates {
+    --lc-ground: #0d0b0b url("../../../ui/denim075.png");
+    --lc-card: #252830;
+    --lc-field: #1b1d24;
+    --lc-row-alt: #2c2f38;
+    --lc-rule: #8a7d5f;
+    --lc-rule-soft: #434857;
+    --lc-ink: #ece8e1;
+    --lc-ink-soft: #cfcabe;
+    --lc-ink-mute: #a7a397;
+    --lc-gold-ink: #d9c495;
+    --lc-band-1: #6a1826;
+    --lc-band-2: #2c1013;
+    --lc-btn: #0d0b0b;
+    --lc-btn-ink: #e3ce9e;
+    --lc-btn-rule: #9f9275;
+    --lc-warn: #e9b867;
+    --lc-warn-bg: #3a2c17;
+    --lc-ok: #8fd48a;
+    --lc-focus: #e3ce9e;
+  }
+}
 
-/* Sidebar button */
+/* One rule per rarity sets --lc-rarity (and its rank, for the landing's
+   scale); everything else reads them. */
+.loot-crates .lc-rarity-common, .loot-crates.lc-rarity-common { --lc-rarity: var(--lc-common); --lc-rank: 0; }
+.loot-crates .lc-rarity-uncommon, .loot-crates.lc-rarity-uncommon { --lc-rarity: var(--lc-uncommon); --lc-rank: 1; }
+.loot-crates .lc-rarity-rare, .loot-crates.lc-rarity-rare { --lc-rarity: var(--lc-rare); --lc-rank: 2; }
+.loot-crates .lc-rarity-veryRare, .loot-crates.lc-rarity-veryRare { --lc-rarity: var(--lc-veryRare); --lc-rank: 3; }
+.loot-crates .lc-rarity-legendary, .loot-crates.lc-rarity-legendary { --lc-rarity: var(--lc-legendary); --lc-rank: 4; }
+.loot-crates .lc-rarity-artifact, .loot-crates.lc-rarity-artifact { --lc-rarity: var(--lc-artifact); --lc-rank: 5; }
+
+/* ---------- The window ---------- */
+
+.application.loot-crates { background: var(--lc-ground); border: 1px solid var(--lc-rule); }
+.loot-crates .window-content { background: none; color: var(--lc-ink); font-family: var(--lc-body); font-size: 13px; }
+.loot-crates ::selection { background: color-mix(in srgb, var(--lc-rule) 45%, transparent); color: inherit; }
+.loot-crates :focus-visible { outline: 2px solid var(--lc-focus); outline-offset: 1px; }
+
+/* dnd5e's field label: small, bold, condensed, upper case, in gold ink. */
+.loot-crates .lc-label {
+  font-family: var(--lc-label); font-size: 11px; font-weight: 700; letter-spacing: .03em;
+  text-transform: uppercase; color: var(--lc-gold-ink);
+}
+
+/* Buttons. The primary action is dnd5e's gold button: black, an inset gold
+   rule, gold lettering. Everything else is a quiet outlined button. */
+/* Bare controls, inside the module's window content only (never Foundry's
+   title bar). Low specificity on purpose: classed controls below win. */
+:where(.loot-crates .window-content) button {
+  font-family: var(--lc-body); font-size: 13px; min-height: 30px; padding: 0 12px; margin: 0;
+  border-radius: var(--lc-radius); cursor: pointer; width: auto;
+  background: var(--lc-field); color: var(--lc-ink); border: 1px solid var(--lc-rule-soft); box-shadow: none;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; line-height: 1.1;
+  transition: border-color 120ms ease, background-color 120ms ease, color 120ms ease;
+}
+:where(.loot-crates .window-content) button:not(:disabled):hover { border-color: var(--lc-rule); }
+:where(.loot-crates .window-content) button:disabled { cursor: not-allowed; color: var(--lc-ink-mute); border-style: dashed; }
+.loot-crates .lc-box__buy, .loot-crates .lc-reveal__close {
+  position: relative; background: var(--lc-btn); color: var(--lc-btn-ink); border: none;
+  font-weight: 700; box-shadow: var(--lc-shadow); min-height: 36px; padding: 0 16px;
+}
+.loot-crates .lc-box__buy::after, .loot-crates .lc-reveal__close::after {
+  content: ""; position: absolute; inset: 3px; border: 1px solid var(--lc-btn-rule); border-radius: 3px; pointer-events: none;
+}
+.loot-crates .lc-box__buy:not(:disabled):hover, .loot-crates .lc-reveal__close:not(:disabled):hover { color: var(--lc-pin); }
+.loot-crates .lc-box__buy:not(:disabled):hover::after, .loot-crates .lc-reveal__close:not(:disabled):hover::after { border-color: var(--lc-btn-ink); }
+.loot-crates .lc-box__buy:disabled { background: var(--lc-row-alt); color: var(--lc-ink-mute); box-shadow: none; }
+.loot-crates .lc-box__buy:disabled::after { border: 1px dashed var(--lc-rule-soft); }
+
+:where(.loot-crates .window-content) :is(input, select) {
+  font-family: var(--lc-body); font-size: 13px; min-height: 30px; padding: 0 8px; box-sizing: border-box;
+  color: var(--lc-ink); background: var(--lc-field); border: 1px solid var(--lc-rule-soft); border-radius: var(--lc-radius);
+}
+:where(.loot-crates .window-content) input::placeholder { color: var(--lc-ink-mute); opacity: 1; }
+:where(.loot-crates .window-content) :is(input, select):hover { border-color: var(--lc-rule); }
+
+/* Sidebar button (in Foundry's Items directory; it keeps Foundry's look). */
 .loot-crates-open { flex: 0 0 100%; margin-top: 4px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 
-/* ---------- The spin ---------- */
-.lc-spin { position: relative; width: 100%; }
-.lc-spin__viewport {
-  position: relative; overflow: hidden; width: 100%; height: 176px;
-  background: linear-gradient(180deg, var(--lc-bg-2), var(--lc-bg));
-  border: 1px solid var(--lc-line); border-radius: var(--lc-radius);
-  mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
-  -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
-}
-.lc-spin__track {
-  --lc-card-w: 120px; --lc-card-gap: 8px;
-  position: absolute; top: 16px; left: 0; display: flex; gap: var(--lc-card-gap);
-  will-change: transform;
-}
-.lc-spin__marker {
-  position: absolute; top: 0; bottom: 0; left: 50%; width: 2px; margin-left: -1px;
-  background: var(--lc-accent); box-shadow: 0 0 12px var(--lc-accent);
-  pointer-events: none;
-}
-.lc-spin__marker::before, .lc-spin__marker::after {
-  content: ""; position: absolute; left: 50%; transform: translateX(-50%);
-  border: 7px solid transparent;
-}
-.lc-spin__marker::before { top: 0; border-top-color: var(--lc-accent); }
-.lc-spin__marker::after { bottom: 0; border-bottom-color: var(--lc-accent); }
+/* ---------- The odds ribbon (the signature move) ---------- */
 
-.lc-card {
-  flex: 0 0 var(--lc-card-w); width: var(--lc-card-w); height: 144px;
-  display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 6px;
-  padding: 10px 8px 0; box-sizing: border-box;
-  background: var(--lc-bg-3); border: 1px solid var(--lc-line); border-radius: var(--lc-radius);
-  color: var(--lc-ink-soft); user-select: none;
-  transition: transform 420ms cubic-bezier(.2,.9,.3,1.2), box-shadow 420ms ease, border-color 420ms ease;
+.loot-crates .lc-ribbon {
+  display: flex; gap: 1px; height: 10px; padding: 2px; box-sizing: border-box;
+  background: var(--lc-gold-rim); border-radius: 2px;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, #000 35%, transparent);
 }
-.lc-card__art {
-  width: 72px; height: 72px; display: grid; place-items: center;
-  border-radius: 6px; background: color-mix(in srgb, var(--lc-rarity) 14%, var(--lc-bg-2));
-  font-weight: 700; font-size: 20px; color: var(--lc-rarity);
-}
-.lc-card__art img { width: 64px; height: 64px; object-fit: contain; border: 0; }
-.lc-card__name {
-  width: 100%; font-size: 12px; line-height: 1.2; text-align: center;
-  overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
-  min-height: 2.4em; color: var(--lc-ink);
-}
-.lc-card__bar { width: 100%; height: 4px; border-radius: 0 0 var(--lc-radius) var(--lc-radius); background: var(--lc-rarity); }
+.loot-crates .lc-ribbon__seg { flex: 1 1 0; min-width: 4px; background: var(--lc-rarity); }
+.loot-crates .lc-ribbon__seg:first-child { border-radius: 1px 0 0 1px; }
+.loot-crates .lc-ribbon__seg:last-child { border-radius: 0 1px 1px 0; }
 
-.lc-card--landed {
-  transform: translateY(-6px) scale(1.06);
-  border-color: var(--lc-rarity);
-  box-shadow: 0 0 0 1px var(--lc-rarity), 0 0 28px color-mix(in srgb, var(--lc-rarity) 60%, transparent);
+/* Odds pills: the name and chance in ink, the rarity as a diamond. */
+.loot-crates .lc-box__odds, .loot-crates .lc-odds { display: flex; gap: 4px; justify-content: center; flex-wrap: wrap; }
+.loot-crates .lc-odd {
+  display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
+  font-family: var(--lc-label); font-size: 12px; font-weight: 700; line-height: 18px; padding: 0 7px 0 6px;
+  border-radius: 3px; background: var(--lc-field); border: 1px solid var(--lc-rule-soft); color: var(--lc-ink);
 }
-.lc-spin--landed .lc-card:not(.lc-card--landed) { opacity: .55; }
-
-/* ---------- Reveal window ---------- */
-.lc-reveal__body { display: grid; gap: 12px; padding: 4px 0; }
-.lc-reveal__head { font-size: 14px; color: var(--lc-ink-soft); }
-.lc-reveal__head strong { color: var(--lc-ink); }
-.lc-reveal__price { margin-left: 6px; color: var(--lc-accent); }
-.lc-reveal__result { min-height: 48px; text-align: center; }
-/* The name in its rarity colour is the moment; everything under it is quiet. */
-.lc-reveal__name { font-size: 20px; font-weight: 700; color: var(--lc-rarity, var(--lc-ink)); overflow-wrap: anywhere; }
-.lc-reveal__rarity { font-size: 12px; letter-spacing: .04em; color: var(--lc-ink-mute); }
-/* Where it went and the gold left come in after the card's 420 ms lift, so
-   the name lands first. */
-.lc-reveal__where { margin-top: 6px; font-size: 12px; color: var(--lc-ink-soft); animation: lc-reveal-after 240ms ease 420ms both; }
-.lc-reveal__gold { white-space: nowrap; }
-@keyframes lc-reveal-after { from { opacity: 0; } to { opacity: 1; } }
-@media (prefers-reduced-motion: reduce) { .lc-reveal__where { animation: none; } }
-.lc-reveal__actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
-.lc-reveal__actions button { flex: 0 0 auto; width: auto; min-width: 96px; }
-.lc-reveal__actions button[hidden] { display: none; }
+.loot-crates .lc-odd::before {
+  content: ""; width: 6px; height: 6px; flex: none; background: var(--lc-rarity); transform: rotate(45deg);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--lc-ink) 25%, transparent);
+}
 
 /* ---------- Shop ---------- */
-.lc-shop__body { display: grid; gap: 12px; }
-.lc-shop__head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.lc-shop__purse { color: var(--lc-accent); font-weight: 600; }
-.lc-shop__closed { color: var(--lc-ink-mute); font-style: italic; }
-.lc-shop__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
-.lc-shop__empty, .lc-empty { color: var(--lc-ink-mute); margin: 8px 0; }
-.lc-box {
-  display: grid; gap: 8px; padding: 12px; text-align: center;
-  background: var(--lc-bg-2); border: 1px solid var(--lc-line); border-radius: var(--lc-radius);
-  border-top: 3px solid var(--lc-rarity);
+
+.loot-crates .lc-shop__body { display: grid; gap: 14px; }
+.loot-crates .lc-shop__head { display: grid; padding-bottom: 12px; position: relative; }
+.loot-crates .lc-shop__fields { display: flex; align-items: flex-end; gap: 10px 24px; flex-wrap: wrap; }
+/* dnd5e's divider: a gold rule that fades out at both ends. */
+.loot-crates .lc-shop__head::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 1px;
+  background: linear-gradient(to right, transparent, var(--lc-rule) 18%, var(--lc-rule) 82%, transparent);
 }
-.lc-box__art { font-size: 36px; color: var(--lc-rarity); }
-.lc-box__name { font-weight: 700; }
-.lc-box__odds, .lc-odds { display: flex; gap: 4px; justify-content: center; flex-wrap: wrap; }
-/* Odds pill: the name and chance in ink, the rarity as a dot and an edge. */
-.lc-odd {
-  display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;
-  font-size: 11px; line-height: 16px; padding: 1px 7px 1px 6px; border-radius: 999px;
-  background: color-mix(in srgb, var(--lc-rarity) 16%, var(--lc-bg-3));
-  border: 1px solid color-mix(in srgb, var(--lc-rarity) 55%, transparent);
-  color: var(--lc-ink);
+.loot-crates .lc-shop__field { display: grid; gap: 3px; margin: 0; }
+.loot-crates .lc-shop__field--purse { margin-left: auto; text-align: right; }
+.loot-crates .lc-shop__actor { min-width: 12em; }
+.loot-crates .lc-shop__who { font-family: var(--lc-slab); font-size: 15px; font-weight: 700; min-height: 30px; display: flex; align-items: center; }
+.loot-crates .lc-shop__purse { font-family: var(--lc-slab); font-size: 15px; font-weight: 700; color: var(--lc-ink); min-height: 30px; display: flex; align-items: center; justify-content: flex-end; font-variant-numeric: tabular-nums; }
+/* The shop's one notice (a live region that is always there): why nothing
+   can be bought, in amber on the warn wash, never gold; or a slow GM, in
+   mute ink. Empty, it takes no room. */
+.loot-crates .lc-shop__notice { margin: 10px 0 0; font-size: 13px; }
+.loot-crates .lc-shop__notice:empty { margin: 0; }
+.loot-crates .lc-shop__notice[data-tone="warn"] {
+  color: var(--lc-warn); font-weight: 700; background: var(--lc-warn-bg);
+  border: 1px dashed color-mix(in srgb, var(--lc-warn) 55%, transparent); border-radius: var(--lc-radius); padding: 6px 10px;
 }
-.lc-odd::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--lc-rarity); flex: none; }
-.lc-box__stock { font-size: 11px; color: var(--lc-ink-mute); }
-.lc-box--empty { --lc-rarity: var(--lc-line); }
-.lc-box--empty .lc-box__art { color: var(--lc-ink-mute); }
-.lc-box__nothing { font-size: 12px; color: var(--lc-ink-mute); }
+.loot-crates .lc-shop__notice[data-tone="wait"] { color: var(--lc-ink-mute); }
+.loot-crates .lc-shop__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 190px), 1fr)); gap: 14px; }
+.loot-crates .lc-shop__empty, .loot-crates .lc-empty { color: var(--lc-ink-mute); margin: 8px 0; }
+
+/* A crate is a dnd5e card: its name on a maroon band, a paper body. */
+.loot-crates .lc-box {
+  display: flex; flex-direction: column; overflow: hidden;
+  background: var(--lc-card); border: 1px solid var(--lc-rule); border-radius: var(--lc-radius); box-shadow: var(--lc-shadow);
+}
+.loot-crates .lc-box__band {
+  background: linear-gradient(to right, var(--lc-band-1), var(--lc-band-2));
+  border-bottom: 1px solid var(--lc-rule); padding: 8px 10px 6px; text-align: center;
+}
+.loot-crates .lc-box__name {
+  margin: 0; border: 0; padding: 0; font-family: var(--lc-display); font-size: 21px; font-weight: 700; line-height: 1.05;
+  color: var(--lc-band-ink); letter-spacing: .01em; text-wrap: balance; overflow-wrap: anywhere;
+}
+.loot-crates .lc-box__body { display: grid; gap: 9px; padding: 12px 12px 12px; text-align: center; flex: 1; align-content: start; }
+.loot-crates .lc-box__art { display: flex; justify-content: center; align-items: center; min-height: 56px; color: var(--lc-gold-ink); }
+.loot-crates .lc-box__art > i { font-size: 34px; }
+.loot-crates .lc-box--empty .lc-box__art { color: var(--lc-ink-mute); opacity: .7; }
+/* The peek: up to three real items the crate can drop, fanned like cards,
+   each in a gold-ruled frame with its rarity as an underline. */
+.loot-crates .lc-peek { display: inline-flex; padding: 2px 0 4px; }
+.loot-crates .lc-peek__item {
+  width: 46px; height: 46px; object-fit: cover; border: 1px solid var(--lc-gold-rim); border-radius: 4px;
+  background: var(--lc-field); box-shadow: 0 2px 4px rgba(0, 0, 0, .35);
+  border-bottom: 3px solid var(--lc-rarity);
+}
+.loot-crates .lc-peek__item + .lc-peek__item { margin-left: -10px; }
+.loot-crates .lc-peek__item:nth-child(1) { transform: rotate(-7deg) translateY(2px); z-index: 1; }
+.loot-crates .lc-peek__item:nth-child(2) { transform: translateY(-3px) scale(1.08); z-index: 2; }
+.loot-crates .lc-peek__item:nth-child(3) { transform: rotate(7deg) translateY(2px); z-index: 1; }
+.loot-crates .lc-peek__item:nth-child(2):last-child { transform: rotate(6deg) translateY(1px); z-index: 1; }
+.loot-crates .lc-peek__item:only-child { transform: none; }
+.loot-crates .lc-box__stock { font-family: var(--lc-label); font-size: 12px; font-weight: 700; color: var(--lc-ink-mute); }
+.loot-crates .lc-box__buy { width: 100%; margin-top: 2px; }
 /* Why a Buy is off, on screen rather than in a tooltip. */
-.lc-box__why { font-size: 11px; color: var(--lc-ink-mute); margin-top: -4px; }
-.lc-box__buy { background: var(--lc-accent); color: #1a1200; border: 0; border-radius: 6px; padding: 8px 10px; font-weight: 700; cursor: pointer; }
-.lc-box__buy:disabled { background: var(--lc-bg-3); color: var(--lc-ink-mute); cursor: not-allowed; }
+.loot-crates .lc-box__why { font-size: 12px; color: var(--lc-ink-mute); margin-top: -3px; }
+
+/* ---------- Reveal ---------- */
+
+.loot-crates .lc-reveal__body { display: grid; gap: 10px; }
+.loot-crates .lc-reveal__head { font-size: 14px; color: var(--lc-ink-soft); line-height: 1.35; }
+.loot-crates .lc-reveal__who { font-weight: 700; color: var(--lc-ink); }
+.loot-crates .lc-reveal__crate { font-family: var(--lc-slab); color: var(--lc-ink); }
+.loot-crates .lc-reveal__price { margin-left: 6px; font-family: var(--lc-label); font-weight: 700; color: var(--lc-gold-ink); white-space: nowrap; }
+/* In the reveal the bet runs along the vault's top edge, so the table sees
+   the odds the crate was opened at, right above the strip. */
+.loot-crates .lc-vault > .lc-ribbon { margin: -4px auto 12px; max-width: 520px; }
+
+/* The vault: a dark, gold-ruled band that runs the width of the window and
+   holds the strip and the result. It stays dark in both themes, so the
+   rarity colours (tuned for dark) read the same for everyone at the table. */
+.loot-crates .lc-vault {
+  /* Bleeds through Foundry's 1rem window-content padding to the frame. */
+  position: relative; margin-inline: -1rem; padding: 14px 1rem 16px; isolation: isolate;
+  color: var(--lc-vault-ink);
+  background: radial-gradient(90% 120% at 50% 0%, var(--lc-vault-2), var(--lc-vault) 70%), var(--lc-vault);
+  border-block: 1px solid var(--lc-rule);
+  box-shadow: inset 0 3px 0 -2px var(--lc-pin), inset 0 -3px 0 -2px var(--lc-pin), inset 0 10px 18px -12px #000, inset 0 -10px 18px -12px #000;
+}
+.loot-crates .lc-vault::before {
+  content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; opacity: .5;
+  background: url("../../../ui/denim075.png");
+}
+/* Once landed, the vault takes a wash of the rarity's colour, stronger the
+   rarer the find: a common barely tints it, a legendary floods it. */
+.loot-crates .lc-vault::after {
+  content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; opacity: 0;
+  background: radial-gradient(60% 90% at 50% 38%, color-mix(in srgb, var(--lc-rarity) 55%, transparent), transparent 70%);
+  transition: opacity 600ms cubic-bezier(.16, 1, .3, 1) 120ms;
+}
+.loot-crates .lc-vault:has(.lc-spin--landed)::after { opacity: calc(.12 + var(--lc-rank, 0) * .12); }
+
+/* The spin. */
+.loot-crates .lc-spin { position: relative; width: 100%; }
+.loot-crates .lc-spin__viewport {
+  position: relative; overflow: hidden; width: 100%; height: 168px;
+  mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent);
+}
+.loot-crates .lc-spin__track {
+  --lc-card-w: 120px; --lc-card-gap: 8px;
+  position: absolute; top: 14px; left: 0; z-index: 1; display: flex; gap: var(--lc-card-gap);
+}
+.loot-crates .lc-spin:not(.lc-spin--landed) .lc-spin__track { will-change: transform; }
+/* The pin: a gold line drawn behind the cards (the viewport's ::before, under
+   the track), so it shows in the gaps as the strip runs but never crosses
+   the winner's art or name; its diamond heads sit above and below the cards. */
+.loot-crates .lc-spin__viewport::before {
+  content: ""; position: absolute; top: 0; bottom: 0; left: 50%; width: 2px; margin-left: -1px; z-index: 0;
+  background: linear-gradient(var(--lc-pin), color-mix(in srgb, var(--lc-pin) 55%, transparent) 25%, color-mix(in srgb, var(--lc-pin) 55%, transparent) 75%, var(--lc-pin));
+}
+.loot-crates .lc-spin__marker { position: absolute; inset: 0 auto 0 50%; width: 0; z-index: 2; pointer-events: none; }
+.loot-crates .lc-spin__marker::before, .loot-crates .lc-spin__marker::after {
+  content: ""; position: absolute; left: 0; width: 9px; height: 9px; box-sizing: border-box;
+  background: var(--lc-pin); border: 1px solid var(--lc-pin-edge); transform: translateX(-50%) rotate(45deg);
+}
+.loot-crates .lc-spin__marker::before { top: 2px; }
+.loot-crates .lc-spin__marker::after { bottom: 2px; }
+
+/* A strip card is a small item portrait: a gold-ruled frame, the name, and
+   the rarity bar along its foot. */
+.loot-crates .lc-card {
+  flex: 0 0 var(--lc-card-w); width: var(--lc-card-w); height: 140px; box-sizing: border-box;
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 6px;
+  padding: 10px 8px 0; overflow: hidden;
+  background: var(--lc-vault-card); border: 1px solid var(--lc-vault-line); border-radius: var(--lc-radius);
+  color: var(--lc-vault-soft); user-select: none;
+  transition: transform 460ms cubic-bezier(.16, 1, .3, 1), box-shadow 460ms ease, border-color 460ms ease, opacity 300ms ease;
+}
+.loot-crates .lc-card__art {
+  width: 70px; height: 70px; display: grid; place-items: center; box-sizing: border-box;
+  border: 1px solid color-mix(in srgb, var(--lc-pin) 55%, transparent); border-radius: 3px;
+  background: color-mix(in srgb, var(--lc-rarity) 16%, var(--lc-vault));
+  font-family: var(--lc-display); font-size: 22px; font-weight: 700; color: var(--lc-vault-soft);
+}
+.loot-crates .lc-card__art img { width: 64px; height: 64px; object-fit: contain; border: 0; }
+.loot-crates .lc-card__name {
+  width: 100%; font-size: 12px; line-height: 1.2; text-align: center; color: var(--lc-vault-ink);
+  overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; min-height: 2.4em;
+}
+.loot-crates .lc-card__bar { width: calc(100% + 16px); height: 5px; margin: 0 -8px; background: var(--lc-rarity); }
+
+/* The landing: the winner lifts out of the strip on a neutral shadow, ringed
+   in its colour; the light comes from the vault's wash behind it (stronger
+   the rarer the find), and the rest of the strip steps back. */
+.loot-crates .lc-card--landed {
+  transform: translateY(-5px) scale(1.06);
+  border-color: var(--lc-rarity);
+  box-shadow: inset 0 0 0 1px var(--lc-rarity), 0 8px 16px rgba(0, 0, 0, .6);
+  background: color-mix(in srgb, var(--lc-rarity) 10%, var(--lc-vault-card));
+}
+.loot-crates .lc-card--landed .lc-card__art {
+  border: 1px solid var(--lc-pin); border-radius: 4px;
+  box-shadow: 0 0 0 2px var(--lc-vault-card), 0 0 0 3px color-mix(in srgb, var(--lc-pin) 60%, transparent);
+}
+.loot-crates .lc-spin--landed .lc-card:not(.lc-card--landed) { opacity: .45; }
+
+/* The result, inside the vault, under the strip. */
+.loot-crates .lc-reveal__result { min-height: 64px; text-align: center; margin-top: 8px; }
+.loot-crates .lc-reveal__name {
+  font-family: var(--lc-display); font-size: 34px; font-weight: 700; line-height: 1;
+  color: var(--lc-rarity, var(--lc-vault-ink)); overflow-wrap: anywhere; text-wrap: balance;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, .7);
+}
+.loot-crates .lc-reveal__rarity {
+  margin-top: 4px; font-family: var(--lc-label); font-size: 12px; font-weight: 700;
+  letter-spacing: .08em; text-transform: uppercase; color: var(--lc-vault-soft);
+}
+/* Where it went and the gold left come in after the card's lift, so the
+   name lands first. */
+.loot-crates .lc-reveal__where { margin-top: 8px; font-size: 13px; color: var(--lc-vault-soft); animation: lc-reveal-after 260ms ease 460ms both; }
+.loot-crates .lc-reveal__gold { white-space: nowrap; color: var(--lc-pin); }
+@keyframes lc-reveal-after { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+.loot-crates .lc-reveal__actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.loot-crates .lc-reveal__actions button { flex: 0 0 auto; min-width: 104px; min-height: 36px; }
+.loot-crates .lc-reveal__actions button[hidden] { display: none; }
 
 /* ---------- Manager ---------- */
-.lc-manager__body { display: grid; grid-template-rows: auto 1fr; gap: 10px; height: 100%; }
-.lc-tabs { display: flex; gap: 6px; align-items: center; border-bottom: 1px solid var(--lc-line); padding-bottom: 6px; }
-.lc-tabs button.active { border-color: var(--lc-accent); color: var(--lc-accent); }
-.lc-tabs__spacer { flex: 1; }
-.lc-tab { overflow: auto; }
-.lc-toolbar { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
-.lc-pool { border: 1px dashed var(--lc-line); border-radius: var(--lc-radius); padding: 8px; margin-bottom: 10px; }
-.lc-pool.lc-drop--over { border-color: var(--lc-accent); background: color-mix(in srgb, var(--lc-accent) 8%, transparent); }
-/* A pool is a <details>: the summary is its census, always in view. */
-.lc-pool__details > summary {
-  display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px;
-  list-style: none; cursor: pointer; padding: 2px 4px; border-radius: 6px;
+
+.loot-crates .lc-manager__body { display: grid; grid-template-rows: auto 1fr; gap: 12px; height: 100%; }
+/* Tabs as dnd5e's sheet tabs: upper-case labels, the active one underlined
+   in gold. The shop switch sits at the end with its state in words. */
+.loot-crates .lc-tabs { display: flex; gap: 4px; align-items: center; border-bottom: 1px solid var(--lc-rule); padding-bottom: 0; }
+.loot-crates .lc-tabs > button:not(.lc-shop-toggle) {
+  background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0; margin-bottom: -1px;
+  font-family: var(--lc-label); font-weight: 700; font-size: 13px; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--lc-ink-mute); min-height: 34px; padding: 0 12px; box-shadow: none; outline: none;
 }
-.lc-pool__details > summary::-webkit-details-marker { display: none; }
-.lc-pool__details > summary::before {
-  content: ""; align-self: center; flex: none; width: 0; height: 0;
-  border-left: 6px solid var(--lc-ink-mute); border-top: 5px solid transparent; border-bottom: 5px solid transparent;
-  transition: transform 120ms ease;
+.loot-crates .lc-tabs > button:not(.lc-shop-toggle):focus-visible { outline: 2px solid var(--lc-focus); outline-offset: -2px; }
+.loot-crates .lc-tabs > button:not(.lc-shop-toggle):hover { color: var(--lc-ink); border-bottom-color: var(--lc-rule-soft); }
+.loot-crates .lc-tabs > button.active { color: var(--lc-ink); border-bottom-color: var(--lc-rule); }
+.loot-crates .lc-tabs__spacer { flex: 1; }
+.loot-crates .lc-shop-toggle { margin-bottom: 6px; }
+.loot-crates .lc-shop-toggle::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--lc-ink-mute); }
+.loot-crates .lc-shop-toggle[data-open="true"]::before { background: var(--lc-ok); }
+.loot-crates .lc-tab { overflow: auto; padding-right: 2px; }
+.loot-crates .lc-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+
+/* A pool is a dnd5e card: its census on the header, its items as rows. */
+.loot-crates .lc-pool {
+  background: var(--lc-card); border: 1px solid var(--lc-rule); border-radius: var(--lc-radius); box-shadow: var(--lc-shadow);
+  padding: 0; margin-bottom: 12px; overflow: hidden;
 }
-.lc-pool__details[open] > summary::before { transform: rotate(90deg); }
-.lc-pool__details > summary:hover::before { border-left-color: var(--lc-accent); }
-.lc-pool__details > summary:focus-visible { outline: 2px solid var(--lc-accent); outline-offset: 1px; }
-.lc-pool__name { font-weight: 700; }
-.lc-pool__bar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 6px; }
-.lc-pool__bar > button { flex: none; width: auto; }
-.lc-pool__unset:empty { display: none; }
-.lc-pool__unset button { width: auto; }
-.loot-crates input.lc-pool__search {
-  flex: 1 1 10em; min-width: 8em; max-width: 22em; height: 26px; padding: 0 8px; font-size: 12px;
-  color: var(--lc-ink); background: var(--lc-bg-3); border: 1px solid var(--lc-line); border-radius: 6px;
+.loot-crates .lc-pool.lc-drop--over { outline: 2px dashed var(--lc-focus); outline-offset: -4px; }
+.loot-crates .lc-pool__details > summary {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px;
+  list-style: none; cursor: pointer; padding: 9px 12px 8px;
+  background: linear-gradient(to right, color-mix(in srgb, var(--lc-band-1) 10%, var(--lc-card)), var(--lc-card));
+  border-bottom: 1px solid transparent;
 }
-.loot-crates input.lc-pool__search:focus-visible { outline: 2px solid var(--lc-accent); outline-offset: 1px; }
-/* The census as filter chips: odds-pill shape, pressed fills with its colour. */
-.lc-pool__chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.loot-crates .lc-pool__details[open] > summary { border-bottom-color: var(--lc-rule-soft); }
+.loot-crates .lc-pool__details > summary::-webkit-details-marker { display: none; }
+.loot-crates .lc-pool__details > summary::before {
+  content: ""; align-self: center; flex: none; width: 7px; height: 7px; margin-right: 2px;
+  border-right: 2px solid var(--lc-gold-ink); border-bottom: 2px solid var(--lc-gold-ink);
+  transform: rotate(-45deg); transition: transform 140ms ease;
+}
+.loot-crates .lc-pool__details[open] > summary::before { transform: rotate(45deg) translate(-2px, -2px); }
+.loot-crates .lc-pool__details > summary:focus-visible { outline-offset: -2px; }
+.loot-crates .lc-pool__name { font-family: var(--lc-slab); font-size: 17px; font-weight: 700; color: var(--lc-ink); }
+.loot-crates .lc-pool__body { padding: 0 12px 10px; }
+.loot-crates .lc-pool__body:empty { display: none; }
+.loot-crates .lc-pool__bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: 10px; }
+.loot-crates .lc-pool__bar > button { flex: none; }
+.loot-crates .lc-pool__unset:empty { display: none; }
+.loot-crates input.lc-pool__search { flex: 1 1 12em; min-width: 9em; max-width: 24em; }
+/* The census as filter chips, in the odds pills' shape; pressed fills. */
+.loot-crates .lc-pool__chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
 .loot-crates button.lc-chip {
-  width: auto; height: auto; min-height: 24px; margin: 0; font-family: inherit; cursor: pointer;
-  box-shadow: none;
+  min-height: 26px; padding: 0 8px 0 7px; gap: 5px; font-family: var(--lc-label); font-weight: 700; font-size: 12px;
+  border-radius: 3px; background: var(--lc-field); border: 1px solid var(--lc-rule-soft); color: var(--lc-ink);
 }
-.loot-crates button.lc-chip:hover { border-color: var(--lc-rarity); }
+.loot-crates button.lc-chip::before {
+  content: ""; width: 6px; height: 6px; flex: none; background: var(--lc-rarity, var(--lc-ink-mute)); transform: rotate(45deg);
+}
+.loot-crates button.lc-chip:not(:disabled):hover { border-color: var(--lc-rule); }
 .loot-crates button.lc-chip[aria-pressed="true"] {
-  background: color-mix(in srgb, var(--lc-rarity) 42%, var(--lc-bg-3)); border-color: var(--lc-rarity);
-  box-shadow: inset 0 0 0 1px var(--lc-rarity);
+  background: var(--lc-btn); color: var(--lc-btn-ink); border-color: var(--lc-btn);
 }
-.loot-crates button.lc-chip:focus-visible { outline: 2px solid var(--lc-accent); outline-offset: 1px; }
-.lc-chip--problem { --lc-rarity: var(--lc-accent); }
-.lc-pool__foot { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: 6px; font-size: 12px; color: var(--lc-ink-mute); }
-.lc-pool__foot:empty { display: none; }
-.lc-pool__foot .lc-pool__more { width: auto; }
-.lc-pool__count, .lc-pool__hint { font-size: 12px; color: var(--lc-ink-mute); }
-@media (prefers-reduced-motion: reduce) { .lc-pool__details > summary::before { transition: none; } }
-.lc-entries { list-style: none; margin: 6px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 330px), 1fr)); gap: 4px; }
-.lc-entry { display: flex; align-items: center; gap: 6px; padding: 3px 6px; border-radius: 6px; background: var(--lc-bg-2); border-left: 3px solid var(--lc-rarity); font-size: 12px; }
-.lc-entry img { width: 22px; height: 22px; border: 0; }
-.lc-entry__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.lc-entry em { color: var(--lc-rarity); font-style: normal; font-size: 11px; }
-.lc-entry button { width: 22px; height: 22px; line-height: 1; padding: 0; flex: none; }
-/* In-place curation: the rarity the entry is drawn at, and its weight. */
-.lc-entry select.lc-entry__rarity { flex: none; width: 11.5em; height: 24px; padding: 0 2px 0 4px; font-size: 11px; color: var(--lc-rarity); background: var(--lc-bg-3); border: 1px solid var(--lc-line); border-radius: 4px; }
-.lc-entry select.lc-entry__rarity option { color: var(--lc-ink); background: var(--lc-bg-2); }
-.lc-entry input.lc-entry__weight { flex: none; width: 3.6em; height: 24px; padding: 0 4px; font-size: 11px; text-align: right; color: var(--lc-ink); background: var(--lc-bg-3); border: 1px solid var(--lc-line); border-radius: 4px; }
-.lc-entry select.lc-entry__rarity:focus-visible, .lc-entry input.lc-entry__weight:focus-visible { outline: 2px solid var(--lc-accent); outline-offset: 1px; }
-.lc-entry--never { border-left-style: dotted; }
-.lc-entry--never img, .lc-entry--never .lc-entry__name { opacity: .5; }
-.lc-entry--never .lc-entry__status { color: var(--lc-ink-mute); }
-/* Entries whose source is gone or changed: full width at the top of the pool. */
-.lc-entry--missing, .lc-entry--renamed { grid-column: 1 / -1; padding: 5px 6px; }
-.lc-entry__text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.lc-entry__text .lc-entry__name { flex: none; }
-.lc-entry__status { font-size: 11px; color: var(--lc-accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.lc-entry--missing { border-left-style: dashed; border-left-color: var(--lc-ink-mute); outline: 1px dashed transparent; }
-.lc-entry--missing img { opacity: .4; filter: grayscale(1); }
-.lc-entry--missing .lc-entry__name { text-decoration: line-through; color: var(--lc-ink-mute); }
-.lc-entry--missing.lc-drop--over { outline-color: var(--lc-accent); background: color-mix(in srgb, var(--lc-accent) 10%, var(--lc-bg-2)); }
-.lc-entry .lc-entry__update { width: auto; padding: 0 8px; font-size: 11px; }
-.lc-pool__problems { color: var(--lc-accent); }
-.lc-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-.lc-table th, .lc-table td { padding: 6px; border-bottom: 1px solid var(--lc-line); text-align: left; vertical-align: middle; }
-.lc-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--lc-rarity); margin-right: 6px; }
-/* A refunded pull reads as withdrawn, as its chat card does: no rarity colour,
-   the name struck through, text muted but still readable (no opacity, which
-   took the 11px source note and the refund date under 2.5:1). */
-.lc-row--refunded td { color: var(--lc-ink-mute); }
-.lc-row--refunded .lc-dot { --lc-rarity: var(--lc-ink-mute); }
-.lc-log__rarity { display: block; margin-left: 14px; font-size: 11px; color: var(--lc-ink-mute); }
-.lc-form { display: grid; gap: 8px; }
-.lc-form label { display: grid; gap: 4px; }
-.lc-form .lc-row { display: flex; align-items: center; gap: 8px; }
-.lc-form .lc-row input[type=number] { width: 72px; }
-.lc-form fieldset { border: 1px solid var(--lc-line); border-radius: 6px; }
-.lc-form p { margin: 0; }
-.lc-form__hint { font-size: 11px; color: var(--lc-ink-mute); }
-/* The add preview: what a folder, compendium or table drop would put in. */
-.lc-preview { display: grid; gap: 8px; font-size: 12px; }
-.lc-preview p { margin: 0; }
-.lc-preview__lead { font-size: 13px; }
-.lc-preview__rarities { display: flex; flex-wrap: wrap; gap: 4px; }
-.lc-preview__skipped { margin: 0; padding-left: 16px; color: var(--lc-ink-mute); }
-.lc-preview__list { list-style: none; margin: 0; padding: 0 4px 0 0; display: grid; gap: 3px; max-height: 260px; overflow-y: auto; }
-.lc-preview__weight { font-size: 11px; color: var(--lc-ink-mute); }
-.lc-preview__more { color: var(--lc-ink-mute); }
+/* Problems (missing, renamed, no rarity) are warnings, not gold. */
+.loot-crates .lc-chip--problem { --lc-rarity: var(--lc-warn); color: var(--lc-warn); border-color: color-mix(in srgb, var(--lc-warn) 45%, transparent); background: var(--lc-warn-bg); }
+.loot-crates .lc-pool__foot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 8px; font-size: 12px; color: var(--lc-ink-mute); }
+.loot-crates .lc-pool__foot:empty { display: none; }
+.loot-crates .lc-pool__count, .loot-crates .lc-pool__hint { font-size: 12px; color: var(--lc-ink-mute); }
+.loot-crates .lc-pool__problems { color: var(--lc-warn); font-weight: 700; }
+
+/* Entries as dnd5e inventory rows: zebra rows, a framed icon, the rarity
+   as a diamond beside its select. */
+.loot-crates .lc-entries {
+  list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 0 12px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 460px), 1fr));
+}
+.loot-crates .lc-entry {
+  display: flex; align-items: center; gap: 7px; min-height: 36px; padding: 3px 4px; box-sizing: border-box;
+  border-bottom: 1px solid var(--lc-rule-soft); font-size: 13px;
+}
+.loot-crates .lc-entry img { width: 26px; height: 26px; flex: none; border: 1px solid var(--lc-rule); border-radius: 3px; background: var(--lc-field); }
+.loot-crates .lc-entry::before { content: ""; order: 0; width: 7px; height: 7px; flex: none; background: var(--lc-rarity, var(--lc-ink-mute)); transform: rotate(45deg); }
+.loot-crates .lc-entry__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.loot-crates .lc-entry em { color: var(--lc-ink-mute); font-style: normal; font-size: 12px; }
+.loot-crates .lc-entry button { min-width: 30px; min-height: 30px; padding: 0 8px; flex: none; }
+.loot-crates .lc-entry select.lc-entry__rarity { flex: none; width: 12.5em; min-height: 30px; padding: 0 4px; font-size: 12px; color: var(--lc-ink); }
+.loot-crates .lc-entry input.lc-entry__weight { flex: none; width: 3.8em; min-height: 30px; padding: 0 6px; font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
+.loot-crates .lc-entry--never img, .loot-crates .lc-entry--never .lc-entry__name { opacity: .55; }
+.loot-crates .lc-entry--never .lc-entry__status { color: var(--lc-ink-mute); }
+/* Entries whose source is gone or changed: full width at the top. */
+.loot-crates .lc-entry--missing, .loot-crates .lc-entry--renamed {
+  grid-column: 1 / -1; padding: 6px 8px; margin: 2px 0; border: 1px dashed color-mix(in srgb, var(--lc-warn) 55%, transparent);
+  border-radius: var(--lc-radius); background: var(--lc-warn-bg);
+}
+.loot-crates .lc-entry__text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.loot-crates .lc-entry__text .lc-entry__name { flex: none; }
+.loot-crates .lc-entry__status { font-size: 12px; color: var(--lc-warn); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.loot-crates .lc-entry--missing img { opacity: .5; filter: grayscale(1); }
+.loot-crates .lc-entry--missing .lc-entry__name { text-decoration: line-through; color: var(--lc-ink-mute); }
+.loot-crates .lc-entry--missing.lc-drop--over { outline: 2px dashed var(--lc-focus); }
+.loot-crates .lc-entry .lc-entry__update { font-size: 12px; }
+
+/* Tables as dnd5e's: a maroon header row, zebra rows on the card. */
+.loot-crates .lc-table { width: 100%; border-collapse: collapse; font-size: 13px; background: var(--lc-card); border: 1px solid var(--lc-rule); box-shadow: var(--lc-shadow); }
+.loot-crates .lc-table th {
+  padding: 7px 8px; text-align: left; color: var(--lc-band-ink); background: linear-gradient(to right, var(--lc-band-1), var(--lc-band-2));
+  font-family: var(--lc-label); font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+}
+.loot-crates .lc-table td { padding: 7px 8px; border-top: 1px solid var(--lc-rule-soft); text-align: left; vertical-align: middle; }
+.loot-crates .lc-table tbody tr:nth-child(even) td { background: var(--lc-row-alt); }
+.loot-crates .lc-table td .lc-odds { justify-content: flex-start; }
+.loot-crates .lc-table td .lc-ribbon { margin-bottom: 5px; max-width: 220px; }
+.loot-crates .lc-table td:last-child { white-space: nowrap; text-align: right; }
+.loot-crates .lc-dot { display: inline-block; width: 7px; height: 7px; background: var(--lc-rarity); margin-right: 7px; transform: rotate(45deg); }
+/* A refunded pull reads as withdrawn, as its chat card does. */
+.loot-crates .lc-row--refunded td { color: var(--lc-ink-mute); }
+.loot-crates .lc-row--refunded .lc-dot { --lc-rarity: var(--lc-ink-mute); }
+.loot-crates .lc-log__rarity { display: block; margin-left: 14px; font-size: 12px; color: var(--lc-ink-mute); }
+/* A sale its buyer called off too late: marked for the GM, not undone. */
+.loot-crates .lc-row--late td:first-child { box-shadow: inset 3px 0 var(--lc-warn); }
+.loot-crates .lc-log__late { display: block; margin-left: 14px; font-size: 12px; color: var(--lc-warn); }
+
+/* Dialogs (pool and box editors, previews). */
+.loot-crates .lc-form { display: grid; gap: 10px; }
+.loot-crates .lc-form label { display: grid; gap: 4px; }
+.loot-crates .lc-form .lc-row { display: flex; align-items: center; gap: 8px; }
+.loot-crates .lc-form .lc-row input[type=number] { width: 76px; }
+.loot-crates .lc-form fieldset { border: 1px solid var(--lc-rule); border-radius: var(--lc-radius); padding: 8px 10px 10px; background: var(--lc-card); }
+.loot-crates .lc-form legend, .loot-crates .lc-form__label { font-family: var(--lc-label); font-weight: 700; font-size: 12px; letter-spacing: .03em; text-transform: uppercase; color: var(--lc-gold-ink); padding: 0 4px; }
+.loot-crates .lc-form p { margin: 0; }
+.loot-crates .lc-form__hint { font-size: 12px; color: var(--lc-ink-mute); }
+/* Read by screen readers, not drawn: the box editor's one-line odds. */
+.loot-crates .lc-sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+.loot-crates .lc-form__hint:empty { display: none; }
+.loot-crates .lc-form__hint--warn { color: var(--lc-warn); font-weight: 700; }
+/* The box editor's live odds: the shop's ribbon and pills, left-aligned. */
+.loot-crates .lc-form__preview { display: grid; gap: 6px; }
+.loot-crates .lc-form__preview .lc-odds { justify-content: flex-start; }
+/* Weights in one column, each with its note beside it. */
+.loot-crates .lc-form .lc-form__weights .lc-row { display: grid; grid-template-columns: 6.5em 76px 1fr; }
+/* The odds stay in view while the GM scrolls up to the pools: a fieldset's
+   box, but its label inside so nothing scrolls through behind it. */
+.loot-crates .lc-form .lc-form__odds {
+  position: sticky; bottom: 0; z-index: 1; display: grid; gap: 6px;
+  border: 1px solid var(--lc-rule); border-radius: var(--lc-radius); padding: 6px 10px 10px;
+  background: var(--lc-card); box-shadow: var(--lc-shadow);
+}
+.loot-crates .lc-form .lc-form__label { padding: 0; }
+.loot-crates .lc-preview { display: grid; gap: 8px; font-size: 13px; }
+.loot-crates .lc-preview p { margin: 0; }
+.loot-crates .lc-preview__lead { font-family: var(--lc-slab); font-size: 14px; }
+.loot-crates .lc-preview__rarities { display: flex; flex-wrap: wrap; gap: 4px; }
+.loot-crates .lc-preview__skipped { margin: 0; padding-left: 16px; color: var(--lc-ink-mute); }
+.loot-crates .lc-preview__list { list-style: none; margin: 0; padding: 0 4px 0 0; display: grid; gap: 3px; max-height: 260px; overflow-y: auto; }
+.loot-crates .lc-preview__weight { font-size: 12px; color: var(--lc-ink-mute); }
+.loot-crates .lc-preview__more { color: var(--lc-ink-mute); }
 
 /* ---------- Chat card ---------- */
-.lc-chat { border-left: 3px solid var(--lc-rarity); padding: 6px 8px; border-radius: 4px; }
-.lc-chat__head { font-size: 12px; }
-.lc-chat__price { color: var(--lc-accent); margin-left: 4px; }
-.lc-chat__item { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
-.lc-chat__item img { width: 40px; height: 40px; border: 0; }
-.lc-chat__name { font-weight: 700; }
-.lc-chat__rarity { font-size: 11px; color: var(--lc-rarity); }
-.lc-chat__refund { font-size: 12px; margin-top: 4px; }
+
+/* A small dnd5e card in the log: a gold rule, the item in a framed portrait
+   underlined in its rarity, the rarity named beside a diamond. */
+.loot-crates.lc-chat {
+  padding: 8px 9px; border: 1px solid var(--lc-rule); border-radius: var(--lc-radius);
+  background: var(--lc-card); box-shadow: var(--lc-shadow); font-family: var(--lc-body);
+}
+.loot-crates .lc-chat__head { font-size: 12px; color: var(--lc-ink-soft); line-height: 1.35; }
+.loot-crates .lc-chat__head strong { font-family: var(--lc-slab); color: var(--lc-ink); }
+.loot-crates .lc-chat__price { margin-left: 4px; font-family: var(--lc-label); font-weight: 700; color: var(--lc-gold-ink); white-space: nowrap; }
+.loot-crates .lc-chat__item { display: flex; align-items: center; gap: 9px; margin-top: 7px; padding-top: 7px; border-top: 1px solid var(--lc-rule-soft); }
+.loot-crates .lc-chat__item img { width: 42px; height: 42px; flex: none; border: 1px solid var(--lc-rule); border-bottom: 3px solid var(--lc-rarity); border-radius: 3px; background: var(--lc-field); }
+.loot-crates .lc-chat__name { font-family: var(--lc-slab); font-size: 14px; font-weight: 700; color: var(--lc-ink); }
+.loot-crates .lc-chat__rarity { display: flex; align-items: center; gap: 5px; margin-top: 2px; font-family: var(--lc-label); font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--lc-ink-mute); }
+.loot-crates .lc-chat__rarity::before { content: ""; width: 6px; height: 6px; background: var(--lc-rarity); transform: rotate(45deg); }
+.loot-crates .lc-chat__refund { font-size: 12px; margin-top: 6px; color: var(--lc-ink-soft); }
+/* A card whose spin is still playing on this client: the head, and
+   "Opening…" where the item will be (reveal.js sealChatCard). */
+.loot-crates.lc-chat--sealed { --lc-rarity: var(--lc-ink-mute); }
+.loot-crates.lc-chat--sealed .lc-chat__item { display: none; }
+.loot-crates .lc-chat__sealed { margin-top: 7px; padding-top: 7px; border-top: 1px solid var(--lc-rule-soft); font-size: 13px; color: var(--lc-ink-mute); }
 /* A refunded pull's card: the win is withdrawn, so no rarity colour. */
-.loot-crates.lc-chat--refunded { --lc-rarity: var(--lc-ink-mute); }
-.lc-chat--refunded .lc-chat__item img { filter: grayscale(1); opacity: .5; }
-.lc-chat--refunded .lc-chat__name, .lc-chat--refunded .lc-chat__rarity { color: var(--lc-ink-mute); }
-.lc-chat--refunded .lc-chat__refund { color: var(--lc-ink-soft); }
+.loot-crates.lc-chat--refunded { --lc-rarity: var(--lc-ink-mute); box-shadow: none; }
+.loot-crates.lc-chat--refunded .lc-chat__item img { filter: grayscale(1); opacity: .55; }
+.loot-crates.lc-chat--refunded .lc-chat__name, .loot-crates.lc-chat--refunded .lc-chat__rarity { color: var(--lc-ink-mute); }
+
+/* ---------- Narrow windows ---------- */
+
+@media (max-width: 520px) {
+  .loot-crates .lc-spin__viewport {
+    mask-image: linear-gradient(90deg, transparent, #000 22%, #000 78%, transparent);
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 22%, #000 78%, transparent);
+  }
+  .loot-crates .lc-shop__field--purse { margin-left: 0; text-align: left; }
+  .loot-crates .lc-shop__purse { justify-content: flex-start; }
+  .loot-crates .lc-reveal__name { font-size: 28px; }
+}
+
+/* A pool's rows, and the add-items preview's, follow their list's own
+   width, not the screen's: a manager window sized narrow on a wide desktop
+   is as tight as a phone, and a dialog on a phone is narrow too. There the
+   name and its status get a full line and wrap, so a long name or "was X,
+   now Y" is read in full instead of cut to an ellipsis. */
+.loot-crates .lc-pool, .loot-crates .lc-preview__list { container: lc-rows / inline-size; }
+@container lc-rows (max-width: 520px) {
+  .loot-crates .lc-entry { flex-wrap: wrap; }
+  .loot-crates .lc-entry__name, .loot-crates .lc-entry__text { flex: 1 1 calc(100% - 50px); }
+  .loot-crates .lc-entry__name, .loot-crates .lc-entry__status { white-space: normal; overflow-wrap: anywhere; }
+  .loot-crates .lc-entry select.lc-entry__rarity { margin-left: 41px; }
+}
 
 @media (prefers-reduced-motion: reduce) {
-  .lc-card { transition: none; }
+  .loot-crates .lc-card, .loot-crates .lc-vault::after, .loot-crates .lc-pool__details > summary::before { transition: none; }
+  .loot-crates .lc-reveal__where { animation: none; }
 }

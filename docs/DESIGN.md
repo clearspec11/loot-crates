@@ -1,37 +1,303 @@
 ---
 name: Loot Crates
-description: A dark, restrained crate-opening UI inside Foundry VTT. One memorable moment (the spin), everything else quiet.
+description: A dnd5e sheet that sells treasure. dnd5e's own sheet language in light or dark, plus one bespoke move, the vault.
 colors:
-  bg: "#121417"
-  bg-2: "#1a1d22"
-  bg-3: "#23272e"
-  line: "#30353d"
-  ink: "#eef0f3"
-  ink-soft: "#b7bdc7"
-  ink-mute: "#8b929d"
-  accent: "#e8b65a"
-  common: "#9aa5b5"
-  uncommon: "#4b8ff2"
-  rare: "#9b59f0"
-  veryRare: "#ef5aa7"
-  legendary: "#ef4b4b"
-  artifact: "#f2c14e"
+  paper-ground: "#f1ebe8"
+  paper-card: "#f8f4f1"
+  paper-field: "#fffdfb"
+  paper-row-alt: "#efe9e3"
+  gold-rule: "#9f9275"
+  paper-rule-soft: "#c9c7b8"
+  sheet-ink: "#191813"
+  sheet-ink-soft: "#3d3c36"
+  sheet-ink-mute: "#5d5b52"
+  gold-ink: "#6b5a35"
+  band-maroon: "#741b2b"
+  band-oxblood: "#44191a"
+  band-ink: "#fbf6ef"
+  button-black: "#191813"
+  pin-gold: "#e3ce9e"
+  warn-amber: "#8a4b00"
+  warn-wash: "#f6e7cf"
+  ok-green: "#2f6b2a"
+  denim-ground: "#0d0b0b"
+  slate-card: "#252830"
+  slate-field: "#1b1d24"
+  slate-row-alt: "#2c2f38"
+  gold-rule-dark: "#8a7d5f"
+  slate-rule-soft: "#434857"
+  bone-ink: "#ece8e1"
+  bone-ink-soft: "#cfcabe"
+  bone-ink-mute: "#a7a397"
+  gold-ink-dark: "#d9c495"
+  band-maroon-dark: "#6a1826"
+  band-oxblood-dark: "#2c1013"
+  button-black-dark: "#0d0b0b"
+  warn-amber-dark: "#e9b867"
+  warn-wash-dark: "#3a2c17"
+  ok-green-dark: "#8fd48a"
+  vault: "#140d0f"
+  vault-glow: "#1d1417"
+  vault-card: "#231b1e"
+  vault-line: "#3c2f33"
+  vault-ink: "#efe9df"
+  vault-soft: "#cfc6b8"
+  gold-rim: "#a8955f"
+  rarity-common: "#9aa5b5"
+  rarity-uncommon: "#4b8ff2"
+  rarity-rare: "#9b59f0"
+  rarity-very-rare: "#ef5aa7"
+  rarity-legendary: "#ef4b4b"
+  rarity-artifact: "#f2c14e"
 typography:
-  family: "Signika (Foundry's UI font), falling back to Plus Jakarta Sans, system-ui"
-  floor: "11px; card names 12px; the reveal name 20px bold"
-radius: "8px windows and cards, 6px controls, 999px odds pills"
-motion:
-  spin: "5 to 7 s, constant then cubic ease-out, on a near-miss overshoot a quarter card into the teased card (one droppable rank up) and click back, settle with ease-in-out"
-  landed: "card lifts 6px and scales 1.06 with a rarity glow, 420 ms"
-  reduced-motion: "skip straight to the landed state"
+  display:
+    fontFamily: "Modesto Condensed, Palatino Linotype, serif"
+    fontSize: "34px"
+    fontWeight: 700
+    lineHeight: 1
+  headline:
+    fontFamily: "Modesto Condensed, Palatino Linotype, serif"
+    fontSize: "21px"
+    fontWeight: 700
+    lineHeight: 1.05
+    letterSpacing: "0.01em"
+  title:
+    fontFamily: "Roboto Slab, Signika, serif"
+    fontSize: "15px"
+    fontWeight: 700
+  body:
+    fontFamily: "Roboto, Signika, system-ui, sans-serif"
+    fontSize: "13px"
+    fontWeight: 400
+  label:
+    fontFamily: "Roboto Condensed, Roboto, Signika, sans-serif"
+    fontSize: "11px"
+    fontWeight: 700
+    letterSpacing: "0.03em"
+  data:
+    fontFamily: "Roboto Condensed, Roboto, Signika, sans-serif"
+    fontSize: "12px"
+    fontWeight: 700
+rounded:
+  hair: "1px"
+  ribbon: "2px"
+  pill: "3px"
+  card: "4px"
+spacing:
+  xs: "4px"
+  sm: "8px"
+  md: "12px"
+  lg: "14px"
+  vault-pad: "1rem"
+components:
+  button-primary:
+    backgroundColor: "{colors.button-black}"
+    textColor: "{colors.pin-gold}"
+    rounded: "{rounded.card}"
+    padding: "0 16px"
+    height: "36px"
+  button-primary-disabled:
+    backgroundColor: "{colors.paper-row-alt}"
+    textColor: "{colors.sheet-ink-mute}"
+  button-quiet:
+    backgroundColor: "{colors.paper-field}"
+    textColor: "{colors.sheet-ink}"
+    rounded: "{rounded.card}"
+    padding: "0 12px"
+    height: "30px"
+  input:
+    backgroundColor: "{colors.paper-field}"
+    textColor: "{colors.sheet-ink}"
+    rounded: "{rounded.card}"
+    padding: "0 8px"
+    height: "30px"
+  odds-pill:
+    backgroundColor: "{colors.paper-field}"
+    textColor: "{colors.sheet-ink}"
+    typography: "{typography.data}"
+    rounded: "{rounded.pill}"
+    padding: "0 7px 0 6px"
+    height: "18px"
+  filter-chip:
+    backgroundColor: "{colors.paper-field}"
+    textColor: "{colors.sheet-ink}"
+    typography: "{typography.data}"
+    rounded: "{rounded.pill}"
+    padding: "0 8px 0 7px"
+    height: "26px"
+  filter-chip-pressed:
+    backgroundColor: "{colors.button-black}"
+    textColor: "{colors.pin-gold}"
+  crate-card:
+    backgroundColor: "{colors.paper-card}"
+    textColor: "{colors.sheet-ink}"
+    rounded: "{rounded.card}"
+    padding: "12px"
+  crate-band:
+    backgroundColor: "{colors.band-maroon}"
+    textColor: "{colors.band-ink}"
+    typography: "{typography.headline}"
+    padding: "8px 10px 6px"
+  strip-card:
+    backgroundColor: "{colors.vault-card}"
+    textColor: "{colors.vault-soft}"
+    rounded: "{rounded.card}"
+    width: "120px"
+    height: "140px"
+  tab:
+    textColor: "{colors.sheet-ink-mute}"
+    padding: "0 12px"
+    height: "34px"
+  tab-active:
+    textColor: "{colors.sheet-ink}"
 ---
 
-# Design rules
+# Design System: Loot Crates
 
-1. **Rarity is a colour bar, not a word.** Each card's bottom bar and glow read `--lc-rarity`; the label appears only on the landed card and in chat. The ladder is CS:GO-familiar: grey-blue, blue, purple, pink, red, with gold held back for artifacts and GM-flagged jackpots.
-2. **One moment per screen.** The spin is the moment. The shop and the manager are plain, legible lists and grids with no decoration competing with it.
-3. **The marker is the only accent on the strip.** Gold line with chevrons top and bottom; fillers dim to 55% once the result lands so the eye goes to one card.
-4. **Odds are always visible** on a box (pills per rarity) so a purchase is a known bet, not a surprise.
-5. **Buttons say what they do and what it costs**: "Open for 150 gp", disabled with a reason in the title when it can't be done.
-6. **Foundry's chrome stays Foundry's.** Tokens are scoped under `.loot-crates`; nothing styles global elements.
-7. **No emoji, no caps kickers, no sparkle.** Font Awesome icons that Foundry already ships are fine.
+## Overview
+
+**Creative North Star: "The Sheet That Sells Treasure"**
+
+Loot Crates speaks dnd5e's own sheet language so a player reads every window as part of the system: dnd5e's grey paper or denim ground, cards inside a 1px gold rule with a soft shadow, maroon header bands lettered in Modesto Condensed, bold upper-case condensed field labels in gold ink, and dnd5e's black button with an inset gold rule. The windows follow Foundry's light or dark theme exactly as dnd5e's sheets do, per window, by scoping theme tokens with `@scope (.theme-light) to (.themed)` and `@scope (.theme-dark) to (.themed)`; light is the base, dark overrides.
+
+It owns one bespoke move: **the vault**, a dark, gold-ruled band that runs edge to edge across the reveal window and holds the odds ribbon, the strip, the pin and the result. The vault stays dark in both themes; it is the stage, not a panel, so the CS:GO rarity colours read the same for everyone at the table. Its signature companion is **the odds ribbon**: one segmented, gold-rimmed bar of a crate's real drop chances, shown on the shop's crate cards, in the manager's box table and along the vault's top edge.
+
+dnd5e is a required system, so its textures and fonts are referenced by relative path from the module's stylesheet (`../../../systems/dnd5e/ui/texture-gray1.webp`, `texture-gray2.webp`, Foundry's `../../../ui/denim075.png`), never copied into the module. Every rule is scoped under `.loot-crates`; Foundry's chrome and other modules are never styled. The world refuses the neon gamer-UI card grid and refuses a parchment costume: it is dnd5e's actual sheet, not an imitation of old paper.
+
+**Key Characteristics:**
+- dnd5e sheet language in both Foundry themes, switched per window with `@scope ... to (.themed)`.
+- dnd5e textures and fonts referenced by path, never copied.
+- One bespoke surface, the always-dark vault, where the spin runs and the result lands.
+- The odds ribbon as the signature device across shop, manager and reveal.
+- The CS:GO rarity ladder as a user pin, used on paper only as edges, diamonds and ribbon segments.
+- Quiet operating windows (shop, manager, chat card); the reveal is the one moment.
+
+## Colors
+
+dnd5e's two sheet palettes (grey paper with maroon and gold; denim and slate with gold) plus a fixed dark vault and the six-step CS:GO rarity ladder.
+
+### Primary
+- **Sheet Maroon to Oxblood** (`band-maroon` to `band-oxblood`, light; `band-maroon-dark` to `band-oxblood-dark`, dark): a left-to-right gradient on crate-card header bands and the manager's table header row; at 10% it tints a pool card's summary row. Maroon is also the light theme's focus ring.
+- **Pin Gold** (`pin-gold`): the lettering on every primary button, the pin and its diamond heads in the vault, the vault's top and bottom inset hairlines, the gold-left figure in the result line, and the dark theme's focus ring.
+
+### Secondary
+- **Gold Rule** (`gold-rule`, light; `gold-rule-dark`, dark): the 1px rule around windows, cards, tables and fieldsets, the inset rule inside the black button, the active tab's underline and the faded shop divider.
+- **Gold Ink** (`gold-ink`, light; `gold-ink-dark`, dark): field labels, legends, the price beside a crate or chat-card name, and the pool disclosure chevron.
+- **Gold Rim** (`gold-rim`): the ribbon's frame and the peek portraits' frame, gold in both themes.
+
+### Tertiary: the rarity ladder (user pin)
+- **Common** (`rarity-common`), **Uncommon** (`rarity-uncommon`), **Rare** (`rarity-rare`), **Very Rare** (`rarity-very-rare`), **Legendary** (`rarity-legendary`), **Artifact** (`rarity-artifact`). One rule per rarity class sets `--lc-rarity` and `--lc-rank` (0 to 5); everything reads them.
+
+### Neutral
+- **Paper Ground** (`paper-ground`) under dnd5e's two grey textures; **Denim Ground** (`denim-ground`) under Foundry's denim.
+- **Paper Card / Slate Card** (`paper-card` / `slate-card`): cards, pools, tables, chat cards, fieldsets.
+- **Paper Field / Slate Field** (`paper-field` / `slate-field`): inputs, selects, quiet buttons, pills, chips.
+- **Row Alt** (`paper-row-alt` / `slate-row-alt`): zebra table rows and the disabled buy button.
+- **Soft Rule** (`paper-rule-soft` / `slate-rule-soft`): control borders, row dividers, the blue-gray rule of the dark theme.
+- **Sheet Ink / Bone Ink** with soft and mute steps: text in each theme.
+- **Vault** (`vault`, `vault-glow`, `vault-card`, `vault-line`, `vault-ink`, `vault-soft`): the stage, identical in both themes.
+- **Warn and OK** (`warn-amber`, `warn-wash`, `ok-green` and their `-dark` pairs): problem chips and rows, the shop header's notice when nothing can be bought (closed, no GM, no character: said once there, never under each crate), the shop-open dot.
+
+### Named Rules
+**The Edges-On-Paper Rule.** On paper and slate, rarity colour appears only as an edge, a diamond or a ribbon segment: the peek and chat portraits' 3px underline, the 6 to 7px rotated-square diamond on pills, chips, rows and the log, and the ribbon's segments. Rarity text on paper is ink, never the rarity colour.
+
+**The Vault Speaks In Colour Rule.** Rarity-coloured text lives only inside the always-dark vault: the result name in its rarity, the strip card's foot bar, the landed card's ring and tint, and the vault's wash.
+
+**The Warn Is Not Gold Rule.** Problems (missing, renamed, no rarity) are amber on a warm wash with a dashed border, never gold, so they never read as treasure.
+
+## Typography
+
+**Display Font:** Modesto Condensed (with Palatino Linotype, serif), shipped by Foundry
+**Title Font:** Roboto Slab (with Signika, serif), registered by dnd5e
+**Body Font:** Roboto (with Signika, system-ui)
+**Label Font:** Roboto Condensed (with Roboto, Signika)
+
+**Character:** dnd5e's own faces in dnd5e's own roles: Modesto for names that matter, slab for names of people, crates and pools, condensed bold for labels and figures, Roboto for running text.
+
+### Hierarchy
+- **Display** (Modesto 700, 34px, 1; 28px under 520px): the landed item's name in the vault, in its rarity colour.
+- **Headline** (Modesto 700, 21px, 1.05, balanced): a crate's name on its maroon band, in band ink.
+- **Title** (Roboto Slab 700, 14 to 17px): the shop's character and purse (15px, tabular figures), pool names (17px), the reveal and chat-card crate and item names (14px).
+- **Body** (Roboto 400, 13px window text; 12px secondary lines such as hints, reasons, stock and status).
+- **Label** (Roboto Condensed 700, 11px, 0.03em, upper case, gold ink): dnd5e field labels (Character, Purse), form legends at 12px. Tabs (13px, 0.04em), table headers (12px) and the rarity name under a result or in a chat card (12px, 0.04 to 0.08em) use the same upper-case condensed voice.
+- **Data** (Roboto Condensed 700, 12px): odds pills, filter chips, stock, prices.
+
+### Named Rules
+**The Labels Not Kickers Rule.** Upper case belongs to dnd5e's own conventions: field labels above a control, tab labels, table headers, and the rarity name beneath the item it names. Never a caps line above a heading.
+
+**The 11px Floor Rule.** No text below 11px; the field label is the floor, everything secondary is 12px.
+
+## Layout
+
+Windows are Foundry ApplicationV2 windows; content sits on the theme ground at 13px. The shop is a header row (labelled character picker left, purse right, a gold divider that fades at both ends) over an auto-fill grid of crate cards (`minmax(min(100%, 190px), 1fr)`, 14px gaps). The reveal is a slim buyer/crate/price line, then the vault breaking out of the window padding edge to edge (negative inline margin by the window pad, 1rem fallback), then right-aligned actions. The manager is underlined tabs over a scrolling pane of pool cards whose entries flow into an auto-fill grid of 460px minimum columns, and a box table.
+
+Spacing runs on small steps: 4px pills and chips, 8px control gaps, 12px card padding, 14px grid gaps. Controls are 30px tall, primary actions 36px. Under 520px the purse moves under the picker left-aligned, the strip's edge fade widens (22% to 78%), the result name drops to 28px and entry rows wrap with the rarity select indented under the name.
+
+## Elevation & Depth
+
+Depth is dnd5e's: one soft, unoffset card shadow on paper, and inset light and shade inside the vault. Nothing glows.
+
+### Shadow Vocabulary
+- **Card** (`box-shadow: 0 0 6px rgba(0,0,0,.45)`): crate cards, pools, tables, chat cards, primary buttons.
+- **Peek portrait** (`box-shadow: 0 2px 4px rgba(0,0,0,.35)`): the fanned item portraits on a crate card.
+- **Vault frame** (`box-shadow: inset 0 3px 0 -2px pin-gold, inset 0 -3px 0 -2px pin-gold, inset 0 10px 18px -12px #000, inset 0 -10px 18px -12px #000`): gold hairlines inside the vault's gold border, with shade falling in from both edges.
+- **Landed lift** (`box-shadow: inset 0 0 0 1px var(--lc-rarity), 0 8px 16px rgba(0,0,0,.6)`): the winning strip card only.
+
+### Named Rules
+**The Neutral Lift Rule.** The landing is a neutral lift (translateY -5px, scale 1.06, 460ms `cubic-bezier(.16,1,.3,1)`) with an inset rarity ring, a 10% rarity tint and a gold-framed portrait; the rest of the strip steps back to 45% opacity. No coloured glow.
+
+**The Wash Carries The Escalation Rule.** Once landed, the vault takes a radial wash of the rarity colour (55% mix fading out by 70%) at opacity 0.12 + rank x 0.12, from barely tinted for a common to flooded for an artifact, fading in over 600ms after a 120ms delay.
+
+## Shapes
+
+Small, square-ish corners: 4px cards, buttons, fields and strip cards; 3px pills, chips, portraits and the button's inset rule; 2px on the ribbon frame. Rarity is drawn as a rotated square (diamond), never a circle; the only circle is the shop switch's 8px state dot. The pin's heads are 9px gold diamonds above and below the cards. Peek portraits fan like held cards (-7deg, centre raised and scaled 1.08, +7deg, overlapping by 10px).
+
+## Components
+
+### Buttons
+- **Primary** (dnd5e's black button): black with gold lettering, bold, 36px, the card shadow, and a 1px gold rule inset 3px on all sides. Hover brightens the lettering and turns the inset rule pin gold. Used for "Open for 150 gp", the reveal's Close, and dialog defaults.
+- **Disabled buy:** the row-alt ground, mute ink, no shadow, a dashed soft inset rule, and its reason as a visible 12px line beneath.
+- **Quiet:** field ground, soft rule, 30px; hover darkens the border to the gold rule; disabled turns dashed and mute. Font Awesome icons Foundry ships sit inside at a 6px gap.
+
+### Chips
+- **Odds pill:** field ground, soft rule, 3px corners, condensed bold 12px ink naming rarity and chance, led by a 6px rarity diamond.
+- **Filter chip:** the pill's shape at 26px; pressed chips fill black with gold lettering; problem chips go amber on the warn wash.
+
+### Cards / Containers
+- **Crate card:** paper card in a 1px gold rule, 4px corners, card shadow; a maroon band with the Modesto name; a centred body with the peek (up to three real items), the ribbon, the odds pills, stock and a full-width primary button.
+- **Pool card:** the same card; its summary row carries a gold chevron, the slab name and the census, tinted 10% maroon.
+- **Chat card:** a small card with a gold rule; the buyer line, then the item in a 42px portrait underlined 3px in its rarity, its slab name and the rarity named beside a diamond. A refunded card drops the shadow, greys the portrait and mutes the rarity.
+
+### Inputs / Fields
+- **Style:** field ground, 1px soft rule, 4px corners, 30px, 13px Roboto; placeholder in mute ink. Hover darkens the border to the gold rule.
+- **Focus:** a 2px outline in the focus colour (maroon on paper, pin gold on slate), 1px offset.
+
+### Navigation
+- **Tabs:** dnd5e sheet tabs: condensed bold upper case 13px in mute ink, 34px, no box; hover shows a soft underline, active takes ink and a 2px gold-rule underline over the tab bar's 1px gold rule. The shop switch sits at the end and states its condition in words with a dot (mute when closed, green when open).
+
+### The Vault and Strip (signature)
+The vault holds the ribbon (max 520px, along its top edge), the strip and the result. The strip is a 168px masked viewport (fading at 10%/90%) of 120 x 140px strip cards, 8px apart: vault-card ground, vault-line border, a 70px art frame rimmed in 55% pin gold over a 16% rarity tint, a two-line 12px name, and a 5px rarity bar across the foot. The pin is a 2px gold line drawn behind the cards so it shows only in the gaps, capped by gold diamonds. The result is the Modesto name in its rarity, the rarity in upper-case condensed vault-soft, then a 13px line saying where it went and the gold left, entering 460ms later so the name lands first.
+
+**Spin motion.** One requestAnimationFrame loop drives one translateX over the default 6.2s. For the first 86% of the time the strip runs to the target plus an overshoot (spin.js `spinDistance`): a short linear run-up (7% of that run), a constant-speed cruise (45%, about 39% of the whole spin) where the cards blur past and the tick rattles at its fastest, then a cubic ease-out that starts at the cruise speed and stops dead at the overshoot point. The speed never jumps between phases. The last 14% is an ease-in-out settle back. probe-spin checks the cruise: the marker's speed holds within 10% for at least 30% of the frames before the peak. On a near-miss the overshoot crosses half the result card and the gap and goes a quarter card into the teased card, which is one droppable rank up, then clicks back. Otherwise the overshoot stays inside the result card (18% of a card). Reduced motion skips straight to the landed state and drops the card, wash and line transitions.
+
+### The Odds Ribbon (signature)
+A 10px bar of the crate's real drop chances: a gold-rim frame with 2px padding, a 35% black inset hairline, and 1px gaps between segments, each grown by its share and filled with its rarity (minimum 4px). Hidden from assistive tech; the odds pills carry the words.
+
+## Do's and Don'ts
+
+### Do:
+- **Do** scope every rule under `.loot-crates`, and set theme tokens with `@scope (.theme-light) to (.themed)` and `@scope (.theme-dark) to (.themed)` so each window follows its nearest Foundry theme.
+- **Do** reference dnd5e's textures and fonts by relative path (`../../../systems/dnd5e/...`, `../../../ui/denim075.png`); never copy them into the module.
+- **Do** read rarity from `--lc-rarity` and `--lc-rank`; set them only through the six `lc-rarity-*` classes.
+- **Do** show a crate's bet as the odds ribbon plus named odds pills wherever a crate is shown.
+- **Do** keep the vault dark (`vault`) in both themes and let the rarity wash, scaled by rank, carry the escalation.
+- **Do** put the cost on the primary action ("Open for 150 gp") and the reason for a disabled action on screen, beneath it.
+
+### Don't:
+- **Don't** colour text in a rarity colour on paper or slate; use edges, diamonds and ribbon segments.
+- **Don't** give the landed card a coloured glow; it lifts on a neutral shadow with an inset rarity ring.
+- **Don't** set caps kickers above headings; upper case is for dnd5e field labels, tabs, table headers and the rarity name under its item.
+- **Don't** set text smaller than 11px.
+- **Don't** use emoji in UI text; Font Awesome icons that Foundry ships are fine.
+- **Don't** change the spin's timing or near-miss behaviour as part of styling work.
+- **Don't** style Foundry's chrome, title bars or other modules.

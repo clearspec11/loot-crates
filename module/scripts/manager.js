@@ -34,10 +34,17 @@
   (#view) and survive a re-render; a search, a chip, Show more, Update,
   Remove, Relink and the bulk rarity redraw only that pool and keep focus
   near where it was. One status line in the toolbar speaks for them all.
+
+  The box editor shows the chances a player will see (the shop's ribbon and
+  pills) for the form as it stands, redrawn on every keystroke, tick and
+  untick, and says when the box would drop nothing (liveOdds below).
 */
 import { RARITIES, RARITY_LABEL, DEFAULT_WEIGHTS, DEFAULT_PRICE_GP } from "./config.js";
-import { oddsPills } from "./boxcard.js";
-import { getPools, getBoxes, getLog, createPool, updatePool, removePool, createBox, updateBox, removeBox, entryFromItem, entriesFromDrop, addEntries, packHasLoot, LOOT_TYPES, isLootType, isShopOpen, setShopOpen, enqueueWrite, checkSources, refreshMissing, removeEntry, patchEntry } from "./store.js";
+import { oddsPills, oddsRibbon, draftBox, boxPreview, boxPreviewHTML, oddsSummary, quietAnnouncer } from "./boxcard.js";
+
+// A box's odds in the Boxes table: its ribbon over its named pills.
+const oddsCell = rows => rows.length ? `${oddsRibbon(rows)}<div class="lc-odds">${oddsPills(rows)}</div>` : "<em>empty</em>";
+import { getPools, getBoxes, getLog, createPool, updatePool, removePool, createBox, updateBox, removeBox, entryFromItem, entriesFromDrop, addEntries, packHasLoot, LOOT_TYPES, isLootType, isShopOpen, setShopOpen, checkSources, sweepPools, removeEntry, patchEntry } from "./store.js";
 import { shopOdds, normalizeRarity, flattenPool, withSources, entryWeight, curateEntries } from "./odds.js";
 import { PAGE_ROWS, FALLBACK_IMG, defaultView, poolRows, sortRows, filterRows, pageRows, nextRows, poolCount, poolSummary, poolBody, chipsHTML, unsetButton, footHTML, entryRow, entryParts } from "./poolview.js";
 import { formatPrice } from "./currency.js";
@@ -373,6 +380,7 @@ export class CrateManager extends ApplicationV2 {
   static async #editBox(_e, t) {
     const box = getBoxes()[t.dataset.box];
     const pools = Object.values(getPools());
+    const poolIds = pools.map(p => p.id);
     const shares = Object.fromEntries((box.pools ?? []).map(p => [p.id, p.share ?? 1]));
     const data = await promptForm("Edit box", `
       <label>Name <input name="name" value="${esc(box.name)}"></label>
@@ -380,28 +388,33 @@ export class CrateManager extends ApplicationV2 {
       <fieldset><legend>Pools and their share of pulls</legend>
         ${pools.map(p => `<label class="lc-row"><input type="checkbox" name="pool.${esc(p.id)}" ${p.id in shares ? "checked" : ""}> ${esc(p.name)} <input name="share.${esc(p.id)}" type="number" min="0" step="1" value="${esc(shares[p.id] ?? 1)}" title="Share"></label>`).join("") || "<p>No pools yet.</p>"}
       </fieldset>
-      <fieldset><legend>Rarity weights</legend>
-        ${RARITIES.map(r => `<label class="lc-row">${RARITY_LABEL[r]} <input name="w.${r}" type="number" min="0" step="1" value="${esc(box.weights?.[r] ?? DEFAULT_WEIGHTS[r])}"></label>`).join("")}
+      <fieldset class="lc-form__weights"><legend>Rarity weights</legend>
+        ${RARITIES.map(r => `<label class="lc-row">${RARITY_LABEL[r]} <input name="w.${r}" type="number" min="0" step="1" value="${esc(box.weights?.[r] ?? DEFAULT_WEIGHTS[r])}"><span class="lc-form__hint" data-held="${r}"></span></label>`).join("")}
       </fieldset>
+      <div class="lc-form__odds" role="group" aria-labelledby="lc-odds-${esc(box.id)}">
+        <div class="lc-form__label" id="lc-odds-${esc(box.id)}">Chances a player sees</div>
+        <div class="lc-form__preview"></div>
+        <p class="lc-sr-only" role="status" aria-live="polite"></p>
+      </div>
       <fieldset><legend>Rules</legend>
         <label class="lc-row">Pity: guarantee <select name="pityRarity"><option value="">off</option>${RARITIES.map(r => `<option value="${r}" ${box.rules?.pity?.minRarity === r ? "selected" : ""}>${RARITY_LABEL[r]} or better</option>`).join("")}</select> after <input name="pityAfter" type="number" min="1" step="1" value="${esc(box.rules?.pity?.after ?? 10)}"> pulls</label>
         <label class="lc-row"><input type="checkbox" name="noDuplicates" ${box.rules?.noDuplicates ? "checked" : ""}> No duplicates per character</label>
         <label class="lc-row">Stock (blank for unlimited) <input name="stock" type="number" min="0" step="1" value="${box.rules?.stock ?? ""}"></label>
-      </fieldset>`);
+      </fieldset>`, { onForm: form => liveOdds(form, box, poolIds), position: { width: 460 } });
     if (!data) return;
     // Stock moves while the dialog is open (each pull takes one, a refund
     // puts one back), so the form's stock only wins if the GM changed it.
     const shownStock = box.rules?.stock ?? null;
     const formStock = data.stock === "" || data.stock == null ? null : Math.max(0, Number(data.stock) || 0);
-    const chosen = pools.filter(p => data[`pool.${p.id}`]).map(p => ({ id: p.id, share: Math.max(0, Number(data[`share.${p.id}`]) || 0) }));
+    const draft = draftBox(box, data, poolIds);
     const saved = await updateBox(box.id, fresh => {
       const live = getPools();
       return {
         ...fresh,
         name: data.name || fresh.name,
         price: Math.max(0, Number(data.price) || 0),
-        pools: chosen.filter(ref => ref.id in live),
-        weights: Object.fromEntries(RARITIES.map(r => [r, Math.max(0, Number(data[`w.${r}`]) || 0)])),
+        pools: draft.pools.filter(ref => ref.id in live),
+        weights: draft.weights,
         rules: {
           ...fresh.rules,
           pity: data.pityRarity ? { minRarity: data.pityRarity, after: Math.max(1, Number(data.pityAfter) || 1) } : null,
@@ -423,7 +436,7 @@ export class CrateManager extends ApplicationV2 {
 
   static async #refund(_e, t) {
     const plan = describeRefund(t.dataset.row);
-    if (plan.status === "already") { ui.notifications.info("That pull was already refunded."); return this.render(); }
+    if (plan.status === "already") { ui.notifications.info("That pull was already refunded."); this.#focusRow = t.dataset.row; return this.render(); }
     if (plan.status !== "ready") return ui.notifications.warn(plan.message);
     const { row, actor, item, box } = plan;
     const itemLine = item
@@ -435,6 +448,8 @@ export class CrateManager extends ApplicationV2 {
       content: `<p>Return <strong>${esc(formatPrice(row.price))}</strong> to ${esc(actor.name)} ${itemLine}?${stockLine}</p><p>A pull can only be refunded once.</p>`,
     });
     if (!ok) return;
+    // The Refund button is gone after the render; land on the row's status.
+    this.#focusRow = row.id;
     const done = await refundPull(row.id);
     if (done.status === "refunded") {
       const what = done.removedItem ? ` and ${done.removedItem} removed` : "";
@@ -457,7 +472,7 @@ export class CrateManager extends ApplicationV2 {
     root.innerHTML = `
       <nav class="lc-tabs">${tabs.map(([k, l]) => `<button type="button" data-action="tab" data-tab="${k}" class="${k === this.tab ? "active" : ""}">${l}</button>`).join("")}
         <span class="lc-tabs__spacer"></span>
-        <button type="button" data-action="toggleShop" class="lc-shop-toggle">${isShopOpen() ? "Shop is open" : "Shop is closed"}</button>
+        <button type="button" data-action="toggleShop" class="lc-shop-toggle" data-open="${isShopOpen()}" aria-pressed="${isShopOpen()}" title="${isShopOpen() ? "Players can buy now. Click to close the shop." : "Players can't buy now. Click to open the shop."}">${isShopOpen() ? "Shop open" : "Shop closed"}</button>
       </nav>
       <section class="lc-tab">${await this[`_${this.tab}`]()}</section>`;
     root.querySelectorAll("[data-drop-pool]").forEach(el => {
@@ -533,7 +548,7 @@ export class CrateManager extends ApplicationV2 {
     // The editor just looked: if a flag the shop reads is stale, sweep now.
     const stale = !this.checking && pools.some(p => p.entries.some(e => sources.has(e.uuid) && !!e.missing !== !sources.get(e.uuid)));
     if (stale) {
-      enqueueWrite(() => refreshMissing(pools.map(p => p.id)))
+      sweepPools(pools.map(p => p.id))
         .then(() => refreshShop())
         .catch(err => console.error(`loot-crates | checking pools for missing items failed`, err));
     }
@@ -566,9 +581,9 @@ export class CrateManager extends ApplicationV2 {
         ${boxes.map(b => `<tr>
           <td>${esc(b.name)}</td><td>${esc(formatPrice(b.price))}</td>
           <td>${(b.pools ?? []).map(r => esc(pools[r.id]?.name ?? "missing")).join(", ") || "<em>none</em>"}</td>
-          <td class="lc-odds">${oddsPills(shopOdds(b, pools).rows) || "<em>empty</em>"}</td>
+          <td>${oddsCell(shopOdds(b, pools).rows)}</td>
           <td>${[b.rules?.pity ? `pity ${b.rules.pity.after}` : "", b.rules?.noDuplicates ? "no dupes" : "", b.rules?.stock != null ? `${b.rules.stock} left` : ""].filter(Boolean).join(", ")}</td>
-          <td><button type="button" data-action="editBox" data-box="${esc(b.id)}"><i class="fas fa-pen"></i></button> <button type="button" data-action="deleteBox" data-box="${esc(b.id)}"><i class="fas fa-trash"></i></button></td>
+          <td><button type="button" data-action="editBox" data-box="${esc(b.id)}" aria-label="Edit ${esc(b.name)}" data-tooltip="Edit"><i class="fas fa-pen" inert></i></button> <button type="button" data-action="deleteBox" data-box="${esc(b.id)}" aria-label="Delete ${esc(b.name)}" data-tooltip="Delete"><i class="fas fa-trash" inert></i></button></td>
         </tr>`).join("")}</tbody></table>` : `<p class="lc-empty">No boxes. A box prices a pull from one or more pools.</p>`}`;
   }
 
@@ -576,14 +591,15 @@ export class CrateManager extends ApplicationV2 {
     const log = getLog();
     if (!log.length) return `<p class="lc-empty">No pulls yet.</p>`;
     return `<table class="lc-table"><thead><tr><th>When</th><th>Who</th><th>Box</th><th>Got</th><th></th></tr></thead><tbody>
-      ${log.map(r => `<tr class="${r.refunded ? "lc-row--refunded" : ""}">
+      ${log.map(r => `<tr class="${r.refunded ? "lc-row--refunded" : r.lateCancel ? "lc-row--late" : ""}">
         <td>${new Date(r.at).toLocaleString()}</td><td>${esc(r.actorName)}</td><td>${esc(r.boxName)} (${esc(formatPrice(r.price))})</td>
-        <td class="lc-rarity-${esc(r.rarity)}"><span class="lc-dot"></span>${r.refunded ? `<s>${esc(r.name)}</s>` : esc(r.name)}${r.pity ? " · pity" : ""}${logRarityNote(r)}</td>
-        <td>${r.refunded ? `refunded ${esc(refundTime(r.refunded))}` : `<button type="button" data-action="refund" data-row="${esc(r.id)}">Refund</button>`}</td>
+        <td class="lc-rarity-${esc(r.rarity)}"><span class="lc-dot"></span>${r.refunded ? `<s>${esc(r.name)}</s>` : esc(r.name)}${r.pity ? " · pity" : ""}${logRarityNote(r)}${logLateNote(r)}</td>
+        <td>${r.refunded ? `<span class="lc-log__status" tabindex="-1" data-row="${esc(r.id)}">refunded ${esc(refundTime(r.refunded))}</span>` : `<button type="button" data-action="refund" data-row="${esc(r.id)}">Refund</button>`}</td>
       </tr>`).join("")}</tbody></table>`;
   }
 
   #searchTimer = null;
+  #focusRow = null;
 
   // A full render (a source check landing late, a rename, a refund) keeps
   // focus on the same control when it is drawn again, and the caret in a
@@ -593,6 +609,12 @@ export class CrateManager extends ApplicationV2 {
     const key = active ? focusKey(active) : null;
     const caret = active?.matches?.("input[type=search]") ? [active.selectionStart, active.selectionEnd] : null;
     content.replaceChildren(result);
+    // After a refund, focus whatever now stands for that log row: its
+    // "refunded <date>" status, or its Refund button if the refund failed.
+    const row = this.#focusRow;
+    this.#focusRow = null;
+    const rowEl = row && content.querySelector(`.lc-table [data-row="${CSS.escape(row)}"]`);
+    if (rowEl) return rowEl.focus();
     if (!key) return;
     const again = content.querySelector(key.selector) ?? (key.pool && content.querySelector(`.lc-pool__details[data-pool="${CSS.escape(key.pool)}"] > summary`));
     if (!again) return;
@@ -624,6 +646,13 @@ export function logRarityNote(row) {
   return `<small class="lc-log__rarity">${esc(`${rarityName(row.rarity)}, set by GM (${from})`)}</small>`;
 }
 
+// A pull its buyer called off after the charge (socket.js lateCancel): the
+// sale stood, and the GM's notice sent them here to refund it if wanted.
+export function logLateNote(row) {
+  if (!row?.lateCancel || row.refunded) return "";
+  return `<small class="lc-log__late">Called off by the buyer after the charge. Refund it if the table agrees.</small>`;
+}
+
 const PREVIEW_ROWS = 50;
 const SEARCH_DELAY_MS = 150;
 
@@ -641,28 +670,71 @@ function describeSkipped({ duplicates = 0, notLoot = {}, notItems = 0 } = {}) {
 const htmlNode = html => { const t = document.createElement("template"); t.innerHTML = html.trim(); return t.content.firstElementChild; };
 
 // A small form in a DialogV2; resolves to the form's values or null.
-async function promptForm(title, fieldsHtml) {
+// A form's values as the editors read them: each named field's value (a list
+// for repeats and multi-selects), each checkbox as true or false.
+function readForm(form) {
+  const out = {};
+  for (const [k, v] of new FormData(form).entries()) {
+    if (k in out) out[k] = [].concat(out[k], v);
+    else out[k] = v;
+  }
+  for (const sel of form.querySelectorAll("select[multiple]")) out[sel.name] = [...sel.selectedOptions].map(o => o.value);
+  for (const cb of form.querySelectorAll("input[type=checkbox]")) out[cb.name] = cb.checked;
+  return out;
+}
+
+// `onForm(form)` runs once, with the dialog's <form>, when it is first on screen.
+async function promptForm(title, fieldsHtml, { onForm, position } = {}) {
   return DialogV2.wait({
     window: { title },
     classes: ["loot-crates", "lc-dialog"],
-    content: `<form class="lc-form">${fieldsHtml}</form>`,
+    ...(position ? { position } : {}),
+    // DialogV2 wraps the content in its own <form>, and a nested <form> is
+    // dropped by the parser, so the editor's fields sit in a div.
+    content: `<div class="lc-form">${fieldsHtml}</div>`,
     buttons: [
-      { action: "ok", label: "Save", default: true, callback: (_e, button) => {
-        const form = button.form ?? button.closest("dialog")?.querySelector("form");
-        const fd = new FormData(form);
-        const out = {};
-        for (const [k, v] of fd.entries()) {
-          if (k in out) out[k] = [].concat(out[k], v);
-          else out[k] = v;
-        }
-        for (const sel of form.querySelectorAll("select[multiple]")) out[sel.name] = [...sel.selectedOptions].map(o => o.value);
-        for (const cb of form.querySelectorAll("input[type=checkbox]")) out[cb.name] = cb.checked;
-        return out;
-      } },
+      { action: "ok", label: "Save", default: true, callback: (_e, button) => readForm(button.form ?? button.closest("dialog")?.querySelector("form")) },
       { action: "cancel", label: "Cancel", callback: () => null },
     ],
     rejectClose: false,
+    render: onForm ? (_e, dialog) => {
+      const form = dialog.element?.querySelector(".lc-form")?.closest("form");
+      if (!form || form.dataset.lcReady) return;
+      form.dataset.lcReady = "1";
+      onForm(form);
+    } : undefined,
   });
+}
+
+/*
+  The box editor's odds, live: on every input and change, the draft box the
+  form would save (boxcard.js draftBox) is drawn with the shop's own ribbon
+  and pills against the stored pools (so missing and 0-weight entries are
+  left out, as the shop leaves them out), and each weight whose rarity the
+  ticked pools don't hold says so. Nothing is written until Save.
+*/
+function liveOdds(form, box, poolIds) {
+  const out = form.querySelector(".lc-form__preview");
+  const status = form.querySelector(".lc-form__odds [role=status]");
+  let shown = null;
+  let announce = null;
+  const paint = () => {
+    const draft = draftBox(box, readForm(form), poolIds);
+    const preview = boxPreview(draft, getPools());
+    const html = boxPreviewHTML(preview, esc);
+    if (html !== shown) { out.innerHTML = html; shown = html; }
+    // The picture follows every keystroke; a screen reader hears one line,
+    // once the GM stops typing (the opening odds go unsaid).
+    const summary = oddsSummary(preview);
+    if (!announce) announce = quietAnnouncer(text => { if (status) status.textContent = text; }, { last: summary });
+    else announce(summary);
+    for (const el of form.querySelectorAll("[data-held]")) {
+      el.textContent = draft.pools.length && !preview.held.has(el.dataset.held) ? "none in these pools" : "";
+    }
+  };
+  form.addEventListener("input", paint);
+  form.addEventListener("change", paint);
+  paint();
 }
 
 let manager = null;

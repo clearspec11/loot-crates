@@ -3,6 +3,8 @@
    The run fails when a page throws or scrolls sideways.
 
      NODE_PATH=$(npm root -g) npm run smoke
+     FOUNDRY_URL=http://<foundry>:30000 NODE_PATH=$(npm root -g) npm run smoke
+                                    # with dnd5e's real fonts and textures
 
    Needs Playwright (global is fine) with its Chromium. The landed spin uses a
    fixed seed and zero duration, so two runs give the same pixels. */
@@ -22,20 +24,33 @@ const WIDTHS = [
   { tag: "1440", viewport: { width: 1440, height: 900 } },
   { tag: "390", viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true },
 ];
+// Foundry's two themes; the light run's files end in -light.
+const THEMES = ["dark", "light"];
 const STATES = [
   ["shop", "state=shop"],
+  ["shop-closed", "state=shop&closed=1"],
   ["landed", "state=landed&seed=7"],
-  ["landed-legendary", "state=landed&seed=23&box=royal"],
+  ["landed-legendary", "state=landed&seed=36&box=royal"],
   ["landed-buyer", "state=landed&seed=7&buyer=1"],
   ["manager", "state=manager"],
+  // A manager window sized 480 px wide, on any screen: its rows follow the
+  // window (a container query), so names wrap in full rather than cut off.
+  ["manager-narrow", "state=manager&width=480"],
 ];
 
 // The pool editor as a craft table, read from the DOM: an open pool draws at
 // most a page of controls, a collapsed one none (its census still shown),
 // one status line and no per-pool live regions, and the "No rarity set" chip
 // shows only unset rows and says it is pressed.
-async function managerProblems() {
+async function managerProblems(narrow) {
   const out = [];
+  if (narrow) {
+    const app = document.getElementById("app").getBoundingClientRect().width;
+    if (app > 484) out.push(`narrow manager is ${Math.round(app)} px wide`);
+    const cut = [...document.querySelectorAll(".lc-entry__name, .lc-entry__status")].filter(el => el.scrollWidth > el.clientWidth + 1);
+    if (cut.length) out.push(`${cut.length} names or statuses cut off in a 480 px window, e.g. "${cut[0].textContent}"`);
+    if (!document.querySelector(".lc-entry")) out.push("no rows to check");
+  }
   const pools = [...document.querySelectorAll(".lc-pool__details")];
   if (pools.length < 3) out.push(`expected 3 sample pools, got ${pools.length}`);
   for (const d of pools) {
@@ -84,8 +99,10 @@ function revealProblems(buyer) {
 }
 
 // The shop's honesty rules, read from the DOM: no "0%" anywhere, every pill
-// names its rarity, every disabled Buy points at a visible reason.
-function shopProblems() {
+// names its rarity, every disabled Buy points at visible reasons, a shop-wide
+// reason is said once (in the header's notice, never under a card), and the
+// shop has one live region, which keeps its node across a re-render.
+async function shopProblems(closed) {
   const out = [];
   const text = document.querySelector(".lc-shop__body")?.innerText ?? "";
   if (/(^|[^\d<>])0%/.test(text)) out.push("shop shows a 0% chance");
@@ -93,10 +110,33 @@ function shopProblems() {
     if (!/^[A-Z][a-z. ]+ (<1|>99|\d{1,3})%$/.test(pill.textContent.trim())) out.push(`pill without a name: "${pill.textContent}"`);
   }
   for (const btn of document.querySelectorAll(".lc-box__buy[disabled]")) {
-    const why = document.getElementById(btn.getAttribute("aria-describedby") ?? "");
-    if (!why || !why.textContent.trim() || why.getBoundingClientRect().height === 0) out.push(`disabled Buy without a visible reason: ${btn.dataset.box}`);
+    const ids = (btn.getAttribute("aria-describedby") ?? "").split(/\s+/).filter(Boolean);
+    const whys = ids.map(id => document.getElementById(id));
+    if (!whys.length || whys.some(why => !why || !why.textContent.trim() || why.getBoundingClientRect().height === 0)) out.push(`disabled Buy without a visible reason: ${btn.dataset.box}`);
   }
   if (!document.querySelectorAll(".lc-box__buy[disabled]").length) out.push("sample shop has no disabled Buy to check");
+  const status = document.querySelectorAll('[role="status"]');
+  if (status.length !== 1 || !status[0].matches(".lc-shop__head .lc-shop__notice")) out.push(`expected one role=status, the header notice; got ${status.length}`);
+  const notice = document.querySelector(".lc-shop__notice");
+  const shopWide = /closed|GM is online|no character/i;
+  for (const why of document.querySelectorAll(".lc-box__why")) if (shopWide.test(why.textContent)) out.push(`shop-wide reason under a card: "${why.textContent}"`);
+  if (closed) {
+    if (notice?.textContent !== "Closed until a GM is online.") out.push(`closed shop's notice reads "${notice?.textContent}"`);
+    if ((text.match(/Closed until a GM is online/g) ?? []).length !== 1) out.push("the closed reason isn't said exactly once");
+    if (document.querySelectorAll(".lc-box__buy:not([disabled])").length) out.push("a Buy is on in a closed shop");
+    if (![...document.querySelectorAll(".lc-box__why")].some(w => /Needs .* more|Nothing inside/.test(w.textContent))) out.push("per-crate reasons are gone from a closed shop");
+    return out;
+  }
+  if (notice?.textContent) out.push(`open shop's notice isn't empty: "${notice.textContent}"`);
+  // Re-render as the shop does when the GM is slow, then back: same node, new text.
+  window.__lootCrates.renderShop({ busy: true, busyBox: "common", waiting: "gm" });
+  const after = document.querySelector(".lc-shop__notice");
+  if (after !== notice) out.push("the notice node was replaced on re-render");
+  if (!/^Waiting for the GM/.test(after?.textContent ?? "")) out.push(`waiting notice reads "${after?.textContent}"`);
+  const pressed = document.querySelector('.lc-box__buy[data-box="common"]');
+  if (pressed?.getAttribute("aria-describedby") !== "lc-shop-notice") out.push("the waiting Buy doesn't point at the notice");
+  window.__lootCrates.renderShop();
+  if (document.querySelector(".lc-shop__notice") !== notice || notice.textContent) out.push("the notice didn't clear in place");
   return out;
 }
 
@@ -107,24 +147,29 @@ try {
   for (const w of WIDTHS) {
     const ctx = await browser.newContext({ viewport: w.viewport, isMobile: w.isMobile, hasTouch: w.hasTouch, reducedMotion: "reduce" });
     await mkdir(path.join(OUT, w.tag), { recursive: true });
-    for (const [name, query] of STATES) {
+    for (const theme of THEMES) for (const [name, query0] of STATES) {
+      const query = `${query0}&theme=${theme}`;
+      const shot = `${name}${theme === "light" ? "-light" : ""}`;
       const page = await ctx.newPage();
       const errors = [];
       const problems0 = [];
       page.on("pageerror", e => errors.push(e.message));
-      page.on("console", m => { if (m.type() === "error") errors.push(m.text()); });
+      // A missing borrowed asset (no FOUNDRY_URL, or Foundry is off) falls
+      // back to system fonts and plain grounds; that isn't a failure.
+      page.on("console", m => { if (m.type() === "error" && !m.text().startsWith("Failed to load resource")) errors.push(m.text()); });
       await page.goto(`http://localhost:${PORT}/harness/?${query}`, { waitUntil: "networkidle" });
       if (name.startsWith("landed")) await page.waitForSelector("body[data-landed]", { timeout: 10000 });
-      if (name === "manager") await page.waitForSelector("body[data-ready]", { timeout: 10000 });
+      if (name.startsWith("manager")) await page.waitForSelector("body[data-ready]", { timeout: 10000 });
       await page.waitForTimeout(500);
       const wide = await page.evaluate(() => document.scrollingElement.scrollWidth > document.scrollingElement.clientWidth + 1);
-      if (name === "shop") problems0.push(...await page.evaluate(shopProblems));
-      else if (name === "manager") problems0.push(...await page.evaluate(managerProblems));
+      if (name.startsWith("shop")) problems0.push(...await page.evaluate(shopProblems, name === "shop-closed"));
+      else if (name.startsWith("manager")) problems0.push(...await page.evaluate(managerProblems, name === "manager-narrow"));
       else problems0.push(...await page.evaluate(revealProblems, name === "landed-buyer"));
-      await page.screenshot({ path: path.join(OUT, w.tag, `${name}.png`), fullPage: true });
+      await page.evaluate(() => document.fonts.ready);
+      await page.screenshot({ path: path.join(OUT, w.tag, `${shot}.png`), fullPage: true });
       const problems = [...errors, ...problems0, ...(wide ? ["page scrolls sideways"] : [])];
-      if (problems.length) { failures++; console.error(`FAIL ${w.tag}/${name}: ${problems.join("; ")}`); }
-      else console.log(`ok   ${w.tag}/${name}`);
+      if (problems.length) { failures++; console.error(`FAIL ${w.tag}/${shot}: ${problems.join("; ")}`); }
+      else console.log(`ok   ${w.tag}/${shot}`);
       await page.close();
     }
     await ctx.close();
