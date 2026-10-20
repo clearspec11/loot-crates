@@ -12,7 +12,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 vi.mock("../module/scripts/reveal.js", () => ({ showReveal: vi.fn(async () => ({ landed: Promise.resolve() })) }));
 vi.mock("../module/scripts/chat.js", () => ({ postPullCard: vi.fn(async () => null) }));
 
-const { registerSocket, requestPull, GM_TIMEOUT_MS, WAIT_NOTICE_MS, TIMED_OUT } = await import("../module/scripts/socket.js");
+const { registerSocket, requestPull, GM_TIMEOUT_MS, WAIT_NOTICE_MS, TIMED_OUT, SLOW_PULL_MS, _resetSlowWarning } = await import("../module/scripts/socket.js");
 const { registerSettings, appendLog, sweepAllPools, enqueueWrite, INDEX_FIELDS } = await import("../module/scripts/store.js");
 const { refundPull } = await import("../module/scripts/refund.js");
 const { PullError } = await import("../module/scripts/pull.js");
@@ -89,11 +89,15 @@ async function seed(game, rules) {
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  _resetSlowWarning();
   showReveal.mockReset().mockImplementation(async () => ({ landed: Promise.resolve() }));
   postPullCard.mockClear();
   delete globalThis.game;
   delete globalThis.foundry;
   delete globalThis.fromUuid;
+  delete globalThis.ui;
 });
 
 describe("a player's requestPull", () => {
@@ -210,6 +214,70 @@ describe("the GM client", () => {
     expect(emitted.filter(m => m.type === "reveal")).toHaveLength(1);
   });
 
+  // The buyer's wait ran out after the GM had charged: the sale stands, once,
+  // and the GM is told who, what and where to refund it.
+  it("tells the GM and the buyer about a cancel that came after the charge, marks the log row, and charges once", async () => {
+    const warnings = [];
+    globalThis.ui = { notifications: { warn: (...a) => warnings.push(a) } };
+    const { game, actor, emitted, deliver } = makeWorld({ user: GM });
+    await seed(game, {});
+    const warn = console.warn;
+    console.warn = () => {};
+    try {
+      await deliver({ type: "pull", requestId: "slow", boxId: "box", actorId: "actor1", userId: "p1" });
+      await deliver({ type: "cancel", requestId: "slow", userId: "p1" });
+      await enqueueWrite(() => {});
+      // A second cancel for the same pull says nothing more.
+      await deliver({ type: "cancel", requestId: "slow", userId: "p1" });
+      await enqueueWrite(() => {});
+    } finally { console.warn = warn; }
+    expect(actor.system.currency.gp).toBe(490);
+    expect(actor.items).toHaveLength(1);
+    const item = emitted.find(m => m.type === "reveal").result.name;
+    expect(warnings).toHaveLength(1);
+    const [text, options] = warnings[0];
+    expect(text).toContain("Player gave up waiting on Test Crate");
+    expect(text).toContain(`Crate Tester had already been charged and got ${item}`);
+    expect(text).toContain("Refund on the marked row in the Pull log");
+    expect(options?.permanent).not.toBe(true);
+    expect(emitted.filter(m => m.type === "late")).toEqual([{ type: "late", requestId: "slow", userId: "p1", boxName: "Test Crate", itemName: item, actorName: "Crate Tester" }]);
+    const rows = game.settings.get("loot-crates", "pullLog");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].lateCancel).toEqual(expect.any(Number));
+    expect(rows[0].id).toBe(emitted.find(m => m.type === "reveal").logId);
+  });
+
+  it("answers a cancel that arrives while the coins are being taken as a late one, after the row is written", async () => {
+    const warnings = [];
+    globalThis.ui = { notifications: { warn: (...a) => warnings.push(a) } };
+    const { game, actor, emitted, deliver } = makeWorld({ user: GM });
+    await seed(game, {});
+    // The cancel lands during the grant: past the last check, before the reveal.
+    const create = actor.createEmbeddedDocuments;
+    actor.createEmbeddedDocuments = async (...a) => { await deliver({ type: "cancel", requestId: "mid", userId: "p1" }); return create(...a); };
+    const warn = console.warn;
+    console.warn = () => {};
+    try {
+      await deliver({ type: "pull", requestId: "mid", boxId: "box", actorId: "actor1", userId: "p1" });
+      await enqueueWrite(() => {});
+    } finally { console.warn = warn; }
+    expect(actor.system.currency.gp).toBe(490);
+    expect(emitted.map(m => m.type)).toEqual(["reveal", "late"]);
+    expect(warnings).toHaveLength(1);
+    expect(game.settings.get("loot-crates", "pullLog")[0].lateCancel).toEqual(expect.any(Number));
+  });
+
+  it("tells a buyer whose crate opened after all, and no one else", async () => {
+    const infos = [];
+    globalThis.ui = { notifications: { info: (...a) => infos.push(a) } };
+    const { deliver } = makeWorld({ user: PLAYER });
+    await deliver({ type: "late", requestId: "x", userId: "someone-else", boxName: "Test Crate", itemName: "Rope", actorName: "Other" });
+    expect(infos).toEqual([]);
+    await deliver({ type: "late", requestId: "x", userId: "p1", boxName: "Test Crate", itemName: "Rope", actorName: "Crate Tester" });
+    expect(infos).toHaveLength(1);
+    expect(infos[0][0]).toBe("Your Test Crate opened after all: Crate Tester got Rope. Ask the GM if you'd like it refunded.");
+  });
+
   it("fulfils a player's pull over the socket and broadcasts the reveal", async () => {
     const { game, actor, emitted, deliver } = makeWorld({ user: GM });
     await seed(game, {});
@@ -275,23 +343,6 @@ describe("the GM client", () => {
     expect(emitted.filter(m => m.type === "reveal").map(m => m.requestId)).toEqual(["r1", "r2"]);
     expect(actor.items).toHaveLength(2);
     expect(actor.system.currency.gp).toBe(480);
-  });
-
-  it("posts the chat card only once the reveal has landed, so chat never spoils the spin", async () => {
-    let land;
-    showReveal.mockImplementation(async () => ({ landed: new Promise(r => { land = r; }) }));
-    const { game, deliver } = makeWorld({ user: GM });
-    await seed(game, {});
-    await deliver({ type: "pull", requestId: "r1", boxId: "box", actorId: "actor1", userId: "p1" });
-    await tick();
-    expect(postPullCard).not.toHaveBeenCalled();
-    land();
-    await tick();
-    expect(postPullCard).toHaveBeenCalledTimes(1);
-    expect(postPullCard.mock.calls[0][0]).toMatchObject({ type: "reveal", requestId: "r1" });
-    // The card gets the id of the log row this pull wrote, for the refund.
-    const rowId = game.settings.get("loot-crates", "pullLog")[0].id;
-    expect(postPullCard.mock.calls[0][0].logId).toBe(rowId);
   });
 
   it("runs a refund and a pull on the same character one after the other, losing neither write", async () => {
@@ -421,12 +472,29 @@ describe("how quickly the GM answers", () => {
     expect(game.settings.get("loot-crates", "pullLog")).toHaveLength(1);
   });
 
-  it("tells the buyer and the GM (once) when the GM's tab is in the background", async () => {
+  it("says nothing to the buyer or the GM when a hidden tab's pull is quick", async () => {
     const warnings = [];
-    globalThis.ui = { notifications: { warn: m => warnings.push(m) } };
-    const listeners = [];
-    globalThis.document = { visibilityState: "hidden", addEventListener: (type, fn) => listeners.push({ type, fn }) };
+    globalThis.ui = { notifications: { warn: (...a) => warnings.push(a) } };
+    vi.stubGlobal("document", { visibilityState: "hidden" });
     const { game, emitted, deliver } = makeWorld({ user: GM });
+    await seed(game, {});
+    await deliver({ type: "pull", requestId: "r1", boxId: "box", actorId: "actor1", userId: "p1" });
+    await deliver({ type: "pull", requestId: "r2", boxId: "box", actorId: "actor1", userId: "p1" });
+    expect(emitted.map(m => m.type)).toEqual(["reveal", "reveal"]);
+    expect(warnings).toEqual([]);
+  });
+
+  it("warns the GM once, with the time, and tells the buyer why, when a hidden tab's pull is slow", async () => {
+    const warnings = [];
+    globalThis.ui = { notifications: { warn: (...a) => warnings.push(a) } };
+    vi.stubGlobal("document", { visibilityState: "hidden" });
+    // A clock that the source lookup moves on by 2.5 s, as a throttled tab's
+    // server round trip might.
+    let clock = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => clock);
+    const { game, emitted, deliver } = makeWorld({ user: GM });
+    const resolve = globalThis.fromUuid;
+    globalThis.fromUuid = async uuid => { clock += SLOW_PULL_MS + 500; return resolve(uuid); };
     await seed(game, {});
     const warn = console.warn;
     console.warn = () => {};
@@ -434,15 +502,30 @@ describe("how quickly the GM answers", () => {
       await deliver({ type: "pull", requestId: "r1", boxId: "box", actorId: "actor1", userId: "p1" });
       await deliver({ type: "pull", requestId: "r2", boxId: "box", actorId: "actor1", userId: "p1" });
     } finally { console.warn = warn; }
+    // The buyer hears why before the reveal, once per pull.
     expect(emitted.map(m => m.type)).toEqual(["ack", "reveal", "ack", "reveal"]);
     expect(emitted[0]).toEqual({ type: "ack", requestId: "r1", userId: "p1", hidden: true });
+    // The GM once per session, in a toast that goes away by itself.
     expect(warnings).toHaveLength(1);
-    expect(warnings[0]).toContain("in the background");
-    // Shown again after the tab has been visible and hidden again.
-    listeners.find(l => l.type === "visibilitychange").fn();
-    console.warn = () => {};
-    try { await deliver({ type: "pull", requestId: "r3", boxId: "box", actorId: "actor1", userId: "p1" }); } finally { console.warn = warn; }
-    expect(warnings).toHaveLength(2);
+    const [text, options] = warnings[0];
+    const secs = Number(text.match(/Crate Tester's crate took (\d+\.\d) s to open/)?.[1]);
+    expect(secs).toBeGreaterThan(SLOW_PULL_MS / 1000);
+    expect(text).toContain("in the background");
+    expect(options?.permanent).not.toBe(true);
+  });
+
+  it("posts the chat card with the result, without waiting for its own spin to land", async () => {
+    // A hidden GM page: its reveal never lands while nobody looks.
+    showReveal.mockImplementation(async () => ({ landed: new Promise(() => {}) }));
+    const { game, emitted, deliver } = makeWorld({ user: GM });
+    await seed(game, {});
+    await deliver({ type: "pull", requestId: "r1", boxId: "box", actorId: "actor1", userId: "p1" });
+    const reveal = emitted.find(m => m.type === "reveal");
+    expect(postPullCard).toHaveBeenCalledTimes(1);
+    expect(postPullCard).toHaveBeenCalledWith(reveal);
+    // The card gets the id of the log row this pull wrote, for the refund.
+    const rowId = game.settings.get("loot-crates", "pullLog")[0].id;
+    expect(reveal.logId).toBe(rowId);
   });
 
   it("sends no ack from a visible tab", async () => {

@@ -14,7 +14,8 @@ function itemLink(uuid, name) {
   return `<a class="content-link" draggable="true" data-link data-uuid="${esc(uuid)}" data-type="Item" data-tooltip="Item"><i class="fa-solid fa-suitcase" inert></i>${esc(name)}</a>`;
 }
 
-// The chat card everyone keeps after the spin: who opened what and got what.
+// The chat card everyone keeps: who opened what and got what. Posted with the
+// result (socket.js showAndPost), not after the GM's own spin.
 // flags.logId ties it to its log row, so a refund can mark this card.
 export async function postPullCard(reveal) {
   const r = reveal.result;
@@ -29,8 +30,8 @@ export async function postPullCard(reveal) {
         </div>
       </div>
     </div>`;
-  // The card posts when the spin lands; a refund made before that found no
-  // card to mark, so the card is posted already refunded.
+  // A refund made before the card was posted found no card to mark, so the
+  // card is posted already refunded.
   const row = reveal.logId ? getLog().find(x => x.id === reveal.logId) : null;
   if (row?.refunded) content = refundedCardContent(content, row, { esc });
   const actor = game.actors.get(reveal.actorId);

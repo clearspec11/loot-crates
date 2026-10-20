@@ -7,17 +7,26 @@
     { type: "pull", requestId, boxId, actorId, userId }   player -> GM
     { type: "ack", requestId, userId, hidden: true }       GM -> the buyer, only
                                                            when the GM's tab is hidden
+                                                           and the pull is already slow
     { type: "reveal", requestId, itemId, itemUuid, logId, purse, ... }  GM -> everyone
     { type: "error", requestId, userId, message }          GM -> the buyer
     { type: "cancel", requestId, userId }                  the buyer -> GM, when
                                                            its wait timed out
+    { type: "late", requestId, userId, boxName, itemName, actorName }
+                                                           GM -> the buyer, when
+                                                           the cancel came after
+                                                           the charge
 
   A buyer who gave up waiting (GM_TIMEOUT_MS) calls the purchase off, and the
   GM drops a request that is cancelled before it charges: otherwise a GM
   client slow past the timeout (measured live: 55 s with its tab in the
   background) charged a buyer who had been told it failed, and who may well
-  have pressed Buy again. A cancel that arrives after the charge is too late;
-  the reveal still reaches the buyer, and the timeout message says so.
+  have pressed Buy again. A cancel that arrives after the charge is too late
+  to undo by itself: the reveal still reaches the buyer, who is told the
+  crate opened after all, and the GM gets a notice naming the buyer, the
+  crate and the item, with the log row marked, so the GM can refund it from
+  the Pull log if the table would rather (lateCancel below). Nothing is
+  refunded automatically: the buyer may be glad of the item.
 
   The GM client runs pulls one at a time, through the same queue refunds use
   (store.js enqueueWrite): every store write is a read-modify-write across
@@ -43,11 +52,14 @@
   made players wait 20 s and more was a GM client too busy or throttled to
   run it: a browser slows a background tab's timers to once a second or once
   a minute, and every server round trip waits on one. A module can't stop
-  that, so the GM is told, and so is the buyer (the "ack" above).
+  that, so when it happens the GM is told, and so is the buyer (the "ack"
+  above). Only when it happens: measured live, a hidden GM tab ran a pull in
+  264 ms, and a warning on every hidden pull was a false alarm. A pull is slow
+  when its reveal goes out more than SLOW_PULL_MS after the request arrived.
 */
 import { SOCKET } from "./config.js";
 import { performPull, PullError } from "./pull.js";
-import { getBoxes, getPools, getActorState, setActorState, appendLog, newId, isShopOpen, saveBox, enqueueWrite, refreshMissing, markMissing, reportMissing } from "./store.js";
+import { getBoxes, getPools, getActorState, setActorState, appendLog, updateLog, newId, isShopOpen, saveBox, enqueueWrite, refreshMissing, markMissing, reportMissing } from "./store.js";
 import { showReveal } from "./reveal.js";
 import { postPullCard } from "./chat.js";
 import { shopOdds } from "./odds.js";
@@ -56,9 +68,14 @@ export const GM_TIMEOUT_MS = 30000;
 // After this long without a reveal, the buyer's shop says it is waiting on
 // the GM rather than showing an unchanging "Opening…".
 export const WAIT_NOTICE_MS = 1500;
+// A pull slower than this on the GM (request in to reveal out) is worth
+// telling the GM about; a responsive client takes ~0.3 s.
+export const SLOW_PULL_MS = 2000;
 export const TIMED_OUT = "The GM didn't answer in time, so the purchase was called off. If a crate opens anyway, the GM had already started it.";
 
 function cancelPull(msg) {
+  const sale = charged.get(msg.requestId);
+  if (sale) return lateCancel(sale);
   cancelled.add(msg.requestId);
   if (cancelled.size > 200) cancelled.delete(cancelled.values().next().value);
 }
@@ -74,6 +91,39 @@ function wasCancelled(msg) {
 const pending = new Map();
 // The GM's side: requests their buyer has called off (insertion-ordered, capped).
 const cancelled = new Set();
+// The GM's side: requests already charged, so a cancel for one is too late
+// (requestId -> what lateCancel names; insertion-ordered, capped).
+const charged = new Map();
+
+function rememberCharge(requestId, sale) {
+  charged.set(requestId, sale);
+  if (charged.size > 200) charged.delete(charged.keys().next().value);
+}
+
+/*
+  The buyer called off a pull this client had already charged (their wait ran
+  out while it was running). The sale stands, once: nothing is charged or
+  granted again. The GM is told who, what and where to undo it, the log row
+  is marked so it can be found, and the buyer, if still here, is told the
+  crate opened after all. The mark goes through the write queue, so it lands
+  after the pull has written its row even when the cancel arrives mid-pull.
+*/
+function lateCancel(sale) {
+  if (sale.late) return null;
+  sale.late = true;
+  const { requestId, userId, buyerName, actorName, boxName, itemName, logId } = sale;
+  console.warn(`loot-crates | ${buyerName} called off ${requestId} after ${actorName} was charged for ${boxName}; the sale stands`);
+  globalThis.ui?.notifications?.warn(`Loot Crates: ${buyerName} gave up waiting on ${boxName}, but ${actorName} had already been charged and got ${itemName}. To undo it, use Refund on the marked row in the Pull log.`);
+  game.socket.emit(SOCKET, { type: "late", requestId, userId, boxName, itemName, actorName });
+  return enqueueWrite(() => updateLog(logId, { lateCancel: Date.now() }))
+    .catch(err => console.error(`loot-crates | couldn't mark ${requestId}'s log row as called off`, err));
+}
+
+// The buyer's side of lateCancel: their shop said the purchase was called
+// off, so say plainly that it went through.
+function openedAfterAll(msg) {
+  globalThis.ui?.notifications?.info(`Your ${msg.boxName} opened after all: ${msg.actorName} got ${msg.itemName}. Ask the GM if you'd like it refunded.`);
+}
 const uid = () => foundry.utils.randomID(12);
 
 export function isActiveGM() {
@@ -94,12 +144,10 @@ function settle(requestId, answer) {
 
 export function registerSocket() {
   game.socket.on(SOCKET, msg => {
-    if (msg.type === "pull" && isActiveGM()) {
-      if (gmTabHidden()) acknowledgeHidden(msg);
-      return handlePull(msg);
-    }
+    if (msg.type === "pull" && isActiveGM()) return handlePull(msg);
     if (msg.type === "cancel" && isActiveGM()) return cancelPull(msg);
     if (msg.type === "ack" && msg.userId === game.user.id) return heardFromGM(msg);
+    if (msg.type === "late" && msg.userId === game.user.id) return openedAfterAll(msg);
     if (msg.type === "reveal") {
       if (msg.userId === game.user.id) settle(msg.requestId, p => p.resolve(msg));
       return showReveal(msg);
@@ -150,17 +198,30 @@ export function gmTabHidden() {
   return globalThis.document?.visibilityState === "hidden";
 }
 
-// Only sent when hidden: on a responsive client the reveal follows within a
-// second, and an extra message first would only delay it.
-let warnedHidden = false;
-function acknowledgeHidden(msg) {
-  if (msg.userId !== game.user.id) game.socket.emit(SOCKET, { type: "ack", requestId: msg.requestId, userId: msg.userId, hidden: true });
-  console.warn(`loot-crates | a crate was bought while this Foundry tab was in the background; the browser slows background tabs, so the buyer waits longer`);
-  if (warnedHidden) return;
-  warnedHidden = true;
-  globalThis.ui?.notifications?.warn("Loot Crates: a player bought a crate while this Foundry tab was in the background. Browsers slow background tabs, so their reveal took longer. Keep this tab visible while players shop.", { permanent: true });
-  globalThis.document?.addEventListener?.("visibilitychange", () => { warnedHidden = false; }, { once: true });
+// Tells a waiting buyer the GM's tab is in the background, once per pull and
+// only once the pull is already slow: on a responsive client the reveal
+// follows within a second, and an extra message first would only delay it.
+function ackIfSlow(msg, timer, sent) {
+  if (sent.ack || msg.userId === game.user.id || !gmTabHidden() || timer.elapsed() <= SLOW_PULL_MS) return;
+  sent.ack = true;
+  game.socket.emit(SOCKET, { type: "ack", requestId: msg.requestId, userId: msg.userId, hidden: true });
 }
+
+// The GM hears about a slow pull once per session, with its time, in a toast
+// that goes away by itself: it is advice, not an error to dismiss.
+let warnedSlow = false;
+function warnIfSlow(ms, { hidden, buyer }) {
+  if (ms <= SLOW_PULL_MS) return;
+  const secs = (ms / 1000).toFixed(1);
+  const why = hidden ? " while this Foundry tab was in the background. Browsers slow background tabs; keep this tab visible while players shop" : "";
+  console.warn(`loot-crates | ${buyer}'s crate took ${secs} s to open on this client${hidden ? " (tab in the background)" : ""}`);
+  if (warnedSlow) return;
+  warnedSlow = true;
+  globalThis.ui?.notifications?.warn(`Loot Crates: ${buyer}'s crate took ${secs} s to open${why}.`);
+}
+
+// For tests: a new session.
+export function _resetSlowWarning() { warnedSlow = false; }
 
 // The GM's side. Pulls run strictly one after another, whether they came over
 // the socket or from this client's own shop, so stock, purse, state and log
@@ -182,18 +243,21 @@ export function stepTimer(label) {
   const steps = [];
   return {
     mark(name) { const now = performance.now(); steps.push(`${name} ${Math.round(now - last)}`); last = now; },
+    elapsed() { return performance.now() - t0; },
     done() { console.debug(`loot-crates | ${label} timings (ms): ${steps.join(", ")}, total ${Math.round(performance.now() - t0)}`); },
   };
 }
 
-// The table's side of a pull: open the reveal here too, and post the chat
-// card once the spin has landed so the log never spoils the result. Not
-// awaited by the caller: the writes are done, the next pull can start.
+/*
+  The table's side of a pull: open the reveal here too, and post the chat
+  card. The card goes out with the result, not after this client's own spin:
+  a GM whose tab is hidden runs no animation frames, so waiting on its spin
+  held the card from the whole table until the GM came back. Neither is
+  awaited by the caller: the writes are done, the next pull can start.
+*/
 function showAndPost(reveal) {
-  showReveal(reveal)
-    .then(app => app?.landed)
-    .then(() => postPullCard(reveal))
-    .catch(err => console.error(`loot-crates | reveal failed`, err));
+  showReveal(reveal).catch(err => console.error(`loot-crates | reveal failed`, err));
+  postPullCard(reveal).catch(err => console.error(`loot-crates | chat card failed`, err));
 }
 
 // A failed sweep doesn't stop the sale: performPull still re-rolls past a
@@ -226,6 +290,8 @@ async function recordPull({ msg, box, actor, out, log }) {
 
 async function doPull(msg, timer = stepTimer(`pull ${msg.requestId}`)) {
   timer.mark("queue");
+  const hiddenAtStart = gmTabHidden();
+  const sent = { ack: false };
   const reply = payload => {
     if (msg.userId === game.user.id) return;
     game.socket.emit(SOCKET, { ...payload, requestId: msg.requestId });
@@ -240,6 +306,7 @@ async function doPull(msg, timer = stepTimer(`pull ${msg.requestId}`)) {
 
     if (box) await sweepBox(box);
     timer.mark("sweep");
+    ackIfSlow(msg, timer, sent);
     if (wasCancelled(msg)) return null;
     const state = getActorState(msg.actorId, msg.boxId);
     const onMissing = async entry => {
@@ -250,15 +317,21 @@ async function doPull(msg, timer = stepTimer(`pull ${msg.requestId}`)) {
     };
     const out = await performPull({ box, pools: getPools(), actor, state, onMissing });
     timer.mark("roll+grant");
+    ackIfSlow(msg, timer, sent);
 
     // itemUuid is the granted copy on the sheet, which the reveal's Open item
     // and the chat card's link point at (the pool's source is r.result.uuid).
     // logId is the row written below, so the chat card can be refunded.
     const itemUuid = out.itemId ? `Actor.${actor.id}.Item.${out.itemId}` : null;
     const logId = newId();
+    // Charged now: a cancel from here on is too late to drop the pull.
+    rememberCharge(msg.requestId, { requestId: msg.requestId, userId: msg.userId, buyerName: buyer.name, actorName: actor.name, boxName: box.name, itemName: out.result.name, logId });
     const reveal = { type: "reveal", requestId: msg.requestId, userId: msg.userId, actorId: actor.id, actorName: actor.name, box: { id: box.id, name: box.name, price: box.price }, odds: shopOdds(box, getPools()).rows.map(({ rarity, chance, label }) => ({ rarity, chance, label })), result: out.result, strip: out.strip, purse: out.purse, itemId: out.itemId, itemUuid, logId };
     game.socket.emit(SOCKET, reveal);
     timer.mark("broadcast");
+    // A cancel that came in while the coins were being taken.
+    if (msg.userId !== game.user.id && cancelled.delete(msg.requestId)) lateCancel(charged.get(msg.requestId));
+    warnIfSlow(timer.elapsed(), { hidden: hiddenAtStart || gmTabHidden(), buyer: actor.name });
     showAndPost(reveal);
 
     const log = { id: logId, boxId: box.id, boxName: box.name, actorId: actor.id, actorName: actor.name, userId: msg.userId, itemId: out.itemId, name: out.result.name, uuid: out.result.uuid, rarity: out.result.rarity, price: box.price, pity: out.result.pity };

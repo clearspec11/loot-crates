@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { draftBox, boxPreview, boxPreviewHTML, oddsPills, oddsRibbon } from "../module/scripts/boxcard.js";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { draftBox, boxPreview, boxPreviewHTML, oddsPills, oddsRibbon, oddsSummary, quietAnnouncer, ANNOUNCE_DELAY_MS } from "../module/scripts/boxcard.js";
 import { shopOdds } from "../module/scripts/odds.js";
 import { POOLS, BOX } from "../harness/sample.js";
 
@@ -79,5 +79,53 @@ describe("boxPreview", () => {
   it("escapes through the caller's function", () => {
     const none = preview({ "pool.core": false, "pool.homebrew": false });
     expect(boxPreviewHTML(none, s => `[${s}]`)).toContain("[This box can drop nothing: tick a pool above.]");
+  });
+});
+
+// What a screen reader hears from the box editor: one short line, once the
+// GM stops typing, never the ribbon and every pill on each keystroke.
+describe("the box editor's spoken odds", () => {
+  const preview = over => boxPreview(draftBox(BOX, form(over), IDS), POOLS);
+  afterEach(() => vi.useRealTimers());
+
+  it("is one line naming each rarity in full with its chance", () => {
+    expect(oddsSummary(preview())).toBe("Common 55%, Uncommon 28%, Rare 12%, Very rare 4%, Legendary 1%");
+    expect(oddsSummary(preview({ "pool.core": false }))).toBe("Uncommon 68%, Rare 29%, Legendary 3%");
+  });
+
+  it("carries the note, or is only the note when the box drops nothing", () => {
+    expect(oddsSummary(preview({ "pool.core": false, "pool.homebrew": false }))).toBe("This box can drop nothing: tick a pool above.");
+    const zero = Object.fromEntries(["common", "uncommon", "rare", "veryRare", "legendary", "artifact"].map(r => [`w.${r}`, "0"]));
+    expect(oddsSummary(preview({ ...zero, "pool.core": false }))).toBe("Uncommon 34%, Rare 33%, Legendary 33%. Every rarity these pools hold weighs 0, so each is equally likely.");
+  });
+
+  it("speaks once after typing pauses, with the last value, and not again for the same odds", () => {
+    vi.useFakeTimers();
+    const said = [];
+    const announce = quietAnnouncer(t => said.push(t), { last: oddsSummary(preview()) });
+    // Typing 1, 12, 125 into Common: three inputs inside the delay.
+    for (const w of ["1", "12", "125"]) {
+      announce(oddsSummary(preview({ "w.common": w })));
+      vi.advanceTimersByTime(ANNOUNCE_DELAY_MS / 3);
+    }
+    expect(said).toEqual([]);
+    vi.advanceTimersByTime(ANNOUNCE_DELAY_MS);
+    expect(said).toEqual([oddsSummary(preview({ "w.common": "125" }))]);
+    // An input and a change for the same value, then a value typed and undone.
+    announce(said[0]);
+    vi.advanceTimersByTime(ANNOUNCE_DELAY_MS);
+    announce(oddsSummary(preview({ "w.common": "1250" })));
+    announce(said[0]);
+    vi.advanceTimersByTime(ANNOUNCE_DELAY_MS);
+    expect(said).toHaveLength(1);
+  });
+
+  it("leaves the dialog's opening odds unsaid", () => {
+    vi.useFakeTimers();
+    const said = [];
+    const announce = quietAnnouncer(t => said.push(t), { last: oddsSummary(preview()) });
+    announce(oddsSummary(preview()));
+    vi.advanceTimersByTime(ANNOUNCE_DELAY_MS * 2);
+    expect(said).toEqual([]);
   });
 });

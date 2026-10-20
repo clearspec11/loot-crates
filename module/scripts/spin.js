@@ -11,6 +11,8 @@
     const spin = mountSpin(container, strip, { duration, reducedMotion, onTick, onLand });
     await spin.play();
     spin.skip();   // land on the next frame, through the same land() path
+    spin.skip({ now: true });   // land in this call, for a host that is hidden
+                                // (a hidden page runs no animation frames)
 
   The strip is aria-hidden: a screen reader would otherwise read every filler
   card's name before the result the host announces.
@@ -151,10 +153,13 @@ export function mountSpin(container, strip, options = {}) {
       land();
       return Promise.resolve();
     }
+    playing = true;
     return new Promise(resolve => {
       let t0 = null;
       let unsized = 0;
       const frame = now => {
+        // Landed by skip({ now }) while no frames ran: nothing left to draw.
+        if (landed) { resolve(); return; }
         const w = width();
         // Don't start the clock on a viewport that has no width yet, or the
         // first sized frame is a jump; give up waiting after a few frames so a
@@ -181,8 +186,14 @@ export function mountSpin(container, strip, options = {}) {
   }
 
   // Ends the spin on the next frame. Before play() it makes play() land at
-  // once; after landing it does nothing.
-  function skip() { skipped = true; }
+  // once; after landing it does nothing. With `now`, a spin already playing
+  // lands in this call: a hidden page gets no next frame until it is shown
+  // again, and its viewer should come back to the result, not to a spin.
+  let playing = false;
+  function skip({ now = false } = {}) {
+    skipped = true;
+    if (now && playing && !landed) { setX(target(width())); land(); }
+  }
 
   return { play, skip, viewport, track, cards, get landed() { return landed; } };
 }

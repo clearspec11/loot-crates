@@ -5,6 +5,8 @@
   ?state=shop | spin | landed | manager     ?seed=<n>     ?duration=<ms>     ?buyer=1
   ?theme=dark | light (Foundry's two themes; dark by default)
   ?waiting=gm | hidden (shop: the first crate pressed and the GM slow to answer)
+  ?closed=1 (shop: closed because no GM is online; ?closed=gm, closed by the GM)
+  ?width=<px> (the window's width, as a GM sizes it, whatever the screen's)
   "landed" plays the spin at zero duration, for deterministic screenshots.
   buyer=1 shows the reveal as the buyer (or a GM) sees it: gold left and an
   Open item button; without it, as the rest of the table sees it.
@@ -18,7 +20,7 @@ import { buildStrip } from "../module/scripts/strip.js";
 import { mountSpin } from "../module/scripts/spin.js";
 import { charge, formatPrice, formatGold } from "../module/scripts/currency.js";
 import { resultHTML } from "../module/scripts/revealcard.js";
-import { boxCard, oddsRibbon } from "../module/scripts/boxcard.js";
+import { boxCard, oddsRibbon, shopHTML, shopNotice, patchShop } from "../module/scripts/boxcard.js";
 import { shopOdds } from "../module/scripts/odds.js";
 
 const q = new URLSearchParams(location.search);
@@ -28,6 +30,7 @@ const duration = q.has("duration") ? Number(q.get("duration")) : state === "land
 const purse = { pp: 0, gp: 420, ep: 0, sp: 7, cp: 3 };
 const buyer = q.get("buyer") === "1";
 const waiting = q.get("waiting");
+const closed = q.get("closed");
 const theme = q.get("theme") === "light" ? "light" : "dark";
 document.body.classList.replace("theme-dark", `theme-${theme}`);
 
@@ -35,6 +38,7 @@ document.body.classList.replace("theme-dark", `theme-${theme}`);
 const WINDOWS = { shop: ["lc-shop", "Crate Shop"], manager: ["lc-manager", "Loot Crates"] };
 const [appClass, appTitle] = WINDOWS[state] ?? ["lc-reveal", "Opening a crate"];
 document.getElementById("app").classList.add(appClass);
+if (Number(q.get("width")) > 0) Object.assign(document.getElementById("app").style, { width: `${Number(q.get("width"))}px`, maxWidth: "100%" });
 document.getElementById("title").textContent = appTitle;
 // Font Awesome isn't loaded here; this stands in for the shop's fa-box-open.
 const CRATE_ICON = `<svg class="lc-box__icon" viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M3 8.5 12 4l9 4.5v8L12 21l-9-4.5z"/><path d="M3 8.5 12 13l9-4.5M12 13v8"/></svg>`;
@@ -64,18 +68,27 @@ if (state !== "shop" && state !== "manager") {
 
 const stage = document.getElementById("stage");
 
-function renderShop() {
-  stage.innerHTML = `
-    <div class="lc-shop__body">
-      <div class="lc-shop__head">
-        <div class="lc-shop__field"><span class="lc-label">Character</span><span class="lc-shop__who">Tam Thornwick</span></div>
-        <div class="lc-shop__field lc-shop__field--purse"><span class="lc-label">Purse</span><span class="lc-shop__purse">${formatGold(purse)}</span></div>
-      </div>
-      <div class="lc-shop__grid">
-        ${BOXES.map(b => boxCard(b, POOLS, { purse, hasActor: true, open: true, art: CRATE_ICON, ...(waiting ? { busy: true, busyBox: BOXES[0].id, waiting } : {}) })).join("")}
-      </div>
-    </div>`;
+// The shop as shop.js draws it: one notice in the header (a live region kept
+// across renders by patchShop), the cards pointing at it. window.__lootCrates
+// .renderShop(extra) re-renders with extra ctx, as the shop does on each
+// change, so the smoke can check the notice node survives.
+function renderShop(extra = {}) {
+  const ctx = {
+    purse, hasActor: true, open: !closed, gmOnline: closed !== "1", art: CRATE_ICON,
+    ...(waiting ? { busy: true, busyBox: BOXES[0].id, waiting } : {}), ...extra,
+  };
+  const fresh = document.createElement("div");
+  fresh.className = "lc-shop__body";
+  const notice = shopNotice(ctx);
+  fresh.innerHTML = shopHTML({
+    fields: `<div class="lc-shop__field"><span class="lc-label">Character</span><span class="lc-shop__who">Tam Thornwick</span></div>
+        <div class="lc-shop__field lc-shop__field--purse"><span class="lc-label">Purse</span><span class="lc-shop__purse">${formatGold(purse)}</span></div>`,
+    cards: BOXES.map(b => boxCard(b, POOLS, ctx)).join(""),
+    notice,
+  });
+  patchShop(stage, fresh, notice);
   stage.querySelectorAll(".lc-box__buy:not([disabled])").forEach(btn => btn.addEventListener("click", () => { location.search = `?state=spin&seed=${Date.now() % 100000}&box=${btn.dataset.box}&buyer=1&theme=${theme}`; }));
+  window.__lootCrates = { renderShop };
 }
 
 async function renderSpin() {
