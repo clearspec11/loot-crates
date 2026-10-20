@@ -15,8 +15,23 @@ import { normalizeRarity, flattenPool, markEntriesMissing, rawRarityOf, sourceRa
 
 const uid = () => (globalThis.foundry?.utils?.randomID?.(10)) ?? Math.random().toString(36).slice(2, 12);
 
+/*
+  Every client hears when one of the world settings changes (Foundry calls a
+  setting's onChange on each client after the GM's write lands), so open
+  windows can redraw: a player's shop when the GM closes it or a crate sells
+  out, the GM's Pull log when a pull or a late cancel writes a row. The one
+  listener is set by main.js (redraw.js), so this file imports no UI; it is
+  told the setting's key.
+*/
+let storeListener = null;
+export function setStoreListener(fn) { storeListener = fn; }
+function storeChanged(key) {
+  try { storeListener?.(key); } catch (err) { console.error(`loot-crates | redrawing after ${key} changed failed`, err); }
+}
+export const WORLD_KEYS = [SETTINGS.POOLS, SETTINGS.BOXES, SETTINGS.LOG, SETTINGS.STATE, SETTINGS.SHOP_OPEN];
+
 export function registerSettings() {
-  const world = (key, type, def) => game.settings.register(MODULE_ID, key, { scope: "world", config: false, type, default: def });
+  const world = (key, type, def) => game.settings.register(MODULE_ID, key, { scope: "world", config: false, type, default: def, onChange: () => storeChanged(key) });
   world(SETTINGS.POOLS, Object, {});
   world(SETTINGS.BOXES, Object, {});
   world(SETTINGS.LOG, Array, []);

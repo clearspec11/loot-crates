@@ -9,10 +9,11 @@
   currency.js, strip.js, spin.js) are.
 */
 import { MODULE_ID } from "./config.js";
-import { registerSettings, registerIndexFields, getPools, getBoxes, getLog, savePool, saveBox, entriesFromCompendium, entryFromItem, sweepAllPools } from "./store.js";
+import { registerSettings, setStoreListener, registerIndexFields, getPools, getBoxes, getLog, savePool, saveBox, entriesFromCompendium, entryFromItem, sweepAllPools } from "./store.js";
 import { registerSocket, requestPull, isActiveGM } from "./socket.js";
 import { openShop, refreshShop } from "./shop.js";
-import { openManager, CrateManager } from "./manager.js";
+import { openManager, refreshManager, CrateManager } from "./manager.js";
+import { storeRedraw } from "./redraw.js";
 import { performPull } from "./pull.js";
 import { showReveal, sealChatCard } from "./reveal.js";
 import { draw, oddsTable, seededRng } from "./odds.js";
@@ -20,6 +21,8 @@ import { buildStrip } from "./strip.js";
 
 Hooks.once("init", () => {
   registerSettings();
+  // Open windows follow the world settings as any client writes them.
+  setStoreListener(storeRedraw({ refreshShop, refreshManager }));
   registerIndexFields();
   game.settings.registerMenu(MODULE_ID, "manager", {
     name: "Pools, boxes and pulls",

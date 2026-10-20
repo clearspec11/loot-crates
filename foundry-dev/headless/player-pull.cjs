@@ -33,6 +33,17 @@
 // GM's own reveal lands at once, and no toast fires on the GM unless the pull
 // was slow (gmToasts lists every notification the GM's page raised).
 //
+// GM_LOG=1 opens the branch's manager on the headless GM's Pull log before
+// the purchase and reports gmLog.rowMs: from the player's click to the new
+// row standing in the GM's .lc-table (written by the GM's own pull, drawn by
+// the settings' onChange; redraw.js), which must be within 2 s.
+//
+// CLOSE_SHOP=1 buys nothing: with the player's shop open, the GM clicks the
+// manager's shop toggle (Shop open -> Shop closed) and closeShop reports how
+// long the player's crate took to show it (Buy aria-disabled, the header
+// notice naming the closed shop), within 2 s, then opens the shop again the
+// same way and reports the Buy back on.
+//
 // focus follows the keyboard: the Buy is focused before it is pressed, and
 // focusAfterCharge records where focus is once the GM's charge reached this
 // client (updateActor re-renders the shop): it must still be that Buy (the
@@ -56,6 +67,8 @@ const BOX = process.env.BOX || "Live UI crate";
 const CANVAS = process.env.CANVAS === "on";
 const HIDE_GM = process.env.HIDE_GM === "1";
 const COUNT = Math.min(3, Math.max(1, Number(process.env.COUNT) || 1));
+const GM_LOG = process.env.GM_LOG === "1";
+const CLOSE_SHOP = process.env.CLOSE_SHOP === "1";
 const shot = process.argv.includes("--shot") ? process.argv[process.argv.indexOf("--shot") + 1] : null;
 
 async function join(browser, user, { readySweep = false } = {}) {
@@ -79,6 +92,18 @@ async function join(browser, user, { readySweep = false } = {}) {
     try { store.registerIndexFields?.(); } catch { /* already in CONFIG */ }
     const socket = await import(base + "scripts/socket.js");
     socket.registerSocket();
+    // What main.js's init does: open windows redraw as the world settings
+    // change. If the installed module registered the settings first and
+    // Foundry kept its entries, point their onChange at the branch's too.
+    const { storeRedraw } = await import(base + "scripts/redraw.js");
+    const { refreshShop } = await import(base + "scripts/shop.js");
+    const { refreshManager } = await import(base + "scripts/manager.js");
+    const redraw = storeRedraw({ refreshShop, refreshManager });
+    store.setStoreListener(redraw);
+    for (const key of store.WORLD_KEYS) {
+      const cfg = game.settings.settings.get(`loot-crates.${key}`);
+      if (cfg && !String(cfg.onChange ?? "").includes("storeChanged")) cfg.onChange = () => redraw(key);
+    }
     // What main.js does for chat: a pull's card stays sealed while it spins here.
     const { sealChatCard } = await import(base + "scripts/reveal.js");
     Hooks.on("renderChatMessageHTML", sealChatCard);
@@ -86,6 +111,58 @@ async function join(browser, user, { readySweep = false } = {}) {
     if (readySweep && socket.isActiveGM()) store.sweepAllPools();
   }, [MODULE_BASE, readySweep, CANVAS]);
   return { page, logs };
+}
+
+/*
+  The GM closes the shop from the manager's toggle while the player's shop is
+  open; the player's crate must show it within 2 s without a press. Then the
+  GM opens it again (always, even when the check fails).
+*/
+async function closeShopCheck(player, gm) {
+  await player.evaluate(async ({ base, box }) => {
+    const { openShop } = await import(base + "scripts/shop.js");
+    const app = openShop();
+    await new Promise(r => setTimeout(r, 1500));
+    globalThis.__lcShop = () => {
+      const card = [...app.element.querySelectorAll(".lc-box")].find(c => c.querySelector(".lc-box__name")?.textContent.trim() === box);
+      const buy = card?.querySelector(".lc-box__buy");
+      return { off: buy?.getAttribute("aria-disabled") === "true", notice: app.element.querySelector(".lc-shop__notice")?.textContent.trim() ?? "" };
+    };
+  }, { base: MODULE_BASE, box: BOX });
+  const before = await player.evaluate(() => globalThis.__lcShop());
+  if (before.off) throw new Error(`${BOX} can't be bought before the check: ${before.notice}`);
+  await gm.evaluate(async base => {
+    const { openManager } = await import(base + "scripts/manager.js");
+    const app = openManager();
+    await app.render({ force: true });
+    await new Promise(r => setTimeout(r, 500));
+    globalThis.__lcToggle = () => {
+      const t = app.element.querySelector(".lc-shop-toggle");
+      const at = Date.now();
+      t.click();
+      return { at, was: t.textContent.trim() };
+    };
+  }, MODULE_BASE);
+  const until = (want, since) => player.evaluate(async ({ want, since }) => {
+    for (let i = 0; i < 250; i++) {
+      const s = globalThis.__lcShop();
+      if (s.off === want) return { ...s, ms: Date.now() - since };
+      await new Promise(r => setTimeout(r, 20));
+    }
+    return { ...globalThis.__lcShop(), ms: null };
+  }, { want, since });
+  const closed = await gm.evaluate(() => globalThis.__lcToggle());
+  const closedSeen = await until(true, closed.at);
+  // Open it again however the first half went.
+  let openedSeen = null;
+  const isOpen = () => gm.evaluate(() => game.settings.get("loot-crates", "shopOpen"));
+  if (!(await isOpen())) {
+    const opened = await gm.evaluate(() => globalThis.__lcToggle());
+    openedSeen = await until(false, opened.at);
+  }
+  const ok = closed.was === "Shop open" && closedSeen.ms != null && closedSeen.ms <= 2000 && /closed/i.test(closedSeen.notice)
+    && openedSeen?.ms != null && openedSeen.ms <= 2000 && (await isOpen());
+  return { before, toggled: closed.was, closed: closedSeen, reopened: openedSeen, shopOpenAtEnd: await isOpen(), ok };
 }
 
 (async () => {
@@ -111,6 +188,34 @@ async function join(browser, user, { readySweep = false } = {}) {
         document.dispatchEvent(new Event("visibilitychange"));
         return document.visibilityState;
       });
+    }
+    if (CLOSE_SHOP) {
+      if (!gm) throw new Error("CLOSE_SHOP needs the headless Gamemaster");
+      out.closeShop = await closeShopCheck(pl.page, gm.page);
+      console.log(JSON.stringify(out, null, 1));
+      if (!out.closeShop.ok) process.exitCode = 1;
+      return;
+    }
+    if (GM_LOG) {
+      if (!gm) throw new Error("GM_LOG needs the headless Gamemaster");
+      await gm.page.evaluate(async base => {
+        const { openManager } = await import(base + "scripts/manager.js");
+        const app = openManager();
+        app.tab = "log";
+        await app.render({ force: true });
+        await new Promise(r => setTimeout(r, 500));
+        const rows = () => app.element?.querySelectorAll(".lc-table tbody tr").length ?? 0;
+        const first = () => app.element?.querySelector(".lc-table tbody tr")?.innerText ?? null;
+        globalThis.__lcLog = { before: rows(), firstBefore: first(), at: null, renders: 0 };
+        const watch = setInterval(() => {
+          if (globalThis.__lcLog.at == null && rows() > globalThis.__lcLog.before) {
+            globalThis.__lcLog.at = Date.now();
+            globalThis.__lcLog.firstAfter = first();
+            globalThis.__lcLog.tab = app.tab;
+          }
+        }, 20);
+        setTimeout(() => clearInterval(watch), 60000);
+      }, MODULE_BASE);
     }
     const result = await pl.page.evaluate(async ({ base, box, count }) => {
       const { openShop } = await import(base + "scripts/shop.js");
@@ -152,6 +257,7 @@ async function join(browser, user, { readySweep = false } = {}) {
         });
         buy.focus();
         const t0 = performance.now();
+        const clickedAt = Date.now();
         buy.click();
         let revealAt = null, landedAt = null, rv = null;
         const stillBuy = () => app.element.querySelector(`.lc-box__buy[data-box="${buy.dataset.box}"]`) === buy;
@@ -174,6 +280,7 @@ async function join(browser, user, { readySweep = false } = {}) {
         const chatAt = cards.find(t => t >= t0);
         const shown = renders.filter(r => r.ms >= t0).map(r => ({ ms: Math.round(r.ms - t0), sealed: r.sealed }));
         purchases.push({
+          clickedAt,
           ms: { revealReceived: revealAt && Math.round(revealAt), landed: landedAt && Math.round(landedAt), chat: chatAt != null ? Math.round(chatAt - t0) : null },
           chatRenders: shown,
           chatSealedAfterLanding: document.querySelectorAll(".lc-chat--sealed").length,
@@ -186,6 +293,11 @@ async function join(browser, user, { readySweep = false } = {}) {
       return { actor: actor.name, before, after: actor.system.currency, granted, purchases };
     }, { base: MODULE_BASE, box: BOX, count: COUNT });
     Object.assign(out, result);
+    if (GM_LOG) {
+      const seen = await gm.page.evaluate(() => globalThis.__lcLog);
+      const rowMs = seen.at != null ? seen.at - out.purchases[0].clickedAt : null;
+      out.gmLog = { ...seen, rowMs, ok: rowMs != null && rowMs <= 2000 };
+    }
     if (shot) await pl.page.screenshot({ path: shot });
     if (HIDE_GM) {
       out.gmSide = await gm.page.evaluate(() => {
@@ -199,7 +311,7 @@ async function join(browser, user, { readySweep = false } = {}) {
       });
     }
     out.gmTimings = (gm?.logs ?? []).filter(l => l.includes("timings"));
-    out.gmLog = (gm?.logs ?? []).filter(l => !l.includes("timings"));
+    out.gmConsole = (gm?.logs ?? []).filter(l => !l.includes("timings"));
     out.playerLog = pl.logs;
     console.log(JSON.stringify(out, null, 1));
   } catch (err) {
