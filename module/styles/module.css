@@ -545,6 +545,9 @@
   .loot-crates .lc-reveal__name { font-size: 28px; }
   .loot-crates .lc-entry { flex-wrap: wrap; }
   .loot-crates .lc-entry__name, .loot-crates .lc-entry__text { flex: 1 1 calc(100% - 50px); }
+  /* On a phone the name and its status get a full line and wrap, so a long
+     name or "was X, now Y" is read in full instead of cut to an ellipsis. */
+  .loot-crates .lc-entry__name, .loot-crates .lc-entry__status { white-space: normal; overflow-wrap: anywhere; }
   .loot-crates .lc-entry select.lc-entry__rarity { margin-left: 41px; }
 }
 

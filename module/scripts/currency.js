@@ -1,8 +1,9 @@
 /*
   dnd5e coins: actor.system.currency is { pp, gp, ep, sp, cp }. A price is in
   gp. charge() pays it from the purse with the fewest coin moves it can, paying
-  with the largest coins first and making change back into gp/sp/cp, and returns
-  the new purse or null when the actor can't afford it.
+  with the smallest exact coins first and making change back into gp/sp/cp
+  (carried 10 cp to 1 sp, 10 sp to 1 gp, so change never reads "12 sp"), and
+  returns the new purse or null when the actor can't afford it.
 */
 export const COPPER_PER = { pp: 1000, gp: 100, ep: 50, sp: 10, cp: 1 };
 const ORDER = ["pp", "gp", "ep", "sp", "cp"];
@@ -66,7 +67,7 @@ export function charge(purse = {}, priceGp) {
         next[c] += n;
         change -= n * COPPER_PER[c];
       }
-      return next;
+      return consolidate(next);
     }
   }
   return null;
@@ -81,18 +82,25 @@ export function isWholeCoins(purse = {}) {
   });
 }
 
-// The inverse of charge(): gives priceGp back in whole gp/sp/cp on top of the
-// purse (never as a fractional gp), so toCopper(refund(charge(p, x), x)) is
-// toCopper(p). Coins are floored the way charge() floors them, so the result is
-// always whole coins. A zero or negative price returns the purse unchanged.
+// Carry copper into silver and silver into gold, 10 to 1, the way a player
+// tidies a purse on the sheet: { gp: 0, sp: 9, cp: 10 } reads 1 gp. pp and ep
+// are left as the player keeps them; the copper value is unchanged.
+export function consolidate(purse = {}) {
+  const next = Object.fromEntries(ORDER.map(k => [k, Math.max(0, Math.floor(Number(purse[k]) || 0))]));
+  next.sp += Math.floor(next.cp / 10); next.cp %= 10;
+  next.gp += Math.floor(next.sp / 10); next.sp %= 10;
+  return next;
+}
+
+// The inverse of charge(): gives priceGp back on top of the purse in whole
+// coins, then consolidates gp/sp/cp so a 100 gp price comes back as 100 gp,
+// never "99 gp 10 sp". toCopper(refund(charge(p, x), x)) is toCopper(p). Coins
+// are floored the way charge() floors them. A zero or negative price returns
+// the purse floored to whole coins, unconsolidated.
 export function refund(purse = {}, priceGp) {
   const next = Object.fromEntries(ORDER.map(k => [k, Math.max(0, Math.floor(Number(purse[k]) || 0))]));
-  let owed = Math.round(priceGp * 100);
+  const owed = Math.round(priceGp * 100);
   if (!(owed > 0)) return next;
-  for (const c of ["gp", "sp", "cp"]) {
-    const n = Math.floor(owed / COPPER_PER[c]);
-    next[c] += n;
-    owed -= n * COPPER_PER[c];
-  }
-  return next;
+  next.cp += owed;
+  return consolidate(next);
 }

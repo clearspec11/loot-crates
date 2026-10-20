@@ -426,7 +426,7 @@ export class CrateManager extends ApplicationV2 {
 
   static async #refund(_e, t) {
     const plan = describeRefund(t.dataset.row);
-    if (plan.status === "already") { ui.notifications.info("That pull was already refunded."); return this.render(); }
+    if (plan.status === "already") { ui.notifications.info("That pull was already refunded."); this.#focusRow = t.dataset.row; return this.render(); }
     if (plan.status !== "ready") return ui.notifications.warn(plan.message);
     const { row, actor, item, box } = plan;
     const itemLine = item
@@ -438,6 +438,8 @@ export class CrateManager extends ApplicationV2 {
       content: `<p>Return <strong>${esc(formatPrice(row.price))}</strong> to ${esc(actor.name)} ${itemLine}?${stockLine}</p><p>A pull can only be refunded once.</p>`,
     });
     if (!ok) return;
+    // The Refund button is gone after the render; land on the row's status.
+    this.#focusRow = row.id;
     const done = await refundPull(row.id);
     if (done.status === "refunded") {
       const what = done.removedItem ? ` and ${done.removedItem} removed` : "";
@@ -582,11 +584,12 @@ export class CrateManager extends ApplicationV2 {
       ${log.map(r => `<tr class="${r.refunded ? "lc-row--refunded" : ""}">
         <td>${new Date(r.at).toLocaleString()}</td><td>${esc(r.actorName)}</td><td>${esc(r.boxName)} (${esc(formatPrice(r.price))})</td>
         <td class="lc-rarity-${esc(r.rarity)}"><span class="lc-dot"></span>${r.refunded ? `<s>${esc(r.name)}</s>` : esc(r.name)}${r.pity ? " · pity" : ""}${logRarityNote(r)}</td>
-        <td>${r.refunded ? `refunded ${esc(refundTime(r.refunded))}` : `<button type="button" data-action="refund" data-row="${esc(r.id)}">Refund</button>`}</td>
+        <td>${r.refunded ? `<span class="lc-log__status" tabindex="-1" data-row="${esc(r.id)}">refunded ${esc(refundTime(r.refunded))}</span>` : `<button type="button" data-action="refund" data-row="${esc(r.id)}">Refund</button>`}</td>
       </tr>`).join("")}</tbody></table>`;
   }
 
   #searchTimer = null;
+  #focusRow = null;
 
   // A full render (a source check landing late, a rename, a refund) keeps
   // focus on the same control when it is drawn again, and the caret in a
@@ -596,6 +599,12 @@ export class CrateManager extends ApplicationV2 {
     const key = active ? focusKey(active) : null;
     const caret = active?.matches?.("input[type=search]") ? [active.selectionStart, active.selectionEnd] : null;
     content.replaceChildren(result);
+    // After a refund, focus whatever now stands for that log row: its
+    // "refunded <date>" status, or its Refund button if the refund failed.
+    const row = this.#focusRow;
+    this.#focusRow = null;
+    const rowEl = row && content.querySelector(`.lc-table [data-row="${CSS.escape(row)}"]`);
+    if (rowEl) return rowEl.focus();
     if (!key) return;
     const again = content.querySelector(key.selector) ?? (key.pool && content.querySelector(`.lc-pool__details[data-pool="${CSS.escape(key.pool)}"] > summary`));
     if (!again) return;
