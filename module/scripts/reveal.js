@@ -24,6 +24,13 @@
   reduced-motion path), and one playing when the page is hidden lands then,
   without a frame: coming back shows the result. Silently, since nobody is
   looking.
+
+  The chat card is posted with the result (socket.js showAndPost), so on a
+  client whose spin is still playing it would give the result away seconds
+  early. sealChatCard (a renderChatMessageHTML hook, main.js) shows such a
+  card's head with "Opening…" in place of the item until this client's
+  reveal of that pull lands or is closed. Display only: the message is the
+  same for everyone, and a client with no spin playing sees it whole.
 */
 import { MODULE_ID, SETTINGS } from "./config.js";
 import { mountSpin } from "./spin.js";
@@ -44,6 +51,10 @@ function usedSlots() {
 
 // Focus is ours to move when nothing else has it, or it's already in here.
 const pageHidden = () => document.visibilityState === "hidden";
+
+// The landed promise of each reveal still spinning on this client, by the
+// pull's logId (what its chat card carries in flags).
+const spinning = new Map();
 
 function focusIsFree(root) {
   const a = document.activeElement;
@@ -75,6 +86,10 @@ export class CrateReveal extends ApplicationV2 {
     super({ ...(reveal.requestId ? { id: `loot-crates-reveal-${reveal.requestId}` } : {}), position, ...options });
     this.slot = slot;
     this.reveal = reveal;
+    if (reveal.logId) {
+      spinning.set(reveal.logId, this.landed);
+      this.landed.then(() => spinning.delete(reveal.logId));
+    }
   }
 
   get canSee() {
@@ -179,6 +194,25 @@ export class CrateReveal extends ApplicationV2 {
     if (sound && !this.#spin.landed && !pageHidden()) this.#slowTimer = setTimeout(playSlow, 3600);
     this.#spin.play();
   }
+}
+
+// renderChatMessageHTML: seal a pull's card while its spin plays here. Each
+// rendered copy (the log, the notification) is opened by its own reference,
+// so a copy put in the page after the landing is never left sealed.
+export function sealChatCard(message, html) {
+  const logId = message?.flags?.[MODULE_ID]?.logId;
+  const landed = logId ? spinning.get(logId) : null;
+  const card = landed ? html?.querySelector?.(".lc-chat") : null;
+  if (!card || card.classList.contains("lc-chat--refunded")) return;
+  const sealed = document.createElement("div");
+  sealed.className = "lc-chat__sealed";
+  sealed.textContent = "Opening…";
+  card.classList.add("lc-chat--sealed");
+  card.append(sealed);
+  landed.then(() => {
+    card.classList.remove("lc-chat--sealed");
+    sealed.remove();
+  });
 }
 
 export async function showReveal(reveal) {

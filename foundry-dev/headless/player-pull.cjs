@@ -33,6 +33,11 @@
 // GM's own reveal lands at once, and no toast fires on the GM unless the pull
 // was slow (gmToasts lists every notification the GM's page raised).
 //
+// chatRenders lists each rendering of the pull's chat card on the player's
+// client and whether it was sealed (head and "Opening…", reveal.js
+// sealChatCard): a card rendered while that client's spin plays must be, and
+// chatSealedAfterLanding must be 0.
+//
 // Prints JSON: who did the pull, the purse before and
 // after, the item granted, and timings from the click: reveal broadcast
 // received, strip landed; plus the GM's `loot-crates |` console lines.
@@ -68,6 +73,9 @@ async function join(browser, user, { readySweep = false } = {}) {
     try { store.registerIndexFields?.(); } catch { /* already in CONFIG */ }
     const socket = await import(base + "scripts/socket.js");
     socket.registerSocket();
+    // What main.js does for chat: a pull's card stays sealed while it spins here.
+    const { sealChatCard } = await import(base + "scripts/reveal.js");
+    Hooks.on("renderChatMessageHTML", sealChatCard);
     // What main.js's ready hook does on the active GM.
     if (readySweep && socket.isActiveGM()) store.sweepAllPools();
   }, [MODULE_BASE, readySweep, CANVAS]);
@@ -111,6 +119,14 @@ async function join(browser, user, { readySweep = false } = {}) {
       // When the table's client sees each Loot Crates chat card.
       const cards = [];
       Hooks.on("createChatMessage", m => { if (m.flags?.["loot-crates"] && !m.flags["loot-crates"].refunded) cards.push(performance.now()); });
+      // Whether each rendering of a card showed its item (it should not
+      // while this client's spin plays).
+      const renders = [];
+      Hooks.on("renderChatMessageHTML", (m, html) => {
+        if (!m.flags?.["loot-crates"]?.logId) return;
+        const card = html.querySelector(".lc-chat");
+        renders.push({ ms: performance.now(), sealed: !!card?.classList.contains("lc-chat--sealed") });
+      });
       for (let n = 0; n < count; n++) {
         const card = [...app.element.querySelectorAll(".lc-box")].find(c => c.querySelector(".lc-box__name")?.textContent.trim() === box);
         if (!card) throw new Error(`no crate named ${box}`);
@@ -131,8 +147,11 @@ async function join(browser, user, { readySweep = false } = {}) {
         }
         await new Promise(r => setTimeout(r, 1200));
         const chatAt = cards.find(t => t >= t0);
+        const shown = renders.filter(r => r.ms >= t0).map(r => ({ ms: Math.round(r.ms - t0), sealed: r.sealed }));
         purchases.push({
           ms: { revealReceived: revealAt && Math.round(revealAt), landed: landedAt && Math.round(landedAt), chat: chatAt != null ? Math.round(chatAt - t0) : null },
+          chatRenders: shown,
+          chatSealedAfterLanding: document.querySelectorAll(".lc-chat--sealed").length,
           buyLabels: labels,
           result: rv?.querySelector(".lc-reveal__result")?.innerText,
         });

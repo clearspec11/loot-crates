@@ -14,7 +14,7 @@ import { registerSocket, requestPull, isActiveGM } from "./socket.js";
 import { openShop, refreshShop } from "./shop.js";
 import { openManager, CrateManager } from "./manager.js";
 import { performPull } from "./pull.js";
-import { showReveal } from "./reveal.js";
+import { showReveal, sealChatCard } from "./reveal.js";
 import { draw, oddsTable, seededRng } from "./odds.js";
 import { buildStrip } from "./strip.js";
 
@@ -58,3 +58,5 @@ Hooks.on("updateActor", (actor, change) => {
   if (change.system?.currency) refreshShop();
 });
 Hooks.on("userConnected", () => refreshShop());
+// A pull's chat card keeps its result back while that pull spins here.
+Hooks.on("renderChatMessageHTML", sealChatCard);

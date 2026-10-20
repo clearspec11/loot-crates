@@ -64,7 +64,7 @@ const reveal = {
   strip: { landIndex: 30, cards: Array.from({ length: 36 }, (_, i) => ({ uuid: `c${i}`, name: `Card ${i}`, img: "", rarity: "common", result: i === 30 })) },
 };
 
-const { showReveal } = await import("../module/scripts/reveal.js");
+const { showReveal, sealChatCard } = await import("../module/scripts/reveal.js");
 const { playReveal, playSlow } = await import("../module/scripts/sound.js");
 
 describe("a reveal on a hidden page", () => {
@@ -107,5 +107,69 @@ describe("a reveal on a hidden page", () => {
     await app.landed;
     expect(app.element.querySelector(".lc-reveal__close").textContent).toBe("Close");
     expect(listeners.size).toBe(0);
+  });
+});
+
+/*
+  The chat card goes out with the result, seconds before a watching client's
+  spin lands: there it is sealed (its head and "Opening…") until that spin
+  lands, so chat never gives the result away.
+*/
+function cardHTML({ refunded = false } = {}) {
+  const classes = new Set(["loot-crates", "lc-chat", ...(refunded ? ["lc-chat--refunded"] : [])]);
+  const kids = [];
+  const card = {
+    classList: { add: c => classes.add(c), remove: c => classes.delete(c), contains: c => classes.has(c) },
+    append: (...k) => kids.push(...k.map(x => Object.assign(x, { remove: () => kids.splice(kids.indexOf(x), 1) }))),
+    kids, classes,
+  };
+  return { card, html: { querySelector: sel => (sel === ".lc-chat" ? card : null) } };
+}
+const message = logId => ({ flags: { "loot-crates": { logId } } });
+
+describe("the chat card while a spin plays here", () => {
+  it("is sealed until this client's reveal of that pull lands", async () => {
+    const app = await showReveal({ ...reveal, requestId: "s1", logId: "L1" });
+    const { card, html } = cardHTML();
+    sealChatCard(message("L1"), html);
+    expect(card.classes.has("lc-chat--sealed")).toBe(true);
+    expect(card.kids.map(k => k.textContent)).toEqual(["Opening…"]);
+    for (let now = 0; frames.length; now += 16) frames.shift()(now);
+    await app.landed;
+    await Promise.resolve();
+    expect(card.classes.has("lc-chat--sealed")).toBe(false);
+    expect(card.kids).toHaveLength(0);
+    // Rendered again after landing (a notification, a refund): whole.
+    const again = cardHTML();
+    sealChatCard(message("L1"), again.html);
+    expect(again.card.classes.has("lc-chat--sealed")).toBe(false);
+  });
+
+  it("is opened when the window is closed before landing", async () => {
+    const app = await showReveal({ ...reveal, requestId: "s2", logId: "L2" });
+    const { card, html } = cardHTML();
+    sealChatCard(message("L2"), html);
+    app.close();
+    await app.landed;
+    await Promise.resolve();
+    expect(card.classes.has("lc-chat--sealed")).toBe(false);
+  });
+
+  it("is whole on a hidden page, for another pull, and when refunded", async () => {
+    doc.visibilityState = "hidden";
+    await showReveal({ ...reveal, requestId: "s3", logId: "L3" });
+    await Promise.resolve();
+    const hidden = cardHTML();
+    sealChatCard(message("L3"), hidden.html);
+    expect(hidden.card.classes.has("lc-chat--sealed")).toBe(false);
+    doc.visibilityState = "visible";
+    await showReveal({ ...reveal, requestId: "s4", logId: "L4" });
+    const other = cardHTML();
+    sealChatCard(message("nope"), other.html);
+    sealChatCard({ flags: {} }, other.html);
+    expect(other.card.classes.has("lc-chat--sealed")).toBe(false);
+    const refunded = cardHTML({ refunded: true });
+    sealChatCard(message("L4"), refunded.html);
+    expect(refunded.card.classes.has("lc-chat--sealed")).toBe(false);
   });
 });

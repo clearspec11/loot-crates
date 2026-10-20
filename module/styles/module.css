@@ -555,6 +555,11 @@
 .loot-crates .lc-chat__rarity { display: flex; align-items: center; gap: 5px; margin-top: 2px; font-family: var(--lc-label); font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--lc-ink-mute); }
 .loot-crates .lc-chat__rarity::before { content: ""; width: 6px; height: 6px; background: var(--lc-rarity); transform: rotate(45deg); }
 .loot-crates .lc-chat__refund { font-size: 12px; margin-top: 6px; color: var(--lc-ink-soft); }
+/* A card whose spin is still playing on this client: the head, and
+   "Opening…" where the item will be (reveal.js sealChatCard). */
+.loot-crates.lc-chat--sealed { --lc-rarity: var(--lc-ink-mute); }
+.loot-crates.lc-chat--sealed .lc-chat__item { display: none; }
+.loot-crates .lc-chat__sealed { margin-top: 7px; padding-top: 7px; border-top: 1px solid var(--lc-rule-soft); font-size: 13px; color: var(--lc-ink-mute); }
 /* A refunded pull's card: the win is withdrawn, so no rarity colour. */
 .loot-crates.lc-chat--refunded { --lc-rarity: var(--lc-ink-mute); box-shadow: none; }
 .loot-crates.lc-chat--refunded .lc-chat__item img { filter: grayscale(1); opacity: .55; }
@@ -572,12 +577,13 @@
   .loot-crates .lc-reveal__name { font-size: 28px; }
 }
 
-/* A pool's rows follow the pool's own width, not the screen's: a manager
-   window sized narrow on a wide desktop is as tight as a phone. There the
+/* A pool's rows, and the add-items preview's, follow their list's own
+   width, not the screen's: a manager window sized narrow on a wide desktop
+   is as tight as a phone, and a dialog on a phone is narrow too. There the
    name and its status get a full line and wrap, so a long name or "was X,
    now Y" is read in full instead of cut to an ellipsis. */
-.loot-crates .lc-pool { container: lc-pool / inline-size; }
-@container lc-pool (max-width: 520px) {
+.loot-crates .lc-pool, .loot-crates .lc-preview__list { container: lc-rows / inline-size; }
+@container lc-rows (max-width: 520px) {
   .loot-crates .lc-entry { flex-wrap: wrap; }
   .loot-crates .lc-entry__name, .loot-crates .lc-entry__text { flex: 1 1 calc(100% - 50px); }
   .loot-crates .lc-entry__name, .loot-crates .lc-entry__status { white-space: normal; overflow-wrap: anywhere; }
