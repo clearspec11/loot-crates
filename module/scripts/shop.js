@@ -29,6 +29,8 @@ export class CrateShop extends ApplicationV2 {
   busy = false;
   // The box whose Buy was pressed, so only that card says "Opening…".
   busyBox = null;
+  // Why it is taking long, once it is: "gm" or "hidden" (socket.js onWait).
+  waiting = null;
 
   get actor() { return game.actors.get(this.actorId) ?? null; }
 
@@ -38,13 +40,19 @@ export class CrateShop extends ApplicationV2 {
     this.busy = true;
     this.busyBox = boxId;
     this.render();
+    const onWait = why => {
+      if (this.busyBox !== boxId) return;
+      this.waiting = why;
+      this.render();
+    };
     try {
-      await requestPull({ boxId, actorId: this.actorId });
+      await requestPull({ boxId, actorId: this.actorId }, { onWait });
     } catch (err) {
       ui.notifications.warn(err.message);
     } finally {
       this.busy = false;
       this.busyBox = null;
+      this.waiting = null;
       this.render();
     }
   }
@@ -86,7 +94,7 @@ export class CrateShop extends ApplicationV2 {
   #boxCard(box, pools, purse, open) {
     return boxCard(box, pools, {
       purse, open, gmOnline: !!game.users.activeGM, hasActor: !!this.actor,
-      busy: this.busy, busyBox: this.busyBox, art: `<i class="fas fa-box-open"></i>`, esc,
+      busy: this.busy, busyBox: this.busyBox, waiting: this.waiting, art: `<i class="fas fa-box-open"></i>`, esc,
     });
   }
 

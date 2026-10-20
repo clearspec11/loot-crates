@@ -91,4 +91,18 @@ describe("the crate's peek and ribbon", () => {
     expect(other).not.toContain("Opening…");
     expect(other.match(/<button[^>]*>/)[0]).toMatch(/ disabled/);
   });
+  it("says it is waiting for the GM, and why when the GM's tab is hidden, on the pressed crate only", () => {
+    const slow = { ...ctx, busy: true, busyBox: "common", waiting: "gm" };
+    const card = boxCard(byId("common"), POOLS, slow);
+    expect(card).toContain("Waiting for the GM…");
+    expect(card).not.toContain("Opening…");
+    expect(card).toMatch(/role="status">The GM's client hasn't rolled yet\./);
+    const hidden = boxCard(byId("common"), POOLS, { ...slow, waiting: "hidden" });
+    expect(hidden).toContain("The GM's Foundry tab is in the background");
+    const other = boxCard(byId("adventurer"), POOLS, slow);
+    expect(other).not.toContain("Waiting");
+    expect(other).not.toContain('role="status"');
+    // Before the notice, it still just says Opening….
+    expect(boxCard(byId("common"), POOLS, { ...slow, waiting: null })).toContain("Opening…");
+  });
 });

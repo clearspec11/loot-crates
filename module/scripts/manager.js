@@ -40,7 +40,7 @@ import { oddsPills, oddsRibbon } from "./boxcard.js";
 
 // A box's odds in the Boxes table: its ribbon over its named pills.
 const oddsCell = rows => rows.length ? `${oddsRibbon(rows)}<div class="lc-odds">${oddsPills(rows)}</div>` : "<em>empty</em>";
-import { getPools, getBoxes, getLog, createPool, updatePool, removePool, createBox, updateBox, removeBox, entryFromItem, entriesFromDrop, addEntries, packHasLoot, LOOT_TYPES, isLootType, isShopOpen, setShopOpen, enqueueWrite, checkSources, refreshMissing, removeEntry, patchEntry } from "./store.js";
+import { getPools, getBoxes, getLog, createPool, updatePool, removePool, createBox, updateBox, removeBox, entryFromItem, entriesFromDrop, addEntries, packHasLoot, LOOT_TYPES, isLootType, isShopOpen, setShopOpen, checkSources, sweepPools, removeEntry, patchEntry } from "./store.js";
 import { shopOdds, normalizeRarity, flattenPool, withSources, entryWeight, curateEntries } from "./odds.js";
 import { PAGE_ROWS, FALLBACK_IMG, defaultView, poolRows, sortRows, filterRows, pageRows, nextRows, poolCount, poolSummary, poolBody, chipsHTML, unsetButton, footHTML, entryRow, entryParts } from "./poolview.js";
 import { formatPrice } from "./currency.js";
@@ -536,7 +536,7 @@ export class CrateManager extends ApplicationV2 {
     // The editor just looked: if a flag the shop reads is stale, sweep now.
     const stale = !this.checking && pools.some(p => p.entries.some(e => sources.has(e.uuid) && !!e.missing !== !sources.get(e.uuid)));
     if (stale) {
-      enqueueWrite(() => refreshMissing(pools.map(p => p.id)))
+      sweepPools(pools.map(p => p.id))
         .then(() => refreshShop())
         .catch(err => console.error(`loot-crates | checking pools for missing items failed`, err));
     }

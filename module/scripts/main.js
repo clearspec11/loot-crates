@@ -9,7 +9,7 @@
   currency.js, strip.js, spin.js) are.
 */
 import { MODULE_ID } from "./config.js";
-import { registerSettings, registerIndexFields, getPools, getBoxes, getLog, savePool, saveBox, entriesFromCompendium, entryFromItem, enqueueWrite, refreshMissing, reportMissing } from "./store.js";
+import { registerSettings, registerIndexFields, getPools, getBoxes, getLog, savePool, saveBox, entriesFromCompendium, entryFromItem, sweepAllPools } from "./store.js";
 import { registerSocket, requestPull, isActiveGM } from "./socket.js";
 import { openShop, refreshShop } from "./shop.js";
 import { openManager, CrateManager } from "./manager.js";
@@ -37,11 +37,7 @@ Hooks.once("ready", () => {
   if (mod) mod.api = { openShop, openManager, requestPull, performPull, showReveal, draw, oddsTable, buildStrip, seededRng, getPools, getBoxes, getLog, savePool, saveBox, entriesFromCompendium, entryFromItem };
   // Flag dead pool entries once at load, so the shop's odds are honest before
   // anyone buys; each pull sweeps its own box again (socket.js).
-  if (isActiveGM()) {
-    enqueueWrite(() => refreshMissing(Object.keys(getPools())))
-      .then(reportMissing)
-      .catch(err => console.error(`loot-crates | checking pools for missing items failed`, err));
-  }
+  if (isActiveGM()) sweepAllPools();
 });
 
 Hooks.on("renderItemDirectory", (_app, html) => {

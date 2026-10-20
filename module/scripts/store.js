@@ -151,9 +151,11 @@ export async function setActorState(actorId, boxId, state) {
 
 // Returns the new row's id, which the pull's chat card keeps (flags logId)
 // so a refund can find the card that announced it.
-export async function appendLog(entry) {
+// `entry.id` may be set beforehand (newId): a pull's reveal carries the row's
+// id before the row is written.
+export const newId = uid;
+export async function appendLog({ id = uid(), ...entry }) {
   const log = getLog();
-  const id = uid();
   log.unshift({ id, at: Date.now(), ...entry });
   await set(SETTINGS.LOG, log.slice(0, 500));
   return id;
@@ -201,9 +203,12 @@ const entryFromRow = (packId, row) => entryFromItem(row, compendiumUuid(packId, 
   that asks while it is in flight.
 */
 const fetching = new WeakMap();
-function loadIndex(pack) {
+const indexReady = pack => {
   const have = pack.indexFields;
-  if (pack.indexed && have?.has && INDEX_FIELDS.every(f => have.has(f))) return Promise.resolve(pack.index);
+  return !!(pack.indexed && have?.has && INDEX_FIELDS.every(f => have.has(f)));
+};
+function loadIndex(pack) {
+  if (indexReady(pack)) return Promise.resolve(pack.index);
   let run = fetching.get(pack);
   if (!run) {
     run = pack.getIndex({ fields: INDEX_FIELDS }).finally(() => fetching.delete(pack));
@@ -393,14 +398,25 @@ export async function resolveEntry(entry) {
   editor never evict each other's index; a world item from game.items; only
   other kinds of reference fall back to fromUuid. Rarity is read through
   rawRarityOf, so a dnd5e 6 rarities set and a legacy string both count.
+
+  `cachedOnly` (the sweep before a pull) answers only from indexes already
+  in memory: Foundry doesn't index a pack until something asks, and the
+  first fetch of dnd5e.items' index took 0.4 s on a quiet client and 18 s on
+  a busy one, all of it before the buyer's roll. Its entries go unanswered
+  (flags kept); the roll resolves the drawn entry itself, and the load
+  sweep, which does fetch, flags the rest.
 */
 const UNCHECKED = Symbol("unchecked");
-export async function checkSources(entries) {
+export async function checkSources(entries, { cachedOnly = false } = {}) {
   const out = new Map();
   const indexes = new Map();
   const packIndex = packId => {
     if (!indexes.has(packId)) {
       const pack = globalThis.game?.packs?.get(packId);
+      if (pack && cachedOnly && !indexReady(pack)) {
+        indexes.set(packId, Promise.resolve(UNCHECKED));
+        return indexes.get(packId);
+      }
       // No such pack (its module is off): its entries are gone. A pack whose
       // index failed to load: no answer, so a dropped connection can't flag
       // every entry in it missing and warn the GM about all of them.
@@ -458,14 +474,40 @@ export async function markMissing(poolId, uuids, flag = true) {
   stored sourceRarity is never touched. Returns the entries newly found
   missing, each with its pool's name, for reportMissing. GM only, through
   enqueueWrite.
+
+  It is two halves: checking the sources (reads only, and on a cold client
+  seconds of compendium reads) and applying what was found to the pools as
+  they are when it writes. refreshMissing runs both inside the caller's
+  queued task; sweepPools checks outside the queue and queues only the write,
+  so a purchase arriving while a big sweep checks is not held behind it.
 */
-export async function refreshMissing(poolIds) {
-  const pools = getPools();
+export async function refreshMissing(poolIds, { cachedOnly = false } = {}) {
+  return applySweep(poolIds, await checkPools(poolIds, { cachedOnly }));
+}
+
+export async function sweepPools(poolIds) {
+  const sources = await checkPools(poolIds);
+  return sources ? enqueueWrite(() => applySweep(poolIds, sources)) : [];
+}
+
+function poolEntries(poolIds, pools) {
   const entries = [];
   const seen = new Set();
   for (const id of new Set(poolIds)) entries.push(...flattenPool(id, pools, seen, { includeMissing: true }));
-  if (!entries.length) return [];
-  const sources = await checkSources(entries);
+  return { entries, seen };
+}
+
+async function checkPools(poolIds, opts) {
+  const { entries } = poolEntries(poolIds, getPools());
+  return entries.length ? checkSources(entries, opts) : null;
+}
+
+// Applies a check to the pools as they are now: an entry added since the
+// check has no answer and keeps its flag, one removed since is skipped.
+async function applySweep(poolIds, sources) {
+  if (!sources) return [];
+  const pools = getPools();
+  const { entries, seen } = poolEntries(poolIds, pools);
   // flattenPool replaces `rarity` with the effective one; learning compares
   // the entry as stored.
   const stored = new Map();
@@ -492,7 +534,7 @@ export async function refreshMissing(poolIds) {
     }
   }
   if (!changes.size) return found;
-  let next = getPools();
+  let next = pools;
   for (const [poolId, c] of changes) {
     if (c.dead.length) next = markEntriesMissing(next, poolId, c.dead, true);
     if (c.revived.length) {
@@ -505,6 +547,19 @@ export async function refreshMissing(poolIds) {
   }
   await set(SETTINGS.POOLS, next);
   return found;
+}
+
+// The GM's sweep of every pool at load, so the shop's odds are honest before
+// anyone buys (main.js ready hook). Checked outside the write queue: the
+// first purchase after a page load used to wait behind the whole check.
+export function sweepAllPools() {
+  const t0 = performance.now();
+  return sweepPools(Object.keys(getPools()))
+    .then(found => {
+      console.debug(`loot-crates | load sweep timings (ms): total ${Math.round(performance.now() - t0)}`);
+      reportMissing(found);
+    })
+    .catch(err => console.error(`loot-crates | checking pools for missing items failed`, err));
 }
 
 // Tells the GM, once per sweep, which entries were taken out of the roll.

@@ -5,6 +5,8 @@
 
   Messages on SOCKET:
     { type: "pull", requestId, boxId, actorId, userId }   player -> GM
+    { type: "ack", requestId, userId, hidden: true }       GM -> the buyer, only
+                                                           when the GM's tab is hidden
     { type: "reveal", requestId, itemId, itemUuid, logId, purse, ... }  GM -> everyone
     { type: "error", requestId, userId, message }          GM -> the buyer
 
@@ -20,17 +22,33 @@
   Before each roll the GM sweeps the box's pools for entries whose source is
   gone and flags them (store.js refreshMissing), so a dead item is taken out of
   the roll, the odds and the strip instead of failing after the buyer clicked.
+  It reads only indexes already in memory (a few ms), never fetching one, so
+  the first pull after a page load doesn't wait on the load sweep's index
+  fetch; the drawn entry's own source is resolved by performPull either way,
+  which re-rolls past a dead one, so a missing source is never drawn.
+
+  The reveal goes out as soon as the coins are taken and the item granted;
+  the pity state, stock and log row are written after it (together, still
+  inside the queued task, so the next pull or refund reads them). Measured
+  live, a pull on a responsive GM client takes ~0.3 s to the broadcast. What
+  made players wait 20 s and more was a GM client too busy or throttled to
+  run it: a browser slows a background tab's timers to once a second or once
+  a minute, and every server round trip waits on one. A module can't stop
+  that, so the GM is told, and so is the buyer (the "ack" above).
 */
 import { SOCKET } from "./config.js";
 import { performPull, PullError } from "./pull.js";
-import { getBoxes, getPools, getActorState, setActorState, appendLog, isShopOpen, saveBox, enqueueWrite, refreshMissing, markMissing, reportMissing } from "./store.js";
+import { getBoxes, getPools, getActorState, setActorState, appendLog, newId, isShopOpen, saveBox, enqueueWrite, refreshMissing, markMissing, reportMissing } from "./store.js";
 import { showReveal } from "./reveal.js";
 import { postPullCard } from "./chat.js";
 import { shopOdds } from "./odds.js";
 
 export const GM_TIMEOUT_MS = 30000;
+// After this long without a reveal, the buyer's shop says it is waiting on
+// the GM rather than showing an unchanging "Opening…".
+export const WAIT_NOTICE_MS = 1500;
 
-// The buyer's unanswered requests: requestId -> { resolve, reject, timer }.
+// The buyer's unanswered requests: requestId -> { resolve, reject, timer, slow, onWait, waited, hidden }.
 const pending = new Map();
 const uid = () => foundry.utils.randomID(12);
 
@@ -46,12 +64,17 @@ function settle(requestId, answer) {
   if (!entry) return;
   pending.delete(requestId);
   clearTimeout(entry.timer);
+  clearTimeout(entry.slow);
   answer(entry);
 }
 
 export function registerSocket() {
   game.socket.on(SOCKET, msg => {
-    if (msg.type === "pull" && isActiveGM()) return handlePull(msg);
+    if (msg.type === "pull" && isActiveGM()) {
+      if (gmTabHidden()) acknowledgeHidden(msg);
+      return handlePull(msg);
+    }
+    if (msg.type === "ack" && msg.userId === game.user.id) return heardFromGM(msg);
     if (msg.type === "reveal") {
       if (msg.userId === game.user.id) settle(msg.requestId, p => p.resolve(msg));
       return showReveal(msg);
@@ -64,22 +87,75 @@ export function registerSocket() {
 
 // The player's side. Resolves on the GM's reveal broadcast (the same message
 // everyone else gets), rejects on the GM's error reply or after GM_TIMEOUT_MS.
-export function requestPull({ boxId, actorId }) {
+// `onWait(why)` is told when the wait gets long: "gm" after WAIT_NOTICE_MS,
+// then "hidden" if the GM's client says its tab is in the background.
+export function requestPull({ boxId, actorId }, { onWait = null } = {}) {
   if (!game.users.activeGM) return Promise.reject(new PullError("The shop is closed until a GM is online."));
   const msg = { type: "pull", requestId: uid(), boxId, actorId, userId: game.user.id };
   if (isActiveGM()) return handlePull(msg);
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => settle(msg.requestId, p => p.reject(new PullError("The GM didn't answer in time."))), GM_TIMEOUT_MS);
-    pending.set(msg.requestId, { resolve, reject, timer });
+    const entry = { resolve, reject, timer, onWait, waited: false, hidden: false };
+    entry.slow = setTimeout(() => {
+      entry.waited = true;
+      tellWait(entry);
+    }, WAIT_NOTICE_MS);
+    pending.set(msg.requestId, entry);
     game.socket.emit(SOCKET, msg);
   });
+}
+
+function tellWait(entry) {
+  try { entry.onWait?.(entry.hidden ? "hidden" : "gm"); } catch (err) { console.error(`loot-crates | wait notice failed`, err); }
+}
+
+// The GM's client said its tab is hidden: say why once the wait is long
+// (at once if it already is).
+function heardFromGM(msg) {
+  const entry = pending.get(msg.requestId);
+  if (!entry || !msg.hidden) return;
+  entry.hidden = true;
+  if (entry.waited) tellWait(entry);
+}
+
+export function gmTabHidden() {
+  return globalThis.document?.visibilityState === "hidden";
+}
+
+// Only sent when hidden: on a responsive client the reveal follows within a
+// second, and an extra message first would only delay it.
+let warnedHidden = false;
+function acknowledgeHidden(msg) {
+  if (msg.userId !== game.user.id) game.socket.emit(SOCKET, { type: "ack", requestId: msg.requestId, userId: msg.userId, hidden: true });
+  console.warn(`loot-crates | a crate was bought while this Foundry tab was in the background; the browser slows background tabs, so the buyer waits longer`);
+  if (warnedHidden) return;
+  warnedHidden = true;
+  globalThis.ui?.notifications?.warn("Loot Crates: a player bought a crate while this Foundry tab was in the background. Browsers slow background tabs, so their reveal took longer. Keep this tab visible while players shop.", { permanent: true });
+  globalThis.document?.addEventListener?.("visibilitychange", () => { warnedHidden = false; }, { once: true });
 }
 
 // The GM's side. Pulls run strictly one after another, whether they came over
 // the socket or from this client's own shop, so stock, purse, state and log
 // are read after the previous pull (or refund) has finished writing.
 function handlePull(msg) {
-  return enqueueWrite(() => doPull(msg));
+  const timer = stepTimer(`pull ${msg.requestId}`);
+  return enqueueWrite(() => doPull(msg, timer));
+}
+
+/*
+  How long each step of a pull took on the GM, as one console.debug line
+  (Chrome shows it under Verbose), so a slow purchase can be traced to its
+  step on the client that did it: queue (waiting behind another write),
+  then each step after.
+*/
+export function stepTimer(label) {
+  const t0 = performance.now();
+  let last = t0;
+  const steps = [];
+  return {
+    mark(name) { const now = performance.now(); steps.push(`${name} ${Math.round(now - last)}`); last = now; },
+    done() { console.debug(`loot-crates | ${label} timings (ms): ${steps.join(", ")}, total ${Math.round(performance.now() - t0)}`); },
+  };
 }
 
 // The table's side of a pull: open the reveal here too, and post the chat
@@ -96,13 +172,32 @@ function showAndPost(reveal) {
 // source it can't resolve.
 async function sweepBox(box) {
   try {
-    reportMissing(await refreshMissing((box.pools ?? []).map(ref => ref.id)));
+    reportMissing(await refreshMissing((box.pools ?? []).map(ref => ref.id), { cachedOnly: true }));
   } catch (err) {
     console.error(`loot-crates | checking ${box.name} for missing items failed`, err);
   }
 }
 
-async function doPull(msg) {
+/*
+  The pull's bookkeeping, after the reveal: three settings, each its own key,
+  written together. The coins are taken and the item is on the sheet by now,
+  so a failure here is the GM's to fix (the buyer has their item); it is
+  reported, not thrown back at the buyer as a failed purchase.
+*/
+async function recordPull({ msg, box, actor, out, log }) {
+  const writes = [
+    setActorState(msg.actorId, msg.boxId, out.state),
+    appendLog(log),
+  ];
+  if (box.rules?.stock != null) writes.push(saveBox({ ...box, rules: { ...box.rules, stock: box.rules.stock - 1 } }));
+  const failed = (await Promise.allSettled(writes)).filter(r => r.status === "rejected");
+  if (!failed.length) return;
+  for (const f of failed) console.error(`loot-crates | recording ${actor.name}'s pull of ${log.name} from ${box.name} failed`, f.reason);
+  globalThis.ui?.notifications?.error(`Loot Crates: ${actor.name} got ${log.name} from ${box.name}, but the pull log, stock or pity count wasn't saved. Check the console.`);
+}
+
+async function doPull(msg, timer = stepTimer(`pull ${msg.requestId}`)) {
+  timer.mark("queue");
   const reply = payload => {
     if (msg.userId === game.user.id) return;
     game.socket.emit(SOCKET, { ...payload, requestId: msg.requestId });
@@ -115,6 +210,7 @@ async function doPull(msg) {
     if (!actor || !buyer || !actor.testUserPermission(buyer, "OWNER")) throw new PullError("You don't own that character.");
 
     if (box) await sweepBox(box);
+    timer.mark("sweep");
     const state = getActorState(msg.actorId, msg.boxId);
     const onMissing = async entry => {
       try {
@@ -123,25 +219,31 @@ async function doPull(msg) {
       } catch (err) { console.error(`loot-crates | could not flag ${entry.uuid} as missing`, err); }
     };
     const out = await performPull({ box, pools: getPools(), actor, state, onMissing });
-    await setActorState(msg.actorId, msg.boxId, out.state);
-    if (box.rules?.stock != null) await saveBox({ ...box, rules: { ...box.rules, stock: box.rules.stock - 1 } });
-    const log = { boxId: box.id, boxName: box.name, actorId: actor.id, actorName: actor.name, userId: msg.userId, itemId: out.itemId, name: out.result.name, uuid: out.result.uuid, rarity: out.result.rarity, price: box.price, pity: out.result.pity };
-    // Provenance for a GM-set rarity: the source's own, only when it differs.
-    const src = out.sourceRarity ?? [];
-    if (out.rarityOverride && !(src.length === 1 && src[0] === out.result.rarity)) log.sourceRarity = src;
-    const logId = await appendLog(log);
+    timer.mark("roll+grant");
 
     // itemUuid is the granted copy on the sheet, which the reveal's Open item
     // and the chat card's link point at (the pool's source is r.result.uuid).
+    // logId is the row written below, so the chat card can be refunded.
     const itemUuid = out.itemId ? `Actor.${actor.id}.Item.${out.itemId}` : null;
+    const logId = newId();
     const reveal = { type: "reveal", requestId: msg.requestId, userId: msg.userId, actorId: actor.id, actorName: actor.name, box: { id: box.id, name: box.name, price: box.price }, odds: shopOdds(box, getPools()).rows.map(({ rarity, chance, label }) => ({ rarity, chance, label })), result: out.result, strip: out.strip, purse: out.purse, itemId: out.itemId, itemUuid, logId };
     game.socket.emit(SOCKET, reveal);
+    timer.mark("broadcast");
     showAndPost(reveal);
+
+    const log = { id: logId, boxId: box.id, boxName: box.name, actorId: actor.id, actorName: actor.name, userId: msg.userId, itemId: out.itemId, name: out.result.name, uuid: out.result.uuid, rarity: out.result.rarity, price: box.price, pity: out.result.pity };
+    // Provenance for a GM-set rarity: the source's own, only when it differs.
+    const src = out.sourceRarity ?? [];
+    if (out.rarityOverride && !(src.length === 1 && src[0] === out.result.rarity)) log.sourceRarity = src;
+    await recordPull({ msg, box, actor, out, log });
+    timer.mark("record");
     return reveal;
   } catch (err) {
     const message = err instanceof PullError ? err.message : "The crate jammed. Check the GM's console.";
     if (!(err instanceof PullError)) console.error(`loot-crates | pull failed`, err);
     reply({ type: "error", userId: msg.userId, message });
     if (msg.userId === game.user.id) throw err instanceof PullError ? err : new PullError(message);
+  } finally {
+    timer.done();
   }
 }

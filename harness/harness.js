@@ -4,6 +4,7 @@
 
   ?state=shop | spin | landed | manager     ?seed=<n>     ?duration=<ms>     ?buyer=1
   ?theme=dark | light (Foundry's two themes; dark by default)
+  ?waiting=gm | hidden (shop: the first crate pressed and the GM slow to answer)
   "landed" plays the spin at zero duration, for deterministic screenshots.
   buyer=1 shows the reveal as the buyer (or a GM) sees it: gold left and an
   Open item button; without it, as the rest of the table sees it.
@@ -26,6 +27,7 @@ const seed = Number(q.get("seed") ?? 7);
 const duration = q.has("duration") ? Number(q.get("duration")) : state === "landed" ? 0 : undefined;
 const purse = { pp: 0, gp: 420, ep: 0, sp: 7, cp: 3 };
 const buyer = q.get("buyer") === "1";
+const waiting = q.get("waiting");
 const theme = q.get("theme") === "light" ? "light" : "dark";
 document.body.classList.replace("theme-dark", `theme-${theme}`);
 
@@ -70,7 +72,7 @@ function renderShop() {
         <div class="lc-shop__field lc-shop__field--purse"><span class="lc-label">Purse</span><span class="lc-shop__purse">${formatGold(purse)}</span></div>
       </div>
       <div class="lc-shop__grid">
-        ${BOXES.map(b => boxCard(b, POOLS, { purse, hasActor: true, open: true, art: CRATE_ICON })).join("")}
+        ${BOXES.map(b => boxCard(b, POOLS, { purse, hasActor: true, open: true, art: CRATE_ICON, ...(waiting ? { busy: true, busyBox: BOXES[0].id, waiting } : {}) })).join("")}
       </div>
     </div>`;
   stage.querySelectorAll(".lc-box__buy:not([disabled])").forEach(btn => btn.addEventListener("click", () => { location.search = `?state=spin&seed=${Date.now() % 100000}&box=${btn.dataset.box}&buyer=1&theme=${theme}`; }));

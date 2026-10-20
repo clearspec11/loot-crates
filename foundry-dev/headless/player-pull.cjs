@@ -14,7 +14,19 @@
 // client (running the installed module) does the pull and the result says so:
 // timings then describe the installed code, not the branch.
 //
-// One purchase per run. Prints JSON: who did the pull, the purse before and
+// COUNT=n (1 to 3, default 1) buys n crates in a row in the same session;
+// the first is the first purchase after a fresh GM page load, and the GM runs
+// the branch's load-time sweep of every pool (main.js ready) just before it,
+// so a pull that waits on that sweep shows. The GM's per-step timings
+// (socket.js stepTimer, a console.debug line) are in gmTimings.
+//
+// Headless Chromium draws Foundry's canvas with SwiftShader (software), and
+// on this VM every frame takes 0.5 to 1.4 s, so each await on either client
+// waits that long behind it: a measure of the VM, not of the module (a GPU
+// draws the same scene in milliseconds). Both clients' canvas ticker is
+// paused unless CANVAS=on, which keeps it running to see the worst case.
+//
+// Prints JSON: who did the pull, the purse before and
 // after, the item granted, and timings from the click: reveal broadcast
 // received, strip landed; plus the GM's `loot-crates |` console lines.
 /* global game, foundry -- used inside page.evaluate, which runs in the Foundry page */
@@ -23,9 +35,11 @@ const FOUNDRY = process.env.FOUNDRY_URL || "http://localhost:30000";
 const MODULE_BASE = process.env.MODULE_BASE || "http://localhost:8766/";
 const PLAYER = process.env.PLAYER || "Player2";
 const BOX = process.env.BOX || "Live UI crate";
+const CANVAS = process.env.CANVAS === "on";
+const COUNT = Math.min(3, Math.max(1, Number(process.env.COUNT) || 1));
 const shot = process.argv.includes("--shot") ? process.argv[process.argv.indexOf("--shot") + 1] : null;
 
-async function join(browser, user) {
+async function join(browser, user, { readySweep = false } = {}) {
   const page = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
   const logs = [];
   page.on("console", m => { const t = m.text(); if (t.includes("loot-crates")) logs.push(t); });
@@ -38,25 +52,31 @@ async function join(browser, user) {
   await page.waitForURL(/\/game/, { timeout: 30000 });
   await page.waitForFunction(() => window.game?.ready, null, { timeout: 120000 });
   // The branch's socket in place of the installed one.
-  await page.evaluate(async base => {
+  await page.evaluate(async ([base, readySweep, canvasOn]) => {
+    if (!canvasOn) globalThis.canvas?.app?.ticker?.stop();
     game.socket.off("module.loot-crates");
     const store = await import(base + "scripts/store.js");
     try { store.registerSettings(); } catch { /* the installed module registered them */ }
     try { store.registerIndexFields?.(); } catch { /* already in CONFIG */ }
-    (await import(base + "scripts/socket.js")).registerSocket();
-  }, MODULE_BASE);
+    const socket = await import(base + "scripts/socket.js");
+    socket.registerSocket();
+    // What main.js's ready hook does on the active GM.
+    if (readySweep && socket.isActiveGM()) store.sweepAllPools();
+  }, [MODULE_BASE, readySweep, CANVAS]);
   return { page, logs };
 }
 
 (async () => {
   const browser = await chromium.launch();
-  const out = { gm: null, player: PLAYER, box: BOX };
+  const out = { gm: null, player: PLAYER, box: BOX, canvas: CANVAS ? "running (software)" : "paused" };
   try {
-    const gm = await join(browser, "Gamemaster");
-    out.gm = gm ? "headless Gamemaster running the branch" : "a person's Gamemaster client running the installed module";
+    // The player first, so the GM's page load (and its load-time sweep) is
+    // as fresh as it can be when the first crate is bought.
     const pl = await join(browser, PLAYER);
     if (!pl) throw new Error(`${PLAYER} is not free to join`);
-    const result = await pl.page.evaluate(async ({ base, box }) => {
+    const gm = await join(browser, "Gamemaster", { readySweep: true });
+    out.gm = gm ? "headless Gamemaster running the branch" : "a person's Gamemaster client running the installed module";
+    const result = await pl.page.evaluate(async ({ base, box, count }) => {
       const { openShop } = await import(base + "scripts/shop.js");
       const actor = game.actors.find(a => a.isOwner && a.type === "character");
       if (!actor) throw new Error(`${game.user.name} owns no character`);
@@ -65,30 +85,39 @@ async function join(browser, user) {
       await new Promise(r => setTimeout(r, 1500));
       const pick = app.element.querySelector(".lc-shop__actor");
       if (pick && pick.value !== actor.id) { pick.value = actor.id; pick.dispatchEvent(new Event("change")); await new Promise(r => setTimeout(r, 800)); }
-      const card = [...app.element.querySelectorAll(".lc-box")].find(c => c.querySelector(".lc-box__name")?.textContent.trim() === box);
-      if (!card) throw new Error(`no crate named ${box}`);
-      const buy = card.querySelector(".lc-box__buy");
-      if (buy.disabled) throw new Error(`${box} can't be bought: ${card.querySelector(".lc-box__why")?.textContent}`);
-      const t0 = performance.now();
-      buy.click();
-      let revealAt = null, landedAt = null;
-      for (let i = 0; i < 240 && landedAt == null; i++) {
-        await new Promise(r => setTimeout(r, 125));
-        const rv = document.querySelector(".lc-reveal");
-        if (rv && revealAt == null) revealAt = performance.now() - t0;
-        if (rv?.querySelector(".lc-card--landed")) landedAt = performance.now() - t0;
+      const purchases = [];
+      for (let n = 0; n < count; n++) {
+        const card = [...app.element.querySelectorAll(".lc-box")].find(c => c.querySelector(".lc-box__name")?.textContent.trim() === box);
+        if (!card) throw new Error(`no crate named ${box}`);
+        const buy = card.querySelector(".lc-box__buy");
+        if (buy.disabled) throw new Error(`${box} can't be bought: ${card.querySelector(".lc-box__why")?.textContent}`);
+        const seen = new Set([...document.querySelectorAll(".lc-reveal")]);
+        const labels = [];
+        const t0 = performance.now();
+        buy.click();
+        let revealAt = null, landedAt = null, rv = null;
+        for (let i = 0; i < 400 && landedAt == null; i++) {
+          await new Promise(r => setTimeout(r, 50));
+          const label = app.element.querySelector(`.lc-box__buy[data-box="${card.querySelector(".lc-box__buy").dataset.box}"]`)?.textContent.trim();
+          if (label && labels.at(-1)?.text !== label) labels.push({ text: label, ms: Math.round(performance.now() - t0) });
+          rv ??= [...document.querySelectorAll(".lc-reveal")].find(el => !seen.has(el)) ?? null;
+          if (rv && revealAt == null) revealAt = performance.now() - t0;
+          if (rv?.querySelector(".lc-card--landed")) landedAt = performance.now() - t0;
+        }
+        await new Promise(r => setTimeout(r, 1200));
+        purchases.push({
+          ms: { revealReceived: revealAt && Math.round(revealAt), landed: landedAt && Math.round(landedAt) },
+          buyLabels: labels,
+          result: rv?.querySelector(".lc-reveal__result")?.innerText,
+        });
       }
-      await new Promise(r => setTimeout(r, 1200));
-      const granted = actor.items.filter(i => (i.flags?.["loot-crates"]?.at ?? 0) > Date.now() - 60000).map(i => i.name);
-      return {
-        actor: actor.name, before, after: actor.system.currency, granted,
-        ms: { revealReceived: revealAt && Math.round(revealAt), landed: landedAt && Math.round(landedAt) },
-        result: document.querySelector(".lc-reveal .lc-reveal__result")?.innerText,
-      };
-    }, { base: MODULE_BASE, box: BOX });
+      const granted = actor.items.filter(i => (i.flags?.["loot-crates"]?.at ?? 0) > Date.now() - 120000).map(i => i.name);
+      return { actor: actor.name, before, after: actor.system.currency, granted, purchases };
+    }, { base: MODULE_BASE, box: BOX, count: COUNT });
     Object.assign(out, result);
     if (shot) await pl.page.screenshot({ path: shot });
-    out.gmLog = gm?.logs ?? [];
+    out.gmTimings = (gm?.logs ?? []).filter(l => l.includes("timings"));
+    out.gmLog = (gm?.logs ?? []).filter(l => !l.includes("timings"));
     out.playerLog = pl.logs;
     console.log(JSON.stringify(out, null, 1));
   } catch (err) {
