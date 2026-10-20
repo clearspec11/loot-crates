@@ -499,9 +499,24 @@
 .loot-crates .lc-form .lc-row { display: flex; align-items: center; gap: 8px; }
 .loot-crates .lc-form .lc-row input[type=number] { width: 76px; }
 .loot-crates .lc-form fieldset { border: 1px solid var(--lc-rule); border-radius: var(--lc-radius); padding: 8px 10px 10px; background: var(--lc-card); }
-.loot-crates .lc-form legend { font-family: var(--lc-label); font-weight: 700; font-size: 12px; letter-spacing: .03em; text-transform: uppercase; color: var(--lc-gold-ink); padding: 0 4px; }
+.loot-crates .lc-form legend, .loot-crates .lc-form__label { font-family: var(--lc-label); font-weight: 700; font-size: 12px; letter-spacing: .03em; text-transform: uppercase; color: var(--lc-gold-ink); padding: 0 4px; }
 .loot-crates .lc-form p { margin: 0; }
 .loot-crates .lc-form__hint { font-size: 12px; color: var(--lc-ink-mute); }
+.loot-crates .lc-form__hint:empty { display: none; }
+.loot-crates .lc-form__hint--warn { color: var(--lc-warn); font-weight: 700; }
+/* The box editor's live odds: the shop's ribbon and pills, left-aligned. */
+.loot-crates .lc-form__preview { display: grid; gap: 6px; }
+.loot-crates .lc-form__preview .lc-odds { justify-content: flex-start; }
+/* Weights in one column, each with its note beside it. */
+.loot-crates .lc-form .lc-form__weights .lc-row { display: grid; grid-template-columns: 6.5em 76px 1fr; }
+/* The odds stay in view while the GM scrolls up to the pools: a fieldset's
+   box, but its label inside so nothing scrolls through behind it. */
+.loot-crates .lc-form .lc-form__odds {
+  position: sticky; bottom: 0; z-index: 1; display: grid; gap: 6px;
+  border: 1px solid var(--lc-rule); border-radius: var(--lc-radius); padding: 6px 10px 10px;
+  background: var(--lc-card); box-shadow: var(--lc-shadow);
+}
+.loot-crates .lc-form .lc-form__label { padding: 0; }
 .loot-crates .lc-preview { display: grid; gap: 8px; font-size: 13px; }
 .loot-crates .lc-preview p { margin: 0; }
 .loot-crates .lc-preview__lead { font-family: var(--lc-slab); font-size: 14px; }

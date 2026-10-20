@@ -34,9 +34,13 @@
   (#view) and survive a re-render; a search, a chip, Show more, Update,
   Remove, Relink and the bulk rarity redraw only that pool and keep focus
   near where it was. One status line in the toolbar speaks for them all.
+
+  The box editor shows the chances a player will see (the shop's ribbon and
+  pills) for the form as it stands, redrawn on every keystroke, tick and
+  untick, and says when the box would drop nothing (liveOdds below).
 */
 import { RARITIES, RARITY_LABEL, DEFAULT_WEIGHTS, DEFAULT_PRICE_GP } from "./config.js";
-import { oddsPills, oddsRibbon } from "./boxcard.js";
+import { oddsPills, oddsRibbon, draftBox, boxPreview, boxPreviewHTML } from "./boxcard.js";
 
 // A box's odds in the Boxes table: its ribbon over its named pills.
 const oddsCell = rows => rows.length ? `${oddsRibbon(rows)}<div class="lc-odds">${oddsPills(rows)}</div>` : "<em>empty</em>";
@@ -376,6 +380,7 @@ export class CrateManager extends ApplicationV2 {
   static async #editBox(_e, t) {
     const box = getBoxes()[t.dataset.box];
     const pools = Object.values(getPools());
+    const poolIds = pools.map(p => p.id);
     const shares = Object.fromEntries((box.pools ?? []).map(p => [p.id, p.share ?? 1]));
     const data = await promptForm("Edit box", `
       <label>Name <input name="name" value="${esc(box.name)}"></label>
@@ -383,28 +388,32 @@ export class CrateManager extends ApplicationV2 {
       <fieldset><legend>Pools and their share of pulls</legend>
         ${pools.map(p => `<label class="lc-row"><input type="checkbox" name="pool.${esc(p.id)}" ${p.id in shares ? "checked" : ""}> ${esc(p.name)} <input name="share.${esc(p.id)}" type="number" min="0" step="1" value="${esc(shares[p.id] ?? 1)}" title="Share"></label>`).join("") || "<p>No pools yet.</p>"}
       </fieldset>
-      <fieldset><legend>Rarity weights</legend>
-        ${RARITIES.map(r => `<label class="lc-row">${RARITY_LABEL[r]} <input name="w.${r}" type="number" min="0" step="1" value="${esc(box.weights?.[r] ?? DEFAULT_WEIGHTS[r])}"></label>`).join("")}
+      <fieldset class="lc-form__weights"><legend>Rarity weights</legend>
+        ${RARITIES.map(r => `<label class="lc-row">${RARITY_LABEL[r]} <input name="w.${r}" type="number" min="0" step="1" value="${esc(box.weights?.[r] ?? DEFAULT_WEIGHTS[r])}"><span class="lc-form__hint" data-held="${r}"></span></label>`).join("")}
       </fieldset>
+      <div class="lc-form__odds" role="group" aria-labelledby="lc-odds-${esc(box.id)}">
+        <div class="lc-form__label" id="lc-odds-${esc(box.id)}">Chances a player sees</div>
+        <div class="lc-form__preview" aria-live="polite"></div>
+      </div>
       <fieldset><legend>Rules</legend>
         <label class="lc-row">Pity: guarantee <select name="pityRarity"><option value="">off</option>${RARITIES.map(r => `<option value="${r}" ${box.rules?.pity?.minRarity === r ? "selected" : ""}>${RARITY_LABEL[r]} or better</option>`).join("")}</select> after <input name="pityAfter" type="number" min="1" step="1" value="${esc(box.rules?.pity?.after ?? 10)}"> pulls</label>
         <label class="lc-row"><input type="checkbox" name="noDuplicates" ${box.rules?.noDuplicates ? "checked" : ""}> No duplicates per character</label>
         <label class="lc-row">Stock (blank for unlimited) <input name="stock" type="number" min="0" step="1" value="${box.rules?.stock ?? ""}"></label>
-      </fieldset>`);
+      </fieldset>`, { onForm: form => liveOdds(form, box, poolIds), position: { width: 460 } });
     if (!data) return;
     // Stock moves while the dialog is open (each pull takes one, a refund
     // puts one back), so the form's stock only wins if the GM changed it.
     const shownStock = box.rules?.stock ?? null;
     const formStock = data.stock === "" || data.stock == null ? null : Math.max(0, Number(data.stock) || 0);
-    const chosen = pools.filter(p => data[`pool.${p.id}`]).map(p => ({ id: p.id, share: Math.max(0, Number(data[`share.${p.id}`]) || 0) }));
+    const draft = draftBox(box, data, poolIds);
     const saved = await updateBox(box.id, fresh => {
       const live = getPools();
       return {
         ...fresh,
         name: data.name || fresh.name,
         price: Math.max(0, Number(data.price) || 0),
-        pools: chosen.filter(ref => ref.id in live),
-        weights: Object.fromEntries(RARITIES.map(r => [r, Math.max(0, Number(data[`w.${r}`]) || 0)])),
+        pools: draft.pools.filter(ref => ref.id in live),
+        weights: draft.weights,
         rules: {
           ...fresh.rules,
           pity: data.pityRarity ? { minRarity: data.pityRarity, after: Math.max(1, Number(data.pityAfter) || 1) } : null,
@@ -653,28 +662,64 @@ function describeSkipped({ duplicates = 0, notLoot = {}, notItems = 0 } = {}) {
 const htmlNode = html => { const t = document.createElement("template"); t.innerHTML = html.trim(); return t.content.firstElementChild; };
 
 // A small form in a DialogV2; resolves to the form's values or null.
-async function promptForm(title, fieldsHtml) {
+// A form's values as the editors read them: each named field's value (a list
+// for repeats and multi-selects), each checkbox as true or false.
+function readForm(form) {
+  const out = {};
+  for (const [k, v] of new FormData(form).entries()) {
+    if (k in out) out[k] = [].concat(out[k], v);
+    else out[k] = v;
+  }
+  for (const sel of form.querySelectorAll("select[multiple]")) out[sel.name] = [...sel.selectedOptions].map(o => o.value);
+  for (const cb of form.querySelectorAll("input[type=checkbox]")) out[cb.name] = cb.checked;
+  return out;
+}
+
+// `onForm(form)` runs once, with the dialog's <form>, when it is first on screen.
+async function promptForm(title, fieldsHtml, { onForm, position } = {}) {
   return DialogV2.wait({
     window: { title },
     classes: ["loot-crates", "lc-dialog"],
-    content: `<form class="lc-form">${fieldsHtml}</form>`,
+    ...(position ? { position } : {}),
+    // DialogV2 wraps the content in its own <form>, and a nested <form> is
+    // dropped by the parser, so the editor's fields sit in a div.
+    content: `<div class="lc-form">${fieldsHtml}</div>`,
     buttons: [
-      { action: "ok", label: "Save", default: true, callback: (_e, button) => {
-        const form = button.form ?? button.closest("dialog")?.querySelector("form");
-        const fd = new FormData(form);
-        const out = {};
-        for (const [k, v] of fd.entries()) {
-          if (k in out) out[k] = [].concat(out[k], v);
-          else out[k] = v;
-        }
-        for (const sel of form.querySelectorAll("select[multiple]")) out[sel.name] = [...sel.selectedOptions].map(o => o.value);
-        for (const cb of form.querySelectorAll("input[type=checkbox]")) out[cb.name] = cb.checked;
-        return out;
-      } },
+      { action: "ok", label: "Save", default: true, callback: (_e, button) => readForm(button.form ?? button.closest("dialog")?.querySelector("form")) },
       { action: "cancel", label: "Cancel", callback: () => null },
     ],
     rejectClose: false,
+    render: onForm ? (_e, dialog) => {
+      const form = dialog.element?.querySelector(".lc-form")?.closest("form");
+      if (!form || form.dataset.lcReady) return;
+      form.dataset.lcReady = "1";
+      onForm(form);
+    } : undefined,
   });
+}
+
+/*
+  The box editor's odds, live: on every input and change, the draft box the
+  form would save (boxcard.js draftBox) is drawn with the shop's own ribbon
+  and pills against the stored pools (so missing and 0-weight entries are
+  left out, as the shop leaves them out), and each weight whose rarity the
+  ticked pools don't hold says so. Nothing is written until Save.
+*/
+function liveOdds(form, box, poolIds) {
+  const out = form.querySelector(".lc-form__preview");
+  let shown = null;
+  const paint = () => {
+    const draft = draftBox(box, readForm(form), poolIds);
+    const preview = boxPreview(draft, getPools());
+    const html = boxPreviewHTML(preview, esc);
+    if (html !== shown) { out.innerHTML = html; shown = html; }
+    for (const el of form.querySelectorAll("[data-held]")) {
+      el.textContent = draft.pools.length && !preview.held.has(el.dataset.held) ? "none in these pools" : "";
+    }
+  };
+  form.addEventListener("input", paint);
+  form.addEventListener("change", paint);
+  paint();
 }
 
 let manager = null;

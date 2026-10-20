@@ -10,8 +10,8 @@
   button with aria-describedby, so keyboard, screen-reader and touch users
   all learn it.
 */
-import { RARITY_SHORT, RARITY_LABEL } from "./config.js";
-import { shopOdds, flattenPool, rarityRank } from "./odds.js";
+import { RARITIES, RARITY_SHORT, RARITY_LABEL } from "./config.js";
+import { shopOdds, oddsTable, flattenPool, rarityRank } from "./odds.js";
 import { canAfford, formatPrice, shortfall } from "./currency.js";
 
 // "Rare 12%": the rarity's name is on screen, not only its colour.
@@ -127,4 +127,45 @@ export function boxCard(box, pools, ctx) {
           ${waiting ? `<div class="lc-box__why lc-box__wait" role="status">${esc(waiting.why)}</div>` : ""}
         </div>
       </div>`;
+}
+
+/*
+  The box editor's draft: the box as Save would store it from the form's
+  current values, so the editor can show its odds before saving. `values` is
+  what the form reads (`pool.<id>` ticked, `share.<id>`, `w.<rarity>`), and
+  `poolIds` the pools the form offers, in its order. Shares and weights are
+  whole-or-not numbers, 0 or more; a blank or nonsense field is 0, as Save
+  has always read it.
+*/
+export function draftBox(box, values, poolIds) {
+  const num = v => Math.max(0, Number(v) || 0);
+  return {
+    ...box,
+    pools: poolIds.filter(id => values[`pool.${id}`] === true || values[`pool.${id}`] === "on").map(id => ({ id, share: num(values[`share.${id}`]) })),
+    weights: Object.fromEntries(RARITIES.map(r => [r, num(values[`w.${r}`])])),
+  };
+}
+
+/*
+  What the box editor shows under the weights: the shop's own ribbon and
+  pills for `box` (a draft), so the GM sees exactly what a player will, plus
+  a line when the box would drop nothing or when every rarity it holds
+  weighs 0 (draw() then treats them as equal, and so do the pills). `held`
+  is the rarities its ticked pools can drop, so each weight can say when it
+  has nothing to act on.
+*/
+export function boxPreview(box, pools) {
+  const odds = shopOdds(box, pools);
+  const held = new Set();
+  for (const ref of box.pools ?? []) for (const e of flattenPool(ref.id, pools)) held.add(e.rarity);
+  let note = "";
+  if (!box.pools?.length) note = "This box can drop nothing: tick a pool above.";
+  else if (!odds.rows.length) note = "This box can drop nothing: its pools have no item that can drop.";
+  else if (oddsTable(box, pools).every(row => row.chance === 0)) note = "Every rarity these pools hold weighs 0, so each is equally likely.";
+  return { odds, held, note, empty: !odds.rows.length };
+}
+
+export function boxPreviewHTML(preview, esc = s => String(s ?? "")) {
+  const { odds, note, empty } = preview;
+  return `${odds.rows.length ? `${oddsRibbon(odds.rows)}<div class="lc-odds">${oddsPills(odds.rows)}</div>` : ""}${note ? `<p class="lc-form__hint${empty ? " lc-form__hint--warn" : ""}">${esc(note)}</p>` : ""}`;
 }
