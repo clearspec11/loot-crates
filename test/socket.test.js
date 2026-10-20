@@ -12,7 +12,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 vi.mock("../module/scripts/reveal.js", () => ({ showReveal: vi.fn(async () => ({ landed: Promise.resolve() })) }));
 vi.mock("../module/scripts/chat.js", () => ({ postPullCard: vi.fn(async () => null) }));
 
-const { registerSocket, requestPull, GM_TIMEOUT_MS, WAIT_NOTICE_MS } = await import("../module/scripts/socket.js");
+const { registerSocket, requestPull, GM_TIMEOUT_MS, WAIT_NOTICE_MS, TIMED_OUT } = await import("../module/scripts/socket.js");
 const { registerSettings, appendLog, sweepAllPools, enqueueWrite, INDEX_FIELDS } = await import("../module/scripts/store.js");
 const { refundPull } = await import("../module/scripts/refund.js");
 const { PullError } = await import("../module/scripts/pull.js");
@@ -125,7 +125,7 @@ describe("a player's requestPull", () => {
     // Still pending: the 30 s timeout and the wait notice.
     expect(vi.getTimerCount()).toBe(2);
     vi.advanceTimersByTime(GM_TIMEOUT_MS + 1);
-    await expect(promise).rejects.toThrow("The GM didn't answer in time.");
+    await expect(promise).rejects.toThrow(TIMED_OUT);
   });
 
   it("rejects with the GM's error message", async () => {
@@ -141,7 +141,9 @@ describe("a player's requestPull", () => {
     const { emitted, deliver } = makeWorld({ user: PLAYER });
     const promise = requestPull({ boxId: "box", actorId: "actor1" });
     vi.advanceTimersByTime(GM_TIMEOUT_MS + 1);
-    await expect(promise).rejects.toThrow("The GM didn't answer in time.");
+    await expect(promise).rejects.toThrow(TIMED_OUT);
+    // The buyer calls the purchase off, so a GM that gets to it later doesn't charge.
+    expect(emitted[1]).toEqual({ type: "cancel", requestId: emitted[0].requestId, userId: "p1" });
     await deliver({ type: "reveal", requestId: emitted[0].requestId, userId: "p1" });
   });
 
@@ -187,6 +189,27 @@ describe("a player's requestPull", () => {
 });
 
 describe("the GM client", () => {
+  it("drops a pull its buyer called off before it was charged, and still sells the next", async () => {
+    const { game, actor, emitted, deliver } = makeWorld({ user: GM });
+    await seed(game, {});
+    // A slow write ahead in the queue holds the pull past the buyer's timeout.
+    let release;
+    const held = enqueueWrite(() => new Promise(r => { release = r; }));
+    const pull = deliver({ type: "pull", requestId: "late", boxId: "box", actorId: "actor1", userId: "p1" });
+    await deliver({ type: "cancel", requestId: "late", userId: "p1" });
+    release();
+    await held;
+    await pull;
+    expect(actor.system.currency.gp).toBe(500);
+    expect(actor.items).toHaveLength(0);
+    expect(emitted.filter(m => m.type === "reveal")).toHaveLength(0);
+    expect(game.settings.get("loot-crates", "pullLog")).toHaveLength(0);
+
+    await deliver({ type: "pull", requestId: "next", boxId: "box", actorId: "actor1", userId: "p1" });
+    expect(actor.system.currency.gp).toBe(490);
+    expect(emitted.filter(m => m.type === "reveal")).toHaveLength(1);
+  });
+
   it("fulfils a player's pull over the socket and broadcasts the reveal", async () => {
     const { game, actor, emitted, deliver } = makeWorld({ user: GM });
     await seed(game, {});

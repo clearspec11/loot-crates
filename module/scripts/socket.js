@@ -9,6 +9,15 @@
                                                            when the GM's tab is hidden
     { type: "reveal", requestId, itemId, itemUuid, logId, purse, ... }  GM -> everyone
     { type: "error", requestId, userId, message }          GM -> the buyer
+    { type: "cancel", requestId, userId }                  the buyer -> GM, when
+                                                           its wait timed out
+
+  A buyer who gave up waiting (GM_TIMEOUT_MS) calls the purchase off, and the
+  GM drops a request that is cancelled before it charges: otherwise a GM
+  client slow past the timeout (measured live: 55 s with its tab in the
+  background) charged a buyer who had been told it failed, and who may well
+  have pressed Buy again. A cancel that arrives after the charge is too late;
+  the reveal still reaches the buyer, and the timeout message says so.
 
   The GM client runs pulls one at a time, through the same queue refunds use
   (store.js enqueueWrite): every store write is a read-modify-write across
@@ -47,9 +56,24 @@ export const GM_TIMEOUT_MS = 30000;
 // After this long without a reveal, the buyer's shop says it is waiting on
 // the GM rather than showing an unchanging "Opening…".
 export const WAIT_NOTICE_MS = 1500;
+export const TIMED_OUT = "The GM didn't answer in time, so the purchase was called off. If a crate opens anyway, the GM had already started it.";
+
+function cancelPull(msg) {
+  cancelled.add(msg.requestId);
+  if (cancelled.size > 200) cancelled.delete(cancelled.values().next().value);
+}
+
+// True (and forgotten) when the buyer has called this request off.
+function wasCancelled(msg) {
+  if (!cancelled.delete(msg.requestId)) return false;
+  console.warn(`loot-crates | ${msg.requestId} was called off by its buyer after ${GM_TIMEOUT_MS / 1000} s; not charged`);
+  return true;
+}
 
 // The buyer's unanswered requests: requestId -> { resolve, reject, timer, slow, onWait, waited, hidden }.
 const pending = new Map();
+// The GM's side: requests their buyer has called off (insertion-ordered, capped).
+const cancelled = new Set();
 const uid = () => foundry.utils.randomID(12);
 
 export function isActiveGM() {
@@ -74,6 +98,7 @@ export function registerSocket() {
       if (gmTabHidden()) acknowledgeHidden(msg);
       return handlePull(msg);
     }
+    if (msg.type === "cancel" && isActiveGM()) return cancelPull(msg);
     if (msg.type === "ack" && msg.userId === game.user.id) return heardFromGM(msg);
     if (msg.type === "reveal") {
       if (msg.userId === game.user.id) settle(msg.requestId, p => p.resolve(msg));
@@ -94,7 +119,10 @@ export function requestPull({ boxId, actorId }, { onWait = null } = {}) {
   const msg = { type: "pull", requestId: uid(), boxId, actorId, userId: game.user.id };
   if (isActiveGM()) return handlePull(msg);
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => settle(msg.requestId, p => p.reject(new PullError("The GM didn't answer in time."))), GM_TIMEOUT_MS);
+    const timer = setTimeout(() => settle(msg.requestId, p => {
+      game.socket.emit(SOCKET, { type: "cancel", requestId: msg.requestId, userId: msg.userId });
+      p.reject(new PullError(TIMED_OUT));
+    }), GM_TIMEOUT_MS);
     const entry = { resolve, reject, timer, onWait, waited: false, hidden: false };
     entry.slow = setTimeout(() => {
       entry.waited = true;
@@ -203,6 +231,7 @@ async function doPull(msg, timer = stepTimer(`pull ${msg.requestId}`)) {
     game.socket.emit(SOCKET, { ...payload, requestId: msg.requestId });
   };
   try {
+    if (wasCancelled(msg)) return null;
     if (!isShopOpen()) throw new PullError("The GM has closed the shop.");
     const box = getBoxes()[msg.boxId];
     const actor = game.actors.get(msg.actorId);
@@ -211,6 +240,7 @@ async function doPull(msg, timer = stepTimer(`pull ${msg.requestId}`)) {
 
     if (box) await sweepBox(box);
     timer.mark("sweep");
+    if (wasCancelled(msg)) return null;
     const state = getActorState(msg.actorId, msg.boxId);
     const onMissing = async entry => {
       try {
