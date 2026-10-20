@@ -525,6 +525,74 @@ describe("how quickly the GM answers", () => {
     expect(options?.permanent).not.toBe(true);
   });
 
+  it("tells the buyer as soon as a hidden tab's pull is slow, not when the slow step ends", async () => {
+    // Round 6 carried defect (b): the ack was only checked between doPull's
+    // steps, so a buyer whose pull sat 20 s in one step (a throttled server
+    // round trip) or in the queue behind another pull heard nothing until it
+    // ended, which is when the reveal came anyway.
+    vi.stubGlobal("document", { visibilityState: "hidden" });
+    const { game, emitted, deliver } = makeWorld({ user: GM });
+    await seed(game, {});
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    vi.spyOn(performance, "now").mockImplementation(() => Date.now());
+    const resolve = globalThis.fromUuid;
+    let release;
+    const gate = new Promise(r => { release = r; });
+    globalThis.fromUuid = async uuid => { await gate; return resolve(uuid); };
+    const warn = console.warn;
+    console.warn = () => {};
+    try {
+      const first = deliver({ type: "pull", requestId: "r1", boxId: "box", actorId: "actor1", userId: "p1" });
+      // A second buyer's pull waits in the queue behind the first.
+      const second = deliver({ type: "pull", requestId: "r2", boxId: "box", actorId: "actor1", userId: "p1" });
+      await vi.advanceTimersByTimeAsync(SLOW_PULL_MS - 100);
+      expect(emitted).toEqual([]);
+      await vi.advanceTimersByTimeAsync(200);
+      // Both hear why within the slow mark, while the first is still stuck.
+      expect(emitted).toEqual([
+        { type: "ack", requestId: "r1", userId: "p1", hidden: true },
+        { type: "ack", requestId: "r2", userId: "p1", hidden: true },
+      ]);
+      release();
+      await vi.advanceTimersByTimeAsync(SLOW_PULL_MS * 2);
+      await Promise.all([first, second]);
+    } finally { console.warn = warn; release(); }
+    // Once per pull, and never after its reveal.
+    expect(emitted.map(m => `${m.type} ${m.requestId}`)).toEqual(["ack r1", "ack r2", "reveal r1", "reveal r2"]);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("sends no ack while the tab is visible, sends it once the tab hides mid-pull, never for the GM's own pull", async () => {
+    vi.stubGlobal("document", { visibilityState: "visible" });
+    const { game, emitted, deliver } = makeWorld({ user: GM });
+    await seed(game, {});
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    vi.spyOn(performance, "now").mockImplementation(() => Date.now());
+    const resolve = globalThis.fromUuid;
+    let release;
+    const gate = new Promise(r => { release = r; });
+    globalThis.fromUuid = async uuid => { await gate; return resolve(uuid); };
+    const warn = console.warn;
+    console.warn = () => {};
+    try {
+      const first = deliver({ type: "pull", requestId: "r1", boxId: "box", actorId: "actor1", userId: "p1" });
+      const own = deliver({ type: "pull", requestId: "r2", boxId: "box", actorId: "actor1", userId: "gm" });
+      await vi.advanceTimersByTimeAsync(SLOW_PULL_MS + 500);
+      expect(emitted).toEqual([]);
+      // The GM switches tabs while the buyer's pull is still stuck.
+      globalThis.document.visibilityState = "hidden";
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(emitted).toEqual([{ type: "ack", requestId: "r1", userId: "p1", hidden: true }]);
+      await vi.advanceTimersByTimeAsync(SLOW_PULL_MS * 2);
+      expect(emitted).toHaveLength(1);
+      release();
+      await vi.advanceTimersByTimeAsync(100);
+      await Promise.all([first, own]);
+    } finally { console.warn = warn; release(); }
+    expect(emitted.map(m => `${m.type} ${m.requestId}`)).toEqual(["ack r1", "reveal r1", "reveal r2"]);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("posts the chat card with the result, without waiting for its own spin to land", async () => {
     // A hidden GM page: its reveal never lands while nobody looks.
     showReveal.mockImplementation(async () => ({ landed: new Promise(() => {}) }));
