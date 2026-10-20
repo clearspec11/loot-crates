@@ -96,6 +96,31 @@ describe("patchShop keeps the pressed Buy", () => {
     expect(btn.getAttribute("aria-describedby")).toBe("lc-why-royal");
   });
 
+  it("keeps the focused Buy when its crate empties and its card's lines change kind", () => {
+    // The GM empties the crate's pools (or its last source goes missing)
+    // while a player's focus is on its Buy: the ribbon, odds and stock go,
+    // "Nothing inside" comes. The why-line must not be paired with an old
+    // line ahead of the Buy, which would move the Buy and drop its focus.
+    const royal = BOXES.find(b => b.id === "royal");
+    const rich = { purse: { gp: 5000 } };
+    render(rich);
+    const btn = buy("royal");
+    btn.focus();
+    render(rich, { boxes: BOXES.map(b => b === royal ? { ...b, pools: [{ id: "gone", share: 1 }] } : b) });
+    expect(buy("royal")).toBe(btn);
+    expect(doc.activeElement).toBe(btn);
+    const card = content.querySelector('.lc-box[data-box="royal"]');
+    expect(card.querySelector(".lc-box__why").textContent).toBe("Nothing inside");
+    expect(card.querySelector(".lc-box__stock")).toBeNull();
+    expect(card.querySelector(".lc-ribbon")).toBeNull();
+    // And back: the lines return ahead of the Buy, which stays put.
+    render(rich);
+    expect(buy("royal")).toBe(btn);
+    expect(doc.activeElement).toBe(btn);
+    expect(card.querySelector(".lc-box__why")).toBeNull();
+    expect(card.querySelector(".lc-box__stock").textContent).toBe("3 left");
+  });
+
   it("adds and removes cards only when crates are added or removed", () => {
     render({}, { boxes: BOXES.slice(0, 2) });
     const [a, b] = cards();
