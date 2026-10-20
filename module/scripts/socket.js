@@ -7,6 +7,7 @@
     { type: "pull", requestId, boxId, actorId, userId }   player -> GM
     { type: "ack", requestId, userId, hidden: true }       GM -> the buyer, only
                                                            when the GM's tab is hidden
+                                                           and the pull is already slow
     { type: "reveal", requestId, itemId, itemUuid, logId, purse, ... }  GM -> everyone
     { type: "error", requestId, userId, message }          GM -> the buyer
     { type: "cancel", requestId, userId }                  the buyer -> GM, when
@@ -43,7 +44,10 @@
   made players wait 20 s and more was a GM client too busy or throttled to
   run it: a browser slows a background tab's timers to once a second or once
   a minute, and every server round trip waits on one. A module can't stop
-  that, so the GM is told, and so is the buyer (the "ack" above).
+  that, so when it happens the GM is told, and so is the buyer (the "ack"
+  above). Only when it happens: measured live, a hidden GM tab ran a pull in
+  264 ms, and a warning on every hidden pull was a false alarm. A pull is slow
+  when its reveal goes out more than SLOW_PULL_MS after the request arrived.
 */
 import { SOCKET } from "./config.js";
 import { performPull, PullError } from "./pull.js";
@@ -56,6 +60,9 @@ export const GM_TIMEOUT_MS = 30000;
 // After this long without a reveal, the buyer's shop says it is waiting on
 // the GM rather than showing an unchanging "Opening…".
 export const WAIT_NOTICE_MS = 1500;
+// A pull slower than this on the GM (request in to reveal out) is worth
+// telling the GM about; a responsive client takes ~0.3 s.
+export const SLOW_PULL_MS = 2000;
 export const TIMED_OUT = "The GM didn't answer in time, so the purchase was called off. If a crate opens anyway, the GM had already started it.";
 
 function cancelPull(msg) {
@@ -94,10 +101,7 @@ function settle(requestId, answer) {
 
 export function registerSocket() {
   game.socket.on(SOCKET, msg => {
-    if (msg.type === "pull" && isActiveGM()) {
-      if (gmTabHidden()) acknowledgeHidden(msg);
-      return handlePull(msg);
-    }
+    if (msg.type === "pull" && isActiveGM()) return handlePull(msg);
     if (msg.type === "cancel" && isActiveGM()) return cancelPull(msg);
     if (msg.type === "ack" && msg.userId === game.user.id) return heardFromGM(msg);
     if (msg.type === "reveal") {
@@ -150,17 +154,30 @@ export function gmTabHidden() {
   return globalThis.document?.visibilityState === "hidden";
 }
 
-// Only sent when hidden: on a responsive client the reveal follows within a
-// second, and an extra message first would only delay it.
-let warnedHidden = false;
-function acknowledgeHidden(msg) {
-  if (msg.userId !== game.user.id) game.socket.emit(SOCKET, { type: "ack", requestId: msg.requestId, userId: msg.userId, hidden: true });
-  console.warn(`loot-crates | a crate was bought while this Foundry tab was in the background; the browser slows background tabs, so the buyer waits longer`);
-  if (warnedHidden) return;
-  warnedHidden = true;
-  globalThis.ui?.notifications?.warn("Loot Crates: a player bought a crate while this Foundry tab was in the background. Browsers slow background tabs, so their reveal took longer. Keep this tab visible while players shop.", { permanent: true });
-  globalThis.document?.addEventListener?.("visibilitychange", () => { warnedHidden = false; }, { once: true });
+// Tells a waiting buyer the GM's tab is in the background, once per pull and
+// only once the pull is already slow: on a responsive client the reveal
+// follows within a second, and an extra message first would only delay it.
+function ackIfSlow(msg, timer, sent) {
+  if (sent.ack || msg.userId === game.user.id || !gmTabHidden() || timer.elapsed() <= SLOW_PULL_MS) return;
+  sent.ack = true;
+  game.socket.emit(SOCKET, { type: "ack", requestId: msg.requestId, userId: msg.userId, hidden: true });
 }
+
+// The GM hears about a slow pull once per session, with its time, in a toast
+// that goes away by itself: it is advice, not an error to dismiss.
+let warnedSlow = false;
+function warnIfSlow(ms, { hidden, buyer }) {
+  if (ms <= SLOW_PULL_MS) return;
+  const secs = (ms / 1000).toFixed(1);
+  const why = hidden ? " while this Foundry tab was in the background. Browsers slow background tabs; keep this tab visible while players shop" : "";
+  console.warn(`loot-crates | ${buyer}'s crate took ${secs} s to open on this client${hidden ? " (tab in the background)" : ""}`);
+  if (warnedSlow) return;
+  warnedSlow = true;
+  globalThis.ui?.notifications?.warn(`Loot Crates: ${buyer}'s crate took ${secs} s to open${why}.`);
+}
+
+// For tests: a new session.
+export function _resetSlowWarning() { warnedSlow = false; }
 
 // The GM's side. Pulls run strictly one after another, whether they came over
 // the socket or from this client's own shop, so stock, purse, state and log
@@ -182,18 +199,21 @@ export function stepTimer(label) {
   const steps = [];
   return {
     mark(name) { const now = performance.now(); steps.push(`${name} ${Math.round(now - last)}`); last = now; },
+    elapsed() { return performance.now() - t0; },
     done() { console.debug(`loot-crates | ${label} timings (ms): ${steps.join(", ")}, total ${Math.round(performance.now() - t0)}`); },
   };
 }
 
-// The table's side of a pull: open the reveal here too, and post the chat
-// card once the spin has landed so the log never spoils the result. Not
-// awaited by the caller: the writes are done, the next pull can start.
+/*
+  The table's side of a pull: open the reveal here too, and post the chat
+  card. The card goes out with the result, not after this client's own spin:
+  a GM whose tab is hidden runs no animation frames, so waiting on its spin
+  held the card from the whole table until the GM came back. Neither is
+  awaited by the caller: the writes are done, the next pull can start.
+*/
 function showAndPost(reveal) {
-  showReveal(reveal)
-    .then(app => app?.landed)
-    .then(() => postPullCard(reveal))
-    .catch(err => console.error(`loot-crates | reveal failed`, err));
+  showReveal(reveal).catch(err => console.error(`loot-crates | reveal failed`, err));
+  postPullCard(reveal).catch(err => console.error(`loot-crates | chat card failed`, err));
 }
 
 // A failed sweep doesn't stop the sale: performPull still re-rolls past a
@@ -226,6 +246,8 @@ async function recordPull({ msg, box, actor, out, log }) {
 
 async function doPull(msg, timer = stepTimer(`pull ${msg.requestId}`)) {
   timer.mark("queue");
+  const hiddenAtStart = gmTabHidden();
+  const sent = { ack: false };
   const reply = payload => {
     if (msg.userId === game.user.id) return;
     game.socket.emit(SOCKET, { ...payload, requestId: msg.requestId });
@@ -240,6 +262,7 @@ async function doPull(msg, timer = stepTimer(`pull ${msg.requestId}`)) {
 
     if (box) await sweepBox(box);
     timer.mark("sweep");
+    ackIfSlow(msg, timer, sent);
     if (wasCancelled(msg)) return null;
     const state = getActorState(msg.actorId, msg.boxId);
     const onMissing = async entry => {
@@ -250,6 +273,7 @@ async function doPull(msg, timer = stepTimer(`pull ${msg.requestId}`)) {
     };
     const out = await performPull({ box, pools: getPools(), actor, state, onMissing });
     timer.mark("roll+grant");
+    ackIfSlow(msg, timer, sent);
 
     // itemUuid is the granted copy on the sheet, which the reveal's Open item
     // and the chat card's link point at (the pool's source is r.result.uuid).
@@ -259,6 +283,7 @@ async function doPull(msg, timer = stepTimer(`pull ${msg.requestId}`)) {
     const reveal = { type: "reveal", requestId: msg.requestId, userId: msg.userId, actorId: actor.id, actorName: actor.name, box: { id: box.id, name: box.name, price: box.price }, odds: shopOdds(box, getPools()).rows.map(({ rarity, chance, label }) => ({ rarity, chance, label })), result: out.result, strip: out.strip, purse: out.purse, itemId: out.itemId, itemUuid, logId };
     game.socket.emit(SOCKET, reveal);
     timer.mark("broadcast");
+    warnIfSlow(timer.elapsed(), { hidden: hiddenAtStart || gmTabHidden(), buyer: actor.name });
     showAndPost(reveal);
 
     const log = { id: logId, boxId: box.id, boxName: box.name, actorId: actor.id, actorName: actor.name, userId: msg.userId, itemId: out.itemId, name: out.result.name, uuid: out.result.uuid, rarity: out.result.rarity, price: box.price, pity: out.result.pity };

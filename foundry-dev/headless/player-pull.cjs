@@ -26,16 +26,24 @@
 // draws the same scene in milliseconds). Both clients' canvas ticker is
 // paused unless CANVAS=on, which keeps it running to see the worst case.
 //
+// HIDE_GM=1 forces the headless GM page's document hidden (visibilityState
+// and a visibilitychange event) before the purchase, as a GM with their
+// Foundry tab in the background: the chat card must still reach the table
+// (chatMs, from the click to the player's client seeing the ChatMessage), the
+// GM's own reveal lands at once, and no toast fires on the GM unless the pull
+// was slow (gmToasts lists every notification the GM's page raised).
+//
 // Prints JSON: who did the pull, the purse before and
 // after, the item granted, and timings from the click: reveal broadcast
 // received, strip landed; plus the GM's `loot-crates |` console lines.
-/* global game, foundry -- used inside page.evaluate, which runs in the Foundry page */
+/* global game, foundry, Hooks, ui -- used inside page.evaluate, which runs in the Foundry page */
 const { chromium } = require("playwright");
 const FOUNDRY = process.env.FOUNDRY_URL || "http://localhost:30000";
 const MODULE_BASE = process.env.MODULE_BASE || "http://localhost:8766/";
 const PLAYER = process.env.PLAYER || "Player2";
 const BOX = process.env.BOX || "Live UI crate";
 const CANVAS = process.env.CANVAS === "on";
+const HIDE_GM = process.env.HIDE_GM === "1";
 const COUNT = Math.min(3, Math.max(1, Number(process.env.COUNT) || 1));
 const shot = process.argv.includes("--shot") ? process.argv[process.argv.indexOf("--shot") + 1] : null;
 
@@ -76,6 +84,20 @@ async function join(browser, user, { readySweep = false } = {}) {
     if (!pl) throw new Error(`${PLAYER} is not free to join`);
     const gm = await join(browser, "Gamemaster", { readySweep: true });
     out.gm = gm ? "headless Gamemaster running the branch" : "a person's Gamemaster client running the installed module";
+    if (HIDE_GM) {
+      if (!gm) throw new Error("HIDE_GM needs the headless Gamemaster");
+      out.gmHidden = await gm.page.evaluate(() => {
+        globalThis.__lcToasts = [];
+        for (const kind of ["info", "warn", "error"]) {
+          const orig = ui.notifications[kind].bind(ui.notifications);
+          ui.notifications[kind] = (msg, opts) => { globalThis.__lcToasts.push({ kind, msg: String(msg), permanent: !!opts?.permanent }); return orig(msg, opts); };
+        }
+        Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" });
+        Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
+        document.dispatchEvent(new Event("visibilitychange"));
+        return document.visibilityState;
+      });
+    }
     const result = await pl.page.evaluate(async ({ base, box, count }) => {
       const { openShop } = await import(base + "scripts/shop.js");
       const actor = game.actors.find(a => a.isOwner && a.type === "character");
@@ -86,6 +108,9 @@ async function join(browser, user, { readySweep = false } = {}) {
       const pick = app.element.querySelector(".lc-shop__actor");
       if (pick && pick.value !== actor.id) { pick.value = actor.id; pick.dispatchEvent(new Event("change")); await new Promise(r => setTimeout(r, 800)); }
       const purchases = [];
+      // When the table's client sees each Loot Crates chat card.
+      const cards = [];
+      Hooks.on("createChatMessage", m => { if (m.flags?.["loot-crates"] && !m.flags["loot-crates"].refunded) cards.push(performance.now()); });
       for (let n = 0; n < count; n++) {
         const card = [...app.element.querySelectorAll(".lc-box")].find(c => c.querySelector(".lc-box__name")?.textContent.trim() === box);
         if (!card) throw new Error(`no crate named ${box}`);
@@ -105,8 +130,9 @@ async function join(browser, user, { readySweep = false } = {}) {
           if (rv?.querySelector(".lc-card--landed")) landedAt = performance.now() - t0;
         }
         await new Promise(r => setTimeout(r, 1200));
+        const chatAt = cards.find(t => t >= t0);
         purchases.push({
-          ms: { revealReceived: revealAt && Math.round(revealAt), landed: landedAt && Math.round(landedAt) },
+          ms: { revealReceived: revealAt && Math.round(revealAt), landed: landedAt && Math.round(landedAt), chat: chatAt != null ? Math.round(chatAt - t0) : null },
           buyLabels: labels,
           result: rv?.querySelector(".lc-reveal__result")?.innerText,
         });
@@ -116,6 +142,17 @@ async function join(browser, user, { readySweep = false } = {}) {
     }, { base: MODULE_BASE, box: BOX, count: COUNT });
     Object.assign(out, result);
     if (shot) await pl.page.screenshot({ path: shot });
+    if (HIDE_GM) {
+      out.gmSide = await gm.page.evaluate(() => {
+        const rv = [...document.querySelectorAll(".lc-reveal")].at(-1);
+        return {
+          visibilityState: document.visibilityState,
+          revealLanded: !!rv?.querySelector(".lc-card--landed"),
+          revealButton: rv?.querySelector(".lc-reveal__close")?.textContent.trim() ?? null,
+          toasts: globalThis.__lcToasts,
+        };
+      });
+    }
     out.gmTimings = (gm?.logs ?? []).filter(l => l.includes("timings"));
     out.gmLog = (gm?.logs ?? []).filter(l => !l.includes("timings"));
     out.playerLog = pl.logs;

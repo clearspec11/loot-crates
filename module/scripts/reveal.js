@@ -6,7 +6,7 @@
   within a few seconds of each other get two windows, cascaded 32px apart
   (revealcard.js cascadeOffset) rather than stacked exactly on top of each
   other. `landed` resolves when the result card is under the marker (or the
-  window is closed early), which is what the chat card waits for.
+  window is closed early).
 
   _onRender starts the spin and does not wait for it: Foundry v14 awaits
   _onRender and only then applies the window's position, so awaiting the
@@ -17,6 +17,13 @@
   keyboard or screen-reader user is never stuck behind six seconds of
   animation. On landing, focus moves to it, unless the viewer is busy
   somewhere else (typing in chat while another player's crate opens).
+
+  A hidden page runs no animation frames, so a spin there would wait, frozen,
+  until the viewer came back and then play six seconds the table had already
+  seen. A reveal that opens while the page is hidden lands at once (the
+  reduced-motion path), and one playing when the page is hidden lands then,
+  without a frame: coming back shows the result. Silently, since nobody is
+  looking.
 */
 import { MODULE_ID, SETTINGS } from "./config.js";
 import { mountSpin } from "./spin.js";
@@ -36,6 +43,8 @@ function usedSlots() {
 }
 
 // Focus is ours to move when nothing else has it, or it's already in here.
+const pageHidden = () => document.visibilityState === "hidden";
+
 function focusIsFree(root) {
   const a = document.activeElement;
   return !a || a === document.body || a === document.documentElement || root.contains(a);
@@ -55,6 +64,7 @@ export class CrateReveal extends ApplicationV2 {
   #slowTimer = null;
   #closed = false;
   #landedAt = -Infinity;
+  #onHidden = null;
   landed = new Promise(resolve => { this.#resolveLanded = resolve; });
 
   constructor(reveal, options = {}) {
@@ -96,6 +106,7 @@ export class CrateReveal extends ApplicationV2 {
     super._onClose(options);
     this.#closed = true;
     clearTimeout(this.#slowTimer);
+    this.#stopWatching();
     // End the loop now rather than animating a detached strip for seconds.
     this.#spin?.skip();
     this.#resolveLanded();
@@ -131,6 +142,11 @@ export class CrateReveal extends ApplicationV2 {
     try { return !!fromUuidSync(this.reveal.itemUuid); } catch { return false; }
   }
 
+  #stopWatching() {
+    if (this.#onHidden) document.removeEventListener("visibilitychange", this.#onHidden);
+    this.#onHidden = null;
+  }
+
   _onRender() {
     const root = this.element;
     const host = root.querySelector(".lc-reveal__spin");
@@ -143,6 +159,7 @@ export class CrateReveal extends ApplicationV2 {
       onTick: sound ? i => playTick(i / r.strip.landIndex) : null,
       onLand: () => {
         clearTimeout(this.#slowTimer);
+        this.#stopWatching();
         this.#resolveLanded();
         if (this.#closed) return;
         this.#landedAt = performance.now();
@@ -151,10 +168,15 @@ export class CrateReveal extends ApplicationV2 {
         btn.dataset.action = "dismiss";
         btn.textContent = "Close";
         if (focusIsFree(root)) btn.focus({ preventScroll: true });
-        if (sound) playReveal(r.result.rarity);
+        if (sound && !pageHidden()) playReveal(r.result.rarity);
       },
     });
-    if (sound && !this.#spin.landed) this.#slowTimer = setTimeout(playSlow, 3600);
+    if (pageHidden()) this.#spin.skip();
+    else {
+      this.#onHidden = () => { if (pageHidden()) this.#spin?.skip({ now: true }); };
+      document.addEventListener("visibilitychange", this.#onHidden);
+    }
+    if (sound && !this.#spin.landed && !pageHidden()) this.#slowTimer = setTimeout(playSlow, 3600);
     this.#spin.play();
   }
 }
