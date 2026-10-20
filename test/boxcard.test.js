@@ -41,13 +41,15 @@ describe("boxCard", () => {
     expect(pills(html)).toEqual(["Common 85%", "Uncommon 15%"]);
     expect(html).not.toMatch(/(^|[^\d<>])0%/);
     expect(button(html)).not.toMatch(/disabled|aria-describedby|title=/);
+    expect(html).toMatch(/<div class="lc-box lc-rarity-uncommon" data-box="common">/);
   });
-  it("links a disabled Buy to a visible reason", () => {
+  it("links an unbuyable Buy to a visible reason, and keeps it focusable (aria-disabled, never disabled)", () => {
     const html = boxCard(byId("royal"), POOLS, ctx);
     expect(html).toMatch(/class="lc-box lc-rarity-legendary"/);
     expect(pills(html).some(p => p.startsWith("Common"))).toBe(false);
     const btn = button(html);
-    expect(btn).toMatch(/ disabled/);
+    expect(btn).toMatch(/ aria-disabled="true"/);
+    expect(btn).not.toMatch(/ disabled[ >=]/);
     expect(btn).not.toMatch(/title=/);
     const id = btn.match(/aria-describedby="([^"]+)"/)[1];
     expect(html).toContain(`<div class="lc-box__why" id="${id}">Needs 779 gp 2 sp 7 cp more</div>`);
@@ -56,7 +58,7 @@ describe("boxCard", () => {
     const html = boxCard(byId("empty"), POOLS, ctx);
     expect(html).toMatch(/class="lc-box lc-box--empty"/);
     expect(pills(html)).toEqual([]);
-    expect(button(html)).toMatch(/ disabled/);
+    expect(button(html)).toMatch(/ aria-disabled="true"/);
     expect(html).toMatch(/class="lc-box__why" id="lc-why-empty">Nothing inside</);
   });
   it("escapes the box name", () => {
@@ -86,10 +88,14 @@ describe("the crate's peek and ribbon", () => {
   });
   it("only the pressed crate says Opening… while every Buy is off", () => {
     const busy = { ...ctx, busy: true, busyBox: "common" };
-    expect(boxCard(byId("common"), POOLS, busy)).toContain("Opening…");
+    const pressed = boxCard(byId("common"), POOLS, busy);
+    expect(pressed).toContain("Opening…");
+    // The pressed Buy keeps focus: off by aria-disabled, never disabled.
+    expect(pressed.match(/<button[^>]*>/)[0]).toMatch(/ aria-disabled="true"/);
+    expect(pressed.match(/<button[^>]*>/)[0]).not.toMatch(/ disabled/);
     const other = boxCard(byId("adventurer"), POOLS, busy);
     expect(other).not.toContain("Opening…");
-    expect(other.match(/<button[^>]*>/)[0]).toMatch(/ disabled/);
+    expect(other.match(/<button[^>]*>/)[0]).toMatch(/ aria-disabled="true"/);
   });
   it("says it is waiting for the GM on the pressed crate only, and why once, in the shop's notice", () => {
     const slow = { ...ctx, busy: true, busyBox: "common", waiting: "gm" };
@@ -117,7 +123,7 @@ describe("a closed shop says so once", () => {
   };
   const buttons = html => [...html.matchAll(/<button[^>]*>/g)].map(m => m[0]);
   const describedBy = btn => btn.match(/aria-describedby="([^"]+)"/)?.[1].split(" ") ?? [];
-  // Every id a disabled Buy names must be an element with text: the notice
+  // Every id an unbuyable Buy names must be an element with text: the notice
   // (filled from shopNotice) or a card's own line.
   const texts = ({ notice, cards }) => new Map([
     [SHOP_NOTICE_ID, notice.text],
@@ -150,7 +156,7 @@ describe("a closed shop says so once", () => {
       expect(s.cards).not.toContain(core);
       expect(s.cards).not.toMatch(/closed|GM is online|no character/i);
       for (const btn of buttons(s.cards)) {
-        expect(btn).toMatch(/ disabled/);
+        expect(btn).toMatch(/ aria-disabled="true"/);
         expect(describedBy(btn)).toContain(SHOP_NOTICE_ID);
       }
     });
@@ -167,11 +173,12 @@ describe("a closed shop says so once", () => {
     expect(sold).toMatch(/class="lc-box__why" id="lc-why-common">Sold out</);
   });
 
-  it("gives every disabled Buy a description that resolves to visible text, open or closed", () => {
+  it("gives every unbuyable Buy a description that resolves to visible text, open or closed", () => {
     for (const c of [ctx, { ...ctx, open: false, gmOnline: false }, { ...ctx, open: false }, { ...ctx, hasActor: false }, { ...ctx, busy: true, busyBox: "common", waiting: "hidden" }]) {
       const s = shop(c);
       const known = texts(s);
-      for (const btn of buttons(s.cards).filter(b => / disabled/.test(b))) {
+      expect(buttons(s.cards).filter(b => / disabled/.test(b))).toEqual([]);
+      for (const btn of buttons(s.cards).filter(b => / aria-disabled="true"/.test(b))) {
         const ids = describedBy(btn);
         if (c.busy && !c.waiting) continue;
         expect(ids.length).toBeGreaterThan(0);

@@ -33,6 +33,12 @@
 // GM's own reveal lands at once, and no toast fires on the GM unless the pull
 // was slow (gmToasts lists every notification the GM's page raised).
 //
+// focus follows the keyboard: the Buy is focused before it is pressed, and
+// focusAfterCharge records where focus is once the GM's charge reached this
+// client (updateActor re-renders the shop): it must still be that Buy (the
+// shop keeps its nodes) or the reveal's Close. focusAtLanding and
+// focusAfterClose: Close on landing, then back on the Buy when it closes.
+//
 // chatRenders lists each rendering of the pull's chat card on the player's
 // client and whether it was sealed (head and "Opening…", reveal.js
 // sealChatCard): a card rendered while that client's spin plays must be, and
@@ -131,12 +137,24 @@ async function join(browser, user, { readySweep = false } = {}) {
         const card = [...app.element.querySelectorAll(".lc-box")].find(c => c.querySelector(".lc-box__name")?.textContent.trim() === box);
         if (!card) throw new Error(`no crate named ${box}`);
         const buy = card.querySelector(".lc-box__buy");
-        if (buy.disabled) throw new Error(`${box} can't be bought: ${card.querySelector(".lc-box__why")?.textContent}`);
+        if (buy.getAttribute("aria-disabled") === "true") throw new Error(`${box} can't be bought: ${card.querySelector(".lc-box__why")?.textContent}`);
         const seen = new Set([...document.querySelectorAll(".lc-reveal")]);
         const labels = [];
+        const where = () => {
+          const el = document.activeElement;
+          if (el === buy) return "Buy";
+          if (el?.matches?.(".lc-reveal__close")) return "reveal Close";
+          return el ? `${el.tagName}${el.className ? "." + String(el.className).split(" ")[0] : ""}` : "none";
+        };
+        let charged = null;
+        const onCharge = Hooks.on("updateActor", (a, change) => {
+          if (a === actor && change.system?.currency) setTimeout(() => { charged ??= where(); }, 100);
+        });
+        buy.focus();
         const t0 = performance.now();
         buy.click();
         let revealAt = null, landedAt = null, rv = null;
+        const stillBuy = () => app.element.querySelector(`.lc-box__buy[data-box="${buy.dataset.box}"]`) === buy;
         for (let i = 0; i < 400 && landedAt == null; i++) {
           await new Promise(r => setTimeout(r, 50));
           const label = app.element.querySelector(`.lc-box__buy[data-box="${card.querySelector(".lc-box__buy").dataset.box}"]`)?.textContent.trim();
@@ -146,6 +164,13 @@ async function join(browser, user, { readySweep = false } = {}) {
           if (rv?.querySelector(".lc-card--landed")) landedAt = performance.now() - t0;
         }
         await new Promise(r => setTimeout(r, 1200));
+        Hooks.off("updateActor", onCharge);
+        const focusAtLanding = where();
+        const sameBuyNode = stillBuy();
+        // Close the reveal as the buyer would, and see where focus goes.
+        const revealApp = [...foundry.applications.instances.values()].find(a => a.element === rv);
+        if (revealApp) { await revealApp.close(); await new Promise(r => setTimeout(r, 400)); }
+        const focusAfterClose = where();
         const chatAt = cards.find(t => t >= t0);
         const shown = renders.filter(r => r.ms >= t0).map(r => ({ ms: Math.round(r.ms - t0), sealed: r.sealed }));
         purchases.push({
@@ -153,6 +178,7 @@ async function join(browser, user, { readySweep = false } = {}) {
           chatRenders: shown,
           chatSealedAfterLanding: document.querySelectorAll(".lc-chat--sealed").length,
           buyLabels: labels,
+          focus: { afterCharge: charged, atLanding: focusAtLanding, afterClose: focusAfterClose, sameBuyNode, ok: ["Buy", "reveal Close"].includes(charged) && focusAtLanding === "reveal Close" && focusAfterClose === "Buy" && sameBuyNode },
           result: rv?.querySelector(".lc-reveal__result")?.innerText,
         });
       }
