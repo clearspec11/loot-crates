@@ -6,9 +6,10 @@
 
   The card reads like a dnd5e card: the crate's name on a band, its bet as a
   ribbon (one bar of its real drop chances) over named odds, the price on the
-  button. A disabled Buy says why in visible text under it, linked to the
-  button with aria-describedby, so keyboard, screen-reader and touch users
-  all learn it.
+  button. A disabled Buy says why in visible text, linked to the button with
+  aria-describedby, so keyboard, screen-reader and touch users all learn it:
+  a reason that is the crate's own under the card, a reason that holds for
+  the whole shop once in its header.
 */
 import { RARITIES, RARITY_SHORT, RARITY_LABEL } from "./config.js";
 import { shopOdds, oddsTable, flattenPool, rarityRank } from "./odds.js";
@@ -76,15 +77,57 @@ function peekHTML(items, esc) {
   Why this box can't be bought now, or "" when it can. `ctx`:
   { purse, hasActor, open, gmOnline }. The box's own state comes first (an
   empty or sold-out box stays unbuyable whoever asks), then the shop's, then
-  the buyer's.
+  the buyer's. The shop and the cards split this in two: shopReason is said
+  once in the shop's header, crateReason under the card it belongs to.
 */
-export function buyReason(box, odds, { purse = {}, hasActor = false, open = true, gmOnline = true } = {}) {
+export function buyReason(box, odds, ctx = {}) {
+  return crateState(box, odds) || shopReason(ctx) || crateReason(box, odds, ctx);
+}
+
+// Why no crate can be bought at all, or "": the shop is shut, no GM is there
+// to roll, or there's no character to pay. Said once, not under every card.
+export function shopReason({ hasActor = false, open = true, gmOnline = true } = {}) {
+  if (!open) return gmOnline ? "The GM has closed the shop." : "Closed until a GM is online.";
+  if (!hasActor) return "You have no character to buy for.";
+  return "";
+}
+
+// Why this crate in particular can't be bought, or "": it holds nothing, it
+// sold out, or this character is short (said even while the shop is shut,
+// so a player knows what to save for).
+export function crateReason(box, odds, { purse = {}, hasActor = false } = {}) {
+  const state = crateState(box, odds);
+  if (state) return state;
+  if (hasActor && !canAfford(purse, box.price)) return `Needs ${formatPrice(shortfall(purse, box.price))} more`;
+  return "";
+}
+
+function crateState(box, odds) {
   if (!odds.rows.length) return "Nothing inside";
   if (box.rules?.stock != null && box.rules.stock <= 0) return "Sold out";
-  if (!open) return gmOnline ? "The GM has closed the shop" : "Closed until a GM is online";
-  if (!hasActor) return "Pick a character";
-  if (!canAfford(purse, box.price)) return `Needs ${formatPrice(shortfall(purse, box.price))} more`;
   return "";
+}
+
+/*
+  The shop's one notice: the shop-wide reason, or while a pull is slow, that
+  it is waiting for the GM and why. Its text goes in the shop header's single
+  live region (SHOP_NOTICE_ID), which stays the same node across renders
+  (patchShop), so a screen reader announces it when it changes. `tone` is
+  "warn" for a reason nothing can be bought, "wait" for a slow GM, "" when
+  there is nothing to say.
+*/
+export const SHOP_NOTICE_ID = "lc-shop-notice";
+
+const WAITING = {
+  gm: "Waiting for the GM: their client hasn't rolled yet.",
+  hidden: "Waiting for the GM: their Foundry tab is in the background, which slows it down.",
+};
+
+export function shopNotice(ctx = {}) {
+  const reason = shopReason(ctx);
+  if (reason) return { text: reason, tone: "warn" };
+  if (ctx.busy && WAITING[ctx.waiting]) return { text: WAITING[ctx.waiting], tone: "wait" };
+  return { text: "", tone: "" };
 }
 
 /*
@@ -92,25 +135,25 @@ export function buyReason(box, odds, { purse = {}, hasActor = false, open = true
   to buyReason's. While a pull is out, every Buy is off, and only the one that
   was pressed (busyBox) says "Opening…"; with no busyBox, all of them do.
   When the GM is slow to answer (`waiting`, from socket.js onWait) it says
-  "Waiting for the GM…" instead, with a status line saying why when the GM's
-  tab is in the background.
+  "Waiting for the GM…" instead; why is in the shop's notice.
+  A disabled Buy is described by every reason that applies: the shop's
+  notice (shared, by id) and the card's own line. A shop-wide reason is never
+  repeated under the cards.
   The card keeps a lc-rarity-<best> class naming the best rarity it can drop;
   its colour is not painted over the card, since the ribbon shows how likely
   that is.
 */
-const WAITING = {
-  gm: { label: "Waiting for the GM…", why: "The GM's client hasn't rolled yet." },
-  hidden: { label: "Waiting for the GM…", why: "The GM's Foundry tab is in the background, which slows it down." },
-};
-
 export function boxCard(box, pools, ctx) {
   const esc = ctx.esc ?? (s => String(s ?? ""));
   const odds = shopOdds(box, pools);
-  const reason = buyReason(box, odds, ctx);
+  const reason = crateReason(box, odds, ctx);
+  const notice = shopNotice(ctx).text;
   const whyId = `lc-why-${box.id}`;
+  const describedBy = [notice ? SHOP_NOTICE_ID : "", reason ? whyId : ""].filter(Boolean).join(" ");
+  const disabled = !!(reason || notice || ctx.busy);
   const rarityClass = odds.top ? `lc-rarity-${odds.top}` : "lc-box--empty";
   const opening = ctx.busy && (ctx.busyBox == null || ctx.busyBox === box.id);
-  const waiting = opening ? WAITING[ctx.waiting] : null;
+  const waiting = opening && WAITING[ctx.waiting];
   const peek = peekItems(box, pools, odds);
   const stock = odds.rows.length && box.rules?.stock != null ? `<div class="lc-box__stock">${esc(box.rules.stock)} left</div>` : "";
   return `
@@ -120,13 +163,53 @@ export function boxCard(box, pools, ctx) {
           <div class="lc-box__art" aria-hidden="true">${peek.length ? peekHTML(peek, esc) : ctx.art ?? ""}</div>
           ${odds.rows.length ? `${oddsRibbon(odds.rows)}<div class="lc-box__odds">${oddsPills(odds.rows)}</div>` : ""}
           ${stock}
-          <button type="button" class="lc-box__buy" data-action="buy" data-box="${esc(box.id)}"${reason || ctx.busy ? " disabled" : ""}${reason ? ` aria-describedby="${esc(whyId)}"` : ""}>
-            ${opening ? (waiting?.label ?? "Opening…") : `Open for ${esc(formatPrice(box.price))}`}
+          <button type="button" class="lc-box__buy" data-action="buy" data-box="${esc(box.id)}"${disabled ? " disabled" : ""}${disabled && describedBy ? ` aria-describedby="${esc(describedBy)}"` : ""}>
+            ${opening ? (waiting ? "Waiting for the GM…" : "Opening…") : `Open for ${esc(formatPrice(box.price))}`}
           </button>
           ${reason ? `<div class="lc-box__why" id="${esc(whyId)}">${esc(reason)}</div>` : ""}
-          ${waiting ? `<div class="lc-box__why lc-box__wait" role="status">${esc(waiting.why)}</div>` : ""}
         </div>
       </div>`;
+}
+
+/*
+  The shop window's head, notice and grid. The notice is a role=status live
+  region: patchShop keeps it as one node for the window's life, so it is
+  announced when its text changes, rather than being recreated each render
+  already holding its text (which screen readers often don't announce).
+  `fields` is the head's picker and purse, `cards` the grid's markup.
+*/
+export function shopHTML({ fields, cards, notice }) {
+  return `
+      <div class="lc-shop__head">
+        <div class="lc-shop__fields">${fields}</div>
+        <p class="lc-shop__notice" id="${SHOP_NOTICE_ID}" role="status" data-tone="${notice.tone}"></p>
+      </div>
+      <div class="lc-shop__grid">${cards}</div>`;
+}
+
+/*
+  Puts a freshly rendered shop body (`fresh`, an element holding shopHTML
+  with its notice text in `notice`) into `content`. The first time it moves
+  the whole body in; after that it swaps the fields and the grid and only
+  rewrites the existing notice's text, so the live region node survives.
+  Returns the notice element.
+*/
+export function patchShop(content, fresh, notice) {
+  const live = content.querySelector(`.lc-shop__notice`);
+  if (!live) {
+    const node = fresh.querySelector(".lc-shop__notice");
+    content.replaceChildren(fresh);
+    // Set after insertion, so even the first message is a change.
+    node.textContent = notice.text;
+    return node;
+  }
+  const body = live.closest(".lc-shop__body");
+  body.className = fresh.className;
+  body.querySelector(".lc-shop__fields").replaceWith(fresh.querySelector(".lc-shop__fields"));
+  body.querySelector(".lc-shop__grid").replaceWith(fresh.querySelector(".lc-shop__grid"));
+  if (live.textContent !== notice.text) live.textContent = notice.text;
+  live.dataset.tone = notice.tone;
+  return live;
 }
 
 /*

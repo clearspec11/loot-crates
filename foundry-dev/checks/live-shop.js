@@ -37,7 +37,9 @@ const pools = store.getPools();
 const boxes = [...el.querySelectorAll(".lc-box")].map(card => {
   const btn = card.querySelector(".lc-box__buy");
   const box = store.getBoxes()[btn.dataset.box];
-  const why = btn.getAttribute("aria-describedby") ? el.querySelector(`#${CSS.escape(btn.getAttribute("aria-describedby"))}`) : null;
+  // aria-describedby may name the shop's notice and the card's own line.
+  const whys = (btn.getAttribute("aria-describedby") ?? "").split(/\s+/).filter(Boolean).map(id => el.querySelector(`#${CSS.escape(id)}`));
+  const why = whys.length ? { textContent: whys.map(w => w?.textContent ?? "").join(" "), shown: whys.every(w => w && w.getBoundingClientRect().height > 0 && getComputedStyle(w).visibility !== "hidden") } : null;
   const top = shopOdds(box, pools).top;
   return {
     name: card.querySelector(".lc-box__name").textContent,
@@ -46,7 +48,7 @@ const boxes = [...el.querySelectorAll(".lc-box")].map(card => {
     expectedColour: top ? `lc-rarity-${top}` : "lc-box--empty",
     disabled: btn.disabled,
     title: btn.getAttribute("title"),
-    reason: why ? { text: why.textContent, visible: why.getBoundingClientRect().height > 0 && getComputedStyle(why).visibility !== "hidden" } : null,
+    reason: why ? { text: why.textContent, visible: why.shown } : null,
   };
 });
 const pills = boxes.flatMap(b => b.pills);

@@ -196,7 +196,7 @@ dnd5e's two sheet palettes (grey paper with maroon and gold; denim and slate wit
 - **Soft Rule** (`paper-rule-soft` / `slate-rule-soft`): control borders, row dividers, the blue-gray rule of the dark theme.
 - **Sheet Ink / Bone Ink** with soft and mute steps: text in each theme.
 - **Vault** (`vault`, `vault-glow`, `vault-card`, `vault-line`, `vault-ink`, `vault-soft`): the stage, identical in both themes.
-- **Warn and OK** (`warn-amber`, `warn-wash`, `ok-green` and their `-dark` pairs): problem chips and rows, the shop-closed line, the shop-open dot.
+- **Warn and OK** (`warn-amber`, `warn-wash`, `ok-green` and their `-dark` pairs): problem chips and rows, the shop header's notice when nothing can be bought (closed, no GM, no character: said once there, never under each crate), the shop-open dot.
 
 ### Named Rules
 **The Edges-On-Paper Rule.** On paper and slate, rarity colour appears only as an edge, a diamond or a ribbon segment: the peek and chat portraits' 3px underline, the 6 to 7px rotated-square diamond on pills, chips, rows and the log, and the ribbon's segments. Rarity text on paper is ink, never the rarity colour.

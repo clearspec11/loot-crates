@@ -28,6 +28,7 @@ const WIDTHS = [
 const THEMES = ["dark", "light"];
 const STATES = [
   ["shop", "state=shop"],
+  ["shop-closed", "state=shop&closed=1"],
   ["landed", "state=landed&seed=7"],
   ["landed-legendary", "state=landed&seed=36&box=royal"],
   ["landed-buyer", "state=landed&seed=7&buyer=1"],
@@ -88,8 +89,10 @@ function revealProblems(buyer) {
 }
 
 // The shop's honesty rules, read from the DOM: no "0%" anywhere, every pill
-// names its rarity, every disabled Buy points at a visible reason.
-function shopProblems() {
+// names its rarity, every disabled Buy points at visible reasons, a shop-wide
+// reason is said once (in the header's notice, never under a card), and the
+// shop has one live region, which keeps its node across a re-render.
+async function shopProblems(closed) {
   const out = [];
   const text = document.querySelector(".lc-shop__body")?.innerText ?? "";
   if (/(^|[^\d<>])0%/.test(text)) out.push("shop shows a 0% chance");
@@ -97,10 +100,33 @@ function shopProblems() {
     if (!/^[A-Z][a-z. ]+ (<1|>99|\d{1,3})%$/.test(pill.textContent.trim())) out.push(`pill without a name: "${pill.textContent}"`);
   }
   for (const btn of document.querySelectorAll(".lc-box__buy[disabled]")) {
-    const why = document.getElementById(btn.getAttribute("aria-describedby") ?? "");
-    if (!why || !why.textContent.trim() || why.getBoundingClientRect().height === 0) out.push(`disabled Buy without a visible reason: ${btn.dataset.box}`);
+    const ids = (btn.getAttribute("aria-describedby") ?? "").split(/\s+/).filter(Boolean);
+    const whys = ids.map(id => document.getElementById(id));
+    if (!whys.length || whys.some(why => !why || !why.textContent.trim() || why.getBoundingClientRect().height === 0)) out.push(`disabled Buy without a visible reason: ${btn.dataset.box}`);
   }
   if (!document.querySelectorAll(".lc-box__buy[disabled]").length) out.push("sample shop has no disabled Buy to check");
+  const status = document.querySelectorAll('[role="status"]');
+  if (status.length !== 1 || !status[0].matches(".lc-shop__head .lc-shop__notice")) out.push(`expected one role=status, the header notice; got ${status.length}`);
+  const notice = document.querySelector(".lc-shop__notice");
+  const shopWide = /closed|GM is online|no character/i;
+  for (const why of document.querySelectorAll(".lc-box__why")) if (shopWide.test(why.textContent)) out.push(`shop-wide reason under a card: "${why.textContent}"`);
+  if (closed) {
+    if (notice?.textContent !== "Closed until a GM is online.") out.push(`closed shop's notice reads "${notice?.textContent}"`);
+    if ((text.match(/Closed until a GM is online/g) ?? []).length !== 1) out.push("the closed reason isn't said exactly once");
+    if (document.querySelectorAll(".lc-box__buy:not([disabled])").length) out.push("a Buy is on in a closed shop");
+    if (![...document.querySelectorAll(".lc-box__why")].some(w => /Needs .* more|Nothing inside/.test(w.textContent))) out.push("per-crate reasons are gone from a closed shop");
+    return out;
+  }
+  if (notice?.textContent) out.push(`open shop's notice isn't empty: "${notice.textContent}"`);
+  // Re-render as the shop does when the GM is slow, then back: same node, new text.
+  window.__lootCrates.renderShop({ busy: true, busyBox: "common", waiting: "gm" });
+  const after = document.querySelector(".lc-shop__notice");
+  if (after !== notice) out.push("the notice node was replaced on re-render");
+  if (!/^Waiting for the GM/.test(after?.textContent ?? "")) out.push(`waiting notice reads "${after?.textContent}"`);
+  const pressed = document.querySelector('.lc-box__buy[data-box="common"]');
+  if (pressed?.getAttribute("aria-describedby") !== "lc-shop-notice") out.push("the waiting Buy doesn't point at the notice");
+  window.__lootCrates.renderShop();
+  if (document.querySelector(".lc-shop__notice") !== notice || notice.textContent) out.push("the notice didn't clear in place");
   return out;
 }
 
@@ -126,7 +152,7 @@ try {
       if (name === "manager") await page.waitForSelector("body[data-ready]", { timeout: 10000 });
       await page.waitForTimeout(500);
       const wide = await page.evaluate(() => document.scrollingElement.scrollWidth > document.scrollingElement.clientWidth + 1);
-      if (name === "shop") problems0.push(...await page.evaluate(shopProblems));
+      if (name.startsWith("shop")) problems0.push(...await page.evaluate(shopProblems, name === "shop-closed"));
       else if (name === "manager") problems0.push(...await page.evaluate(managerProblems));
       else problems0.push(...await page.evaluate(revealProblems, name === "landed-buyer"));
       await page.evaluate(() => document.fonts.ready);

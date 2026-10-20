@@ -4,7 +4,7 @@
 */
 import { getBoxes, getPools, isShopOpen } from "./store.js";
 import { formatGold } from "./currency.js";
-import { boxCard } from "./boxcard.js";
+import { boxCard, shopHTML, shopNotice, patchShop } from "./boxcard.js";
 import { requestPull } from "./socket.js";
 
 const { ApplicationV2 } = foundry.applications.api;
@@ -71,34 +71,31 @@ export class CrateShop extends ApplicationV2 {
     const actors = buyableActors();
     const boxes = Object.values(getBoxes());
     const pools = getPools();
-    const open = isShopOpen() && !!game.users.activeGM;
     const purse = actor?.system?.currency ?? {};
+    const ctx = {
+      purse, open: isShopOpen() && !!game.users.activeGM, gmOnline: !!game.users.activeGM, hasActor: !!actor,
+      busy: this.busy, busyBox: this.busyBox, waiting: this.waiting, art: `<i class="fas fa-box-open"></i>`, esc,
+    };
 
     const picker = actors.length > 1
       ? `<label class="lc-shop__field"><span class="lc-label">Character</span><select class="lc-shop__actor">${actors.map(a => `<option value="${a.id}"${a.id === this.actorId ? " selected" : ""}>${esc(a.name)}</option>`).join("")}</select></label>`
       : `<div class="lc-shop__field"><span class="lc-label">Character</span><span class="lc-shop__who">${esc(actor?.name ?? "No character")}</span></div>`;
+    const purseField = actor ? `<div class="lc-shop__field lc-shop__field--purse"><span class="lc-label">Purse</span><span class="lc-shop__purse">${esc(formatGold(purse))}</span></div>` : "";
 
-    root.innerHTML = `
-      <div class="lc-shop__head">
-        ${picker}
-        ${actor ? `<div class="lc-shop__field lc-shop__field--purse"><span class="lc-label">Purse</span><span class="lc-shop__purse">${esc(formatGold(purse))}</span></div>` : ""}
-        ${open ? "" : `<span class="lc-shop__closed">${game.users.activeGM ? "The GM has closed the shop." : "Closed until a GM is online."}</span>`}
-      </div>
-      <div class="lc-shop__grid">
-        ${boxes.length ? boxes.map(b => this.#boxCard(b, pools, purse, open)).join("") : `<p class="lc-shop__empty">No crates on the shelf yet. The GM builds them from Game Settings, Loot Crates.</p>`}
-      </div>`;
+    // The shop-wide reason (closed, no GM, no character) or the wait is said
+    // once, in the header's live region; the cards only point at it.
+    this.notice = shopNotice(ctx);
+    root.innerHTML = shopHTML({
+      fields: picker + purseField,
+      cards: boxes.length ? boxes.map(b => boxCard(b, pools, ctx)).join("") : `<p class="lc-shop__empty">No crates on the shelf yet. The GM builds them from Game Settings, Loot Crates.</p>`,
+      notice: this.notice,
+    });
     root.querySelector(".lc-shop__actor")?.addEventListener("change", e => this.#pickActor(e.currentTarget));
     return root;
   }
 
-  #boxCard(box, pools, purse, open) {
-    return boxCard(box, pools, {
-      purse, open, gmOnline: !!game.users.activeGM, hasActor: !!this.actor,
-      busy: this.busy, busyBox: this.busyBox, waiting: this.waiting, art: `<i class="fas fa-box-open"></i>`, esc,
-    });
-  }
-
-  _replaceHTML(result, content) { content.replaceChildren(result); }
+  // The notice node is kept across renders (see boxcard.js patchShop).
+  _replaceHTML(result, content) { patchShop(content, result, this.notice); }
 }
 
 let shop = null;

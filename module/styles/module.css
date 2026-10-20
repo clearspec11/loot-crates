@@ -201,10 +201,8 @@
 /* ---------- Shop ---------- */
 
 .loot-crates .lc-shop__body { display: grid; gap: 14px; }
-.loot-crates .lc-shop__head {
-  display: flex; align-items: flex-end; gap: 10px 24px; flex-wrap: wrap;
-  padding-bottom: 12px; position: relative;
-}
+.loot-crates .lc-shop__head { display: grid; padding-bottom: 12px; position: relative; }
+.loot-crates .lc-shop__fields { display: flex; align-items: flex-end; gap: 10px 24px; flex-wrap: wrap; }
 /* dnd5e's divider: a gold rule that fades out at both ends. */
 .loot-crates .lc-shop__head::after {
   content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 1px;
@@ -215,7 +213,16 @@
 .loot-crates .lc-shop__actor { min-width: 12em; }
 .loot-crates .lc-shop__who { font-family: var(--lc-slab); font-size: 15px; font-weight: 700; min-height: 30px; display: flex; align-items: center; }
 .loot-crates .lc-shop__purse { font-family: var(--lc-slab); font-size: 15px; font-weight: 700; color: var(--lc-ink); min-height: 30px; display: flex; align-items: center; justify-content: flex-end; font-variant-numeric: tabular-nums; }
-.loot-crates .lc-shop__closed { flex-basis: 100%; color: var(--lc-warn); font-weight: 700; }
+/* The shop's one notice (a live region that is always there): why nothing
+   can be bought, in amber on the warn wash, never gold; or a slow GM, in
+   mute ink. Empty, it takes no room. */
+.loot-crates .lc-shop__notice { margin: 10px 0 0; font-size: 13px; }
+.loot-crates .lc-shop__notice:empty { margin: 0; }
+.loot-crates .lc-shop__notice[data-tone="warn"] {
+  color: var(--lc-warn); font-weight: 700; background: var(--lc-warn-bg);
+  border: 1px dashed color-mix(in srgb, var(--lc-warn) 55%, transparent); border-radius: var(--lc-radius); padding: 6px 10px;
+}
+.loot-crates .lc-shop__notice[data-tone="wait"] { color: var(--lc-ink-mute); }
 .loot-crates .lc-shop__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 190px), 1fr)); gap: 14px; }
 .loot-crates .lc-shop__empty, .loot-crates .lc-empty { color: var(--lc-ink-mute); margin: 8px 0; }
 
