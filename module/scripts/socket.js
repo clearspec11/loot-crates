@@ -12,13 +12,21 @@
     { type: "error", requestId, userId, message }          GM -> the buyer
     { type: "cancel", requestId, userId }                  the buyer -> GM, when
                                                            its wait timed out
+    { type: "late", requestId, userId, boxName, itemName, actorName }
+                                                           GM -> the buyer, when
+                                                           the cancel came after
+                                                           the charge
 
   A buyer who gave up waiting (GM_TIMEOUT_MS) calls the purchase off, and the
   GM drops a request that is cancelled before it charges: otherwise a GM
   client slow past the timeout (measured live: 55 s with its tab in the
   background) charged a buyer who had been told it failed, and who may well
-  have pressed Buy again. A cancel that arrives after the charge is too late;
-  the reveal still reaches the buyer, and the timeout message says so.
+  have pressed Buy again. A cancel that arrives after the charge is too late
+  to undo by itself: the reveal still reaches the buyer, who is told the
+  crate opened after all, and the GM gets a notice naming the buyer, the
+  crate and the item, with the log row marked, so the GM can refund it from
+  the Pull log if the table would rather (lateCancel below). Nothing is
+  refunded automatically: the buyer may be glad of the item.
 
   The GM client runs pulls one at a time, through the same queue refunds use
   (store.js enqueueWrite): every store write is a read-modify-write across
@@ -51,7 +59,7 @@
 */
 import { SOCKET } from "./config.js";
 import { performPull, PullError } from "./pull.js";
-import { getBoxes, getPools, getActorState, setActorState, appendLog, newId, isShopOpen, saveBox, enqueueWrite, refreshMissing, markMissing, reportMissing } from "./store.js";
+import { getBoxes, getPools, getActorState, setActorState, appendLog, updateLog, newId, isShopOpen, saveBox, enqueueWrite, refreshMissing, markMissing, reportMissing } from "./store.js";
 import { showReveal } from "./reveal.js";
 import { postPullCard } from "./chat.js";
 import { shopOdds } from "./odds.js";
@@ -66,6 +74,8 @@ export const SLOW_PULL_MS = 2000;
 export const TIMED_OUT = "The GM didn't answer in time, so the purchase was called off. If a crate opens anyway, the GM had already started it.";
 
 function cancelPull(msg) {
+  const sale = charged.get(msg.requestId);
+  if (sale) return lateCancel(sale);
   cancelled.add(msg.requestId);
   if (cancelled.size > 200) cancelled.delete(cancelled.values().next().value);
 }
@@ -81,6 +91,39 @@ function wasCancelled(msg) {
 const pending = new Map();
 // The GM's side: requests their buyer has called off (insertion-ordered, capped).
 const cancelled = new Set();
+// The GM's side: requests already charged, so a cancel for one is too late
+// (requestId -> what lateCancel names; insertion-ordered, capped).
+const charged = new Map();
+
+function rememberCharge(requestId, sale) {
+  charged.set(requestId, sale);
+  if (charged.size > 200) charged.delete(charged.keys().next().value);
+}
+
+/*
+  The buyer called off a pull this client had already charged (their wait ran
+  out while it was running). The sale stands, once: nothing is charged or
+  granted again. The GM is told who, what and where to undo it, the log row
+  is marked so it can be found, and the buyer, if still here, is told the
+  crate opened after all. The mark goes through the write queue, so it lands
+  after the pull has written its row even when the cancel arrives mid-pull.
+*/
+function lateCancel(sale) {
+  if (sale.late) return null;
+  sale.late = true;
+  const { requestId, userId, buyerName, actorName, boxName, itemName, logId } = sale;
+  console.warn(`loot-crates | ${buyerName} called off ${requestId} after ${actorName} was charged for ${boxName}; the sale stands`);
+  globalThis.ui?.notifications?.warn(`Loot Crates: ${buyerName} gave up waiting on ${boxName}, but ${actorName} had already been charged and got ${itemName}. To undo it, use Refund on the marked row in the Pull log.`);
+  game.socket.emit(SOCKET, { type: "late", requestId, userId, boxName, itemName, actorName });
+  return enqueueWrite(() => updateLog(logId, { lateCancel: Date.now() }))
+    .catch(err => console.error(`loot-crates | couldn't mark ${requestId}'s log row as called off`, err));
+}
+
+// The buyer's side of lateCancel: their shop said the purchase was called
+// off, so say plainly that it went through.
+function openedAfterAll(msg) {
+  globalThis.ui?.notifications?.info(`Your ${msg.boxName} opened after all: ${msg.actorName} got ${msg.itemName}. Ask the GM if you'd like it refunded.`);
+}
 const uid = () => foundry.utils.randomID(12);
 
 export function isActiveGM() {
@@ -104,6 +147,7 @@ export function registerSocket() {
     if (msg.type === "pull" && isActiveGM()) return handlePull(msg);
     if (msg.type === "cancel" && isActiveGM()) return cancelPull(msg);
     if (msg.type === "ack" && msg.userId === game.user.id) return heardFromGM(msg);
+    if (msg.type === "late" && msg.userId === game.user.id) return openedAfterAll(msg);
     if (msg.type === "reveal") {
       if (msg.userId === game.user.id) settle(msg.requestId, p => p.resolve(msg));
       return showReveal(msg);
@@ -280,9 +324,13 @@ async function doPull(msg, timer = stepTimer(`pull ${msg.requestId}`)) {
     // logId is the row written below, so the chat card can be refunded.
     const itemUuid = out.itemId ? `Actor.${actor.id}.Item.${out.itemId}` : null;
     const logId = newId();
+    // Charged now: a cancel from here on is too late to drop the pull.
+    rememberCharge(msg.requestId, { requestId: msg.requestId, userId: msg.userId, buyerName: buyer.name, actorName: actor.name, boxName: box.name, itemName: out.result.name, logId });
     const reveal = { type: "reveal", requestId: msg.requestId, userId: msg.userId, actorId: actor.id, actorName: actor.name, box: { id: box.id, name: box.name, price: box.price }, odds: shopOdds(box, getPools()).rows.map(({ rarity, chance, label }) => ({ rarity, chance, label })), result: out.result, strip: out.strip, purse: out.purse, itemId: out.itemId, itemUuid, logId };
     game.socket.emit(SOCKET, reveal);
     timer.mark("broadcast");
+    // A cancel that came in while the coins were being taken.
+    if (msg.userId !== game.user.id && cancelled.delete(msg.requestId)) lateCancel(charged.get(msg.requestId));
     warnIfSlow(timer.elapsed(), { hidden: hiddenAtStart || gmTabHidden(), buyer: actor.name });
     showAndPost(reveal);
 

@@ -40,7 +40,7 @@
   untick, and says when the box would drop nothing (liveOdds below).
 */
 import { RARITIES, RARITY_LABEL, DEFAULT_WEIGHTS, DEFAULT_PRICE_GP } from "./config.js";
-import { oddsPills, oddsRibbon, draftBox, boxPreview, boxPreviewHTML } from "./boxcard.js";
+import { oddsPills, oddsRibbon, draftBox, boxPreview, boxPreviewHTML, oddsSummary, quietAnnouncer } from "./boxcard.js";
 
 // A box's odds in the Boxes table: its ribbon over its named pills.
 const oddsCell = rows => rows.length ? `${oddsRibbon(rows)}<div class="lc-odds">${oddsPills(rows)}</div>` : "<em>empty</em>";
@@ -393,7 +393,8 @@ export class CrateManager extends ApplicationV2 {
       </fieldset>
       <div class="lc-form__odds" role="group" aria-labelledby="lc-odds-${esc(box.id)}">
         <div class="lc-form__label" id="lc-odds-${esc(box.id)}">Chances a player sees</div>
-        <div class="lc-form__preview" aria-live="polite"></div>
+        <div class="lc-form__preview"></div>
+        <p class="lc-sr-only" role="status" aria-live="polite"></p>
       </div>
       <fieldset><legend>Rules</legend>
         <label class="lc-row">Pity: guarantee <select name="pityRarity"><option value="">off</option>${RARITIES.map(r => `<option value="${r}" ${box.rules?.pity?.minRarity === r ? "selected" : ""}>${RARITY_LABEL[r]} or better</option>`).join("")}</select> after <input name="pityAfter" type="number" min="1" step="1" value="${esc(box.rules?.pity?.after ?? 10)}"> pulls</label>
@@ -590,9 +591,9 @@ export class CrateManager extends ApplicationV2 {
     const log = getLog();
     if (!log.length) return `<p class="lc-empty">No pulls yet.</p>`;
     return `<table class="lc-table"><thead><tr><th>When</th><th>Who</th><th>Box</th><th>Got</th><th></th></tr></thead><tbody>
-      ${log.map(r => `<tr class="${r.refunded ? "lc-row--refunded" : ""}">
+      ${log.map(r => `<tr class="${r.refunded ? "lc-row--refunded" : r.lateCancel ? "lc-row--late" : ""}">
         <td>${new Date(r.at).toLocaleString()}</td><td>${esc(r.actorName)}</td><td>${esc(r.boxName)} (${esc(formatPrice(r.price))})</td>
-        <td class="lc-rarity-${esc(r.rarity)}"><span class="lc-dot"></span>${r.refunded ? `<s>${esc(r.name)}</s>` : esc(r.name)}${r.pity ? " · pity" : ""}${logRarityNote(r)}</td>
+        <td class="lc-rarity-${esc(r.rarity)}"><span class="lc-dot"></span>${r.refunded ? `<s>${esc(r.name)}</s>` : esc(r.name)}${r.pity ? " · pity" : ""}${logRarityNote(r)}${logLateNote(r)}</td>
         <td>${r.refunded ? `<span class="lc-log__status" tabindex="-1" data-row="${esc(r.id)}">refunded ${esc(refundTime(r.refunded))}</span>` : `<button type="button" data-action="refund" data-row="${esc(r.id)}">Refund</button>`}</td>
       </tr>`).join("")}</tbody></table>`;
   }
@@ -643,6 +644,13 @@ export function logRarityNote(row) {
   if (!Array.isArray(row?.sourceRarity)) return "";
   const from = row.sourceRarity.length ? `source ${row.sourceRarity.map(rarityName).join(" or ")}` : "source had none";
   return `<small class="lc-log__rarity">${esc(`${rarityName(row.rarity)}, set by GM (${from})`)}</small>`;
+}
+
+// A pull its buyer called off after the charge (socket.js lateCancel): the
+// sale stood, and the GM's notice sent them here to refund it if wanted.
+export function logLateNote(row) {
+  if (!row?.lateCancel || row.refunded) return "";
+  return `<small class="lc-log__late">Called off by the buyer after the charge. Refund it if the table agrees.</small>`;
 }
 
 const PREVIEW_ROWS = 50;
@@ -707,12 +715,19 @@ async function promptForm(title, fieldsHtml, { onForm, position } = {}) {
 */
 function liveOdds(form, box, poolIds) {
   const out = form.querySelector(".lc-form__preview");
+  const status = form.querySelector(".lc-form__odds [role=status]");
   let shown = null;
+  let announce = null;
   const paint = () => {
     const draft = draftBox(box, readForm(form), poolIds);
     const preview = boxPreview(draft, getPools());
     const html = boxPreviewHTML(preview, esc);
     if (html !== shown) { out.innerHTML = html; shown = html; }
+    // The picture follows every keystroke; a screen reader hears one line,
+    // once the GM stops typing (the opening odds go unsaid).
+    const summary = oddsSummary(preview);
+    if (!announce) announce = quietAnnouncer(text => { if (status) status.textContent = text; }, { last: summary });
+    else announce(summary);
     for (const el of form.querySelectorAll("[data-held]")) {
       el.textContent = draft.pools.length && !preview.held.has(el.dataset.held) ? "none in these pools" : "";
     }

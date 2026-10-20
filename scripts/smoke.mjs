@@ -33,14 +33,24 @@ const STATES = [
   ["landed-legendary", "state=landed&seed=36&box=royal"],
   ["landed-buyer", "state=landed&seed=7&buyer=1"],
   ["manager", "state=manager"],
+  // A manager window sized 480 px wide, on any screen: its rows follow the
+  // window (a container query), so names wrap in full rather than cut off.
+  ["manager-narrow", "state=manager&width=480"],
 ];
 
 // The pool editor as a craft table, read from the DOM: an open pool draws at
 // most a page of controls, a collapsed one none (its census still shown),
 // one status line and no per-pool live regions, and the "No rarity set" chip
 // shows only unset rows and says it is pressed.
-async function managerProblems() {
+async function managerProblems(narrow) {
   const out = [];
+  if (narrow) {
+    const app = document.getElementById("app").getBoundingClientRect().width;
+    if (app > 484) out.push(`narrow manager is ${Math.round(app)} px wide`);
+    const cut = [...document.querySelectorAll(".lc-entry__name, .lc-entry__status")].filter(el => el.scrollWidth > el.clientWidth + 1);
+    if (cut.length) out.push(`${cut.length} names or statuses cut off in a 480 px window, e.g. "${cut[0].textContent}"`);
+    if (!document.querySelector(".lc-entry")) out.push("no rows to check");
+  }
   const pools = [...document.querySelectorAll(".lc-pool__details")];
   if (pools.length < 3) out.push(`expected 3 sample pools, got ${pools.length}`);
   for (const d of pools) {
@@ -149,11 +159,11 @@ try {
       page.on("console", m => { if (m.type() === "error" && !m.text().startsWith("Failed to load resource")) errors.push(m.text()); });
       await page.goto(`http://localhost:${PORT}/harness/?${query}`, { waitUntil: "networkidle" });
       if (name.startsWith("landed")) await page.waitForSelector("body[data-landed]", { timeout: 10000 });
-      if (name === "manager") await page.waitForSelector("body[data-ready]", { timeout: 10000 });
+      if (name.startsWith("manager")) await page.waitForSelector("body[data-ready]", { timeout: 10000 });
       await page.waitForTimeout(500);
       const wide = await page.evaluate(() => document.scrollingElement.scrollWidth > document.scrollingElement.clientWidth + 1);
       if (name.startsWith("shop")) problems0.push(...await page.evaluate(shopProblems, name === "shop-closed"));
-      else if (name === "manager") problems0.push(...await page.evaluate(managerProblems));
+      else if (name.startsWith("manager")) problems0.push(...await page.evaluate(managerProblems, name === "manager-narrow"));
       else problems0.push(...await page.evaluate(revealProblems, name === "landed-buyer"));
       await page.evaluate(() => document.fonts.ready);
       await page.screenshot({ path: path.join(OUT, w.tag, `${shot}.png`), fullPage: true });

@@ -97,6 +97,7 @@ afterEach(() => {
   delete globalThis.game;
   delete globalThis.foundry;
   delete globalThis.fromUuid;
+  delete globalThis.ui;
 });
 
 describe("a player's requestPull", () => {
@@ -211,6 +212,70 @@ describe("the GM client", () => {
     await deliver({ type: "pull", requestId: "next", boxId: "box", actorId: "actor1", userId: "p1" });
     expect(actor.system.currency.gp).toBe(490);
     expect(emitted.filter(m => m.type === "reveal")).toHaveLength(1);
+  });
+
+  // The buyer's wait ran out after the GM had charged: the sale stands, once,
+  // and the GM is told who, what and where to refund it.
+  it("tells the GM and the buyer about a cancel that came after the charge, marks the log row, and charges once", async () => {
+    const warnings = [];
+    globalThis.ui = { notifications: { warn: (...a) => warnings.push(a) } };
+    const { game, actor, emitted, deliver } = makeWorld({ user: GM });
+    await seed(game, {});
+    const warn = console.warn;
+    console.warn = () => {};
+    try {
+      await deliver({ type: "pull", requestId: "slow", boxId: "box", actorId: "actor1", userId: "p1" });
+      await deliver({ type: "cancel", requestId: "slow", userId: "p1" });
+      await enqueueWrite(() => {});
+      // A second cancel for the same pull says nothing more.
+      await deliver({ type: "cancel", requestId: "slow", userId: "p1" });
+      await enqueueWrite(() => {});
+    } finally { console.warn = warn; }
+    expect(actor.system.currency.gp).toBe(490);
+    expect(actor.items).toHaveLength(1);
+    const item = emitted.find(m => m.type === "reveal").result.name;
+    expect(warnings).toHaveLength(1);
+    const [text, options] = warnings[0];
+    expect(text).toContain("Player gave up waiting on Test Crate");
+    expect(text).toContain(`Crate Tester had already been charged and got ${item}`);
+    expect(text).toContain("Refund on the marked row in the Pull log");
+    expect(options?.permanent).not.toBe(true);
+    expect(emitted.filter(m => m.type === "late")).toEqual([{ type: "late", requestId: "slow", userId: "p1", boxName: "Test Crate", itemName: item, actorName: "Crate Tester" }]);
+    const rows = game.settings.get("loot-crates", "pullLog");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].lateCancel).toEqual(expect.any(Number));
+    expect(rows[0].id).toBe(emitted.find(m => m.type === "reveal").logId);
+  });
+
+  it("answers a cancel that arrives while the coins are being taken as a late one, after the row is written", async () => {
+    const warnings = [];
+    globalThis.ui = { notifications: { warn: (...a) => warnings.push(a) } };
+    const { game, actor, emitted, deliver } = makeWorld({ user: GM });
+    await seed(game, {});
+    // The cancel lands during the grant: past the last check, before the reveal.
+    const create = actor.createEmbeddedDocuments;
+    actor.createEmbeddedDocuments = async (...a) => { await deliver({ type: "cancel", requestId: "mid", userId: "p1" }); return create(...a); };
+    const warn = console.warn;
+    console.warn = () => {};
+    try {
+      await deliver({ type: "pull", requestId: "mid", boxId: "box", actorId: "actor1", userId: "p1" });
+      await enqueueWrite(() => {});
+    } finally { console.warn = warn; }
+    expect(actor.system.currency.gp).toBe(490);
+    expect(emitted.map(m => m.type)).toEqual(["reveal", "late"]);
+    expect(warnings).toHaveLength(1);
+    expect(game.settings.get("loot-crates", "pullLog")[0].lateCancel).toEqual(expect.any(Number));
+  });
+
+  it("tells a buyer whose crate opened after all, and no one else", async () => {
+    const infos = [];
+    globalThis.ui = { notifications: { info: (...a) => infos.push(a) } };
+    const { deliver } = makeWorld({ user: PLAYER });
+    await deliver({ type: "late", requestId: "x", userId: "someone-else", boxName: "Test Crate", itemName: "Rope", actorName: "Other" });
+    expect(infos).toEqual([]);
+    await deliver({ type: "late", requestId: "x", userId: "p1", boxName: "Test Crate", itemName: "Rope", actorName: "Crate Tester" });
+    expect(infos).toHaveLength(1);
+    expect(infos[0][0]).toBe("Your Test Crate opened after all: Crate Tester got Rope. Ask the GM if you'd like it refunded.");
   });
 
   it("fulfils a player's pull over the socket and broadcasts the reveal", async () => {

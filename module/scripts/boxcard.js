@@ -252,3 +252,34 @@ export function boxPreviewHTML(preview, esc = s => String(s ?? "")) {
   const { odds, note, empty } = preview;
   return `${odds.rows.length ? `${oddsRibbon(odds.rows)}<div class="lc-odds">${oddsPills(odds.rows)}</div>` : ""}${note ? `<p class="lc-form__hint${empty ? " lc-form__hint--warn" : ""}">${esc(note)}</p>` : ""}`;
 }
+
+/*
+  The box editor's preview in one line for a screen reader: "Uncommon 75%,
+  Rare 25%", plus the note when there is one. The ribbon and pills stay
+  silent; this is what the editor announces.
+*/
+export function oddsSummary(preview) {
+  const odds = preview.odds.rows.map(row => `${RARITY_LABEL[row.rarity] ?? row.rarity} ${row.label}`).join(", ");
+  return [odds, preview.note].filter(Boolean).join(odds && preview.note ? ". " : "");
+}
+
+export const ANNOUNCE_DELAY_MS = 600;
+
+/*
+  Says `text` through `say` once typing pauses for `ms`, and only when it
+  differs from the last thing said: a GM typing "125" into a weight hears the
+  odds once, for 125, not for 1, 12 and 125. `last` is what the region
+  already holds (the dialog's opening odds go unsaid).
+*/
+export function quietAnnouncer(say, { ms = ANNOUNCE_DELAY_MS, last = "", timers = globalThis } = {}) {
+  let timer = null;
+  return text => {
+    timers.clearTimeout(timer);
+    timer = timers.setTimeout(() => {
+      timer = null;
+      if (text === last) return;
+      last = text;
+      say(text);
+    }, ms);
+  };
+}

@@ -6,6 +6,7 @@
   ?theme=dark | light (Foundry's two themes; dark by default)
   ?waiting=gm | hidden (shop: the first crate pressed and the GM slow to answer)
   ?closed=1 (shop: closed because no GM is online; ?closed=gm, closed by the GM)
+  ?width=<px> (the window's width, as a GM sizes it, whatever the screen's)
   "landed" plays the spin at zero duration, for deterministic screenshots.
   buyer=1 shows the reveal as the buyer (or a GM) sees it: gold left and an
   Open item button; without it, as the rest of the table sees it.
@@ -37,6 +38,7 @@ document.body.classList.replace("theme-dark", `theme-${theme}`);
 const WINDOWS = { shop: ["lc-shop", "Crate Shop"], manager: ["lc-manager", "Loot Crates"] };
 const [appClass, appTitle] = WINDOWS[state] ?? ["lc-reveal", "Opening a crate"];
 document.getElementById("app").classList.add(appClass);
+if (Number(q.get("width")) > 0) Object.assign(document.getElementById("app").style, { width: `${Number(q.get("width"))}px`, maxWidth: "100%" });
 document.getElementById("title").textContent = appTitle;
 // Font Awesome isn't loaded here; this stands in for the shop's fa-box-open.
 const CRATE_ICON = `<svg class="lc-box__icon" viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M3 8.5 12 4l9 4.5v8L12 21l-9-4.5z"/><path d="M3 8.5 12 13l9-4.5M12 13v8"/></svg>`;
