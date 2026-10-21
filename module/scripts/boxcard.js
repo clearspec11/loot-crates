@@ -87,6 +87,23 @@ export function buyReason(box, odds, ctx = {}) {
   return crateState(box, odds, ctx) || shopReason(ctx) || crateReason(box, odds, ctx);
 }
 
+/*
+  Which character the shop buys for, picked again on every render and Buy:
+  ownership changes while the shop is open (the GM takes a character away,
+  gives one, assigns the player's own), and a pick made once at open sent
+  pulls the GM refused ("You don't own that character."). `actors` are the
+  characters the player owns now (shop.js buyableActors); `storedId` is the
+  one the shop had, kept while it is still among them; else the user's own
+  character (an actor or its id) if owned, else the first owned, else null.
+*/
+export function pickActor(storedId, actors = [], mainCharacter = null) {
+  const owned = id => id != null && actors.some(a => a.id === id);
+  if (owned(storedId)) return storedId;
+  const main = typeof mainCharacter === "string" ? mainCharacter : mainCharacter?.id;
+  if (owned(main)) return main;
+  return actors[0]?.id ?? null;
+}
+
 // Why no crate can be bought at all, or "": the shop is shut, no GM is there
 // to roll, or there's no character to pay. Said once, not under every card.
 export function shopReason({ hasActor = false, open = true, gmOnline = true } = {}) {
