@@ -196,6 +196,49 @@ export function shopNotice(ctx = {}) {
 }
 
 /*
+  What the shop's notice says when a Buy that looked live did nothing, or ""
+  when the shop has nothing to add. The redraw that follows can come ~100 ms
+  later and, for a press, said nothing: the cards were drawn a moment before
+  the data changed. `box` is the crate as it stands now (undefined once the
+  GM took it off the shelf), `reason` its fresh crateReason, `shown` the
+  price on the pressed Buy (its data-price). A price the GM raised past this
+  character's purse is named with both figures, since the card the player
+  pressed still says the old one. A shop-wide reason is the notice's own, so
+  the caller leaves those out.
+*/
+export function refusalLine({ box, reason = "", shown, purse = {}, actorName = "" }) {
+  if (!box) return "That crate is no longer on the shelf.";
+  const who = actorName || "this character";
+  const raised = shown != null && shown !== "" && Number(shown) !== Number(box.price);
+  if (raised && !canAfford(purse, box.price)) return `${box.name} now costs ${formatPrice(box.price)}, more than ${who} has.`;
+  if (!reason) return "";
+  return `Couldn't open ${box.name}: ${reason[0].toLowerCase()}${reason.slice(1)}.`;
+}
+
+// The shop re-picked its character (pickActor) between the redraw and the
+// press: the cards were someone else's, so nothing was sent.
+export function changedCharacterLine(name) {
+  return `Your character changed to ${name}; check the crate and press Buy again.`;
+}
+
+/*
+  The shop head's character field. With more than one character it is a
+  <select>; while a pull is out (`busy`) that select is aria-disabled, not
+  disabled, so one a keyboard user has focused keeps focus, and the shop
+  ignores changes to it (shop.js #choose): the pull charges the character it
+  was sent for, so the shown character and purse stay that one until it
+  settles. `actors` are { id, name }.
+*/
+export function actorPicker({ actors = [], actorId = null, busy = false, esc = s => String(s ?? "") }) {
+  if (actors.length > 1) {
+    const options = actors.map(a => `<option value="${esc(a.id)}"${a.id === actorId ? " selected" : ""}>${esc(a.name)}</option>`).join("");
+    return `<label class="lc-shop__field"><span class="lc-label">Character</span><select class="lc-shop__actor"${busy ? ` aria-disabled="true"` : ""}>${options}</select></label>`;
+  }
+  const name = actors.find(a => a.id === actorId)?.name ?? "No character";
+  return `<div class="lc-shop__field"><span class="lc-label">Character</span><span class="lc-shop__who">${esc(name)}</span></div>`;
+}
+
+/*
   One box in the shop grid. `ctx` adds { busy, busyBox, waiting, art, esc,
   stateOf } to buyReason's (which also takes held(boxId), see crateState);
   stateOf(boxId) is the buyer's pity and ownership state for that box

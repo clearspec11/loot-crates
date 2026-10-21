@@ -34,7 +34,9 @@ const STATES = [
   ["shop-pity", "state=shop&pity=due"],
   // The Buy a keyboard user pressed, mid-pull: it keeps focus (and its node)
   // through every re-render, and the others are off without losing theirs.
-  ["shop-busy", "state=shop"],
+  // The player owns two characters: the select is off (aria-disabled, still
+  // legible) while the pull is out, and on again once it settles.
+  ["shop-busy", "state=shop&characters=2"],
   ["landed", "state=landed&seed=7"],
   ["landed-legendary", "state=landed&seed=36&box=royal"],
   ["landed-buyer", "state=landed&seed=7&buyer=1"],
@@ -287,6 +289,8 @@ async function shopProblems(mode) {
     const frames = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
     const btn = document.querySelector('.lc-box__buy[data-box="common"]');
     const cards = [...document.querySelectorAll(".lc-box")];
+    const select = document.querySelector(".lc-shop__actor");
+    if (!select) out.push("the two-character shop has no character select");
     btn.focus();
     const steps = [
       ["busy", { busy: true, busyBox: "common" }, "Opening…"],
@@ -303,6 +307,10 @@ async function shopProblems(mode) {
       if (document.querySelector('.lc-box__buy[data-box="common"]') !== btn) out.push(`the ${label} render replaced the pressed Buy`);
       if ([...document.querySelectorAll(".lc-box")].some((c, i) => c !== cards[i])) out.push(`the ${label} render replaced a card`);
       if (btn.textContent.trim() !== `Pauper's Box: ${text}`) out.push(`after the ${label} render the Buy reads "${btn.textContent.trim()}"`);
+      if (document.querySelector(".lc-shop__actor") !== select) out.push(`the ${label} render replaced the character select`);
+      const off = select?.getAttribute("aria-disabled") === "true";
+      if (off !== !!extra.busy) out.push(`after the ${label} render the select is ${off ? "off" : "on"}`);
+      if (select?.disabled) out.push("the select is disabled (it can't keep focus); use aria-disabled");
     }
     if (btn.getAttribute("aria-disabled") !== "true") out.push("the pressed Buy isn't aria-disabled while busy");
     if (document.querySelectorAll('.lc-box__buy:not([aria-disabled="true"])').length) out.push("a Buy is on while a pull is out");

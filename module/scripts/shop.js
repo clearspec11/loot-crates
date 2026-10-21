@@ -15,11 +15,19 @@
   pickActor), from the characters this player owns now: the GM can take one
   away, give one or assign the player's own while the shop is open, and the
   hooks in registerShopHooks redraw it when they do. A pull that is out
-  keeps the character it was sent for until it settles.
+  keeps the character it was sent for until it settles, and so does the
+  character select: aria-disabled while busy, its changes ignored, so the
+  character and purse on screen are always the ones the pull charges.
+
+  A Buy that looked live but did nothing says why in the shop's notice (the
+  header's one live region): the character was re-picked under it, the GM
+  raised the price past the purse, or the crate became unbuyable a moment
+  before the redraw showed it. That line stays while it still holds and
+  clears on the next Buy that goes out.
 */
 import { getBoxes, getPools, getActorState, isShopOpen } from "./store.js";
 import { formatGold } from "./currency.js";
-import { boxCard, buyReason, shopHTML, shopNotice, patchShop, pickActor } from "./boxcard.js";
+import { actorPicker, boxCard, buyReason, changedCharacterLine, crateReason, refusalLine, shopHTML, shopNotice, shopReason, patchShop, pickActor } from "./boxcard.js";
 import { shopOdds } from "./odds.js";
 import { requestPull } from "./socket.js";
 import { heldState, onRelease } from "./reveal.js";
@@ -49,6 +57,9 @@ export class CrateShop extends ApplicationV2 {
   busyBox = null;
   // Why it is taking long, once it is: "gm" or "hidden" (socket.js onWait).
   waiting = null;
+  // Why the last Buy did nothing, while it still holds: { text, actorId,
+  // holds() } (see #refuse), or null.
+  said = null;
 
   get actor() { return game.actors.get(this.actorId) ?? null; }
 
@@ -74,15 +85,24 @@ export class CrateShop extends ApplicationV2 {
     const actorId = this.#resolve();
     if (actorId !== this.actorId) {
       this.actorId = actorId;
+      // No character at all is the notice's own reason.
+      const name = this.actor?.name;
+      this.said = name ? { text: changedCharacterLine(name), actorId, holds: () => true } : null;
       this.render();
       return;
     }
     const boxId = target.dataset.box;
     const box = getBoxes()[boxId];
     const ctx = this.#ctx();
-    if (!box || buyReason(box, shopOdds(box, getPools(), ctx.stateOf(boxId)), ctx)) return;
+    if (!box || buyReason(box, shopOdds(box, getPools(), ctx.stateOf(boxId)), ctx)) {
+      // An aria-disabled Buy already shows its reason; one that looked live
+      // was drawn before the change, so say what changed.
+      if (target.getAttribute?.("aria-disabled") !== "true") this.#refuse(boxId, target.dataset.price, ctx);
+      return;
+    }
     this.busy = true;
     this.busyBox = boxId;
+    this.said = null;
     this.render();
     const onWait = why => {
       if (this.busyBox !== boxId) return;
@@ -106,11 +126,64 @@ export class CrateShop extends ApplicationV2 {
     }
   }
 
+  /*
+    Puts why a live-looking Buy of `boxId` did nothing in the notice and
+    redraws, so the cards catch up too. The line holds while the shop buys
+    for the same character and the crate is still unbuyable at the same
+    price (or still gone); a shop-wide reason is the notice's own.
+  */
+  #refuse(boxId, shown, ctx) {
+    if (shopReason(ctx)) {
+      this.said = null;
+      this.render();
+      return;
+    }
+    const reasonNow = box => {
+      const now = this.#ctx();
+      return crateReason(box, shopOdds(box, getPools(), now.stateOf(boxId)), now);
+    };
+    const box = getBoxes()[boxId];
+    const text = refusalLine({ box, reason: box ? reasonNow(box) : "", shown, purse: ctx.purse, actorName: ctx.actorName });
+    const price = box?.price;
+    const holds = () => {
+      const now = getBoxes()[boxId];
+      if (!box) return !now;
+      return !!now && now.price === price && !!reasonNow(now);
+    };
+    this.said = text ? { text, actorId: this.actorId, holds } : null;
+    this.render();
+  }
+
+  // The notice: a shop-wide reason or a slow GM first, else why the last Buy
+  // did nothing while that still holds.
+  #notice(ctx) {
+    const notice = shopNotice(ctx);
+    if (notice.text) return notice;
+    if (this.said && (this.said.actorId !== this.actorId || !this.said.holds())) this.said = null;
+    return this.said ? { text: this.said.text, tone: "warn" } : notice;
+  }
+
   // A change listener, not a data-action: ApplicationV2 runs actions on click,
   // and re-rendering on the click that opens the list closed it again.
+  // While a pull is out the select is aria-disabled and a change is put back.
   #choose(select) {
+    if (this.busy) {
+      select.value = this.actorId;
+      return;
+    }
     this.actorId = select.value;
     this.render();
+  }
+
+  // Keeps an aria-disabled select shut: no list on a press, no arrow-key,
+  // Space, Enter or type-ahead change. Tab, Escape and shortcuts with Ctrl
+  // or Cmd still work. A change that gets through anyway (a touch picker) is
+  // put back by #choose.
+  #hold(event) {
+    if (!this.busy) return;
+    const key = event.key ?? "";
+    const changes = event.type === "mousedown" || /^(Arrow|Page)|^(Home|End|Enter| )$/.test(key) || (key.length === 1 && !event.ctrlKey && !event.metaKey);
+    if (changes) event.preventDefault();
   }
 
   // What decides whether a crate can be bought, for the cards and for #buy.
@@ -138,20 +211,24 @@ export class CrateShop extends ApplicationV2 {
     const pools = getPools();
     const purse = actor?.system?.currency ?? {};
     const ctx = this.#ctx();
-    const picker = actors.length > 1
-      ? `<label class="lc-shop__field"><span class="lc-label">Character</span><select class="lc-shop__actor">${actors.map(a => `<option value="${a.id}"${a.id === this.actorId ? " selected" : ""}>${esc(a.name)}</option>`).join("")}</select></label>`
-      : `<div class="lc-shop__field"><span class="lc-label">Character</span><span class="lc-shop__who">${esc(actor?.name ?? "No character")}</span></div>`;
+    // A pull that is out keeps its character on screen even if the player no
+    // longer owns it, so the field names who it charges.
+    const shown = actor && !actors.includes(actor) ? [actor, ...actors] : actors;
+    const picker = actorPicker({ actors: shown, actorId: this.actorId, busy: this.busy, esc });
     const purseField = actor ? `<div class="lc-shop__field lc-shop__field--purse"><span class="lc-label">Purse</span><span class="lc-shop__purse">${esc(formatGold(purse))}</span></div>` : "";
 
     // The shop-wide reason (closed, no GM, no character) or the wait is said
     // once, in the header's live region; the cards only point at it.
-    this.notice = shopNotice(ctx);
+    this.notice = this.#notice(ctx);
     root.innerHTML = shopHTML({
       fields: picker + purseField,
       cards: boxes.length ? boxes.map(b => boxCard(b, pools, ctx)).join("") : `<p class="lc-shop__empty">No crates on the shelf yet. The GM builds them from Game Settings, Loot Crates.</p>`,
       notice: this.notice,
     });
-    root.querySelector(".lc-shop__actor")?.addEventListener("change", e => this.#choose(e.currentTarget));
+    const select = root.querySelector(".lc-shop__actor");
+    select?.addEventListener("change", e => this.#choose(e.currentTarget));
+    select?.addEventListener("mousedown", e => this.#hold(e));
+    select?.addEventListener("keydown", e => this.#hold(e));
     return root;
   }
 
