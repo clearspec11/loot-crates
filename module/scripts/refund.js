@@ -77,11 +77,19 @@ async function doRefund(rowId) {
 
   // Read again here, inside the queue, after the row is marked: the shop's
   // pills and pity line redraw from this write (redraw.js).
-  // A deleted box has no shop to correct.
+  // A deleted box has no shop to correct. The coins and the item are back
+  // by now, so a failed write is reported for the GM to fix, not thrown:
+  // the card is still marked and the manager still posts the refund.
   let state = null;
   if (box) {
-    state = stateAfter(row);
-    await setActorState(row.actorId, row.boxId, state.after);
+    const next = stateAfter(row);
+    try {
+      await setActorState(row.actorId, row.boxId, next.after);
+      state = next;
+    } catch (err) {
+      console.error(`loot-crates | could not put back ${row.actorName}'s pity count and no-duplicates record for ${row.boxName}`, err);
+      globalThis.ui?.notifications?.error(`Loot Crates: ${row.name} was refunded, but ${row.actorName}'s pity count and no-duplicates record for ${row.boxName} weren't put back. Check the console.`);
+    }
   }
 
   const card = await markPullCard({ ...row, refunded });
