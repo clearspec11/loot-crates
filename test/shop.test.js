@@ -464,4 +464,22 @@ describe("the shop mid-purchase, and a Buy that does nothing", () => {
     settle({});
     await pressed;
   });
+
+  // A Buy's line is about that press: a shop closed and opened again later
+  // starts without it (the notice is announced afresh on open).
+  it("forgets why a Buy did nothing when the shop is closed", async () => {
+    const app = new CrateShop();
+    await draw(app);
+    const old = boxes.common;
+    try {
+      delete boxes.common;
+      await press(app, "common", "25");
+      await app.last;
+      expect(notice(app)).toBe("That crate is no longer on the shelf.");
+      await app._onClose?.({});
+      app.content = null;
+      await draw(app);
+      expect(notice(app)).toBe("");
+    } finally { boxes.common = old; }
+  });
 });

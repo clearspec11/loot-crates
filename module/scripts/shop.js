@@ -232,6 +232,13 @@ export class CrateShop extends ApplicationV2 {
     return root;
   }
 
+  // Why a Buy did nothing is about that press; a shop opened again later
+  // starts without it.
+  async _onClose(options) {
+    this.said = null;
+    return super._onClose?.(options);
+  }
+
   // The notice node, the cards and the focused Buy are kept across renders
   // (see boxcard.js patchShop). The <select> is kept too, with the change
   // listener it got on the first render.
