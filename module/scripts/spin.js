@@ -8,12 +8,21 @@
   Pure DOM plus one requestAnimationFrame loop driving a single translateX.
   No Foundry globals, so the harness page can run it for screenshots.
 
-    const spin = mountSpin(container, strip, { duration, reducedMotion, onTick, onLand });
+    const spin = mountSpin(container, strip, { duration, reducedMotion, onTick, onPhase, onLand });
     await spin.play();
     spin.skip();   // land on the next frame, through the same land() path
     spin.skip({ now: true });   // land in this call, for a host that is hidden
                                 // (a hidden page runs no animation frames)
     spin.skipped, spin.reducedMotion   // how it landed: cut short, or never ran
+
+  onPhase(phase, { at, settleIn }) marks the two moments the eye sees the
+  strip change, from the same frame that draws them (no timers): "brake" in
+  the first frame at or after brakeAt(duration), when the ease-out begins,
+  and "settle" in the first at or after settleAt(duration), when the strip
+  turns back from its overshoot. `at` is the spin's own clock (ms since its
+  first frame); `settleIn` the ms left until the settle, so a sound cued on
+  the brake can last exactly as long as the braking. Neither fires on a skip,
+  under reduced motion, or for a hidden land: nothing is seen to brake.
 
   Mounting again into the same container (Watch again) starts from a fresh,
   unlanded strip.
@@ -48,6 +57,14 @@ export function spinDistance(p, accel = SPIN_ACCEL, cruise = SPIN_CRUISE) {
   if (p < accel + cruise) return v * (accel / 2 + p - accel);
   return v * (accel / 2 + cruise + (decel / 3) * easeOutCubic((p - accel - cruise) / decel));
 }
+
+// Share of the spin's time spent running to the overshoot point; the rest
+// settles back onto the result.
+export const SPIN_SPLIT = 0.86;
+
+// When the ease-out starts and when the settle starts, in ms from the first frame.
+export const brakeAt = (duration = DEFAULT_DURATION) => duration * SPIN_SPLIT * (SPIN_ACCEL + SPIN_CRUISE);
+export const settleAt = (duration = DEFAULT_DURATION) => duration * SPIN_SPLIT;
 
 const easeInOutQuad = p => (p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2);
 
@@ -149,7 +166,7 @@ export function mountSpin(container, strip, options = {}) {
   // a beat, onTick fires for it, and the settle crosses back with a click.
   // Otherwise the overshoot stays inside the result card.
   const overshoot = strip.nearMiss ? nearMissOvershoot(cardWidth, gap) : cardWidth * 0.18;
-  const split = 0.86;
+  const split = SPIN_SPLIT;
   const MAX_UNSIZED_FRAMES = 10;
 
   function play() {
@@ -184,11 +201,29 @@ export function mountSpin(container, strip, options = {}) {
         }
         setX(x);
         tick(x, w);
+        if (!skipped) phase(now - t0);
         if (p < 1) requestAnimationFrame(frame);
         else { setX(target(width())); land(); resolve(); }
       };
       requestAnimationFrame(frame);
     });
+  }
+
+  // A frame that leaps past the whole brake (a stalled tab) doesn't announce
+  // it: a cue with no braking left to accompany would come out late.
+  const brakeMs = brakeAt(duration);
+  const settleMs = settleAt(duration);
+  let braked = false;
+  let settled = false;
+  function phase(elapsed) {
+    if (!braked && elapsed >= brakeMs) {
+      braked = true;
+      if (elapsed < settleMs) options.onPhase?.("brake", { at: elapsed, settleIn: settleMs - elapsed });
+    }
+    if (!settled && elapsed >= settleMs) {
+      settled = true;
+      options.onPhase?.("settle", { at: elapsed, settleIn: 0 });
+    }
   }
 
   // Ends the spin on the next frame. Before play() it makes play() land at

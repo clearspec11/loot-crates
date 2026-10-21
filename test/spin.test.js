@@ -2,7 +2,7 @@
    a viewport with a fixed width, and a requestAnimationFrame driven by hand,
    so the test can read which cards pass under the marker. */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mountSpin, nearMissOvershoot, spinDistance, SPIN_ACCEL, SPIN_CRUISE, CARD_WIDTH, CARD_GAP } from "../module/scripts/spin.js";
+import { mountSpin, nearMissOvershoot, spinDistance, brakeAt, settleAt, SPIN_ACCEL, SPIN_CRUISE, SPIN_SPLIT, CARD_WIDTH, CARD_GAP, DEFAULT_DURATION } from "../module/scripts/spin.js";
 
 const fakeElement = () => ({
   className: "", textContent: "", innerHTML: "", clientWidth: 0, dataset: {}, children: [],
@@ -100,5 +100,104 @@ describe("the spin's speed profile", () => {
     const share = SPIN_CRUISE * 0.86;
     expect(share).toBeGreaterThanOrEqual(0.35);
     expect(share).toBeLessThanOrEqual(0.4);
+  });
+});
+
+/*
+  The phase cues come from the frames that draw the strip, so a sound cued on
+  them marks what the eye sees: "brake" when the ease-out begins, "settle"
+  when the strip turns back. Default duration, a fake 60 fps clock that
+  starts at an arbitrary time.
+*/
+describe("the spin's brake and settle cues", () => {
+  const T0 = 1000;
+  function mount({ reducedMotion = false, onTick } = {}) {
+    const phases = [];
+    const spin = mountSpin(fakeElement(), strip(false), { reducedMotion, onTick, onPhase: (phase, info) => phases.push({ phase, ...info }) });
+    spin.viewport.clientWidth = 680;
+    let now = T0;
+    const run = (until = Infinity) => { for (; frames.length && now - T0 <= until; now += 16) frames.shift()(now); };
+    return { spin, phases, run, done: spin.play() };
+  }
+
+  it("brakes where the ease-out starts: about 2773 ms into the default spin", () => {
+    expect(brakeAt()).toBeCloseTo(SPIN_SPLIT * (SPIN_ACCEL + SPIN_CRUISE) * DEFAULT_DURATION, 9);
+    expect(Math.round(brakeAt())).toBe(2773);
+    expect(Math.round(settleAt())).toBe(5332);
+    expect(brakeAt(1000)).toBeCloseTo(1000 * SPIN_SPLIT * (SPIN_ACCEL + SPIN_CRUISE), 9);
+  });
+
+  it("fires brake once, in the first frame at or after 2773 ms, and settle once at or after 5332 ms", async () => {
+    const { spin, phases, run, done } = mount();
+    run();
+    await done;
+    expect(spin.landed).toBe(true);
+    expect(phases.map(p => p.phase)).toEqual(["brake", "settle"]);
+    const [brake, settle] = phases;
+    // 16 ms frames: 2784 is the first at or after 2772.9, 5344 the first at or after 5332.
+    expect(brake.at).toBe(2784);
+    expect(brake.at - 16).toBeLessThan(brakeAt());
+    expect(brake.settleIn).toBeCloseTo(settleAt() - 2784, 9);
+    expect(settle.at).toBe(5344);
+    expect(settle.at - 16).toBeLessThan(settleAt());
+    expect(settle.settleIn).toBe(0);
+  });
+
+  it("cues the brake from the frame that begins it: the strip's speed starts falling there", async () => {
+    const xs = [];
+    const { spin, phases, done } = mount();
+    const read = () => -parseFloat(spin.track.style.transform.slice("translate3d(".length));
+    // Sample x per frame alongside the run.
+    for (let now = T0; frames.length; now += 16) { frames.shift()(now); xs.push([now - T0, read()]); }
+    await done;
+    const speed = i => xs[i][1] - xs[i - 1][1];
+    const at = xs.findIndex(([t]) => t === phases[0].at);
+    // Top speed held through the cruise up to the brake, falling after it.
+    expect(speed(at - 1)).toBeCloseTo(speed(at - 20), 6);
+    expect(speed(at + 20)).toBeLessThan(speed(at - 1) * 0.95);
+  });
+
+  it("fires neither when skip() comes before the brake", async () => {
+    const { spin, phases, run, done } = mount();
+    run(1500);
+    spin.skip();
+    run();
+    await done;
+    expect(spin.landed).toBe(true);
+    expect(phases).toEqual([]);
+  });
+
+  it("fires no settle when skip() comes during the brake", async () => {
+    const { spin, phases, run, done } = mount();
+    run(3500);
+    spin.skip();
+    run();
+    await done;
+    expect(phases.map(p => p.phase)).toEqual(["brake"]);
+  });
+
+  it("fires neither under reduced motion or for a hidden land", async () => {
+    const reduced = mount({ reducedMotion: true });
+    await reduced.done;
+    expect(reduced.spin.landed).toBe(true);
+    expect(reduced.phases).toEqual([]);
+
+    const hidden = mount();
+    hidden.run(1000);
+    hidden.spin.skip({ now: true });
+    hidden.run();
+    await hidden.done;
+    expect(hidden.spin.landed).toBe(true);
+    expect(hidden.phases).toEqual([]);
+  });
+
+  it("doesn't announce a brake a stalled frame leapt clean past", async () => {
+    const { spin, phases, done } = mount();
+    frames.shift()(T0);
+    frames.shift()(T0 + 5400);
+    for (let now = T0 + 5416; frames.length; now += 16) frames.shift()(now);
+    await done;
+    expect(spin.landed).toBe(true);
+    expect(phases.map(p => p.phase)).toEqual(["settle"]);
   });
 });
