@@ -1,6 +1,7 @@
 import { RARITY_LABEL } from "./config.js";
 import { formatPrice } from "./currency.js";
 import { refundedCardContent } from "./chatcard.js";
+import { replaySnapshot } from "./revealcard.js";
 import { getLog } from "./store.js";
 
 const esc = s => foundry.utils.escapeHTML(String(s ?? ""));
@@ -16,7 +17,8 @@ function itemLink(uuid, name) {
 
 // The chat card everyone keeps: who opened what and got what. Posted with the
 // result (socket.js showAndPost), not after the GM's own spin.
-// flags.logId ties it to its log row, so a refund can mark this card.
+// flags.logId ties it to its log row, so a refund can mark this card;
+// flags.replay lets anyone watch the spin again from the card.
 export async function postPullCard(reveal) {
   const r = reveal.result;
   let content = `
@@ -37,6 +39,10 @@ export async function postPullCard(reveal) {
   const actor = game.actors.get(reveal.actorId);
   const flags = { uuid: r.uuid, boxId: reveal.box.id };
   if (reveal.logId) flags.logId = reveal.logId;
+  // What "Watch again" replays (reveal.js watchAgain): the strip, odds and
+  // result to show, never the purse or the granted item.
+  const replay = replaySnapshot(reveal);
+  if (replay) flags.replay = replay;
   return ChatMessage.create({
     content,
     speaker: ChatMessage.getSpeaker({ actor }),

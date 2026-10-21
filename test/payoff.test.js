@@ -195,6 +195,17 @@ describe("the chat card", () => {
     expect(created.content).not.toContain('data-uuid="Actor.');
   });
 
+  it("stores a display-only replay snapshot, with no purse or granted item", async () => {
+    const { postPullCard } = await import("../module/scripts/chat.js");
+    const strip = { landIndex: 1, nearMiss: false, cards: [{ uuid: "c0", name: "Rope", img: "r.webp", rarity: "common" }, { uuid: "Compendium.dnd5e.items.Item.src", name: "Flame Tongue", img: "f.webp", rarity: "rare", result: true }] };
+    await postPullCard({ ...reveal("i1"), strip, purse: { gp: 420 }, odds: [{ rarity: "rare", chance: 1, label: "100%" }] });
+    const { replay } = created.flags["loot-crates"];
+    expect(replay.strip).toEqual({ landIndex: 1, nearMiss: false, cards: [{ name: "Rope", img: "r.webp", rarity: "common" }, { name: "Flame Tongue", img: "f.webp", rarity: "rare", result: true }] });
+    expect(replay.result).toEqual({ name: "Flame Tongue", rarity: "rare", pity: false });
+    const json = JSON.stringify(replay);
+    expect(json).not.toMatch(/purse|itemUuid|Actor\.|uuid|420/);
+  });
+
   it("falls back to the pool's source when nothing was granted", async () => {
     const { postPullCard } = await import("../module/scripts/chat.js");
     await postPullCard(reveal(null));

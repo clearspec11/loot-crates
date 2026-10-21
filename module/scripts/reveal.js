@@ -34,11 +34,21 @@
   card's head with "Opening…" in place of the item until this client's
   reveal of that pull lands or is closed. Display only: the message is the
   same for everyone, and a client with no spin playing sees it whole.
+
+  "Watch again" (watchAgain, a renderChatMessageHTML hook beside
+  sealChatCard): a pull's card carries a display-only snapshot of its strip
+  (revealcard.js replaySnapshot), and its button plays that spin again here
+  only, in a window titled "Replay: ...". A replay shows no purse and no Open
+  item, writes nothing, posts nothing and never seals a chat card. One
+  replay window per card: a second press brings the open one forward.
+  showReplay is the one replay path (a reveal that offers its own Watch
+  again uses it too).
 */
 import { MODULE_ID, SETTINGS } from "./config.js";
 import { mountSpin } from "./spin.js";
 import { formatPrice } from "./currency.js";
-import { cascadeOffset, canSeePurse, resultHTML, freeSlot, CLOSE_GRACE_MS } from "./revealcard.js";
+import { cascadeOffset, canSeePurse, resultHTML, freeSlot, CLOSE_GRACE_MS, replayReveal, replayTitle, replayWindowId } from "./revealcard.js";
+import { REFUNDED_CLASS } from "./chatcard.js";
 import { oddsRibbon } from "./boxcard.js";
 import { playTick, playSlow, playReveal } from "./sound.js";
 
@@ -92,16 +102,26 @@ export class CrateReveal extends ApplicationV2 {
     // after the first has closed.
     const slot = freeSlot(usedSlots());
     const position = { height: "auto", ...cascadeOffset(slot, { width: window.innerWidth, height: window.innerHeight }) };
-    super({ ...(reveal.requestId ? { id: `loot-crates-reveal-${reveal.requestId}` } : {}), position, ...options });
+    const id = reveal.replay ? replayWindowId(reveal.replayKey) : reveal.requestId ? `loot-crates-reveal-${reveal.requestId}` : null;
+    super({ ...(id ? { id } : {}), position, ...options });
     this.slot = slot;
     this.reveal = reveal;
-    if (reveal.logId) {
+    // A replay holds no chat card back: the card it came from is whole.
+    if (reveal.logId && !reveal.replay) {
       spinning.set(reveal.logId, this.landed);
       this.landed.then(() => spinning.delete(reveal.logId));
     }
   }
 
+  get title() {
+    return this.reveal?.replay ? replayTitle(this.reveal) : super.title;
+  }
+
+  // Where focus goes back to when a replay closes (its Watch again).
+  returnTo = null;
+
   get canSee() {
+    if (this.reveal.replay) return false;
     return canSeePurse(this.reveal, { isGM: game.user.isGM, userId: game.user.id });
   }
 
@@ -129,7 +149,7 @@ export class CrateReveal extends ApplicationV2 {
   _onClose(options) {
     super._onClose(options);
     // Back to the crate they bought, unless they have moved on elsewhere.
-    const buy = ownBuy(this.reveal);
+    const buy = ownBuy(this.reveal) ?? this.returnTo;
     if (buy?.isConnected && focusIsFree(this.element)) buy.focus({ preventScroll: true });
     this.#closed = true;
     clearTimeout(this.#slowTimer);
@@ -225,6 +245,47 @@ export function sealChatCard(message, html) {
     card.classList.remove("lc-chat--sealed");
     sealed.remove();
   });
+}
+
+/*
+  Plays a pull again on this client only, from its stored snapshot. `key`
+  names the window (the chat message's id). Resolves to the window, or null
+  when the snapshot can't be played. `returnTo` gets focus back on close.
+*/
+export async function showReplay(snapshot, key, { returnTo = null } = {}) {
+  const open = foundry.applications.instances?.get?.(replayWindowId(key));
+  if (open && open.state > 0) {
+    open.bringToFront?.();
+    open.element?.querySelector?.(".lc-reveal__close")?.focus({ preventScroll: true });
+    return open;
+  }
+  const reveal = replayReveal(snapshot, key);
+  if (!reveal) return null;
+  const app = new CrateReveal(reveal);
+  app.returnTo = returnTo;
+  await app.render({ force: true });
+  return app;
+}
+
+// renderChatMessageHTML: a "Watch again" button on a pull's card that
+// carries a replay snapshot. None on a refunded card (the win is withdrawn)
+// or on a card from before snapshots. Hidden while the card is sealed (its
+// spin is still playing here; module.css).
+export function watchAgain(message, html) {
+  const snapshot = message?.flags?.[MODULE_ID]?.replay;
+  const card = snapshot ? html?.querySelector?.(".lc-chat") : null;
+  if (!card || card.classList.contains(REFUNDED_CLASS) || card.querySelector(".lc-chat__replay")) return;
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "lc-chat__replay";
+  btn.textContent = "Watch again";
+  btn.setAttribute("aria-label", `Watch again: ${snapshot.actorName ?? ""} opens ${snapshot.box?.name ?? "a crate"}`);
+  btn.addEventListener("click", event => {
+    event.preventDefault();
+    event.stopPropagation();
+    showReplay(snapshot, message.id, { returnTo: btn }).catch(err => console.error("loot-crates | replay failed", err));
+  });
+  card.append(btn);
 }
 
 export async function showReveal(reveal) {

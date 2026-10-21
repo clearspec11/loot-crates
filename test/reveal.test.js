@@ -20,8 +20,10 @@ const fakeElement = () => ({
 });
 
 class FakeApp {
-  constructor(options) { this.options = options; this.state = 0; }
+  constructor(options) { this.options = options; this.state = 0; this.fronted = 0; }
+  bringToFront() { this.fronted++; }
   async render() {
+    if (this.options?.id) globalThis.foundry.applications.instances.set(this.options.id, this);
     const html = await this._renderHTML();
     const parts = new Map();
     this.element = { querySelector: sel => parts.get(sel) ?? parts.set(sel, fakeElement()).get(sel), contains: el => [...parts.values()].includes(el) };
@@ -31,7 +33,7 @@ class FakeApp {
     return this;
   }
   _onClose() {}
-  close() { this._onClose({}); }
+  close() { this.state = 0; globalThis.foundry.applications.instances.delete(this.options?.id); this._onClose({}); }
 }
 
 let frames, listeners, doc;
@@ -65,7 +67,8 @@ const reveal = {
   strip: { landIndex: 30, cards: Array.from({ length: 36 }, (_, i) => ({ uuid: `c${i}`, name: `Card ${i}`, img: "", rarity: "common", result: i === 30 })) },
 };
 
-const { showReveal, sealChatCard } = await import("../module/scripts/reveal.js");
+const { showReveal, showReplay, sealChatCard, watchAgain, CrateReveal } = await import("../module/scripts/reveal.js");
+const { replaySnapshot, replayReveal } = await import("../module/scripts/revealcard.js");
 const { playReveal, playSlow } = await import("../module/scripts/sound.js");
 
 describe("a reveal on a hidden page", () => {
@@ -235,5 +238,114 @@ describe("focus between the buyer's Buy and the reveal", () => {
     doc.activeElement = app2.element.querySelector(".lc-reveal__close");
     app2.close();
     expect(doc.activeElement).not.toBe(buy);
+  });
+});
+
+/*
+  "Watch again": a replay plays on this client only, from the card's
+  snapshot. One window per card, titled as a replay, nobody's gold, and it
+  never holds a chat card back.
+*/
+const snapshot = replaySnapshot({ ...reveal, odds: [{ rarity: "rare", chance: 1, label: "100%" }], purse: { gp: 5 }, itemUuid: "Actor.a.Item.i", logId: "L9" });
+
+describe("a replay window", () => {
+  it("opens once per card: a second press brings the open one forward", async () => {
+    const a = await showReplay(snapshot, "m1");
+    expect(a.options.id).toBe("loot-crates-reveal-replay-m1");
+    const b = await showReplay(snapshot, "m1");
+    expect(b).toBe(a);
+    expect(a.fronted).toBe(1);
+    const c = await showReplay(snapshot, "m2");
+    expect(c).not.toBe(a);
+    // Closed, the card's button opens a fresh one.
+    a.close();
+    const d = await showReplay(snapshot, "m1");
+    expect(d).not.toBe(a);
+  });
+
+  it("says Replay, shows no gold or Open item even to a GM, and plays the spin", async () => {
+    globalThis.game.user.isGM = true;
+    const app = await showReplay(snapshot, "m3");
+    expect(app.title).toBe("Replay: Crate Tester opens Crate");
+    expect(app.canSee).toBe(false);
+    expect(frames).toHaveLength(1);
+    for (let now = 0; frames.length; now += 16) frames.shift()(now);
+    await app.landed;
+    const out = app.element.querySelector(".lc-reveal__result").innerHTML;
+    expect(out).toContain("Sword");
+    expect(out).not.toMatch(/gp left/);
+    expect(app.element.querySelector(".lc-reveal__open").hidden).toBe(true);
+    expect(app.element.querySelector(".lc-reveal__close").textContent).toBe("Close");
+  });
+
+  it("never enters the spinning set, so it seals no chat card", async () => {
+    const app = new CrateReveal({ ...replayReveal(snapshot, "m4"), logId: "L9" });
+    await app.render({ force: true });
+    const { card, html } = cardHTML();
+    sealChatCard(message("L9"), html);
+    expect(card.classes.has("lc-chat--sealed")).toBe(false);
+  });
+
+  it("gives focus back to its Watch again on close", async () => {
+    const back = { isConnected: true, focus() { doc.activeElement = this; } };
+    const app = await showReplay(snapshot, "m5", { returnTo: back });
+    for (let now = 0; frames.length; now += 16) frames.shift()(now);
+    await app.landed;
+    app.close();
+    expect(doc.activeElement).toBe(back);
+  });
+
+  it("opens nothing for a snapshot it can't play", async () => {
+    expect(await showReplay({ strip: { cards: [] } }, "m6")).toBeNull();
+  });
+});
+
+describe("Watch again on the chat card", () => {
+  const button = () => {
+    const el = fakeElement();
+    el.listeners = [];
+    el.attrs = {};
+    el.setAttribute = (k, v) => { el.attrs[k] = String(v); };
+    el.addEventListener = (type, fn) => el.listeners.push([type, fn]);
+    return el;
+  };
+  const withButtons = card => {
+    card.querySelector = sel => (sel === ".lc-chat__replay" ? card.kids.find(k => k.className === "lc-chat__replay") ?? null : null);
+    return card;
+  };
+  const msg = (flags, id = "msg") => ({ id, flags: { "loot-crates": flags } });
+
+  it("adds one button to a pull's card with a snapshot, which opens the replay", async () => {
+    doc.createElement = button;
+    const { card, html } = cardHTML();
+    withButtons(card);
+    watchAgain(msg({ logId: "L1", replay: snapshot }, "c1"), html);
+    expect(card.kids.map(k => k.textContent)).toEqual(["Watch again"]);
+    const btn = card.kids[0];
+    expect(btn.type).toBe("button");
+    // Its name starts with what it says, then which pull it replays.
+    expect(btn.attrs["aria-label"]).toBe("Watch again: Crate Tester opens Crate");
+    // Rendered again (a notification copy re-render): still one.
+    watchAgain(msg({ logId: "L1", replay: snapshot }, "c1"), html);
+    expect(card.kids).toHaveLength(1);
+    const [[type, click]] = btn.listeners;
+    expect(type).toBe("click");
+    click({ preventDefault() {}, stopPropagation() {} });
+    await new Promise(r => setTimeout(r, 0));
+    expect(globalThis.foundry.applications.instances.get("loot-crates-reveal-replay-c1")).toBeTruthy();
+  });
+
+  it("adds none to a refunded card or a card from before snapshots", () => {
+    doc.createElement = button;
+    const refunded = cardHTML({ refunded: true });
+    withButtons(refunded.card);
+    watchAgain(msg({ logId: "L1", replay: snapshot }), refunded.html);
+    expect(refunded.card.kids).toHaveLength(0);
+    const legacy = cardHTML();
+    withButtons(legacy.card);
+    watchAgain(msg({ logId: "L1", uuid: "u" }), legacy.html);
+    watchAgain({ flags: {} }, legacy.html);
+    watchAgain(null, legacy.html);
+    expect(legacy.card.kids).toHaveLength(0);
   });
 });

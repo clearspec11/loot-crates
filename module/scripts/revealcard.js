@@ -7,7 +7,7 @@
   item's name in its rarity colour (the moment), its rarity, then one quiet
   line with where it went and, for the buyer and GMs only, the gold left.
 */
-import { RARITY_LABEL } from "./config.js";
+import { RARITY_LABEL, RARITIES } from "./config.js";
 import { formatGold } from "./currency.js";
 
 export const REVEAL_WIDTH = 720;
@@ -64,3 +64,59 @@ export function resultHTML(reveal, { esc = String, canSee = false } = {}) {
     + `<div class="lc-reveal__rarity">${esc(RARITY_LABEL[res.rarity] ?? res.rarity)}${res.pity ? " · pity" : ""}</div>`
     + (where.length ? `<div class="lc-reveal__where">${where.join(" · ")}</div>` : "");
 }
+
+/*
+  "Watch again": what a pull's chat card keeps so anyone at the table can
+  replay the spin later (a hidden tab, a Skip, joining late). Display only:
+  each card's name, art and rarity, where it lands, whether it teases, the
+  odds ribbon, the crate and the result. No uuid, no granted item, no purse,
+  so a replay can neither open the item nor say what gold is left. About 5 KB
+  for a 48-card strip, stored once in the message's flags.
+*/
+export function replaySnapshot(reveal) {
+  const strip = reveal?.strip;
+  if (!Array.isArray(strip?.cards) || !strip.cards.length || !reveal.result) return null;
+  return {
+    strip: {
+      cards: strip.cards.map(c => ({ name: String(c?.name ?? ""), img: String(c?.img ?? ""), rarity: c?.rarity, ...(c?.result ? { result: true } : {}) })),
+      landIndex: strip.landIndex,
+      nearMiss: !!strip.nearMiss,
+    },
+    odds: (reveal.odds ?? []).map(({ rarity, chance, label }) => ({ rarity, chance, label })),
+    box: { name: String(reveal.box?.name ?? ""), price: reveal.box?.price ?? 0 },
+    actorName: String(reveal.actorName ?? ""),
+    result: { name: String(reveal.result.name ?? ""), rarity: reveal.result.rarity, pity: !!reveal.result.pity },
+  };
+}
+
+const rarityOr = r => (RARITIES.includes(r) ? r : "common");
+
+/*
+  The reveal a replay window plays, from a stored snapshot, or null when the
+  snapshot can't be played (anything can be in a message's flags). `key`
+  names the window (the chat message's id), so a second Watch again on the
+  same card brings the open replay forward instead of opening another.
+*/
+export function replayReveal(snapshot, key) {
+  const cards = snapshot?.strip?.cards;
+  const land = snapshot?.strip?.landIndex;
+  if (!Array.isArray(cards) || !cards.length || !Number.isInteger(land) || land < 0 || land >= cards.length || !snapshot.result) return null;
+  return {
+    replay: true,
+    replayKey: String(key ?? ""),
+    actorName: String(snapshot.actorName ?? ""),
+    box: { name: String(snapshot.box?.name ?? ""), price: Number(snapshot.box?.price) || 0 },
+    odds: Array.isArray(snapshot.odds) ? snapshot.odds.filter(o => RARITIES.includes(o?.rarity) && Number.isFinite(o.chance)) : [],
+    result: { name: String(snapshot.result.name ?? ""), rarity: rarityOr(snapshot.result.rarity), pity: !!snapshot.result.pity },
+    strip: {
+      cards: cards.map(c => ({ name: String(c?.name ?? ""), img: String(c?.img ?? ""), rarity: rarityOr(c?.rarity), ...(c?.result ? { result: true } : {}) })),
+      landIndex: land,
+      nearMiss: !!snapshot.strip.nearMiss,
+    },
+  };
+}
+
+// The replay window's title: says it is a replay, so nobody takes it for a
+// second purchase.
+export const replayTitle = reveal => `Replay: ${reveal.actorName} opens ${reveal.box.name}`;
+export const replayWindowId = key => `loot-crates-reveal-replay-${key}`;

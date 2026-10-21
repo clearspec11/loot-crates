@@ -38,6 +38,9 @@ const STATES = [
   ["landed", "state=landed&seed=7"],
   ["landed-legendary", "state=landed&seed=36&box=royal"],
   ["landed-buyer", "state=landed&seed=7&buyer=1"],
+  // "Watch again" from the chat card: the replay window, titled as a replay,
+  // shows the item and no gold or Open item; the card shows the button.
+  ["replay", "state=replay&seed=7"],
   ["manager", "state=manager"],
   // A manager window sized 480 px wide, on any screen: its rows follow the
   // window (a container query), so names wrap in full rather than cut off.
@@ -135,6 +138,34 @@ function revealProblems(buyer) {
   for (const el of document.querySelectorAll(".lc-reveal__body *:not(.lc-spin__viewport *)")) {
     const r = el.getBoundingClientRect();
     if (r.right > document.documentElement.clientWidth + 1) { out.push(`reveal overflows: ${el.className}`); break; }
+  }
+  return out;
+}
+
+// A replay is display only: it says so in its title, lands on the card's
+// item, and shows nobody's gold and no Open item. The card's Watch again is a
+// visible button at the 11px floor.
+function replayProblems() {
+  const out = [];
+  const shown = el => !!el && !el.hidden && el.getBoundingClientRect().height > 0;
+  const title = document.getElementById("title")?.textContent ?? "";
+  if (!/^Replay: .+ opens .+/.test(title)) out.push(`replay title doesn't say Replay: "${title}"`);
+  const text = document.querySelector(".lc-reveal__result")?.innerText ?? "";
+  if (/\d [gsc]p left/.test(text)) out.push("a replay shows gold left");
+  if (shown(document.querySelector(".lc-reveal__open"))) out.push("a replay offers Open item");
+  const card = document.querySelector(".lc-chat__name")?.textContent;
+  const name = document.querySelector(".lc-reveal__name")?.textContent;
+  if (!name || name !== card) out.push(`replay landed on "${name}", the card says "${card}"`);
+  const landed = document.querySelector(".lc-card--landed .lc-card__name")?.textContent;
+  if (landed !== card) out.push(`the strip landed on "${landed}"`);
+  const close = document.querySelector(".lc-reveal__close");
+  if (close?.textContent !== "Close" || document.activeElement !== close) out.push("landed replay has no focused Close");
+  const btn = document.querySelector(".lc-chat .lc-chat__replay");
+  if (!shown(btn) || btn.textContent !== "Watch again") out.push("chat card has no Watch again");
+  else if (parseFloat(getComputedStyle(btn).fontSize) < 11) out.push("Watch again is under 11px");
+  for (const el of document.querySelectorAll(".lc-reveal__body *:not(.lc-spin__viewport *), .lc-chat *")) {
+    const r = el.getBoundingClientRect();
+    if (r.right > document.documentElement.clientWidth + 1) { out.push(`replay overflows: ${el.className}`); break; }
   }
   return out;
 }
@@ -242,13 +273,14 @@ try {
       // back to system fonts and plain grounds; that isn't a failure.
       page.on("console", m => { if (m.type() === "error" && !m.text().startsWith("Failed to load resource")) errors.push(m.text()); });
       await page.goto(`http://localhost:${PORT}/harness/?${query}`, { waitUntil: "networkidle" });
-      if (name.startsWith("landed")) await page.waitForSelector("body[data-landed]", { timeout: 10000 });
+      if (name.startsWith("landed") || name === "replay") await page.waitForSelector("body[data-landed]", { timeout: 10000 });
       if (name.startsWith("manager")) await page.waitForSelector("body[data-ready]", { timeout: 10000 });
       await page.waitForTimeout(500);
       const wide = await page.evaluate(() => document.scrollingElement.scrollWidth > document.scrollingElement.clientWidth + 1);
       if (name.startsWith("shop")) problems0.push(...await page.evaluate(shopProblems, name.slice(5)));
       else if (name === "manager-dropped") problems0.push(...await page.evaluate(droppedProblems));
       else if (name.startsWith("manager")) problems0.push(...await page.evaluate(managerProblems, name === "manager-narrow"));
+      else if (name === "replay") problems0.push(...await page.evaluate(replayProblems));
       else problems0.push(...await page.evaluate(revealProblems, name === "landed-buyer"));
       await page.evaluate(() => document.fonts.ready);
       await page.screenshot({ path: path.join(OUT, w.tag, `${shot}.png`), fullPage: true });
