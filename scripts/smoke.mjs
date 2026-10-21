@@ -38,6 +38,13 @@ const STATES = [
   ["landed", "state=landed&seed=7"],
   ["landed-legendary", "state=landed&seed=36&box=royal"],
   ["landed-buyer", "state=landed&seed=7&buyer=1"],
+  // The buyer's reveal that landed while their tab was hidden (or was
+  // skipped): Watch again beside Close, three buttons that wrap cleanly at
+  // 390. Pressing it replays the strip in place, reading Skip.
+  ["landed-missed", "state=landed&seed=7&buyer=1&watched=0"],
+  // "Watch again" from the chat card: the replay window, titled as a replay,
+  // shows the item and no gold or Open item; the card shows the button.
+  ["replay", "state=replay&seed=7"],
   ["manager", "state=manager"],
   // A manager window sized 480 px wide, on any screen: its rows follow the
   // window (a container query), so names wrap in full rather than cut off.
@@ -131,10 +138,82 @@ function revealProblems(buyer) {
   const close = document.querySelector(".lc-reveal__close");
   if (close?.textContent !== "Close" || close.disabled) out.push("landed reveal has no enabled Close");
   if (document.activeElement !== close) out.push("focus didn't move to Close on landing");
+  // A spin that played out (or, here, landed with no motion) offers no Watch again.
+  if (new URLSearchParams(location.search).get("watched") !== "0" && shown(document.querySelector(".lc-reveal__watch"))) out.push("Watch again after a spin this client saw");
   // The strip is wider than its clipped viewport by design; everything else must fit.
   for (const el of document.querySelectorAll(".lc-reveal__body *:not(.lc-spin__viewport *)")) {
     const r = el.getBoundingClientRect();
     if (r.right > document.documentElement.clientWidth + 1) { out.push(`reveal overflows: ${el.className}`); break; }
+  }
+  return out;
+}
+
+// Watch again in a reveal this client didn't see spin: shown beside Close
+// (to its left, after Open item), the three buttons apart and inside the
+// window. Pressed, it keeps focus, reads Skip, hides the result and remounts
+// the strip; its Skip lands the same result and it reads Watch again again.
+// Focus goes back to Close for the screenshot.
+async function missedProblems() {
+  const out = [];
+  const frames = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const shown = el => !!el && !el.hidden && el.getBoundingClientRect().height > 0;
+  const [open, watch, close] = [".lc-reveal__open", ".lc-reveal__watch", ".lc-reveal__close"].map(s => document.querySelector(s));
+  if (!shown(watch) || watch.textContent !== "Watch again") return ["no Watch again on a reveal this client didn't see spin"];
+  const buttons = [...document.querySelectorAll(".lc-reveal__actions button")].filter(shown);
+  if (buttons.map(b => b.className).join() !== [open, watch, close].map(b => b.className).join()) out.push("expected Open item, Watch again, Close in that order");
+  const rects = buttons.map(b => b.getBoundingClientRect());
+  for (let i = 0; i < rects.length; i++) for (let j = i + 1; j < rects.length; j++) {
+    const [a, b] = [rects[i], rects[j]];
+    if (a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom) out.push(`${buttons[i].textContent} overlaps ${buttons[j].textContent}`);
+  }
+  const app = document.getElementById("app").getBoundingClientRect();
+  if (rects.some(r => r.left < app.left || r.right > app.right)) out.push("a reveal button leaves the window");
+  const w = watch.getBoundingClientRect(), c = close.getBoundingClientRect();
+  if (Math.abs(w.top - c.top) < 2 && w.right > c.left) out.push("Watch again isn't left of Close");
+  if (parseFloat(getComputedStyle(watch).fontSize) < 11) out.push("Watch again is under 11px");
+  const name = document.querySelector(".lc-reveal__name")?.textContent;
+  watch.focus();
+  watch.click();
+  await frames();
+  const result = document.querySelector(".lc-reveal__result");
+  if (watch.textContent !== "Skip") out.push(`replaying, Watch again reads "${watch.textContent}"`);
+  if (document.activeElement !== watch) out.push("focus left the pressed Watch again");
+  if (getComputedStyle(result).visibility !== "hidden") out.push("the result shows during the replay");
+  if (document.querySelector(".lc-spin--landed")) out.push("the strip wasn't remounted for the replay");
+  watch.click();
+  await frames();
+  if (!document.querySelector(".lc-spin--landed")) out.push("Skip didn't land the replay");
+  if (watch.textContent !== "Watch again" || !shown(watch)) out.push("after a skipped replay Watch again is gone");
+  if (document.activeElement !== watch) out.push("focus left Watch again after its Skip");
+  if (getComputedStyle(result).visibility === "hidden" || document.querySelector(".lc-reveal__name")?.textContent !== name) out.push("the replay didn't show the same result");
+  close.focus();
+  return out;
+}
+
+// A replay is display only: it says so in its title, lands on the card's
+// item, and shows nobody's gold and no Open item. The card's Watch again is a
+// visible button at the 11px floor.
+function replayProblems() {
+  const out = [];
+  const shown = el => !!el && !el.hidden && el.getBoundingClientRect().height > 0;
+  const title = document.getElementById("title")?.textContent ?? "";
+  if (!/^Replay: .+ opens .+/.test(title)) out.push(`replay title doesn't say Replay: "${title}"`);
+  const text = document.querySelector(".lc-reveal__result")?.innerText ?? "";
+  if (/\d [gsc]p left/.test(text)) out.push("a replay shows gold left");
+  if (shown(document.querySelector(".lc-reveal__open"))) out.push("a replay offers Open item");
+  const card = document.querySelector(".lc-chat__name")?.textContent;
+  const name = document.querySelector(".lc-reveal__name")?.textContent;
+  if (!name || name !== card) out.push(`replay landed on "${name}", the card says "${card}"`);
+  const landed = document.querySelector(".lc-card--landed .lc-card__name")?.textContent;
+  if (landed !== card) out.push(`the strip landed on "${landed}"`);
+  const close = document.querySelector(".lc-reveal__close");
+  if (close?.textContent !== "Close" || document.activeElement !== close) out.push("landed replay has no focused Close");
+  const btn = document.querySelector(".lc-chat .lc-chat__replay");
+  if (!shown(btn) || btn.textContent !== "Watch again") out.push("chat card has no Watch again");
+  else if (parseFloat(getComputedStyle(btn).fontSize) < 11) out.push("Watch again is under 11px");
+  for (const el of document.querySelectorAll(".lc-reveal__body *:not(.lc-spin__viewport *), .lc-chat *")) {
+    const r = el.getBoundingClientRect();
+    if (r.right > document.documentElement.clientWidth + 1) { out.push(`replay overflows: ${el.className}`); break; }
   }
   return out;
 }
@@ -242,14 +321,16 @@ try {
       // back to system fonts and plain grounds; that isn't a failure.
       page.on("console", m => { if (m.type() === "error" && !m.text().startsWith("Failed to load resource")) errors.push(m.text()); });
       await page.goto(`http://localhost:${PORT}/harness/?${query}`, { waitUntil: "networkidle" });
-      if (name.startsWith("landed")) await page.waitForSelector("body[data-landed]", { timeout: 10000 });
+      if (name.startsWith("landed") || name === "replay") await page.waitForSelector("body[data-landed]", { timeout: 10000 });
       if (name.startsWith("manager")) await page.waitForSelector("body[data-ready]", { timeout: 10000 });
       await page.waitForTimeout(500);
       const wide = await page.evaluate(() => document.scrollingElement.scrollWidth > document.scrollingElement.clientWidth + 1);
       if (name.startsWith("shop")) problems0.push(...await page.evaluate(shopProblems, name.slice(5)));
       else if (name === "manager-dropped") problems0.push(...await page.evaluate(droppedProblems));
       else if (name.startsWith("manager")) problems0.push(...await page.evaluate(managerProblems, name === "manager-narrow"));
-      else problems0.push(...await page.evaluate(revealProblems, name === "landed-buyer"));
+      else if (name === "replay") problems0.push(...await page.evaluate(replayProblems));
+      else problems0.push(...await page.evaluate(revealProblems, name === "landed-buyer" || name === "landed-missed"));
+      if (name === "landed-missed") problems0.push(...await page.evaluate(missedProblems));
       await page.evaluate(() => document.fonts.ready);
       await page.screenshot({ path: path.join(OUT, w.tag, `${shot}.png`), fullPage: true });
       const problems = [...errors, ...problems0, ...(wide ? ["page scrolls sideways"] : [])];

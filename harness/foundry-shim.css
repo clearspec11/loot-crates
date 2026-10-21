@@ -31,6 +31,9 @@ h1 { font-size: 13px; font-weight: 600; color: #b5a99a; margin: 0 0 10px; }
 .theme-light .window-header { background: #302831; }
 .window-title { margin: 0; font-size: 14px; font-weight: 400; font-family: "Signika", sans-serif; }
 .window-content { padding: 1rem; }
+/* A slice of Foundry's chat log, for the replay state's chat card. */
+.harness-chat { width: 300px; max-width: 100%; margin: 16px 0 0 auto; padding: 8px; box-sizing: border-box; border-radius: 6px; background: #1c1b22; }
+.theme-light .harness-chat { background: #d9d5cc; }
 
 @layer foundry {
 /* Foundry's own form controls (its CSS styles bare buttons, inputs and

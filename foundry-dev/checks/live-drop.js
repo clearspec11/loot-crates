@@ -14,7 +14,9 @@
 // Then a drop says where it went: one item dropped on a collapsed pool of
 // 120 entries opens it, pins the item as its first row, focuses that row's
 // rarity select and names it in the status line; dropping an item that is
-// already deep in the pool pins and focuses that row instead.
+// already deep in the pool pins and focuses that row instead. Each drop that
+// goes in is announced once: the status line, and no info toast (toasts
+// raised while the manager drops are recorded and reported).
 //
 //   FOUNDRY_URL=http://192.168.0.57:30000 MODULE_BASE=http://192.168.0.190:8766/ \
 //     NODE_PATH=$(npm root -g) node foundry-dev/headless/run.cjs foundry-dev/checks/live-drop.js --shot drop.png
@@ -65,7 +67,17 @@ if (!document.querySelector("link[data-loot-crates]")) {
   link.dataset.lootCrates = "1";
   document.head.appendChild(link);
 }
+// The big pool for part 3 is seeded before the manager first draws it: a
+// pool's open state is set at its first render, and an earlier run leaves
+// this one empty (so open) at the end.
+const pick = compendium.entries.slice(0, 121);
+const [newcomer, ...seed] = [pick[120], ...pick.slice(0, 120)];
+await store.savePool({ id: "live-drop-big", name: "Live drop big pool", entries: seed, pools: [] });
 const { openManager } = await import(MODULE_BASE + "scripts/manager.js");
+// Every info toast from here on, to show the drops that went in raised none.
+const infoToasts = [];
+const realInfo = ui.notifications.info;
+ui.notifications.info = function (message, ...rest) { infoToasts.push(String(message)); return realInfo.call(this, message, ...rest); };
 const uiPool = await store.savePool({ id: "live-drop-ui", name: "Live drop preview", entries: [], pools: [] });
 const app = openManager();
 app.tab = "pools"; app.render({ force: true });
@@ -98,9 +110,6 @@ await until(() => !preview());
 
 // ---- Part 3: a single drop on a big collapsed pool says where it went ----
 const bigEl = () => app.element.querySelector('[data-drop-pool="live-drop-big"]');
-const pick = compendium.entries.slice(0, 121);
-const [newcomer, ...seed] = [pick[120], ...pick.slice(0, 120)];
-await store.savePool({ id: "live-drop-big", name: "Live drop big pool", entries: seed, pools: [] });
 app.render({ force: true });
 await until(() => bigEl());
 const wasOpen = bigEl().querySelector(".lc-pool__details").open;
@@ -131,15 +140,19 @@ dropOn(bigEl(), { type: "Item", uuid: deep.uuid });
 await until(() => bigEl()?.querySelector(".lc-entries > .lc-entry")?.dataset.entry === deep.uuid);
 await wait(200);
 const duplicate = { name: deep.name, ...readPin(deep.uuid) };
+// The folder's Add and both item drops went in: none may have toasted.
+const successToasts = [...infoToasts];
 await store.savePool({ ...store.getPools()["live-drop-big"], entries: [] });
 const pinOk = !single.wasOpen && single.open && single.firstIsDropped && single.justAdded && single.focusOnSelect && single.status.includes(single.name) && /at the top/.test(single.status) && single.count === 121
-  && duplicate.firstIsDropped && duplicate.focusOnSelect && duplicate.status.includes(`${deep.name} is already in`) && duplicate.count === 121;
+  && duplicate.firstIsDropped && duplicate.focusOnSelect && duplicate.status.includes(`${deep.name} is already in`) && duplicate.count === 121
+  && successToasts.length === 0;
 
 drop({ type: "Compendium", collection: "dnd5e.items" });
 await until(() => preview(), 15000);
 await wait(400);
 const compendiumPreview = preview() ? readPreview(preview()) : null;
 
+ui.notifications.info = realInfo;
 const pickerPacks = game.packs.filter(store.packHasLoot).map(p => p.collection);
 const poolNow = store.getPools()[pool.id];
 // Empty the big test pool again (a setting, not a document): left full, its
@@ -160,6 +173,6 @@ return {
   dropAgain: { found: again.entries.length, duplicates: again.skipped.duplicates },
   table,
   ui: { hint, folderPreview, savedBeforeAdd, afterFolderAdd, compendiumPreview },
-  pin: { ok: pinOk, single, duplicate },
+  pin: { ok: pinOk, single, duplicate, successToasts },
   pickerPacks,
 };

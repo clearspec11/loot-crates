@@ -34,11 +34,30 @@
   card's head with "Opening…" in place of the item until this client's
   reveal of that pull lands or is closed. Display only: the message is the
   same for everyone, and a client with no spin playing sees it whole.
+
+  "Watch again" (watchAgain, a renderChatMessageHTML hook beside
+  sealChatCard): a pull's card carries a display-only snapshot of its strip
+  (revealcard.js replaySnapshot), and its button plays that spin again here
+  only, in a window titled "Replay: ...". A replay shows no purse and no Open
+  item, writes nothing, posts nothing and never seals a chat card. One
+  replay window per card: a second press brings the open one forward.
+  showReplay is the one way to open a replay window.
+
+  Watch again in the reveal itself: a reveal this client didn't see spin (it
+  landed on a hidden page, the page was hidden mid-spin, or Skip was
+  pressed) offers Watch again beside Close. It plays the same strip again in
+  the same host, through the same #mount as the first spin, display only: it
+  leaves `landed`, the chat card's seal and the GM's side alone. While it
+  plays the button reads Skip and the result is hidden; on landing the same
+  result shows with the sting, and once a replay has run to its end the
+  button goes, focus passing to Close if it was on it. Never offered under
+  reduced motion (nothing would move) or after a spin that played out here.
 */
 import { MODULE_ID, SETTINGS } from "./config.js";
 import { mountSpin } from "./spin.js";
 import { formatPrice } from "./currency.js";
-import { cascadeOffset, canSeePurse, resultHTML, freeSlot, CLOSE_GRACE_MS } from "./revealcard.js";
+import { cascadeOffset, canSeePurse, resultHTML, freeSlot, CLOSE_GRACE_MS, replayReveal, replayTitle, replayWindowId, revealActionsHTML } from "./revealcard.js";
+import { REFUNDED_CLASS } from "./chatcard.js";
 import { oddsRibbon } from "./boxcard.js";
 import { playTick, playSlow, playReveal } from "./sound.js";
 
@@ -52,16 +71,19 @@ function usedSlots() {
   return [...apps].filter(app => app.options?.classes?.includes("lc-reveal") && app.state > 0).map(app => app.slot);
 }
 
-// Focus is ours to move when nothing else has it, or it's already in here.
 const pageHidden = () => document.visibilityState === "hidden";
 
 // The landed promise of each reveal still spinning on this client, by the
 // pull's logId (what its chat card carries in flags).
 const spinning = new Map();
 
-function focusIsFree(root, reveal) {
+// Focus is ours to move when nothing else has it, it's already in here, or
+// it's still on what opened this window: the buyer's Buy, or the chat card's
+// Watch again that opened a replay (`opener`). Enter on either leads to
+// Close on landing, and back again on close.
+function focusIsFree(root, reveal, opener = null) {
   const a = document.activeElement;
-  return !a || a === document.body || a === document.documentElement || root?.contains(a) || (!!reveal && a === ownBuy(reveal));
+  return !a || a === document.body || a === document.documentElement || root?.contains(a) || (!!reveal && a === ownBuy(reveal)) || (!!opener && a === opener);
 }
 
 // The shop's Buy for this pull's crate, when this client is the buyer.
@@ -76,15 +98,20 @@ export class CrateReveal extends ApplicationV2 {
     classes: ["loot-crates", "lc-reveal"],
     window: { title: "Opening a crate", resizable: false },
     position: { width: 720, height: "auto" },
-    actions: { dismiss: CrateReveal.#dismiss, skip: CrateReveal.#skip, openItem: CrateReveal.#openItem },
+    actions: { dismiss: CrateReveal.#dismiss, skip: CrateReveal.#skip, openItem: CrateReveal.#openItem, watchAgain: CrateReveal.#watchAgain },
   };
 
   #resolveLanded;
   #spin = null;
-  #slowTimer = null;
+  #slowSound = null;
   #closed = false;
   #landedAt = -Infinity;
   #onHidden = null;
+  // True only once a spin has played to its natural end on this client.
+  #watched = false;
+  #replaying = false;
+  // When Watch again last turned into Skip or back.
+  #swappedAt = -Infinity;
   landed = new Promise(resolve => { this.#resolveLanded = resolve; });
 
   constructor(reveal, options = {}) {
@@ -92,16 +119,26 @@ export class CrateReveal extends ApplicationV2 {
     // after the first has closed.
     const slot = freeSlot(usedSlots());
     const position = { height: "auto", ...cascadeOffset(slot, { width: window.innerWidth, height: window.innerHeight }) };
-    super({ ...(reveal.requestId ? { id: `loot-crates-reveal-${reveal.requestId}` } : {}), position, ...options });
+    const id = reveal.replay ? replayWindowId(reveal.replayKey) : reveal.requestId ? `loot-crates-reveal-${reveal.requestId}` : null;
+    super({ ...(id ? { id } : {}), position, ...options });
     this.slot = slot;
     this.reveal = reveal;
-    if (reveal.logId) {
+    // A replay holds no chat card back: the card it came from is whole.
+    if (reveal.logId && !reveal.replay) {
       spinning.set(reveal.logId, this.landed);
       this.landed.then(() => spinning.delete(reveal.logId));
     }
   }
 
+  get title() {
+    return this.reveal?.replay ? replayTitle(this.reveal) : super.title;
+  }
+
+  // Where focus goes back to when a replay closes (its Watch again).
+  returnTo = null;
+
   get canSee() {
+    if (this.reveal.replay) return false;
     return canSeePurse(this.reveal, { isGM: game.user.isGM, userId: game.user.id });
   }
 
@@ -114,7 +151,24 @@ export class CrateReveal extends ApplicationV2 {
     if (event?.detail > 1 || performance.now() - this.#landedAt < CLOSE_GRACE_MS) return;
     this.close();
   }
-  static #skip() { this.#spin?.skip(); }
+  // On Watch again's replay, the second click of a double-click (or a held
+  // Enter) on Watch again would land on Skip: ignore it for a moment.
+  static #skip(event) {
+    if (this.#replaying && (event?.detail > 1 || performance.now() - this.#swappedAt < CLOSE_GRACE_MS)) return;
+    this.#spin?.skip();
+  }
+
+  static #watchAgain(event, button) {
+    if (this.#replaying || this.#closed || this.#watched) return;
+    if (event?.detail > 1 || performance.now() - this.#swappedAt < CLOSE_GRACE_MS) return;
+    this.#replaying = true;
+    this.#swappedAt = performance.now();
+    // The same node keeps focus; only its words and action change.
+    button.textContent = "Skip";
+    button.dataset.action = "skip";
+    this.element.querySelector(".lc-reveal__result").hidden = true;
+    this.#mount({ replay: true });
+  }
 
   static async #openItem(_event, button) {
     const item = this.reveal.itemUuid ? await fromUuid(this.reveal.itemUuid).catch(() => null) : null;
@@ -129,10 +183,10 @@ export class CrateReveal extends ApplicationV2 {
   _onClose(options) {
     super._onClose(options);
     // Back to the crate they bought, unless they have moved on elsewhere.
-    const buy = ownBuy(this.reveal);
+    const buy = ownBuy(this.reveal) ?? this.returnTo;
     if (buy?.isConnected && focusIsFree(this.element)) buy.focus({ preventScroll: true });
     this.#closed = true;
-    clearTimeout(this.#slowTimer);
+    clearTimeout(this.#slowSound);
     this.#stopWatching();
     // End the loop now rather than animating a detached strip for seconds.
     this.#spin?.skip();
@@ -154,10 +208,7 @@ export class CrateReveal extends ApplicationV2 {
         <div class="lc-reveal__spin"></div>
         <div class="lc-reveal__result lc-rarity-${esc(r.result.rarity)}" aria-live="polite"></div>
       </div>
-      <div class="lc-reveal__actions">
-        <button type="button" class="lc-reveal__open" data-action="openItem" hidden>Open item</button>
-        <button type="button" class="lc-reveal__close" data-action="skip">Skip</button>
-      </div>`;
+      ${revealActionsHTML()}`;
     return root;
   }
 
@@ -174,37 +225,73 @@ export class CrateReveal extends ApplicationV2 {
     this.#onHidden = null;
   }
 
-  _onRender() {
+  _onRender() { this.#mount(); }
+
+  /*
+    Plays the strip in the window's host: the first time (the pull) and on
+    Watch again (`replay`). Only the first resolves `landed`, which opens
+    this client's sealed chat card; a replay touches nothing outside the
+    window.
+  */
+  #mount({ replay = false } = {}) {
     const root = this.element;
     const host = root.querySelector(".lc-reveal__spin");
-    const out = root.querySelector(".lc-reveal__result");
-    const btn = root.querySelector(".lc-reveal__close");
-    const open = root.querySelector(".lc-reveal__open");
     const sound = game.settings.get(MODULE_ID, SETTINGS.SOUND);
     const r = this.reveal;
-    this.#spin = mountSpin(host, r.strip, {
+    this.#stopWatching();
+    clearTimeout(this.#slowSound);
+    const spin = this.#spin = mountSpin(host, r.strip, {
       onTick: sound ? i => playTick(i / r.strip.landIndex) : null,
       onLand: () => {
-        clearTimeout(this.#slowTimer);
+        clearTimeout(this.#slowSound);
         this.#stopWatching();
-        this.#resolveLanded();
+        if (!replay) this.#resolveLanded();
         if (this.#closed) return;
-        this.#landedAt = performance.now();
-        out.innerHTML = resultHTML(r, { esc, canSee: this.canSee });
-        open.hidden = !this.#itemStillThere();
-        btn.dataset.action = "dismiss";
-        btn.textContent = "Close";
-        if (focusIsFree(root, r)) btn.focus({ preventScroll: true });
+        // Played to its end here: not skipped, not landed hidden, not
+        // reduced motion (which lands without moving).
+        if (!spin.skipped && !spin.reducedMotion) this.#watched = true;
+        if (replay) this.#landReplay(root);
+        else this.#landFirst(root, spin);
         if (sound && !pageHidden()) playReveal(r.result.rarity);
       },
     });
-    if (pageHidden()) this.#spin.skip();
+    if (pageHidden()) spin.skip();
     else {
-      this.#onHidden = () => { if (pageHidden()) this.#spin?.skip({ now: true }); };
+      this.#onHidden = () => { if (pageHidden()) spin.skip({ now: true }); };
       document.addEventListener("visibilitychange", this.#onHidden);
     }
-    if (sound && !this.#spin.landed && !pageHidden()) this.#slowTimer = setTimeout(playSlow, 3600);
-    this.#spin.play();
+    if (sound && !spin.landed && !pageHidden()) this.#slowSound = setTimeout(playSlow, 3600);
+    spin.play();
+  }
+
+  #landFirst(root, spin) {
+    const r = this.reveal;
+    const btn = root.querySelector(".lc-reveal__close");
+    this.#landedAt = performance.now();
+    root.querySelector(".lc-reveal__result").innerHTML = resultHTML(r, { esc, canSee: this.canSee });
+    root.querySelector(".lc-reveal__open").hidden = !this.#itemStillThere();
+    root.querySelector(".lc-reveal__watch").hidden = this.#watched || spin.reducedMotion;
+    btn.dataset.action = "dismiss";
+    btn.textContent = "Close";
+    if (focusIsFree(root, r, this.returnTo)) btn.focus({ preventScroll: true });
+  }
+
+  // The same result again, unhidden rather than rewritten, so a screen
+  // reader isn't told it twice. Focus stays where the viewer left it, unless
+  // it was on Watch again and Watch again is going.
+  #landReplay(root) {
+    const watch = root.querySelector(".lc-reveal__watch");
+    this.#replaying = false;
+    this.#swappedAt = performance.now();
+    root.querySelector(".lc-reveal__result").hidden = false;
+    if (this.#watched) {
+      const had = document.activeElement === watch;
+      watch.hidden = true;
+      if (had) root.querySelector(".lc-reveal__close").focus({ preventScroll: true });
+    } else {
+      watch.textContent = "Watch again";
+      watch.dataset.action = "watchAgain";
+    }
   }
 }
 
@@ -225,6 +312,47 @@ export function sealChatCard(message, html) {
     card.classList.remove("lc-chat--sealed");
     sealed.remove();
   });
+}
+
+/*
+  Plays a pull again on this client only, from its stored snapshot. `key`
+  names the window (the chat message's id). Resolves to the window, or null
+  when the snapshot can't be played. `returnTo` gets focus back on close.
+*/
+export async function showReplay(snapshot, key, { returnTo = null } = {}) {
+  const open = foundry.applications.instances?.get?.(replayWindowId(key));
+  if (open && open.state > 0) {
+    open.bringToFront?.();
+    open.element?.querySelector?.(".lc-reveal__close")?.focus({ preventScroll: true });
+    return open;
+  }
+  const reveal = replayReveal(snapshot, key);
+  if (!reveal) return null;
+  const app = new CrateReveal(reveal);
+  app.returnTo = returnTo;
+  await app.render({ force: true });
+  return app;
+}
+
+// renderChatMessageHTML: a "Watch again" button on a pull's card that
+// carries a replay snapshot. None on a refunded card (the win is withdrawn)
+// or on a card from before snapshots. Hidden while the card is sealed (its
+// spin is still playing here; module.css).
+export function watchAgain(message, html) {
+  const snapshot = message?.flags?.[MODULE_ID]?.replay;
+  const card = snapshot ? html?.querySelector?.(".lc-chat") : null;
+  if (!card || card.classList.contains(REFUNDED_CLASS) || card.querySelector(".lc-chat__replay")) return;
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "lc-chat__replay";
+  btn.textContent = "Watch again";
+  btn.setAttribute("aria-label", `Watch again: ${snapshot.actorName ?? ""} opens ${snapshot.box?.name ?? "a crate"}`);
+  btn.addEventListener("click", event => {
+    event.preventDefault();
+    event.stopPropagation();
+    showReplay(snapshot, message.id, { returnTo: btn }).catch(err => console.error("loot-crates | replay failed", err));
+  });
+  card.append(btn);
 }
 
 export async function showReveal(reveal) {

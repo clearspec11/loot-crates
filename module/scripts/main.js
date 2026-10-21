@@ -15,7 +15,7 @@ import { openShop, refreshShop } from "./shop.js";
 import { openManager, refreshManager, CrateManager } from "./manager.js";
 import { storeRedraw } from "./redraw.js";
 import { performPull } from "./pull.js";
-import { showReveal, sealChatCard } from "./reveal.js";
+import { showReveal, showReplay, sealChatCard, watchAgain } from "./reveal.js";
 import { draw, oddsTable, seededRng } from "./odds.js";
 import { buildStrip } from "./strip.js";
 
@@ -37,7 +37,7 @@ Hooks.once("init", () => {
 Hooks.once("ready", () => {
   registerSocket();
   const mod = game.modules.get(MODULE_ID);
-  if (mod) mod.api = { openShop, openManager, requestPull, performPull, showReveal, draw, oddsTable, buildStrip, seededRng, getPools, getBoxes, getLog, savePool, saveBox, entriesFromCompendium, entryFromItem };
+  if (mod) mod.api = { openShop, openManager, requestPull, performPull, showReveal, showReplay, draw, oddsTable, buildStrip, seededRng, getPools, getBoxes, getLog, savePool, saveBox, entriesFromCompendium, entryFromItem };
   // Flag dead pool entries once at load, so the shop's odds are honest before
   // anyone buys; each pull sweeps its own box again (socket.js).
   if (isActiveGM()) sweepAllPools();
@@ -63,3 +63,5 @@ Hooks.on("updateActor", (actor, change) => {
 Hooks.on("userConnected", () => refreshShop());
 // A pull's chat card keeps its result back while that pull spins here.
 Hooks.on("renderChatMessageHTML", sealChatCard);
+// A pull's card with a replay snapshot offers "Watch again" (display only).
+Hooks.on("renderChatMessageHTML", watchAgain);

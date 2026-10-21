@@ -377,6 +377,9 @@
 
 /* The result, inside the vault, under the strip. */
 .loot-crates .lc-reveal__result { min-height: 64px; text-align: center; margin-top: 8px; }
+/* Hidden while Watch again replays the spin, keeping its room so the
+   window doesn't jump when it comes back. */
+.loot-crates .lc-reveal__result[hidden] { display: block; visibility: hidden; }
 .loot-crates .lc-reveal__name {
   font-family: var(--lc-display); font-size: 34px; font-weight: 700; line-height: 1;
   color: var(--lc-rarity, var(--lc-vault-ink)); overflow-wrap: anywhere; text-wrap: balance;
@@ -582,6 +585,21 @@
 .loot-crates.lc-chat--refunded { --lc-rarity: var(--lc-ink-mute); box-shadow: none; }
 .loot-crates.lc-chat--refunded .lc-chat__item img { filter: grayscale(1); opacity: .55; }
 .loot-crates.lc-chat--refunded .lc-chat__name, .loot-crates.lc-chat--refunded .lc-chat__rarity { color: var(--lc-ink-mute); }
+/* "Watch again" (reveal.js watchAgain): a small dnd5e black button at the
+   card's foot, right-aligned under the item. Chat isn't a module window, so
+   it sets every property Foundry's chat buttons would otherwise lend it. */
+.loot-crates .lc-chat__replay {
+  position: relative; display: flex; align-items: center; justify-content: center; width: auto; min-width: 0;
+  margin: 8px 0 0 auto; min-height: 28px; height: auto; padding: 0 12px; line-height: 1.1;
+  font-family: var(--lc-body); font-size: 12px; font-weight: 700; color: var(--lc-btn-ink);
+  background: var(--lc-btn); border: none; border-radius: var(--lc-radius); box-shadow: var(--lc-shadow); cursor: pointer;
+}
+.loot-crates .lc-chat__replay::after {
+  content: ""; position: absolute; inset: 3px; border: 1px solid var(--lc-btn-rule); border-radius: 3px; pointer-events: none;
+}
+.loot-crates .lc-chat__replay:hover { color: var(--lc-pin); }
+.loot-crates .lc-chat__replay:hover::after { border-color: var(--lc-btn-ink); }
+.loot-crates.lc-chat--sealed .lc-chat__replay { display: none; }
 
 /* ---------- Narrow windows ---------- */
 

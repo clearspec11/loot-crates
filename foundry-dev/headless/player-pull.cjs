@@ -32,6 +32,11 @@
 // (chatMs, from the click to the player's client seeing the ChatMessage), the
 // GM's own reveal lands at once, and no toast fires on the GM unless the pull
 // was slow (gmToasts lists every notification the GM's page raised).
+// Then the GM "comes back" (visible again) and gmWatch reports Watch again in
+// that reveal, which never spun there: it must be shown beside Close; a real
+// click turns it into Skip with the result hidden, the strip replays to a
+// landed card with the same result, Watch again goes, focus is on Close, and
+// the chat log and Pull log are unchanged.
 //
 // GM_LOG=1 opens the branch's manager on the headless GM's Pull log before
 // the purchase and reports gmLog.rowMs: from the player's click to the new
@@ -49,6 +54,17 @@
 // client (updateActor re-renders the shop): it must still be that Buy (the
 // shop keeps its nodes) or the reveal's Close. focusAtLanding and
 // focusAfterClose: Close on landing, then back on the Buy when it closes.
+//
+// REPLAY=1, after the purchase: on the player's client, clicks "Watch
+// again" on the new chat card in the chat log (a real mouse click; the chat
+// tab is clicked open first if needed) and reports the replay: its window
+// title ("Replay: ..."), the item and rarity it lands on against the card's
+// result, no gold line and no Open item, that a second click brings the same
+// window forward rather than opening another, and that the chat message
+// count, the Pull log's rows, the character's purse and items are unchanged.
+// Focus must move from the clicked Watch again to the replay's Close on
+// landing (focusAtLanding); Close is then clicked and focus must return to
+// the Watch again button (focusBack).
 //
 // chatRenders lists each rendering of the pull's chat card on the player's
 // client and whether it was sealed (head and "Opening…", reveal.js
@@ -69,6 +85,7 @@ const HIDE_GM = process.env.HIDE_GM === "1";
 const COUNT = Math.min(3, Math.max(1, Number(process.env.COUNT) || 1));
 const GM_LOG = process.env.GM_LOG === "1";
 const CLOSE_SHOP = process.env.CLOSE_SHOP === "1";
+const REPLAY = process.env.REPLAY === "1";
 const shot = process.argv.includes("--shot") ? process.argv[process.argv.indexOf("--shot") + 1] : null;
 
 async function join(browser, user, { readySweep = false } = {}) {
@@ -105,8 +122,10 @@ async function join(browser, user, { readySweep = false } = {}) {
       if (cfg && !String(cfg.onChange ?? "").includes("storeChanged")) cfg.onChange = () => redraw(key);
     }
     // What main.js does for chat: a pull's card stays sealed while it spins here.
-    const { sealChatCard } = await import(base + "scripts/reveal.js");
+    // And "Watch again" on a pull's card.
+    const { sealChatCard, watchAgain } = await import(base + "scripts/reveal.js");
     Hooks.on("renderChatMessageHTML", sealChatCard);
+    Hooks.on("renderChatMessageHTML", watchAgain);
     // What main.js's ready hook does on the active GM.
     if (readySweep && socket.isActiveGM()) store.sweepAllPools();
   }, [MODULE_BASE, readySweep, CANVAS]);
@@ -163,6 +182,123 @@ async function closeShopCheck(player, gm) {
   const ok = closed.was === "Shop open" && closedSeen.ms != null && closedSeen.ms <= 2000 && /closed/i.test(closedSeen.notice)
     && openedSeen?.ms != null && openedSeen.ms <= 2000 && (await isOpen());
   return { before, toggled: closed.was, closed: closedSeen, reopened: openedSeen, shopOpenAtEnd: await isOpen(), ok };
+}
+
+/*
+  Watch again, driven as a person does: click the button on the newest pull
+  card in the chat log, watch the replay land, click it again, click Close.
+*/
+async function replayCheck(page) {
+  const facts = () => page.evaluate(async base => {
+    const { getLog } = await import(base + "scripts/store.js");
+    const actor = game.actors.find(a => a.isOwner && a.type === "character");
+    const msg = game.messages.contents.filter(m => m.flags?.["loot-crates"]?.logId).at(-1);
+    return {
+      messages: game.messages.size, logRows: getLog().length,
+      purse: JSON.stringify(actor.system.currency), items: actor.items.size,
+      messageId: msg?.id ?? null, stored: msg?.flags["loot-crates"].replay?.result ?? null,
+      replayBytes: msg?.flags["loot-crates"].replay ? JSON.stringify(msg.flags["loot-crates"].replay).length : 0,
+      windows: document.querySelectorAll(".lc-reveal").length,
+    };
+  }, MODULE_BASE);
+  const before = await facts();
+  if (!before.messageId || !before.stored) return { ok: false, error: "the newest pull card has no replay snapshot", before };
+  const btn = page.locator(`#chat .chat-log [data-message-id="${before.messageId}"] .lc-chat__replay`);
+  // A collapsed sidebar keeps the chat log in the page but off screen: open
+  // it from the chat tab, as a person would.
+  if (!(await btn.isVisible()) || !(await page.evaluate(() => ui.sidebar?.expanded ?? true))) {
+    await page.locator('#sidebar [data-tab="chat"]').first().click().catch(() => {});
+    await page.waitForTimeout(600);
+  }
+  await btn.scrollIntoViewIfNeeded();
+  await btn.click();
+  await page.waitForSelector(".application.lc-reveal .lc-card--landed", { timeout: 15000 });
+  await page.waitForTimeout(200);
+  // The click left focus on Watch again; on landing it moves to the
+  // replay's Close, as a Buy's does to the reveal's.
+  const focusAtLanding = await page.evaluate(() => document.activeElement?.matches?.(".application.lc-reveal .lc-reveal__close") ? "Close" : document.activeElement?.matches?.(".lc-chat__replay") ? "Watch again" : document.activeElement?.tagName ?? "none");
+  const seen = await page.evaluate(() => {
+    const el = [...document.querySelectorAll(".application.lc-reveal")].find(a => /^Replay:/.test(a.querySelector(".window-title")?.textContent.trim() ?? ""));
+    if (!el) return null;
+    const shown = n => !!n && !n.hidden && n.getBoundingClientRect().height > 0;
+    const landed = el.querySelector(".lc-card--landed");
+    return {
+      id: el.id, title: el.querySelector(".window-title").textContent.trim(),
+      landedName: landed?.querySelector(".lc-card__name")?.textContent, landedRarity: landed?.dataset.rarity,
+      result: el.querySelector(".lc-reveal__result")?.innerText ?? "",
+      gold: /\d [gsc]p left/.test(el.querySelector(".lc-reveal__result")?.innerText ?? ""),
+      openItem: shown(el.querySelector(".lc-reveal__open")),
+      button: el.querySelector(".lc-reveal__close")?.textContent.trim(),
+    };
+  });
+  // A second press: the same window, brought forward.
+  await btn.click();
+  await page.waitForTimeout(600);
+  const replayWindows = await page.evaluate(() => [...document.querySelectorAll(".application.lc-reveal")].filter(a => /^Replay:/.test(a.querySelector(".window-title")?.textContent.trim() ?? "")).length);
+  await page.waitForTimeout(800);
+  const after = await facts();
+  // Close as a person would; focus should be back on Watch again.
+  await page.locator(`#${seen?.id} .lc-reveal__close`).click();
+  await page.waitForTimeout(800);
+  const focusBack = await page.evaluate(id => document.activeElement?.matches?.(`[data-message-id="${id}"] .lc-chat__replay`) ?? false, before.messageId);
+  const unchanged = ["messages", "logRows", "purse", "items"].every(k => before[k] === after[k]);
+  const ok = !!seen && /^Replay: .+ opens .+/.test(seen.title) && seen.landedName === before.stored.name && seen.landedRarity === before.stored.rarity
+    && !seen.gold && !seen.openItem && seen.button === "Close" && replayWindows === 1 && unchanged
+    && focusAtLanding === "Close" && focusBack;
+  return { ok, seen, stored: before.stored, replayBytes: before.replayBytes, replayWindows, unchanged, before, after, focusAtLanding, focusBack };
+}
+
+/*
+  Watch again in the GM's own reveal, which landed while the page was
+  hidden. The page is made visible again (the GM back on the tab), then the
+  button is clicked as a person would.
+*/
+async function gmWatchCheck(page) {
+  const id = await page.evaluate(async base => {
+    // The installed module's stylesheet is the released one: add the branch's.
+    if (!document.querySelector("link[data-lc-branch]")) {
+      const link = Object.assign(document.createElement("link"), { rel: "stylesheet", href: base + "styles/module.css" });
+      link.dataset.lcBranch = "1";
+      document.head.append(link);
+      await new Promise(r => { link.onload = r; link.onerror = r; });
+    }
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => false });
+    document.dispatchEvent(new Event("visibilitychange"));
+    const { getLog } = await import(base + "scripts/store.js");
+    globalThis.__lcCounts = () => ({ messages: game.messages.size, logRows: getLog().length });
+    globalThis.__lcBefore = globalThis.__lcCounts();
+    return [...document.querySelectorAll(".application.lc-reveal")].at(-1)?.id ?? null;
+  }, MODULE_BASE);
+  if (!id) return { ok: false, error: "no reveal window on the GM" };
+  const state = () => page.evaluate(id => {
+    const el = document.getElementById(id);
+    const watch = el.querySelector(".lc-reveal__watch");
+    const shown = n => !!n && !n.hidden && n.getBoundingClientRect().height > 0;
+    return {
+      watch: shown(watch) ? watch.textContent.trim() : null,
+      close: el.querySelector(".lc-reveal__close")?.textContent.trim(),
+      landed: !!el.querySelector(".lc-card--landed"),
+      resultHidden: (r => r.hidden || getComputedStyle(r).visibility === "hidden")(el.querySelector(".lc-reveal__result")),
+      name: el.querySelector(".lc-reveal__name")?.textContent ?? null,
+      focus: document.activeElement === watch ? "Watch again" : document.activeElement?.matches?.(".lc-reveal__close") ? "Close" : document.activeElement?.tagName ?? "none",
+    };
+  }, id);
+  const before = await state();
+  if (before.watch !== "Watch again") return { ok: false, error: "no Watch again on the GM's hidden-landed reveal", before };
+  await page.locator(`#${id} .lc-reveal__watch`).click();
+  await page.waitForTimeout(150);
+  const playing = await state();
+  const t0 = Date.now();
+  await page.waitForSelector(`#${id} .lc-card--landed`, { timeout: 15000 });
+  const replayMs = Date.now() - t0;
+  await page.waitForTimeout(300);
+  const after = await state();
+  const counts = await page.evaluate(() => ({ before: globalThis.__lcBefore, after: globalThis.__lcCounts() }));
+  const unchanged = counts.before.messages === counts.after.messages && counts.before.logRows === counts.after.logRows;
+  const ok = playing.watch === "Skip" && !playing.landed && playing.resultHidden && playing.close === "Close"
+    && after.landed && after.watch === null && !after.resultHidden && after.name === before.name && after.focus === "Close" && unchanged;
+  return { ok, before, playing, after, replayMs, counts, unchanged };
 }
 
 (async () => {
@@ -293,6 +429,7 @@ async function closeShopCheck(player, gm) {
       return { actor: actor.name, before, after: actor.system.currency, granted, purchases };
     }, { base: MODULE_BASE, box: BOX, count: COUNT });
     Object.assign(out, result);
+    if (REPLAY) out.replay = await replayCheck(pl.page);
     if (GM_LOG) {
       const seen = await gm.page.evaluate(() => globalThis.__lcLog);
       const rowMs = seen.at != null ? seen.at - out.purchases[0].clickedAt : null;
@@ -310,6 +447,7 @@ async function closeShopCheck(player, gm) {
         };
       });
     }
+    if (HIDE_GM) out.gmWatch = await gmWatchCheck(gm.page);
     out.gmTimings = (gm?.logs ?? []).filter(l => l.includes("timings"));
     out.gmConsole = (gm?.logs ?? []).filter(l => !l.includes("timings"));
     out.playerLog = pl.logs;

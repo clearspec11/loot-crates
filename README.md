@@ -12,6 +12,12 @@ A GM can change an item's rarity on its row in the pool editor. That rarity deci
 
 The shop shows each character their own odds. A box's pity rule and its no-duplicates rule apply to the character picked in the shop, the same way the roll applies them: items they already own are left out, and once pity is due only the guaranteed rarities show. The card says where they stand ("Rare or better within 4 pulls", or "guaranteed this pull"), and a box with nothing new for that character can't be bought ("Nothing new for <name>"). The reveal's odds bar shows the odds the shop showed.
 
+## Watch again
+
+A pull's chat card carries a small display-only snapshot of its spin (`flags["loot-crates"].replay`: each card's name, art and rarity, where it lands, the odds and the result; no uuids, no purse, no granted item, about 6 KB). Anyone at the table can press **Watch again** on the card to replay that spin on their own screen, in a window titled "Replay: ...". A replay writes nothing, posts nothing, needs no GM and shows nobody's gold. Refunded cards and cards posted before this feature have no button.
+
+A reveal that this client didn't see spin (it landed while the tab was hidden, the tab was hidden mid-spin, or Skip was pressed) also offers **Watch again** beside Close. It replays the same strip in the same window, display only, reading Skip while it plays; once a replay has run to its end the button goes. It never appears after a spin that played out, or with reduced motion on.
+
 ## Development
 
 ```
@@ -28,7 +34,7 @@ The harness runs the module's pure scripts and its stylesheet with sample data o
 ## Layout
 
 - `module/` is what ships: `module.json`, `scripts/`, `styles/`.
-  - Pure, tested, no Foundry globals: `odds.js` (the pull and the shop's odds), `currency.js` (coins), `boxcard.js` (the shop's box card and odds pills, shared with the manager and the harness), `revealcard.js` (the reveal's result block and where its window opens, shared with the harness), `chatcard.js` (what a pull's chat card becomes after a refund, and finding that card), `poolview.js` (the pool editor's rows, search, filter chips and 50-row pages, shared with the harness), `strip.js` (the reveal row), `spin.js` (the animation, DOM only), `redraw.js` (which open windows redraw when a world setting changes, once per burst of writes).
+  - Pure, tested, no Foundry globals: `odds.js` (the pull and the shop's odds), `currency.js` (coins), `boxcard.js` (the shop's box card and odds pills, shared with the manager and the harness), `revealcard.js` (the reveal's result block, where its window opens, and the replay snapshot a chat card keeps, shared with the harness), `chatcard.js` (what a pull's chat card becomes after a refund, and finding that card), `poolview.js` (the pool editor's rows, search, filter chips and 50-row pages, shared with the harness), `strip.js` (the reveal row), `spin.js` (the animation, DOM only), `redraw.js` (which open windows redraw when a world setting changes, once per burst of writes).
   - Foundry-side: `store.js` (settings-backed pools/boxes/log), `pull.js` (one purchase), `socket.js` (player to GM), `shop.js`, `reveal.js`, `manager.js`, `chat.js`, `sound.js`, `main.js`.
 - `harness/` is the no-Foundry page used by `npm run smoke`.
 - `test/` is Vitest. `scripts/` are the checks. `docs/DESIGN.md` holds the design tokens and rules.

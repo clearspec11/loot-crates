@@ -9,7 +9,7 @@ vi.mock("../module/scripts/sound.js", () => ({ playTick: vi.fn(), playSlow: vi.f
 
 const fakeElement = () => ({
   className: "", textContent: "", innerHTML: "", clientWidth: 600, dataset: {}, children: [], hidden: false,
-  classList: { add() {} },
+  classList: { add() {}, remove() {} },
   style: { transform: "", setProperty() {} },
   setAttribute() {},
   append(...kids) { this.children.push(...kids); },
@@ -20,8 +20,10 @@ const fakeElement = () => ({
 });
 
 class FakeApp {
-  constructor(options) { this.options = options; this.state = 0; }
+  constructor(options) { this.options = options; this.state = 0; this.fronted = 0; }
+  bringToFront() { this.fronted++; }
   async render() {
+    if (this.options?.id) globalThis.foundry.applications.instances.set(this.options.id, this);
     const html = await this._renderHTML();
     const parts = new Map();
     this.element = { querySelector: sel => parts.get(sel) ?? parts.set(sel, fakeElement()).get(sel), contains: el => [...parts.values()].includes(el) };
@@ -31,7 +33,7 @@ class FakeApp {
     return this;
   }
   _onClose() {}
-  close() { this._onClose({}); }
+  close() { this.state = 0; globalThis.foundry.applications.instances.delete(this.options?.id); this._onClose({}); }
 }
 
 let frames, listeners, doc;
@@ -65,7 +67,8 @@ const reveal = {
   strip: { landIndex: 30, cards: Array.from({ length: 36 }, (_, i) => ({ uuid: `c${i}`, name: `Card ${i}`, img: "", rarity: "common", result: i === 30 })) },
 };
 
-const { showReveal, sealChatCard } = await import("../module/scripts/reveal.js");
+const { showReveal, showReplay, sealChatCard, watchAgain, CrateReveal } = await import("../module/scripts/reveal.js");
+const { replaySnapshot, replayReveal } = await import("../module/scripts/revealcard.js");
 const { playReveal, playSlow } = await import("../module/scripts/sound.js");
 
 describe("a reveal on a hidden page", () => {
@@ -235,5 +238,287 @@ describe("focus between the buyer's Buy and the reveal", () => {
     doc.activeElement = app2.element.querySelector(".lc-reveal__close");
     app2.close();
     expect(doc.activeElement).not.toBe(buy);
+  });
+});
+
+/*
+  "Watch again": a replay plays on this client only, from the card's
+  snapshot. One window per card, titled as a replay, nobody's gold, and it
+  never holds a chat card back.
+*/
+const snapshot = replaySnapshot({ ...reveal, odds: [{ rarity: "rare", chance: 1, label: "100%" }], purse: { gp: 5 }, itemUuid: "Actor.a.Item.i", logId: "L9" });
+
+describe("a replay window", () => {
+  it("opens once per card: a second press brings the open one forward", async () => {
+    const a = await showReplay(snapshot, "m1");
+    expect(a.options.id).toBe("loot-crates-reveal-replay-m1");
+    const b = await showReplay(snapshot, "m1");
+    expect(b).toBe(a);
+    expect(a.fronted).toBe(1);
+    const c = await showReplay(snapshot, "m2");
+    expect(c).not.toBe(a);
+    // Closed, the card's button opens a fresh one.
+    a.close();
+    const d = await showReplay(snapshot, "m1");
+    expect(d).not.toBe(a);
+  });
+
+  it("says Replay, shows no gold or Open item even to a GM, and plays the spin", async () => {
+    globalThis.game.user.isGM = true;
+    const app = await showReplay(snapshot, "m3");
+    expect(app.title).toBe("Replay: Crate Tester opens Crate");
+    expect(app.canSee).toBe(false);
+    expect(frames).toHaveLength(1);
+    for (let now = 0; frames.length; now += 16) frames.shift()(now);
+    await app.landed;
+    const out = app.element.querySelector(".lc-reveal__result").innerHTML;
+    expect(out).toContain("Sword");
+    expect(out).not.toMatch(/gp left/);
+    expect(app.element.querySelector(".lc-reveal__open").hidden).toBe(true);
+    expect(app.element.querySelector(".lc-reveal__close").textContent).toBe("Close");
+  });
+
+  it("never enters the spinning set, so it seals no chat card", async () => {
+    const app = new CrateReveal({ ...replayReveal(snapshot, "m4"), logId: "L9" });
+    await app.render({ force: true });
+    const { card, html } = cardHTML();
+    sealChatCard(message("L9"), html);
+    expect(card.classes.has("lc-chat--sealed")).toBe(false);
+  });
+
+  it("gives focus back to its Watch again on close", async () => {
+    const back = { isConnected: true, focus() { doc.activeElement = this; } };
+    const app = await showReplay(snapshot, "m5", { returnTo: back });
+    for (let now = 0; frames.length; now += 16) frames.shift()(now);
+    await app.landed;
+    app.close();
+    expect(doc.activeElement).toBe(back);
+  });
+
+  it("takes focus from the Watch again that opened it to Close on landing, as a Buy does", async () => {
+    const back = { isConnected: true, focus() { doc.activeElement = this; } };
+    back.focus();
+    const app = await showReplay(snapshot, "m7", { returnTo: back });
+    expect(doc.activeElement).toBe(back);
+    for (let now = 0; frames.length; now += 16) frames.shift()(now);
+    await app.landed;
+    expect(doc.activeElement).toBe(app.element.querySelector(".lc-reveal__close"));
+    app.close();
+    expect(doc.activeElement).toBe(back);
+    // Moved on elsewhere during the replay: left there.
+    back.focus();
+    const app2 = await showReplay(snapshot, "m8", { returnTo: back });
+    const elsewhere = { focus() {} };
+    doc.activeElement = elsewhere;
+    for (let now = 0; frames.length; now += 16) frames.shift()(now);
+    await app2.landed;
+    expect(doc.activeElement).toBe(elsewhere);
+  });
+
+  it("opens nothing for a snapshot it can't play", async () => {
+    expect(await showReplay({ strip: { cards: [] } }, "m6")).toBeNull();
+  });
+});
+
+describe("Watch again on the chat card", () => {
+  const button = () => {
+    const el = fakeElement();
+    el.listeners = [];
+    el.attrs = {};
+    el.setAttribute = (k, v) => { el.attrs[k] = String(v); };
+    el.addEventListener = (type, fn) => el.listeners.push([type, fn]);
+    return el;
+  };
+  const withButtons = card => {
+    card.querySelector = sel => (sel === ".lc-chat__replay" ? card.kids.find(k => k.className === "lc-chat__replay") ?? null : null);
+    return card;
+  };
+  const msg = (flags, id = "msg") => ({ id, flags: { "loot-crates": flags } });
+
+  it("adds one button to a pull's card with a snapshot, which opens the replay", async () => {
+    doc.createElement = button;
+    const { card, html } = cardHTML();
+    withButtons(card);
+    watchAgain(msg({ logId: "L1", replay: snapshot }, "c1"), html);
+    expect(card.kids.map(k => k.textContent)).toEqual(["Watch again"]);
+    const btn = card.kids[0];
+    expect(btn.type).toBe("button");
+    // Its name starts with what it says, then which pull it replays.
+    expect(btn.attrs["aria-label"]).toBe("Watch again: Crate Tester opens Crate");
+    // Rendered again (a notification copy re-render): still one.
+    watchAgain(msg({ logId: "L1", replay: snapshot }, "c1"), html);
+    expect(card.kids).toHaveLength(1);
+    const [[type, click]] = btn.listeners;
+    expect(type).toBe("click");
+    click({ preventDefault() {}, stopPropagation() {} });
+    await new Promise(r => setTimeout(r, 0));
+    expect(globalThis.foundry.applications.instances.get("loot-crates-reveal-replay-c1")).toBeTruthy();
+  });
+
+  it("adds none to a refunded card or a card from before snapshots", () => {
+    doc.createElement = button;
+    const refunded = cardHTML({ refunded: true });
+    withButtons(refunded.card);
+    watchAgain(msg({ logId: "L1", replay: snapshot }), refunded.html);
+    expect(refunded.card.kids).toHaveLength(0);
+    const legacy = cardHTML();
+    withButtons(legacy.card);
+    watchAgain(msg({ logId: "L1", uuid: "u" }), legacy.html);
+    watchAgain({ flags: {} }, legacy.html);
+    watchAgain(null, legacy.html);
+    expect(legacy.card.kids).toHaveLength(0);
+  });
+});
+
+/*
+  Watch again in the reveal itself: offered only when this client didn't see
+  the spin play out (it landed hidden, was hidden mid-spin, or was skipped),
+  never after a natural landing or under reduced motion. It replays the same
+  strip in the same host, display only: `landed` and the chat card's seal
+  are the first spin's alone.
+*/
+describe("Watch again in a reveal this client didn't see spin", () => {
+  let now;
+  beforeEach(() => {
+    now = 1000;
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+    playReveal.mockClear();
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  const $ = (app, sel) => app.element.querySelector(sel);
+  // ApplicationV2 runs a button's data-action handler with the window as
+  // this. The fake root doesn't parse markup, so a button's first action is
+  // given here (revealActionsHTML): Skip on the spin's button, watchAgain.
+  const press = (app, button, detail = 1) => {
+    const first = button === $(app, ".lc-reveal__close") ? "skip" : "watchAgain";
+    return CrateReveal.DEFAULT_OPTIONS.actions[button.dataset.action ?? first].call(app, { detail }, button);
+  };
+  const run = () => { for (let t = 0; frames.length; t += 16) frames.shift()(t); };
+  const skipped = async (extra = {}) => {
+    const app = await showReveal({ ...reveal, ...extra });
+    frames.shift()(0);
+    press(app, $(app, ".lc-reveal__close"));
+    run();
+    await app.landed;
+    return app;
+  };
+
+  it("is not offered after a spin that played to its end", async () => {
+    const app = await showReveal(reveal);
+    run();
+    await app.landed;
+    expect($(app, ".lc-reveal__watch").hidden).toBe(true);
+  });
+
+  it("is offered after Skip, a hidden-page land and a hidden-mid-spin land", async () => {
+    const a = await skipped();
+    expect($(a, ".lc-reveal__close").textContent).toBe("Close");
+    expect($(a, ".lc-reveal__watch").hidden).toBe(false);
+
+    doc.visibilityState = "hidden";
+    const b = await showReveal({ ...reveal, requestId: "h1" });
+    await b.landed;
+    expect($(b, ".lc-reveal__watch").hidden).toBe(false);
+
+    doc.visibilityState = "visible";
+    const c = await showReveal({ ...reveal, requestId: "h2" });
+    for (let t = 0; t < 500; t += 16) frames.shift()(t);
+    doc.visibilityState = "hidden";
+    for (const [fn] of listeners) fn();
+    await c.landed;
+    expect($(c, ".lc-reveal__watch").hidden).toBe(false);
+  });
+
+  it("is never offered under reduced motion, hidden or skipped", async () => {
+    vi.stubGlobal("matchMedia", () => ({ matches: true }));
+    const a = await showReveal(reveal);
+    await a.landed;
+    expect($(a, ".lc-reveal__watch").hidden).toBe(true);
+    doc.visibilityState = "hidden";
+    const b = await showReveal({ ...reveal, requestId: "rm2" });
+    await b.landed;
+    expect($(b, ".lc-reveal__watch").hidden).toBe(true);
+  });
+
+  it("replays in place, display only, and goes once a replay runs to its end with focus on Close", async () => {
+    const app = await skipped({ requestId: "w1", logId: "LW1" });
+    const watch = $(app, ".lc-reveal__watch");
+    const close = $(app, ".lc-reveal__close");
+    const host = $(app, ".lc-reveal__spin");
+    const mounted = host.children.length;
+    const reveals = playReveal.mock.calls.length;
+    watch.focus();
+    now += 2000;
+    press(app, watch);
+    // The pressed button keeps focus and now reads Skip; the result waits.
+    expect(watch.textContent).toBe("Skip");
+    expect(watch.dataset.action).toBe("skip");
+    expect(doc.activeElement).toBe(watch);
+    expect($(app, ".lc-reveal__result").hidden).toBe(true);
+    // A fresh strip in the same host, playing.
+    expect(host.children.length).toBe(mounted + 1);
+    expect(frames).toHaveLength(1);
+    // Close is still Close, and the chat card isn't sealed again.
+    expect(close.textContent).toBe("Close");
+    expect(close.dataset.action).toBe("dismiss");
+    const { card, html } = cardHTML();
+    sealChatCard(message("LW1"), html);
+    expect(card.classes.has("lc-chat--sealed")).toBe(false);
+    run();
+    expect($(app, ".lc-reveal__result").hidden).toBe(false);
+    expect(watch.hidden).toBe(true);
+    expect(doc.activeElement).toBe(close);
+    // The sting again, for the same result.
+    expect(playReveal.mock.calls.length).toBe(reveals + 1);
+    expect(playReveal).toHaveBeenLastCalledWith("rare");
+    // Gone: pressing it again does nothing.
+    press(app, Object.assign(watch, { dataset: { action: "watchAgain" } }));
+    expect(frames).toHaveLength(0);
+  });
+
+  it("comes back when its replay is skipped, keeping focus, and ignores a double press", async () => {
+    const app = await skipped({ requestId: "w2" });
+    const watch = $(app, ".lc-reveal__watch");
+    watch.focus();
+    now += 2000;
+    press(app, watch);
+    // The second click of a double-click lands on Skip: ignored.
+    press(app, watch, 2);
+    now += 100;
+    press(app, watch);
+    frames.shift()(0);
+    // Still playing: neither ignored press skipped it.
+    expect(watch.textContent).toBe("Skip");
+    now += 1000;
+    press(app, watch);
+    run();
+    expect(watch.textContent).toBe("Watch again");
+    expect(watch.dataset.action).toBe("watchAgain");
+    expect(watch.hidden).toBe(false);
+    expect(doc.activeElement).toBe(watch);
+    expect($(app, ".lc-reveal__result").hidden).toBe(false);
+  });
+
+  it("doesn't take focus back on the replay's landing when the viewer moved on", async () => {
+    const app = await skipped({ requestId: "w3" });
+    now += 2000;
+    press(app, $(app, ".lc-reveal__watch"));
+    const chat = { focus() {} };
+    doc.activeElement = chat;
+    run();
+    expect($(app, ".lc-reveal__watch").hidden).toBe(true);
+    expect(doc.activeElement).toBe(chat);
+  });
+
+  it("ends quietly when the window closes mid-replay", async () => {
+    const app = await skipped({ requestId: "w4" });
+    now += 2000;
+    press(app, $(app, ".lc-reveal__watch"));
+    const reveals = playReveal.mock.calls.length;
+    app.close();
+    run();
+    expect(playReveal.mock.calls.length).toBe(reveals);
+    expect(listeners.size).toBe(0);
   });
 });

@@ -37,10 +37,13 @@
 
   A drop says where it went: the new rows are pinned at the top of their
   pool (opened, and its chip and search cleared if they would hide one),
-  focus goes to the first one's rarity select, and the status line and a
-  toast name it ("Flame Tongue added to Core magic items, Rare, at the
-  top."). A single item already in the pool is pinned the same way. The pin
-  is view state only and goes at the next drop or when the manager closes.
+  focus goes to the first one's rarity select, and the status line names it
+  ("Flame Tongue added to Core magic items, Rare, at the top."). Only the
+  status line: it stays put and is read out once, where a toast as well made
+  screen readers say the same sentence twice. Toasts are for drops that
+  didn't go in. A single item already in the pool is pinned the same way.
+  The pin is view state only and goes at the next drop or when the manager
+  closes.
 
   The box editor shows the chances a player will see (the shop's ribbon and
   pills) for the form as it stands, redrawn on every keystroke, tick and
@@ -136,8 +139,8 @@ export class CrateManager extends ApplicationV2 {
   /*
     Show what a drop put in (or found already in) a pool: pin `uuids` at the
     top of its first page, open it, clear a chip or search that would hide
-    them, focus the first, and say so in the status line and a toast. Any
-    earlier pin, on any pool, goes.
+    them, focus the first, and say so in the status line (not a toast too:
+    one announcement). Any earlier pin, on any pool, goes.
   */
   #pinDrop(poolId, uuids, { label = "", added = uuids.length, duplicate = false } = {}) {
     const pool = getPools()[poolId];
@@ -157,7 +160,6 @@ export class CrateManager extends ApplicationV2 {
     if (details) details.open = true;
     this.#repaint(poolId, { uuid: view.recent[0], scroll: true });
     this.#announce(text);
-    ui.notifications.info(text);
   }
 
   // Closing the manager lets go of every pin.

@@ -767,12 +767,39 @@ describe("a pool entry whose source is gone", () => {
     expect(errors).toEqual([]);
     expect(emitted.filter(m => m.type === "error")).toEqual([]);
     expect(emitted.find(m => m.type === "reveal").result.uuid).toBe("Item.common");
+    expect(emitted.find(m => m.type === "reveal").odds.map(o => o.rarity)).toEqual(["common"]);
     expect(events).toEqual(["resolve Item.rare", "resolve Item.common", "charge"]);
     expect(actor.updates).toBe(1);
     expect(actor.system.currency.gp).toBe(490);
     expect(game.settings.get("loot-crates", "pools").loot.entries.find(e => e.uuid === "Item.rare").missing).toBe(true);
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toContain("Flame Tongue in Treasure");
+  });
+
+  it("shows the reveal the odds the re-roll was made at, without the rarity that went missing", async () => {
+    const { game, emitted, deliver } = makeWorld({ user: GM });
+    game.items = { get: id => ({ id, name: id, img: "", system: {} }) };
+    // The rare's document is gone by the roll, and the GM's client can't save
+    // the missing flag either: the stored pools still count the rare.
+    globalThis.fromUuid = async uuid => (uuid === "Item.rare" ? null : item(uuid));
+    globalThis.CONFIG = { Dice: { randomUniform: () => 0.5 } };
+    await game.settings.set("loot-crates", "pools", { loot: { id: "loot", name: "Treasure", pools: [], entries: [
+      { uuid: "Item.common", name: "Torch", img: "", rarity: "common", weight: 1 },
+      { uuid: "Item.rare", name: "Flame Tongue", img: "", rarity: "rare", weight: 1 },
+    ] } });
+    await game.settings.set("loot-crates", "boxes", { box: { ...BOX, weights: { common: 1, rare: 100 } } });
+    const set = game.settings.set;
+    game.settings.set = async (ns, key, value) => { if (key === "pools") throw new Error("disk full"); return set(ns, key, value); };
+
+    const warn = console.warn, error = console.error;
+    console.warn = () => {};
+    console.error = () => {};
+    try { await deliver({ type: "pull", requestId: "r1", boxId: "box", actorId: "actor1", userId: "p1" }); } finally { console.warn = warn; console.error = error; }
+
+    const reveal = emitted.find(m => m.type === "reveal");
+    expect(reveal.result.uuid).toBe("Item.common");
+    expect(game.settings.get("loot-crates", "pools").loot.entries.some(e => e.missing)).toBe(false);
+    expect(reveal.odds).toEqual([{ rarity: "common", chance: 1, label: "100%" }]);
   });
 });
 

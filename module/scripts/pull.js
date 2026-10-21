@@ -35,7 +35,9 @@ export function sourceRaritiesOf(data) {
   The caller is expected to have swept the box for dead sources already, so
   this only happens when one vanished in between: the entry is excluded and the
   roll is made again, up to MAX_REDRAWS times. Nothing is charged until a live
-  source is in hand.
+  source is in hand. The pools the roll was finally made from (any lost entry
+  marked missing) come back as `pools`, so the reveal shows the odds of that
+  roll even when onMissing couldn't save the mark.
 */
 const MAX_REDRAWS = 3;
 export async function performPull({ box, pools, actor, state = {}, rng = rollRng(), grant = true, onMissing = null }) {
@@ -119,5 +121,6 @@ export async function performPull({ box, pools, actor, state = {}, rng = rollRng
     sourceRarity,
     rarityOverride: overridden,
     state: nextState(box, state, result),
+    pools,
   };
 }
