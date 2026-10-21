@@ -146,3 +146,30 @@ describe("the near-miss tease is one droppable rank up", () => {
     }
   });
 });
+
+/*
+  The shop shows each buyer their own odds (owned items out under
+  noDuplicates), so the tease must be one of those too: a spin that teases
+  a rarity the shop just told this character they can't get, or an item
+  they already own, isn't a near miss.
+*/
+describe("the near-miss tease follows the buyer's own odds", () => {
+  const entry = (uuid, rarity) => ({ uuid, name: uuid, img: "", rarity, weight: 1 });
+  const pools = { p: { id: "p", name: "P", pools: [], entries: [entry("c1", "common"), entry("c2", "common"), entry("u1", "uncommon"), entry("u2", "uncommon"), entry("r1", "rare")] } };
+  const box = { id: "b", name: "B", price: 1, pools: [{ id: "p", share: 1 }], weights: { common: 50, uncommon: 30, rare: 20 }, rules: { noDuplicates: true } };
+
+  it("never teases a rarity or an item this buyer owns, across 300 seeds", () => {
+    const state = { owned: ["r1", "u1"], sinceRare: 0 };
+    let teases = 0;
+    for (let seed = 1; seed <= 300; seed++) {
+      const rng = seededRng(seed);
+      const result = draw({ box, pools, rng, state });
+      if (result.rarity !== "common") continue;
+      const strip = buildStrip({ result, box, pools, rng, state });
+      if (!strip.nearMiss) continue;
+      teases++;
+      expect(strip.cards[LAND_INDEX + 1].uuid).toBe("u2");
+    }
+    expect(teases).toBeGreaterThan(0);
+  });
+});

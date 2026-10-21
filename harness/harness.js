@@ -7,14 +7,19 @@
   ?waiting=gm | hidden (shop: the first crate pressed and the GM slow to answer)
   ?closed=1 (shop: closed because no GM is online; ?closed=gm, closed by the GM)
   ?width=<px> (the window's width, as a GM sizes it, whatever the screen's)
+  ?pity=due (shop: Tam has gone 8 pulls without a Rare from the Adventurer's
+  Crate, so its pity is due: only Rare or better shows, and its line says so)
   "landed" plays the spin at zero duration, for deterministic screenshots.
   buyer=1 shows the reveal as the buyer (or a GM) sees it: gold left and an
   Open item button; without it, as the rest of the table sees it.
   "manager" is the pool editor's Pools tab (poolview.js), with chips and
   open/close working; search, edits and Show more need Foundry.
+  ?dropped=1 (manager: the GM had the 200-entry pool filtered to Rare, then
+  dropped its last item, a Very rare one, on it: the pool opens, the chip
+  clears, the row is pinned at the top and focused, and the status line says so)
 */
 import { POOLS, BOX, BOXES, MANAGER_POOLS, MANAGER_SOURCES } from "./sample.js";
-import { poolRows, sortRows, defaultView, poolSummary, poolBody } from "../module/scripts/poolview.js";
+import { poolRows, sortRows, defaultView, poolSummary, poolBody, pinRecent, dropNotice } from "../module/scripts/poolview.js";
 import { draw, seededRng } from "../module/scripts/odds.js";
 import { buildStrip } from "../module/scripts/strip.js";
 import { mountSpin } from "../module/scripts/spin.js";
@@ -31,6 +36,7 @@ const purse = { pp: 0, gp: 420, ep: 0, sp: 7, cp: 3 };
 const buyer = q.get("buyer") === "1";
 const waiting = q.get("waiting");
 const closed = q.get("closed");
+const pityDue = q.get("pity") === "due";
 const theme = q.get("theme") === "light" ? "light" : "dark";
 document.body.classList.replace("theme-dark", `theme-${theme}`);
 
@@ -74,7 +80,8 @@ const stage = document.getElementById("stage");
 // change, so the smoke can check the notice node survives.
 function renderShop(extra = {}) {
   const ctx = {
-    purse, hasActor: true, open: !closed, gmOnline: closed !== "1", art: CRATE_ICON,
+    purse, hasActor: true, actorName: "Tam Thornwick", open: !closed, gmOnline: closed !== "1", art: CRATE_ICON,
+    stateOf: id => (pityDue && id === BOX.id ? { sinceRare: BOX.rules.pity.after } : {}),
     ...(waiting ? { busy: true, busyBox: BOXES[0].id, waiting } : {}), ...extra,
   };
   const fresh = document.createElement("div");
@@ -145,12 +152,21 @@ function renderManager() {
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   const srcOf = e => MANAGER_SOURCES.has(e.uuid) ? MANAGER_SOURCES.get(e.uuid) : { name: e.name, img: e.img, rarity: e.sourceRarity || null, rawRarity: e.sourceRarity ?? null };
   const views = new Map(MANAGER_POOLS.map(p => [p.id, { ...defaultView(p), open: p.id === "compendium" ? true : defaultView(p).open }]));
-  const rowsOf = p => sortRows(poolRows(p, srcOf));
+  const rowsOf = p => sortRows(poolRows(p, srcOf), views.get(p.id).recent);
+  // The manager's #pinDrop, with the same pure steps.
+  let status = "", dropped = null;
+  if (q.get("dropped") === "1") {
+    const pool = MANAGER_POOLS.find(p => p.id === "everything");
+    dropped = pool.entries.at(-1).uuid;
+    const { view, cleared } = pinRecent({ ...views.get(pool.id), chip: "rare" }, poolRows(pool, srcOf), [dropped]);
+    views.set(pool.id, view);
+    status = dropNotice({ pool, rows: rowsOf(pool).filter(r => r.recent), cleared });
+  }
   stage.innerHTML = `
     <div class="lc-manager__body">
-      <nav class="lc-tabs"><button type="button" class="active">Pools</button><button type="button">Boxes</button><button type="button">Pull log</button><span class="lc-tabs__spacer"></span><button type="button" class="lc-shop-toggle" data-open="true" aria-pressed="true">Shop open</button></nav>
-      <section class="lc-tab">
-        <div class="lc-toolbar"><button type="button"><i class="fas fa-plus"></i> New pool</button><span class="lc-pool__hint lc-manager__status" role="status"></span></div>
+      <nav class="lc-tabs"><div class="lc-tabs__list" role="tablist" aria-label="Loot Crates sections"><button type="button" role="tab" aria-selected="true" tabindex="0" class="active">Pools</button><button type="button" role="tab" aria-selected="false" tabindex="-1">Boxes</button><button type="button" role="tab" aria-selected="false" tabindex="-1">Pull log</button></div><span class="lc-tabs__spacer"></span><button type="button" class="lc-shop-toggle" data-open="true" aria-pressed="true">Shop open</button></nav>
+      <section class="lc-tab" role="tabpanel">
+        <div class="lc-toolbar"><button type="button"><i class="fas fa-plus"></i> New pool</button><span class="lc-pool__hint lc-manager__status" role="status">${esc(status)}</span></div>
         ${MANAGER_POOLS.map(p => `
         <article class="lc-pool" data-drop-pool="${esc(p.id)}">
           <details class="lc-pool__details" data-pool="${esc(p.id)}"${views.get(p.id).open ? " open" : ""}>
@@ -175,6 +191,11 @@ function renderManager() {
     fill(chip.closest(".lc-pool__details"));
     stage.querySelector(`.lc-pool__details[data-pool="${chip.dataset.pool}"] [data-chip="${chip.dataset.chip}"]`)?.focus();
   });
+  if (dropped) {
+    const li = stage.querySelector(`[data-entry="${CSS.escape(dropped)}"]`);
+    li?.querySelector("select, input, button")?.focus({ preventScroll: true });
+    li?.scrollIntoView({ block: "nearest" });
+  }
   document.body.dataset.ready = "1";
 }
 

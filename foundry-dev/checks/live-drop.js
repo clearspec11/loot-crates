@@ -11,6 +11,11 @@
 // dnd5e.items on it and leaves that preview open, reporting its text; the
 // compendium picker's packs are reported too. --shot shows the preview.
 //
+// Then a drop says where it went: one item dropped on a collapsed pool of
+// 120 entries opens it, pins the item as its first row, focuses that row's
+// rarity select and names it in the status line; dropping an item that is
+// already deep in the pool pins and focuses that row instead.
+//
 //   FOUNDRY_URL=http://192.168.0.57:30000 MODULE_BASE=http://192.168.0.190:8766/ \
 //     NODE_PATH=$(npm root -g) node foundry-dev/headless/run.cjs foundry-dev/checks/live-drop.js --shot drop.png
 //
@@ -91,6 +96,45 @@ await until(() => store.getPools()[uiPool.id].entries.length >= 2);
 const afterFolderAdd = store.getPools()[uiPool.id].entries.length;
 await until(() => !preview());
 
+// ---- Part 3: a single drop on a big collapsed pool says where it went ----
+const bigEl = () => app.element.querySelector('[data-drop-pool="live-drop-big"]');
+const pick = compendium.entries.slice(0, 121);
+const [newcomer, ...seed] = [pick[120], ...pick.slice(0, 120)];
+await store.savePool({ id: "live-drop-big", name: "Live drop big pool", entries: seed, pools: [] });
+app.render({ force: true });
+await until(() => bigEl());
+const wasOpen = bigEl().querySelector(".lc-pool__details").open;
+const dropOn = (el, data) => {
+  const dt = new DataTransfer();
+  dt.setData("text/plain", JSON.stringify(data));
+  el.dispatchEvent(new DragEvent("drop", { dataTransfer: dt, bubbles: true, cancelable: true }));
+};
+const readPin = uuid => {
+  const el = bigEl();
+  const first = el?.querySelector(".lc-entries > .lc-entry");
+  return {
+    open: !!el?.querySelector(".lc-pool__details").open,
+    firstUuid: first?.dataset.entry ?? null,
+    firstIsDropped: first?.dataset.entry === uuid,
+    justAdded: /Just added/.test(first?.textContent ?? ""),
+    focusOnSelect: document.activeElement === first?.querySelector("select.lc-entry__rarity"),
+    status: app.element.querySelector(".lc-manager__status")?.textContent.trim() ?? "",
+    count: store.getPools()["live-drop-big"].entries.length,
+  };
+};
+dropOn(bigEl(), { type: "Item", uuid: newcomer.uuid });
+await until(() => store.getPools()["live-drop-big"].entries.length === 121 && bigEl()?.querySelector(".lc-entries > .lc-entry")?.dataset.entry === newcomer.uuid);
+await wait(200);
+const single = { name: newcomer.name, wasOpen, ...readPin(newcomer.uuid) };
+const deep = seed[100];
+dropOn(bigEl(), { type: "Item", uuid: deep.uuid });
+await until(() => bigEl()?.querySelector(".lc-entries > .lc-entry")?.dataset.entry === deep.uuid);
+await wait(200);
+const duplicate = { name: deep.name, ...readPin(deep.uuid) };
+await store.savePool({ ...store.getPools()["live-drop-big"], entries: [] });
+const pinOk = !single.wasOpen && single.open && single.firstIsDropped && single.justAdded && single.focusOnSelect && single.status.includes(single.name) && /at the top/.test(single.status) && single.count === 121
+  && duplicate.firstIsDropped && duplicate.focusOnSelect && duplicate.status.includes(`${deep.name} is already in`) && duplicate.count === 121;
+
 drop({ type: "Compendium", collection: "dnd5e.items" });
 await until(() => preview(), 15000);
 await wait(400);
@@ -105,7 +149,7 @@ const ok = compendium.entries.length >= 700 && addedCompendium === compendium.en
   && again.entries.length === 0 && again.skipped.duplicates === compendium.entries.length
   && savedBeforeAdd === 0 && afterFolderAdd === inFolder && new RegExp(`Add ${inFolder} items from Loot Crates Test`).test(folderPreview?.lead ?? "")
   && new RegExp(`Add ${compendium.entries.length} items from Items \\(SRD\\)`).test(compendiumPreview?.lead ?? "")
-  && compendiumPreview?.rows === 50 && !pickerPacks.includes("dnd5e.spells") && !pickerPacks.includes("dnd5e.classfeatures");
+  && compendiumPreview?.rows === 50 && !pickerPacks.includes("dnd5e.spells") && !pickerPacks.includes("dnd5e.classfeatures") && pinOk;
 
 return {
   ok,
@@ -116,5 +160,6 @@ return {
   dropAgain: { found: again.entries.length, duplicates: again.skipped.duplicates },
   table,
   ui: { hint, folderPreview, savedBeforeAdd, afterFolderAdd, compendiumPreview },
+  pin: { ok: pinOk, single, duplicate },
   pickerPacks,
 };

@@ -35,6 +35,13 @@
   Remove, Relink and the bulk rarity redraw only that pool and keep focus
   near where it was. One status line in the toolbar speaks for them all.
 
+  A drop says where it went: the new rows are pinned at the top of their
+  pool (opened, and its chip and search cleared if they would hide one),
+  focus goes to the first one's rarity select, and the status line and a
+  toast name it ("Flame Tongue added to Core magic items, Rare, at the
+  top."). A single item already in the pool is pinned the same way. The pin
+  is view state only and goes at the next drop or when the manager closes.
+
   The box editor shows the chances a player will see (the shop's ribbon and
   pills) for the form as it stands, redrawn on every keystroke, tick and
   untick, and says when the box would drop nothing (liveOdds below).
@@ -46,11 +53,12 @@ import { oddsPills, oddsRibbon, draftBox, boxPreview, boxPreviewHTML, oddsSummar
 const oddsCell = rows => rows.length ? `${oddsRibbon(rows)}<div class="lc-odds">${oddsPills(rows)}</div>` : "<em>empty</em>";
 import { getPools, getBoxes, getLog, createPool, updatePool, removePool, createBox, updateBox, removeBox, entryFromItem, entriesFromDrop, addEntries, packHasLoot, LOOT_TYPES, isLootType, isShopOpen, setShopOpen, checkSources, sweepPools, removeEntry, patchEntry } from "./store.js";
 import { shopOdds, normalizeRarity, flattenPool, withSources, entryWeight, curateEntries } from "./odds.js";
-import { PAGE_ROWS, FALLBACK_IMG, defaultView, poolRows, sortRows, filterRows, pageRows, nextRows, poolCount, poolSummary, poolBody, chipsHTML, unsetButton, footHTML, entryRow, entryParts } from "./poolview.js";
+import { PAGE_ROWS, FALLBACK_IMG, defaultView, poolRows, sortRows, filterRows, pageRows, nextRows, poolCount, poolSummary, poolBody, chipsHTML, unsetButton, footHTML, entryRow, entryParts, pinRecent, dropNotice } from "./poolview.js";
 import { formatPrice } from "./currency.js";
 import { describeRefund, refundPull } from "./refund.js";
 import { postRefundCard } from "./chat.js";
 import { refundTime } from "./chatcard.js";
+import { changeCount } from "./redraw.js";
 
 const { ApplicationV2, DialogV2 } = foundry.applications.api;
 const esc = s => foundry.utils.escapeHTML(String(s ?? ""));
@@ -63,7 +71,9 @@ export class CrateManager extends ApplicationV2 {
     window: { title: "Loot Crates", resizable: true },
     position: { width: 760, height: 620 },
     actions: {
-      tab: CrateManager.#tab,
+      // Not "tab": ApplicationV2 sends that action to its own changeTab,
+      // which throws without a data-group (test/actions.test.js).
+      switchTab: CrateManager.#switchTab,
       addPool: CrateManager.#addPool, editPool: CrateManager.#editPool, deletePool: CrateManager.#deletePool,
       bulkAdd: CrateManager.#bulkAdd, setUnsetRarity: CrateManager.#setUnsetRarity, removeEntry: CrateManager.#removeEntry, updateEntry: CrateManager.#updateEntry, relinkEntry: CrateManager.#relinkEntry,
       addBox: CrateManager.#addBox, editBox: CrateManager.#editBox, deleteBox: CrateManager.#deleteBox,
@@ -90,7 +100,7 @@ export class CrateManager extends ApplicationV2 {
     return this.#sources ?? new Map(entries.map(e => [e.uuid, e.missing ? null : { name: e.name, img: e.img, rarity: null }]));
   }
 
-  static #tab(_e, t) { this.tab = t.dataset.tab; this.render(); }
+  static #switchTab(_e, t) { this.tab = t.dataset.tab; this.render(); }
 
   // Each pool's view: open, name search, filter chip, rows shown.
   #view = new Map();
@@ -99,7 +109,7 @@ export class CrateManager extends ApplicationV2 {
     if (!v) this.#view.set(pool.id, (v = defaultView(pool)));
     return v;
   }
-  #rowsOf(pool) { return sortRows(poolRows(pool, e => this.#srcOf(e))); }
+  #rowsOf(pool) { return sortRows(poolRows(pool, e => this.#srcOf(e)), this.#viewOf(pool).recent); }
   #poolEl(poolId) { return this.element?.querySelector(`.lc-pool[data-drop-pool="${CSS.escape(poolId)}"]`) ?? null; }
   #announce(text) {
     const el = this.element?.querySelector(".lc-manager__status");
@@ -110,7 +120,7 @@ export class CrateManager extends ApplicationV2 {
   // put back near where it was: on the row `uuid`, else the row now at
   // index `at` (or the one before it), else the pool's search or summary.
   // Falls back to a full render when the pool isn't on screen.
-  #repaint(poolId, { uuid = null, at = null } = {}) {
+  #repaint(poolId, { uuid = null, at = null, scroll = false } = {}) {
     const el = this.#poolEl(poolId);
     const pool = getPools()[poolId];
     if (!el || !pool) return this.render();
@@ -119,7 +129,41 @@ export class CrateManager extends ApplicationV2 {
     const li = (uuid && list?.querySelector(`[data-entry="${CSS.escape(uuid)}"]`))
       || (at != null && (list?.children[at] ?? list?.children[at - 1]));
     const target = li?.querySelector("select, input, button") ?? el.querySelector(".lc-pool__search") ?? el.querySelector("summary");
-    target?.focus();
+    target?.focus(scroll ? { preventScroll: true } : undefined);
+    if (scroll) (li || target)?.scrollIntoView?.({ block: "nearest" });
+  }
+
+  /*
+    Show what a drop put in (or found already in) a pool: pin `uuids` at the
+    top of its first page, open it, clear a chip or search that would hide
+    them, focus the first, and say so in the status line and a toast. Any
+    earlier pin, on any pool, goes.
+  */
+  #pinDrop(poolId, uuids, { label = "", added = uuids.length, duplicate = false } = {}) {
+    const pool = getPools()[poolId];
+    if (!pool || !uuids.length) return this.render();
+    for (const [id, v] of this.#view) {
+      if (id === poolId || !v.recent?.length) continue;
+      v.recent = [];
+      const el = this.#poolEl(id);
+      const other = getPools()[id];
+      if (el && other) this.#fillBody(el, other);
+    }
+    const { view, cleared } = pinRecent(this.#viewOf(pool), poolRows(pool, e => this.#srcOf(e)), uuids);
+    this.#view.set(poolId, view);
+    const rows = this.#rowsOf(pool).filter(r => r.recent);
+    const text = dropNotice({ pool, rows, label, added, duplicate, cleared });
+    const details = this.#poolEl(poolId)?.querySelector(".lc-pool__details");
+    if (details) details.open = true;
+    this.#repaint(poolId, { uuid: view.recent[0], scroll: true });
+    this.#announce(text);
+    ui.notifications.info(text);
+  }
+
+  // Closing the manager lets go of every pin.
+  async _onClose(options) {
+    for (const v of this.#view.values()) v.recent = [];
+    return super._onClose?.(options);
   }
 
   #fillBody(el, pool) {
@@ -298,7 +342,7 @@ export class CrateManager extends ApplicationV2 {
     // The row stays where it is even if it no longer matches the chip, so
     // focus stays on it; the census and chips catch up.
     const src = this.#srcOf(entry);
-    const fresh = entryParts(poolRows({ entries: [entry] }, () => src)[0], esc);
+    const fresh = entryParts(sortRows(poolRows({ entries: [entry] }, () => src), this.#viewOf(saved).recent)[0], esc);
     row.className = fresh.className;
     row.querySelector(".lc-entry__text")?.replaceWith(htmlNode(fresh.text));
     if (el.dataset.curate === "weight") el.defaultValue = String(entryWeight(entry));
@@ -367,9 +411,10 @@ export class CrateManager extends ApplicationV2 {
       rejectClose: false,
     });
     if (action !== "add") return false;
+    const had = new Set((getPools()[poolId]?.entries ?? []).map(e => e.uuid));
     const added = await addEntries(poolId, plan.entries);
-    ui.notifications.info(`Added ${added} item${added === 1 ? "" : "s"} from ${plan.label} to ${pool.name}.`);
-    this.render();
+    if (!added) { ui.notifications.info(`Nothing new to add to ${pool.name} from ${plan.label}.`); this.render(); return false; }
+    this.#pinDrop(poolId, plan.entries.map(e => e.uuid).filter(u => !had.has(u)), { label: plan.label, added });
     return true;
   }
 
@@ -463,16 +508,31 @@ export class CrateManager extends ApplicationV2 {
 
   static async #toggleShop() { await setShopOpen(!isShopOpen()); this.render(); }
 
+  // redraw.js's change count when this render read the settings.
+  seen = -1;
+
   async _renderHTML() {
+    this.seen = changeCount();
     const root = document.createElement("div");
     root.className = "lc-manager__body";
     const tabs = [["pools", "Pools"], ["boxes", "Boxes"], ["log", "Pull log"]];
     root.innerHTML = `
-      <nav class="lc-tabs">${tabs.map(([k, l]) => `<button type="button" data-action="tab" data-tab="${k}" class="${k === this.tab ? "active" : ""}">${l}</button>`).join("")}
+      <nav class="lc-tabs">
+        <div class="lc-tabs__list" role="tablist" aria-label="Loot Crates sections">${tabs.map(([k, l]) => `<button type="button" role="tab" id="lc-manager-tab-${k}" aria-controls="lc-manager-panel" aria-selected="${k === this.tab}" tabindex="${k === this.tab ? 0 : -1}" data-action="switchTab" data-tab="${k}" class="${k === this.tab ? "active" : ""}">${l}</button>`).join("")}</div>
         <span class="lc-tabs__spacer"></span>
         <button type="button" data-action="toggleShop" class="lc-shop-toggle" data-open="${isShopOpen()}" aria-pressed="${isShopOpen()}" title="${isShopOpen() ? "Players can buy now. Click to close the shop." : "Players can't buy now. Click to open the shop."}">${isShopOpen() ? "Shop open" : "Shop closed"}</button>
       </nav>
-      <section class="lc-tab">${await this[`_${this.tab}`]()}</section>`;
+      <section class="lc-tab" role="tabpanel" id="lc-manager-panel" aria-labelledby="lc-manager-tab-${this.tab}">${await this[`_${this.tab}`]()}</section>`;
+    // The tabs as one stop in the tab order, arrows between them (the ARIA
+    // tabs pattern a screen reader announces). Focus moves first, so the
+    // render keeps it on the tab it lands on.
+    root.querySelector("[role=tablist]")?.addEventListener("keydown", e => {
+      const next = tabAfter(tabs.map(([k]) => k), this.tab, e.key);
+      if (!next) return;
+      e.preventDefault();
+      root.querySelector(`[role=tab][data-tab="${next}"]`)?.focus();
+      if (next !== this.tab) { this.tab = next; this.render(); }
+    });
     root.querySelectorAll("[data-drop-pool]").forEach(el => {
       el.addEventListener("dragover", e => { e.preventDefault(); el.classList.add("lc-drop--over"); });
       el.addEventListener("dragleave", () => el.classList.remove("lc-drop--over"));
@@ -513,11 +573,14 @@ export class CrateManager extends ApplicationV2 {
     if (!plan) return ui.notifications.warn("Drop an item, an Items folder, an item compendium or a roll table.");
     if (data.type !== "Item") return this.#previewAdd(poolId, plan);
     if (!plan.entries.length) {
-      if (plan.skipped.duplicates) return ui.notifications.info(`${plan.label} is already in ${pool.name}.`);
+      if (plan.skipped.duplicates) {
+        if (pool.entries.some(e => e.uuid === data.uuid)) return this.#pinDrop(poolId, [data.uuid], { duplicate: true });
+        return ui.notifications.info(`${plan.label} is already in ${pool.name}.`);
+      }
       const type = Object.keys(plan.skipped.notLoot)[0];
       return ui.notifications.warn(`${plan.label} is a ${SKIPPED_NAMES[type]?.[0] ?? type}, not loot. A pool takes weapons, equipment, consumables, tools, loot and containers.`);
     }
-    if (await addEntries(poolId, plan.entries)) { this.render(); }
+    if (await addEntries(poolId, plan.entries)) this.#pinDrop(poolId, plan.entries.map(e => e.uuid));
   }
 
   // An item dropped on a missing row replaces its source; the weight stays.
@@ -579,7 +642,7 @@ export class CrateManager extends ApplicationV2 {
           <td>${esc(b.name)}</td><td>${esc(formatPrice(b.price))}</td>
           <td>${(b.pools ?? []).map(r => esc(pools[r.id]?.name ?? "missing")).join(", ") || "<em>none</em>"}</td>
           <td>${oddsCell(shopOdds(b, pools).rows)}</td>
-          <td>${[b.rules?.pity ? `pity ${b.rules.pity.after}` : "", b.rules?.noDuplicates ? "no dupes" : "", b.rules?.stock != null ? `${b.rules.stock} left` : ""].filter(Boolean).join(", ")}</td>
+          <td>${[b.rules?.pity ? esc(`${RARITY_LABEL[b.rules.pity.minRarity] ?? b.rules.pity.minRarity} or better after ${b.rules.pity.after} pulls`) : "", b.rules?.noDuplicates ? "no dupes" : "", b.rules?.stock != null ? `${b.rules.stock} left` : ""].filter(Boolean).join(", ")}</td>
           <td><button type="button" data-action="editBox" data-box="${esc(b.id)}" aria-label="Edit ${esc(b.name)}" data-tooltip="Edit"><i class="fas fa-pen" inert></i></button> <button type="button" data-action="deleteBox" data-box="${esc(b.id)}" aria-label="Delete ${esc(b.name)}" data-tooltip="Delete"><i class="fas fa-trash" inert></i></button></td>
         </tr>`).join("")}</tbody></table>` : `<p class="lc-empty">No boxes. A box prices a pull from one or more pools.</p>`}`;
   }
@@ -618,6 +681,14 @@ export class CrateManager extends ApplicationV2 {
     again.focus();
     if (caret && again.setSelectionRange) try { again.setSelectionRange(...caret); } catch { /* not a text input */ }
   }
+}
+
+// The tab an arrow, Home or End key moves to from `current`, wrapping; null
+// for any other key.
+export function tabAfter(keys, current, key) {
+  const i = Math.max(0, keys.indexOf(current));
+  const at = { ArrowRight: i + 1, ArrowDown: i + 1, ArrowLeft: i - 1, ArrowUp: i - 1, Home: 0, End: keys.length - 1 }[key];
+  return at == null ? null : keys[(at + keys.length) % keys.length];
 }
 
 // A selector that finds the same control in a fresh render: its tag, its
@@ -740,7 +811,8 @@ function liveOdds(form, box, poolIds) {
   in the nav, so every tab shows it. The pools tab redraws itself after its
   own edits (#repaint), and a full render of up to 50 rows per pool on every
   sweep flag would undo its paging, so a pools change redraws only the Boxes
-  tab, whose odds read the pools. The pity state shows nowhere here.
+  tab, whose odds read the pools. The pity state shows nowhere here (each
+  buyer's shop shows their own).
 */
 export function managerShows(tab, key) {
   if (key === SETTINGS.SHOP_OPEN) return true;
@@ -750,9 +822,12 @@ export function managerShows(tab, key) {
 }
 
 // One render for any number of changed keys; focus and a typed search are
-// kept across it (_replaceHTML).
-export function refreshManager(keys) {
+// kept across it (_replaceHTML). `upTo` is redraw.js's count at the batch's
+// last change: a render that started after it already shows the batch (a GM
+// action renders once its own write is heard), so it isn't drawn twice.
+export function refreshManager(keys, upTo = Infinity) {
   if (!manager?.rendered) return;
+  if (manager.seen >= upTo) return;
   const list = typeof keys === "string" ? [keys] : [...keys];
   if (list.some(k => managerShows(manager.tab, k))) manager.render();
 }

@@ -140,6 +140,36 @@ describe("patchShop keeps the pressed Buy", () => {
     expect(doc.activeElement).toBe(focused);
   });
 
+  it("moves focus to the next crate's Buy when the GM deletes the focused crate", () => {
+    render();
+    const ids = BOXES.map(b => b.id);
+    buy(ids[1]).focus();
+    const next = buy(ids[2]);
+    render({}, { boxes: BOXES.filter(b => b.id !== ids[1]) });
+    expect(doc.activeElement).toBe(next);
+  });
+
+  it("moves focus to the crate before when the last one is deleted, and to the empty shelf when none is left", () => {
+    render({}, { boxes: BOXES.slice(0, 2) });
+    const [a] = cards();
+    buy(BOXES[1].id).focus();
+    render({}, { boxes: BOXES.slice(0, 1) });
+    expect(doc.activeElement).toBe(buy(BOXES[0].id));
+    expect(buy(BOXES[0].id).closest(".lc-box")).toBe(a);
+    render({}, { boxes: [] });
+    const empty = content.querySelector(".lc-shop__empty");
+    expect(doc.activeElement).toBe(empty);
+    expect(empty.getAttribute("tabindex")).toBe("-1");
+    expect(doc.activeElement).not.toBe(doc.body);
+  });
+
+  it("leaves focus alone when it was not in the grid", () => {
+    render();
+    doc.body.focus();
+    render({}, { boxes: BOXES.slice(1) });
+    expect(doc.activeElement).toBe(doc.body);
+  });
+
   it("follows a reorder with the same nodes", () => {
     render();
     const before = cards();

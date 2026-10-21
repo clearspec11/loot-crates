@@ -42,9 +42,12 @@ await store.saveBox({ ...box, rules: { ...box.rules, stock: box.rules.stock - 1 
 await store.appendLog({ boxId: box.id, boxName: box.name, actorId: actor.id, actorName: actor.name, userId: game.user.id, itemId: out.itemId, name: out.result.name, uuid: out.result.uuid, rarity: out.result.rarity, price: box.price, pity: out.result.pity });
 const rowId = store.getLog()[0].id;
 
+// Reach the log as a GM does, by pressing its tab (live-tabs.js).
 const app = openManager();
-app.tab = "log";
-await app.render();
+for (let t = 0; t < 100 && !app.element?.querySelector('.lc-tabs [data-tab="log"]'); t++) await wait(50);
+app.element.querySelector('.lc-tabs [data-tab="log"]').dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, button: 0, view: window }));
+const reachedByClick = await until(() => app.tab === "log" && app.element?.querySelector('.lc-tabs [data-tab="log"]')?.getAttribute("aria-selected") === "true", 5000);
+if (!reachedByClick) throw new Error("pressing the Pull log tab did not open the log");
 const button = () => app.element?.querySelector(`button[data-action="refund"][data-row="${CSS.escape(rowId)}"]`);
 try {
   await until(() => button());
@@ -65,14 +68,14 @@ try {
     isBody: active === document.body,
   };
   return {
-    ok: focusedBefore && focus.inLogTable && focus.sameRow && isWholeCoins(afterRefund) && afterRefund.sp < 10 && afterRefund.cp < 10 && toCopper(afterRefund) === toCopper(before),
+    ok: reachedByClick && focusedBefore && focus.inLogTable && focus.sameRow && isWholeCoins(afterRefund) && afterRefund.sp < 10 && afterRefund.cp < 10 && toCopper(afterRefund) === toCopper(before),
     granted: out.result.name,
     purse: { before, afterPull, afterRefund },
     wholeCoins: isWholeCoins(afterRefund),
     consolidated: afterRefund.sp < 10 && afterRefund.cp < 10,
     conserved: toCopper(afterRefund) === toCopper(before),
     grantedStillThere: !!actor.items.get(out.itemId),
-    focusedBefore, focus,
+    reachedByClick, focusedBefore, focus,
   };
 } finally {
   await app.close();

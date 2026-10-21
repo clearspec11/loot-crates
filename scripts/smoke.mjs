@@ -29,6 +29,9 @@ const THEMES = ["dark", "light"];
 const STATES = [
   ["shop", "state=shop"],
   ["shop-closed", "state=shop&closed=1"],
+  // Tam's pity on the Adventurer's Crate is due: its odds are only what the
+  // roll can give (Rare or better) and its line says it is guaranteed.
+  ["shop-pity", "state=shop&pity=due"],
   // The Buy a keyboard user pressed, mid-pull: it keeps focus (and its node)
   // through every re-render, and the others are off without losing theirs.
   ["shop-busy", "state=shop"],
@@ -39,6 +42,9 @@ const STATES = [
   // A manager window sized 480 px wide, on any screen: its rows follow the
   // window (a container query), so names wrap in full rather than cut off.
   ["manager-narrow", "state=manager&width=480"],
+  // A dropped item on a big pool that was collapsed and filtered to Rare:
+  // opened, the chip cleared, the row pinned first and focused, and said.
+  ["manager-dropped", "state=manager&dropped=1"],
 ];
 
 // The pool editor as a craft table, read from the DOM: an open pool draws at
@@ -54,6 +60,18 @@ async function managerProblems(narrow) {
     if (cut.length) out.push(`${cut.length} names or statuses cut off in a 480 px window, e.g. "${cut[0].textContent}"`);
     if (!document.querySelector(".lc-entry")) out.push("no rows to check");
   }
+  // The tabs as a tablist: three tabs, one selected and underlined, the shop
+  // switch outside the list.
+  const tabs = [...document.querySelectorAll('.lc-tabs [role="tablist"] > [role="tab"]')];
+  if (tabs.length !== 3) out.push(`expected 3 role=tab in a tablist, got ${tabs.length}`);
+  const selected = tabs.filter(t => t.getAttribute("aria-selected") === "true");
+  if (selected.length !== 1) out.push(`expected one selected tab, got ${selected.length}`);
+  else if (getComputedStyle(selected[0]).borderBottomColor === getComputedStyle(tabs.find(t => t !== selected[0])).borderBottomColor) out.push("the selected tab is not underlined");
+  // One stop in the tab order: the selected tab (arrows move between them).
+  const stops = tabs.filter(t => t.tabIndex === 0);
+  if (stops.length !== 1 || stops[0] !== selected[0]) out.push(`expected only the selected tab in the tab order, got ${stops.length}`);
+  if (document.querySelector('[role="tablist"] .lc-shop-toggle')) out.push("the shop switch is inside the tablist");
+  if (!document.querySelector('.lc-tab[role="tabpanel"]')) out.push("no role=tabpanel");
   const pools = [...document.querySelectorAll(".lc-pool__details")];
   if (pools.length < 3) out.push(`expected 3 sample pools, got ${pools.length}`);
   for (const d of pools) {
@@ -78,6 +96,26 @@ async function managerProblems(narrow) {
   if (!rows.length || rows.some(li => !li.classList.contains("lc-entry--unset"))) out.push("the 'No rarity set' chip shows other rows");
   if (rows.length !== Math.min(50, n)) out.push(`chip says ${n}, shows ${rows.length}`);
   big.querySelector('[data-chip="unset"]').click();
+  return out;
+}
+
+// The drop, read from the DOM: the collapsed 200-entry pool is open, its Rare
+// chip cleared, the dropped row first on page one with "Just added" and its
+// rarity edge, its rarity select focused, and the status line names it.
+function droppedProblems() {
+  const out = [];
+  const uuid = "sample.everything.199";
+  const d = document.querySelector('.lc-pool__details[data-pool="everything"]');
+  if (!d?.open) out.push("the pool dropped on is not open");
+  if (d?.querySelector('[data-chip][aria-pressed="true"]')) out.push("a chip that hides the dropped item is still pressed");
+  const first = d?.querySelector(".lc-entries > .lc-entry");
+  if (first?.dataset.entry !== uuid) out.push(`first row is ${first?.dataset.entry}, not the dropped item`);
+  if (!first?.classList.contains("lc-entry--recent") || !/Just added/.test(first?.textContent ?? "")) out.push("the dropped row isn't marked Just added");
+  if (first && getComputedStyle(first).boxShadow === "none") out.push("the dropped row has no rarity edge");
+  if (document.activeElement !== first?.querySelector("select.lc-entry__rarity")) out.push("focus is not on the dropped row's rarity select");
+  const status = document.querySelector(".lc-manager__status")?.textContent ?? "";
+  if (!/Staff of Power 199 added to Every dnd5e item, Very rare, at the top\. Cleared the Rare filter/.test(status)) out.push(`status line says "${status}"`);
+  if (document.querySelectorAll(".lc-entry--recent").length !== 1) out.push("more than one row pinned");
   return out;
 }
 
@@ -134,6 +172,18 @@ async function shopProblems(mode) {
     return out;
   }
   if (notice?.textContent) out.push(`open shop's notice isn't empty: "${notice.textContent}"`);
+  // The pity line: on the crate with a pity rule only, at the reason lines' 12px,
+  // and when due, the odds are only the guaranteed rarities.
+  const pity = [...document.querySelectorAll(".lc-box__pity")];
+  if (pity.length !== 1 || pity[0].closest(".lc-box")?.dataset.box !== "adventurer") out.push(`expected one pity line, on the Adventurer's Crate; got ${pity.length}`);
+  else {
+    const want = mode === "pity" ? "Rare or better guaranteed this pull" : "Rare or better within 9 pulls";
+    if (pity[0].textContent.trim() !== want) out.push(`pity line reads "${pity[0].textContent.trim()}", not "${want}"`);
+    if (parseFloat(getComputedStyle(pity[0]).fontSize) < 12) out.push("pity line under 12px");
+    const names = [...pity[0].closest(".lc-box").querySelectorAll(".lc-odd")].map(p => p.textContent.trim().split(" ")[0]);
+    if (mode === "pity" && names.some(n => ["Common", "Uncommon"].includes(n))) out.push(`a due pity still shows ${names.join(", ")}`);
+    if (mode !== "pity" && !names.includes("Common")) out.push("the Adventurer's Crate lost its Common odds before pity is due");
+  }
   if (mode === "busy") {
     // As shop.js #buy does: focus the Buy, then busy, waiting, the purse
     // charged and idle renders. After each (two frames, for Chrome's focus
@@ -197,6 +247,7 @@ try {
       await page.waitForTimeout(500);
       const wide = await page.evaluate(() => document.scrollingElement.scrollWidth > document.scrollingElement.clientWidth + 1);
       if (name.startsWith("shop")) problems0.push(...await page.evaluate(shopProblems, name.slice(5)));
+      else if (name === "manager-dropped") problems0.push(...await page.evaluate(droppedProblems));
       else if (name.startsWith("manager")) problems0.push(...await page.evaluate(managerProblems, name === "manager-narrow"));
       else problems0.push(...await page.evaluate(revealProblems, name === "landed-buyer"));
       await page.evaluate(() => document.fonts.ready);

@@ -44,10 +44,12 @@ export function oddsRibbon(rows) {
   it holds rather than like every other crate. Only entries with art and a
   chance above 0 count; with none, the caller's icon stands in.
 */
-export function peekItems(box, pools, odds = shopOdds(box, pools), max = 3) {
+export function peekItems(box, pools, odds = shopOdds(box, pools), max = 3, state = {}) {
   const droppable = new Set(odds.rows.map(row => row.rarity));
+  // What this buyer already owns can't drop for them under noDuplicates.
+  const owned = new Set(box.rules?.noDuplicates ? state.owned ?? [] : []);
   const entries = (box.pools ?? []).flatMap(ref => flattenPool(ref.id, pools))
-    .filter(e => e.img && droppable.has(e.rarity) && (e.weight ?? 1) > 0);
+    .filter(e => e.img && droppable.has(e.rarity) && (e.weight ?? 1) > 0 && !owned.has(e.uuid));
   const byRarity = [...droppable].sort((a, b) => rarityRank(b) - rarityRank(a));
   const out = [];
   for (const r of byRarity) {
@@ -75,13 +77,14 @@ function peekHTML(items, esc) {
 
 /*
   Why this box can't be bought now, or "" when it can. `ctx`:
-  { purse, hasActor, open, gmOnline }. The box's own state comes first (an
-  empty or sold-out box stays unbuyable whoever asks), then the shop's, then
-  the buyer's. The shop and the cards split this in two: shopReason is said
-  once in the shop's header, crateReason under the card it belongs to.
+  { purse, hasActor, actorName, open, gmOnline }. `odds` is shopOdds for the
+  buyer's state. The box's own state comes first (an empty or sold-out box
+  stays unbuyable whoever asks), then the shop's, then the buyer's. The
+  shop and the cards split this in two: shopReason is said once in the
+  shop's header, crateReason under the card it belongs to.
 */
 export function buyReason(box, odds, ctx = {}) {
-  return crateState(box, odds) || shopReason(ctx) || crateReason(box, odds, ctx);
+  return crateState(box, odds, ctx) || shopReason(ctx) || crateReason(box, odds, ctx);
 }
 
 // Why no crate can be bought at all, or "": the shop is shut, no GM is there
@@ -93,19 +96,37 @@ export function shopReason({ hasActor = false, open = true, gmOnline = true } = 
 }
 
 // Why this crate in particular can't be bought, or "": it holds nothing, it
-// sold out, or this character is short (said even while the shop is shut,
-// so a player knows what to save for).
-export function crateReason(box, odds, { purse = {}, hasActor = false } = {}) {
-  const state = crateState(box, odds);
+// sold out, it has nothing this character doesn't own yet (noDuplicates), or
+// this character is short (said even while the shop is shut, so a player
+// knows what to save for).
+export function crateReason(box, odds, ctx = {}) {
+  const state = crateState(box, odds, ctx);
   if (state) return state;
+  const { purse = {}, hasActor = false } = ctx;
   if (hasActor && !canAfford(purse, box.price)) return `Needs ${formatPrice(shortfall(purse, box.price))} more`;
   return "";
 }
 
-function crateState(box, odds) {
-  if (!odds.rows.length) return "Nothing inside";
+// A crate that can't give this character anything new can't be bought,
+// rather than failing after a round trip to the GM (pull.js "nothing left").
+function crateState(box, odds, { actorName = "" } = {}) {
+  if (!odds.rows.length && !odds.nothingNew) return "Nothing inside";
   if (box.rules?.stock != null && box.rules.stock <= 0) return "Sold out";
+  if (odds.nothingNew) return actorName ? `Nothing new for ${actorName}` : "Nothing new for this character";
   return "";
+}
+
+/*
+  The pity rule as this buyer stands with it, under the odds: "Rare or
+  better guaranteed this pull" once it is due (the odds above then show only
+  those rarities), else "Rare or better within 4 pulls". "" when the box
+  has no pity this buyer can reach.
+*/
+export function pityLine(odds) {
+  const pity = odds?.pity;
+  if (!pity) return "";
+  const what = `${RARITY_LABEL[pity.minRarity] ?? pity.minRarity} or better`;
+  return pity.due ? `${what} guaranteed this pull` : `${what} within ${pity.left} pulls`;
 }
 
 /*
@@ -131,9 +152,12 @@ export function shopNotice(ctx = {}) {
 }
 
 /*
-  One box in the shop grid. `ctx` adds { busy, busyBox, waiting, art, esc }
-  to buyReason's. While a pull is out, every Buy is off, and only the one that
-  was pressed (busyBox) says "Opening…"; with no busyBox, all of them do.
+  One box in the shop grid. `ctx` adds { busy, busyBox, waiting, art, esc,
+  stateOf } to buyReason's; stateOf(boxId) is the buyer's pity and
+  ownership state for that box (store.js getActorState), so the odds, the
+  pity line and "Nothing new" are this character's, as draw() will roll
+  them. While a pull is out, every Buy is off, and only the one that was
+  pressed (busyBox) says "Opening…"; with no busyBox, all of them do.
   When the GM is slow to answer (`waiting`, from socket.js onWait) it says
   "Waiting for the GM…" instead; why is in the shop's notice.
   An unbuyable Buy is aria-disabled, never `disabled`: a disabled button
@@ -149,7 +173,8 @@ export function shopNotice(ctx = {}) {
 */
 export function boxCard(box, pools, ctx) {
   const esc = ctx.esc ?? (s => String(s ?? ""));
-  const odds = shopOdds(box, pools);
+  const state = ctx.stateOf?.(box.id) ?? {};
+  const odds = shopOdds(box, pools, state);
   const reason = crateReason(box, odds, ctx);
   const notice = shopNotice(ctx).text;
   const whyId = `lc-why-${box.id}`;
@@ -158,14 +183,16 @@ export function boxCard(box, pools, ctx) {
   const rarityClass = odds.top ? `lc-rarity-${odds.top}` : "lc-box--empty";
   const opening = ctx.busy && (ctx.busyBox == null || ctx.busyBox === box.id);
   const waiting = opening && WAITING[ctx.waiting];
-  const peek = peekItems(box, pools, odds);
+  const peek = peekItems(box, pools, odds, 3, state);
   const stock = odds.rows.length && box.rules?.stock != null ? `<div class="lc-box__stock">${esc(box.rules.stock)} left</div>` : "";
+  const pity = pityLine(odds);
   return `
       <div class="lc-box ${rarityClass}" data-box="${esc(box.id)}">
         <div class="lc-box__band"><h3 class="lc-box__name">${esc(box.name)}</h3></div>
         <div class="lc-box__body">
           <div class="lc-box__art" aria-hidden="true">${peek.length ? peekHTML(peek, esc) : ctx.art ?? ""}</div>
           ${odds.rows.length ? `${oddsRibbon(odds.rows)}<div class="lc-box__odds">${oddsPills(odds.rows)}</div>` : ""}
+          ${pity ? `<div class="lc-box__pity lc-rarity-${odds.pity.minRarity}${odds.pity.due ? " lc-box__pity--due" : ""}">${esc(pity)}</div>` : ""}
           ${stock}
           <button type="button" class="lc-box__buy" data-action="buy" data-box="${esc(box.id)}"${off ? ` aria-disabled="true"` : ""}${off && describedBy ? ` aria-describedby="${esc(describedBy)}"` : ""}>
             ${opening ? (waiting ? "Waiting for the GM…" : "Opening…") : `Open for ${esc(formatPrice(box.price))}`}
@@ -213,10 +240,34 @@ export function patchShop(content, fresh, notice) {
   const body = live.closest(".lc-shop__body");
   if (body.className !== fresh.className) body.className = fresh.className;
   morph(body.querySelector(".lc-shop__fields"), fresh.querySelector(".lc-shop__fields"));
-  morph(body.querySelector(".lc-shop__grid"), fresh.querySelector(".lc-shop__grid"));
+  const grid = body.querySelector(".lc-shop__grid");
+  const doc = content.ownerDocument;
+  // The crates after the focused one, then those before it, nearest first:
+  // where focus goes if its crate is taken off the shelf (keepFocus).
+  const focused = doc?.activeElement && grid.contains(doc.activeElement) ? doc.activeElement : null;
+  const cards = [...grid.children].filter(c => c.getAttribute("data-box") != null);
+  const at = focused ? cards.findIndex(c => c.contains(focused)) : -1;
+  const near = at < 0 ? [] : [...cards.slice(at + 1), ...cards.slice(0, at).reverse()];
+  const kept = morph(grid, fresh.querySelector(".lc-shop__grid"));
   if (live.textContent !== notice.text) live.textContent = notice.text;
   live.dataset.tone = notice.tone;
+  if (focused && !content.contains(doc.activeElement)) keepFocus(kept, near, live);
   return live;
+}
+
+/*
+  A crate the GM deletes (or a grid rebuilt) while a player's focus is in it
+  takes the focus with it, which drops a keyboard or screen-reader user on
+  the page's body. Focus goes to the nearest crate still on the shelf (the
+  next one, else the one before), else to the empty shelf's line, else to
+  the shop's notice; a line that isn't a control is focused as a target
+  only (tabindex -1).
+*/
+function keepFocus(grid, near, live) {
+  const card = near.find(c => c.parentNode === grid);
+  const target = card?.querySelector(".lc-box__buy") ?? grid.querySelector(".lc-shop__empty") ?? live;
+  if (!target.matches("button, select, input, a[href]") && !target.hasAttribute("tabindex")) target.setAttribute("tabindex", "-1");
+  target.focus();
 }
 
 /*

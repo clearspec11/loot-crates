@@ -11,6 +11,11 @@
   that match its name search and filter chip, problems first, with "Show 50
   more". The chips are the census made clickable: each one's count is the
   number of rows it shows.
+
+  What the GM just dropped on a pool is pinned above everything else, marked
+  "Just added", until the next drop or until the manager closes (view.recent,
+  view state only; the stored order doesn't change), so a drop on a big,
+  collapsed or filtered pool lands where the eye is.
 */
 import { RARITIES, RARITY_LABEL } from "./config.js";
 import { normalizeRarity, sourceStatus, effectiveRarity, sourceRarityOf, entryWeight } from "./odds.js";
@@ -20,7 +25,8 @@ export const OPEN_UP_TO = 60;
 export const FALLBACK_IMG = "icons/svg/item-bag.svg";
 
 // What the GM last did to a pool's view; kept by the manager per pool.
-export const defaultView = pool => ({ open: (pool?.entries?.length ?? 0) <= OPEN_UP_TO, q: "", chip: null, shown: PAGE_ROWS });
+// `recent` lists the uuids just dropped on the pool, newest first.
+export const defaultView = pool => ({ open: (pool?.entries?.length ?? 0) <= OPEN_UP_TO, q: "", chip: null, shown: PAGE_ROWS, recent: [] });
 
 /*
   Whether an entry's source has no rarity at all. An entry added before
@@ -57,11 +63,60 @@ export function poolRows(pool, srcOf) {
   });
 }
 
-// Problems first: missing, then renamed, then no rarity set; otherwise the
+// What was just dropped (`recent`, newest first) above everything, marked
+// `recent`; then problems: missing, renamed, no rarity set; otherwise the
 // pool's own order. Stable.
 const rank = r => r.status === "missing" ? 0 : r.status === "renamed" ? 1 : r.unset ? 2 : 3;
-export function sortRows(rows) {
-  return rows.map((r, i) => [r, i]).sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1]).map(([r]) => r);
+export function sortRows(rows, recent = []) {
+  const pin = new Map((recent ?? []).map((u, i) => [u, i]));
+  const key = r => pin.has(r.e.uuid) ? pin.get(r.e.uuid) - pin.size : rank(r);
+  return rows.map((r, i) => [r, i]).sort((a, b) => key(a[0]) - key(b[0]) || a[1] - b[1])
+    .map(([r]) => pin.has(r.e.uuid) ? { ...r, recent: true } : r);
+}
+
+const CHIP_NAME = { unset: "No rarity set", never: "Never drops", missing: "Missing", renamed: "Renamed" };
+
+/*
+  Pin the uuids just added to (or already in) a pool: the view that shows
+  them at the top of its first page, opened, with the chip and the search
+  cleared only if they would hide one of them; `cleared` names what went.
+  At most a page is pinned.
+*/
+export function pinRecent(view, rows, uuids) {
+  const recent = [...new Set(uuids)].slice(0, PAGE_ROWS);
+  const pinned = rows.filter(r => recent.includes(r.e.uuid));
+  const next = { ...view, recent, open: true, shown: PAGE_ROWS };
+  const cleared = [];
+  if (next.chip && pinned.some(r => !matchesChip(r, next.chip))) {
+    cleared.push(`the ${RARITY_LABEL[next.chip] ?? CHIP_NAME[next.chip] ?? next.chip} filter`);
+    next.chip = null;
+  }
+  if (String(next.q ?? "").trim() && pinned.some(r => !filterRows([r], { q: next.q }).length)) {
+    cleared.push("the search");
+    next.q = "";
+  }
+  return { view: next, cleared };
+}
+
+/*
+  What the status line and the toast say after a drop: where it went, at
+  what rarity, and what was cleared to show it.
+    "Flame Tongue added to Core magic items, Rare, at the top."
+    "Added 40 items from SRD Items to Core magic items; they are at the top."
+*/
+export function dropNotice({ pool, rows = [], label = "", added = rows.length, duplicate = false, cleared = [] }) {
+  const where = pool?.name ?? "the pool";
+  let text;
+  if (duplicate && rows[0]) text = `${rows[0].name} is already in ${where}; it is at the top.`;
+  else if (added === 1 && rows[0]) {
+    const r = rows[0];
+    text = `${r.name} added to ${where}, ${r.unset ? "no rarity set (draws as Common)" : RARITY_LABEL[r.rarity]}, at the top.`;
+  } else {
+    const top = added > rows.length ? `the first ${rows.length} are at the top` : "they are at the top";
+    text = `Added ${plural(added, "item", "items")}${label ? ` from ${label}` : ""} to ${where}; ${top}.`;
+  }
+  if (cleared.length) text += ` Cleared ${cleared.join(" and ")} so ${rows.length === 1 ? "it shows" : "they show"}.`;
+  return text;
 }
 
 // The chips, in census order. A rarity chip is what the box can draw at that
@@ -218,10 +273,11 @@ export function entryParts(row, esc) {
   }
   if (unset) notes.push("No rarity set");
   if (never) notes.push("Never drops");
+  const just = row.recent ? `<span class="lc-entry__new">Just added</span>${notes.length ? " · " : ""}` : "";
   return {
     name,
-    className: ["lc-entry", `lc-rarity-${rarity}`, status === "renamed" && "lc-entry--renamed", never && "lc-entry--never", unset && "lc-entry--unset"].filter(Boolean).join(" "),
-    text: `<span class="lc-entry__text"><span class="lc-entry__name" title="${esc(name)}">${esc(name)}</span>${notes.length ? `<small class="lc-entry__status">${esc(notes.join(" · "))}</small>` : ""}</span>`,
+    className: ["lc-entry", `lc-rarity-${rarity}`, row.recent && "lc-entry--recent", status === "renamed" && "lc-entry--renamed", never && "lc-entry--never", unset && "lc-entry--unset"].filter(Boolean).join(" "),
+    text: `<span class="lc-entry__text"><span class="lc-entry__name" title="${esc(name)}">${esc(name)}</span>${just || notes.length ? `<small class="lc-entry__status">${just}${esc(notes.join(" · "))}</small>` : ""}</span>`,
   };
 }
 

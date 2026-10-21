@@ -279,3 +279,78 @@ describe("checking entries against their sources", () => {
     expect(Object.keys(got).sort()).toEqual(["back", "c1", "r1"]);
   });
 });
+
+/*
+  The odds next to Buy are the roll's odds for this character: shopOdds with
+  a buyer's state (owned items under noDuplicates, the pity count) matches
+  what draw() actually gives that buyer.
+*/
+describe("shopOdds for a buyer's state", () => {
+  const RULED = { ...BOX, rules: { pity: { after: 3, minRarity: "rare" }, noDuplicates: true, stock: null } };
+  const ALL = [...flattenPool("core", POOLS), ...flattenPool("homebrew", POOLS)].map(e => e.uuid);
+  const freq = (box, state, n = 5000, seed = 1) => {
+    const rng = seededRng(seed);
+    const counts = tally(n, () => draw({ box, pools: POOLS, rng, state })?.rarity ?? "none");
+    return Object.fromEntries(Object.entries(counts).map(([k, v]) => [k, v / n]));
+  };
+  const matches = (box, state, seed) => {
+    const odds = shopOdds(box, POOLS, state);
+    const seen = freq(box, state, 5000, seed);
+    expect(Object.keys(seen).sort(), JSON.stringify(state)).toEqual(odds.rows.map(r => r.rarity).sort());
+    for (const row of odds.rows) expect(Math.abs(row.chance - seen[row.rarity]), `${row.rarity} ${JSON.stringify(state)}`).toBeLessThanOrEqual(0.02);
+  };
+
+  it("matches draw() within 2 points over 5000 seeded draws, for random owned sets and pity counts", () => {
+    const pick = seededRng(42);
+    for (let i = 0; i < 12; i++) {
+      // Leave at least one item unowned; the owns-everything case is below.
+      const owned = ALL.filter(() => pick() < 0.6).slice(0, ALL.length - 1);
+      const sinceRare = Math.floor(pick() * 5);
+      matches(RULED, { owned, sinceRare }, 100 + i);
+    }
+  });
+
+  it("drops what this character owns: owning every Rare and better leaves only the lower odds", () => {
+    const owned = [...flattenPool("core", POOLS), ...flattenPool("homebrew", POOLS)].filter(e => ["rare", "veryRare", "legendary"].includes(e.rarity)).map(e => e.uuid);
+    const odds = shopOdds(RULED, POOLS, { owned });
+    expect(odds.rows.map(r => r.rarity)).toEqual(["common", "uncommon"]);
+    expect(odds.rows.map(r => r.label)).toEqual(["66%", "34%"]);
+    matches(RULED, { owned }, 7);
+    // Without noDuplicates, owning things changes nothing.
+    expect(shopOdds({ ...RULED, rules: {} }, POOLS, { owned }).rows).toEqual(shopOdds({ ...RULED, rules: {} }, POOLS).rows);
+  });
+
+  it("shows only the guaranteed rarities once pity is due, and says so", () => {
+    const odds = shopOdds(RULED, POOLS, { sinceRare: 3 });
+    expect(odds.rows.map(r => r.rarity)).toEqual(["rare", "veryRare", "legendary"]);
+    expect(odds.pity).toEqual({ due: true, left: 1, minRarity: "rare" });
+    matches(RULED, { sinceRare: 3 }, 3);
+    expect(freq(RULED, { sinceRare: 3 }).common).toBeUndefined();
+  });
+
+  it("counts down the pulls to the guaranteed one", () => {
+    expect(shopOdds(RULED, POOLS).pity).toEqual({ due: false, left: 4, minRarity: "rare" });
+    expect(shopOdds(RULED, POOLS, { sinceRare: 2 }).pity).toEqual({ due: false, left: 2, minRarity: "rare" });
+    expect(shopOdds({ ...RULED, rules: {} }, POOLS)).not.toHaveProperty("pity");
+  });
+
+  it("promises no floor the buyer can't reach", () => {
+    const box = { pools: [{ id: "homebrew", share: 1 }], weights: { uncommon: 1, rare: 1, legendary: 1 }, rules: { pity: { after: 1, minRarity: "artifact" } } };
+    expect(shopOdds(box, POOLS, { sinceRare: 1 })).not.toHaveProperty("pity");
+    // draw() falls back to the best rarity left, and the odds say the same.
+    expect(shopOdds(box, POOLS, { sinceRare: 1 }).rows.map(r => r.label)).toEqual(["100%"]);
+    matches(box, { sinceRare: 1 }, 5);
+  });
+
+  it("says nothing new is left when this character owns everything, and draw() agrees", () => {
+    const odds = shopOdds(RULED, POOLS, { owned: ALL, sinceRare: 3 });
+    expect(odds).toEqual({ rows: [], top: null, nothingNew: true });
+    expect(freq(RULED, { owned: ALL })).toEqual({ none: 1 });
+    // An empty box is empty, not "nothing new".
+    expect(shopOdds({ ...RULED, pools: [] }, POOLS, { owned: ALL })).toEqual({ rows: [], top: null });
+  });
+
+  it("is the plain shop odds for a buyer with no history", () => {
+    for (const box of BOXES) expect(shopOdds(box, POOLS, {}).rows).toEqual(shopOdds(box, POOLS).rows);
+  });
+});

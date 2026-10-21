@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { boxCard, buyReason, crateReason, shopReason, shopNotice, shopHTML, SHOP_NOTICE_ID, oddsPills } from "../module/scripts/boxcard.js";
-import { shopOdds } from "../module/scripts/odds.js";
+import { boxCard, buyReason, crateReason, shopReason, shopNotice, shopHTML, SHOP_NOTICE_ID, oddsPills, pityLine } from "../module/scripts/boxcard.js";
+import { shopOdds, flattenPool } from "../module/scripts/odds.js";
 import { shortfall } from "../module/scripts/currency.js";
 import { POOLS, BOXES } from "../harness/sample.js";
 
@@ -78,6 +78,17 @@ describe("the crate's peek and ribbon", () => {
     const royal = peekItems(byId("royal"), POOLS);
     expect(royal.map(e => e.rarity)).toEqual(["legendary", "veryRare", "rare"]);
     expect(peekItems(byId("empty"), POOLS)).toEqual([]);
+  });
+  it("peeks only at what this buyer can still get under no-duplicates", async () => {
+    const { peekItems } = await import("../module/scripts/boxcard.js");
+    const royal = { ...byId("royal"), rules: { noDuplicates: true } };
+    const first = peekItems(royal, POOLS);
+    const state = { owned: first.map(e => e.uuid) };
+    const again = peekItems(royal, POOLS, shopOdds(royal, POOLS, state), 3, state);
+    expect(again.length).toBeGreaterThan(0);
+    for (const e of again) expect(state.owned).not.toContain(e.uuid);
+    // Without the rule, owning them changes nothing.
+    expect(peekItems(byId("royal"), POOLS, undefined, 3, state)).toEqual(peekItems(byId("royal"), POOLS));
   });
   it("draws the ribbon from the shop's own odds, hidden from assistive tech", async () => {
     const { oddsRibbon } = await import("../module/scripts/boxcard.js");
@@ -192,5 +203,54 @@ describe("a closed shop says so once", () => {
     expect(s.notice).toEqual({ text: "", tone: "" });
     expect(s.html).toContain(`<p class="lc-shop__notice" id="${SHOP_NOTICE_ID}" role="status" data-tone=""></p>`);
     expect(buttons(s.cards).filter(b => b.includes(SHOP_NOTICE_ID))).toEqual([]);
+  });
+});
+
+/*
+  The card is this character's: the odds and pity line come from their own
+  state (ctx.stateOf), and a crate with nothing new for them is off with a
+  visible reason, like Sold out and Nothing inside.
+*/
+describe("the card for a buyer's state", () => {
+  const button = html => html.match(/<button[^>]*>/)[0];
+  const pills = html => [...html.matchAll(/<span class="lc-odd[^"]*">([^<]*)<\/span>/g)].map(m => m[1]);
+  const pity = html => html.match(/<div class="lc-box__pity[^"]*">([^<]*)<\/div>/)?.[1] ?? null;
+  const NODUPES = { ...byId("adventurer"), rules: { ...byId("adventurer").rules, noDuplicates: true } };
+  const everything = [...flattenPool("core", POOLS), ...flattenPool("homebrew", POOLS)].map(e => e.uuid);
+  const as = state => ({ ...ctx, actorName: "Tam Thornwick", stateOf: id => (id === "adventurer" ? state : {}) });
+
+  it("turns a crate with nothing new for this character off, aria-disabled with a described reason", () => {
+    const html = boxCard(NODUPES, POOLS, as({ owned: everything }));
+    const btn = button(html);
+    expect(btn).toMatch(/ aria-disabled="true"/);
+    expect(btn).not.toMatch(/ disabled[ >=]/);
+    expect(btn).toMatch(/aria-describedby="lc-why-adventurer"/);
+    expect(html).toContain(`<div class="lc-box__why" id="lc-why-adventurer">Nothing new for Tam Thornwick</div>`);
+    expect(pills(html)).toEqual([]);
+    expect(pity(html)).toBeNull();
+    // The shop's #buy check says the same.
+    expect(buyReason(NODUPES, shopOdds(NODUPES, POOLS, { owned: everything }), as({}))).toBe("Nothing new for Tam Thornwick");
+    // Sold out still comes first: it holds for everyone.
+    expect(crateReason({ ...NODUPES, rules: { ...NODUPES.rules, stock: 0 } }, shopOdds(NODUPES, POOLS, { owned: everything }), as({}))).toBe("Sold out");
+  });
+
+  it("leaves a crate with something new on, showing only what this character can still get", () => {
+    const owned = everything.filter(u => !u.includes("vorpal"));
+    const html = boxCard(NODUPES, POOLS, as({ owned }));
+    expect(button(html)).not.toMatch(/aria-disabled/);
+    expect(pills(html)).toEqual(["Legendary 100%"]);
+  });
+
+  it("says when pity guarantees a rarity, and counts down to it", () => {
+    const box = byId("adventurer");
+    expect(pity(boxCard(box, POOLS, ctx))).toBe("Rare or better within 9 pulls");
+    expect(pity(boxCard(box, POOLS, as({ sinceRare: 5 })))).toBe("Rare or better within 4 pulls");
+    const due = boxCard(box, POOLS, as({ sinceRare: 8 }));
+    expect(pity(due)).toBe("Rare or better guaranteed this pull");
+    expect(due).toMatch(/class="lc-box__pity lc-rarity-rare lc-box__pity--due"/);
+    expect(pills(due).map(p => p.split(" ")[0])).toEqual(["Rare", "V.", "Legendary"]);
+    expect(pityLine({ pity: { due: false, left: 2, minRarity: "veryRare" } })).toBe("Very rare or better within 2 pulls");
+    // No pity rule, no line.
+    expect(pity(boxCard(byId("common"), POOLS, ctx))).toBeNull();
   });
 });
