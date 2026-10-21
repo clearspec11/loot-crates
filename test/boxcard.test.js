@@ -79,6 +79,17 @@ describe("the crate's peek and ribbon", () => {
     expect(royal.map(e => e.rarity)).toEqual(["legendary", "veryRare", "rare"]);
     expect(peekItems(byId("empty"), POOLS)).toEqual([]);
   });
+  it("peeks only at what this buyer can still get under no-duplicates", async () => {
+    const { peekItems } = await import("../module/scripts/boxcard.js");
+    const royal = { ...byId("royal"), rules: { noDuplicates: true } };
+    const first = peekItems(royal, POOLS);
+    const state = { owned: first.map(e => e.uuid) };
+    const again = peekItems(royal, POOLS, shopOdds(royal, POOLS, state), 3, state);
+    expect(again.length).toBeGreaterThan(0);
+    for (const e of again) expect(state.owned).not.toContain(e.uuid);
+    // Without the rule, owning them changes nothing.
+    expect(peekItems(byId("royal"), POOLS, undefined, 3, state)).toEqual(peekItems(byId("royal"), POOLS));
+  });
   it("draws the ribbon from the shop's own odds, hidden from assistive tech", async () => {
     const { oddsRibbon } = await import("../module/scripts/boxcard.js");
     const html = oddsRibbon(shopOdds(byId("common"), POOLS).rows);

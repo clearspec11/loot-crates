@@ -44,10 +44,12 @@ export function oddsRibbon(rows) {
   it holds rather than like every other crate. Only entries with art and a
   chance above 0 count; with none, the caller's icon stands in.
 */
-export function peekItems(box, pools, odds = shopOdds(box, pools), max = 3) {
+export function peekItems(box, pools, odds = shopOdds(box, pools), max = 3, state = {}) {
   const droppable = new Set(odds.rows.map(row => row.rarity));
+  // What this buyer already owns can't drop for them under noDuplicates.
+  const owned = new Set(box.rules?.noDuplicates ? state.owned ?? [] : []);
   const entries = (box.pools ?? []).flatMap(ref => flattenPool(ref.id, pools))
-    .filter(e => e.img && droppable.has(e.rarity) && (e.weight ?? 1) > 0);
+    .filter(e => e.img && droppable.has(e.rarity) && (e.weight ?? 1) > 0 && !owned.has(e.uuid));
   const byRarity = [...droppable].sort((a, b) => rarityRank(b) - rarityRank(a));
   const out = [];
   for (const r of byRarity) {
@@ -171,7 +173,8 @@ export function shopNotice(ctx = {}) {
 */
 export function boxCard(box, pools, ctx) {
   const esc = ctx.esc ?? (s => String(s ?? ""));
-  const odds = shopOdds(box, pools, ctx.stateOf?.(box.id) ?? {});
+  const state = ctx.stateOf?.(box.id) ?? {};
+  const odds = shopOdds(box, pools, state);
   const reason = crateReason(box, odds, ctx);
   const notice = shopNotice(ctx).text;
   const whyId = `lc-why-${box.id}`;
@@ -180,7 +183,7 @@ export function boxCard(box, pools, ctx) {
   const rarityClass = odds.top ? `lc-rarity-${odds.top}` : "lc-box--empty";
   const opening = ctx.busy && (ctx.busyBox == null || ctx.busyBox === box.id);
   const waiting = opening && WAITING[ctx.waiting];
-  const peek = peekItems(box, pools, odds);
+  const peek = peekItems(box, pools, odds, 3, state);
   const stock = odds.rows.length && box.rules?.stock != null ? `<div class="lc-box__stock">${esc(box.rules.stock)} left</div>` : "";
   const pity = pityLine(odds);
   return `
