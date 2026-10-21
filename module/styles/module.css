@@ -390,14 +390,15 @@
 /* Tabs as dnd5e's sheet tabs: upper-case labels, the active one underlined
    in gold. The shop switch sits at the end with its state in words. */
 .loot-crates .lc-tabs { display: flex; gap: 4px; align-items: center; border-bottom: 1px solid var(--lc-rule); padding-bottom: 0; }
-.loot-crates .lc-tabs > button:not(.lc-shop-toggle) {
+.loot-crates .lc-tabs__list { display: contents; }
+.loot-crates .lc-tabs [role="tab"] {
   background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0; margin-bottom: -1px;
   font-family: var(--lc-label); font-weight: 700; font-size: 13px; letter-spacing: .04em; text-transform: uppercase;
   color: var(--lc-ink-mute); min-height: 34px; padding: 0 12px; box-shadow: none; outline: none;
 }
-.loot-crates .lc-tabs > button:not(.lc-shop-toggle):focus-visible { outline: 2px solid var(--lc-focus); outline-offset: -2px; }
-.loot-crates .lc-tabs > button:not(.lc-shop-toggle):hover { color: var(--lc-ink); border-bottom-color: var(--lc-rule-soft); }
-.loot-crates .lc-tabs > button.active { color: var(--lc-ink); border-bottom-color: var(--lc-rule); }
+.loot-crates .lc-tabs [role="tab"]:focus-visible { outline: 2px solid var(--lc-focus); outline-offset: -2px; }
+.loot-crates .lc-tabs [role="tab"]:hover { color: var(--lc-ink); border-bottom-color: var(--lc-rule-soft); }
+.loot-crates .lc-tabs [role="tab"][aria-selected="true"] { color: var(--lc-ink); border-bottom-color: var(--lc-rule); }
 .loot-crates .lc-tabs__spacer { flex: 1; }
 .loot-crates .lc-shop-toggle { margin-bottom: 6px; }
 .loot-crates .lc-shop-toggle::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--lc-ink-mute); }

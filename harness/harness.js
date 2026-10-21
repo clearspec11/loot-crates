@@ -148,8 +148,8 @@ function renderManager() {
   const rowsOf = p => sortRows(poolRows(p, srcOf));
   stage.innerHTML = `
     <div class="lc-manager__body">
-      <nav class="lc-tabs"><button type="button" class="active">Pools</button><button type="button">Boxes</button><button type="button">Pull log</button><span class="lc-tabs__spacer"></span><button type="button" class="lc-shop-toggle" data-open="true" aria-pressed="true">Shop open</button></nav>
-      <section class="lc-tab">
+      <nav class="lc-tabs"><div class="lc-tabs__list" role="tablist" aria-label="Loot Crates sections"><button type="button" role="tab" aria-selected="true" class="active">Pools</button><button type="button" role="tab" aria-selected="false">Boxes</button><button type="button" role="tab" aria-selected="false">Pull log</button></div><span class="lc-tabs__spacer"></span><button type="button" class="lc-shop-toggle" data-open="true" aria-pressed="true">Shop open</button></nav>
+      <section class="lc-tab" role="tabpanel">
         <div class="lc-toolbar"><button type="button"><i class="fas fa-plus"></i> New pool</button><span class="lc-pool__hint lc-manager__status" role="status"></span></div>
         ${MANAGER_POOLS.map(p => `
         <article class="lc-pool" data-drop-pool="${esc(p.id)}">

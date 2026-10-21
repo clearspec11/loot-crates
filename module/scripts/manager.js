@@ -63,7 +63,9 @@ export class CrateManager extends ApplicationV2 {
     window: { title: "Loot Crates", resizable: true },
     position: { width: 760, height: 620 },
     actions: {
-      tab: CrateManager.#tab,
+      // Not "tab": ApplicationV2 sends that action to its own changeTab,
+      // which throws without a data-group (test/actions.test.js).
+      switchTab: CrateManager.#switchTab,
       addPool: CrateManager.#addPool, editPool: CrateManager.#editPool, deletePool: CrateManager.#deletePool,
       bulkAdd: CrateManager.#bulkAdd, setUnsetRarity: CrateManager.#setUnsetRarity, removeEntry: CrateManager.#removeEntry, updateEntry: CrateManager.#updateEntry, relinkEntry: CrateManager.#relinkEntry,
       addBox: CrateManager.#addBox, editBox: CrateManager.#editBox, deleteBox: CrateManager.#deleteBox,
@@ -90,7 +92,7 @@ export class CrateManager extends ApplicationV2 {
     return this.#sources ?? new Map(entries.map(e => [e.uuid, e.missing ? null : { name: e.name, img: e.img, rarity: null }]));
   }
 
-  static #tab(_e, t) { this.tab = t.dataset.tab; this.render(); }
+  static #switchTab(_e, t) { this.tab = t.dataset.tab; this.render(); }
 
   // Each pool's view: open, name search, filter chip, rows shown.
   #view = new Map();
@@ -468,11 +470,12 @@ export class CrateManager extends ApplicationV2 {
     root.className = "lc-manager__body";
     const tabs = [["pools", "Pools"], ["boxes", "Boxes"], ["log", "Pull log"]];
     root.innerHTML = `
-      <nav class="lc-tabs">${tabs.map(([k, l]) => `<button type="button" data-action="tab" data-tab="${k}" class="${k === this.tab ? "active" : ""}">${l}</button>`).join("")}
+      <nav class="lc-tabs">
+        <div class="lc-tabs__list" role="tablist" aria-label="Loot Crates sections">${tabs.map(([k, l]) => `<button type="button" role="tab" id="lc-manager-tab-${k}" aria-controls="lc-manager-panel" aria-selected="${k === this.tab}" data-action="switchTab" data-tab="${k}" class="${k === this.tab ? "active" : ""}">${l}</button>`).join("")}</div>
         <span class="lc-tabs__spacer"></span>
         <button type="button" data-action="toggleShop" class="lc-shop-toggle" data-open="${isShopOpen()}" aria-pressed="${isShopOpen()}" title="${isShopOpen() ? "Players can buy now. Click to close the shop." : "Players can't buy now. Click to open the shop."}">${isShopOpen() ? "Shop open" : "Shop closed"}</button>
       </nav>
-      <section class="lc-tab">${await this[`_${this.tab}`]()}</section>`;
+      <section class="lc-tab" role="tabpanel" id="lc-manager-panel" aria-labelledby="lc-manager-tab-${this.tab}">${await this[`_${this.tab}`]()}</section>`;
     root.querySelectorAll("[data-drop-pool]").forEach(el => {
       el.addEventListener("dragover", e => { e.preventDefault(); el.classList.add("lc-drop--over"); });
       el.addEventListener("dragleave", () => el.classList.remove("lc-drop--over"));

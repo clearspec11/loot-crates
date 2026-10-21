@@ -54,6 +54,15 @@ async function managerProblems(narrow) {
     if (cut.length) out.push(`${cut.length} names or statuses cut off in a 480 px window, e.g. "${cut[0].textContent}"`);
     if (!document.querySelector(".lc-entry")) out.push("no rows to check");
   }
+  // The tabs as a tablist: three tabs, one selected and underlined, the shop
+  // switch outside the list.
+  const tabs = [...document.querySelectorAll('.lc-tabs [role="tablist"] > [role="tab"]')];
+  if (tabs.length !== 3) out.push(`expected 3 role=tab in a tablist, got ${tabs.length}`);
+  const selected = tabs.filter(t => t.getAttribute("aria-selected") === "true");
+  if (selected.length !== 1) out.push(`expected one selected tab, got ${selected.length}`);
+  else if (getComputedStyle(selected[0]).borderBottomColor === getComputedStyle(tabs.find(t => t !== selected[0])).borderBottomColor) out.push("the selected tab is not underlined");
+  if (document.querySelector('[role="tablist"] .lc-shop-toggle')) out.push("the shop switch is inside the tablist");
+  if (!document.querySelector('.lc-tab[role="tabpanel"]')) out.push("no role=tabpanel");
   const pools = [...document.querySelectorAll(".lc-pool__details")];
   if (pools.length < 3) out.push(`expected 3 sample pools, got ${pools.length}`);
   for (const d of pools) {
