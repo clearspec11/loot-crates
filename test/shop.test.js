@@ -437,4 +437,31 @@ describe("the shop mid-purchase, and a Buy that does nothing", () => {
     expect(notice(app)).toBe("The GM has closed the shop.");
     expect(requestPull).not.toHaveBeenCalled();
   });
+
+  // The GM takes a character away mid-pull, leaving one: the select gives
+  // way to the name. A keyboard user on the select stays in the head
+  // rather than being dropped on the page's body.
+  it("keeps focus in the head when the select gives way to a name", async () => {
+    owns = new Set(["a1", "a2"]);
+    let settle;
+    requestPull.mockImplementation(() => new Promise(r => { settle = r; }));
+    const app = new CrateShop();
+    await draw(app);
+    select(app).focus();
+    const pressed = press(app, "common", "25");
+    await app.last;
+    owns.delete("a2");
+    await draw(app);
+    expect(select(app)).toBeNull();
+    const who = app.content.querySelector(".lc-shop__who");
+    expect(who.textContent).toBe("Tam");
+    expect(globalThis.document.activeElement).toBe(who);
+    // A later render keeps it a focus target, so focus stays on it.
+    await draw(app);
+    expect(app.content.querySelector(".lc-shop__who")).toBe(who);
+    expect(who.getAttribute("tabindex")).toBe("-1");
+    expect(globalThis.document.activeElement).toBe(who);
+    settle({});
+    await pressed;
+  });
 });

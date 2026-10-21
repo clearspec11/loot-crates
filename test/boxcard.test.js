@@ -352,7 +352,7 @@ describe("actorPicker", () => {
     expect(busy).not.toMatch(/\sdisabled/);
   });
   it("names the one character, or none", () => {
-    expect(actorPicker({ actors: actors.slice(0, 1), actorId: "a1" })).toContain(`<span class="lc-shop__who">Tam</span>`);
+    expect(actorPicker({ actors: actors.slice(0, 1), actorId: "a1" })).toContain(`<span class="lc-shop__who" tabindex="-1">Tam</span>`);
     expect(actorPicker({ actors: [], actorId: null })).toContain("No character");
   });
 });

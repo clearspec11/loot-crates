@@ -234,8 +234,10 @@ export function actorPicker({ actors = [], actorId = null, busy = false, esc = s
     const options = actors.map(a => `<option value="${esc(a.id)}"${a.id === actorId ? " selected" : ""}>${esc(a.name)}</option>`).join("");
     return `<label class="lc-shop__field"><span class="lc-label">Character</span><select class="lc-shop__actor"${busy ? ` aria-disabled="true"` : ""}>${options}</select></label>`;
   }
+  // Focusable as a target only (tabindex -1), for focus on a select that
+  // gives way to it (patchShop); morph keeps the attribute on later renders.
   const name = actors.find(a => a.id === actorId)?.name ?? "No character";
-  return `<div class="lc-shop__field"><span class="lc-label">Character</span><span class="lc-shop__who">${esc(name)}</span></div>`;
+  return `<div class="lc-shop__field"><span class="lc-label">Character</span><span class="lc-shop__who" tabindex="-1">${esc(name)}</span></div>`;
 }
 
 /*
@@ -332,9 +334,19 @@ export function patchShop(content, fresh, notice) {
   }
   const body = live.closest(".lc-shop__body");
   if (body.className !== fresh.className) body.className = fresh.className;
-  morph(body.querySelector(".lc-shop__fields"), fresh.querySelector(".lc-shop__fields"));
-  const grid = body.querySelector(".lc-shop__grid");
   const doc = content.ownerDocument;
+  // The character select gives way to a plain name when the player is down
+  // to one character (the GM took one away, even mid-pull): focus on it
+  // goes to that name rather than to the page's body.
+  const head = body.querySelector(".lc-shop__fields");
+  const inHead = !!(doc?.activeElement && head.contains(doc.activeElement));
+  morph(head, fresh.querySelector(".lc-shop__fields"));
+  if (inHead && !content.contains(doc.activeElement)) {
+    const who = body.querySelector(".lc-shop__actor") ?? body.querySelector(".lc-shop__who") ?? live;
+    if (!who.matches("select") && !who.hasAttribute("tabindex")) who.setAttribute("tabindex", "-1");
+    who.focus();
+  }
+  const grid = body.querySelector(".lc-shop__grid");
   // The crates after the focused one, then those before it, nearest first:
   // where focus goes if its crate is taken off the shelf (keepFocus).
   const focused = doc?.activeElement && grid.contains(doc.activeElement) ? doc.activeElement : null;
