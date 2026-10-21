@@ -65,7 +65,7 @@ export async function performPull({ box, pools, actor, state = {}, rng = rollRng
   if (!result) throw new PullError(`${box.name} has nothing left to give ${actor.name}.`);
 
   const nextPurse = charge(purse, box.price);
-  const strip = buildStrip({ result, box, pools, rng });
+  const strip = buildStrip({ result, box, pools, rng, state });
 
   let created = null;
   // The source's own rarity, kept on the copy and in the log when the GM's
