@@ -724,6 +724,10 @@ export class CrateManager extends ApplicationV2 {
     const key = active ? focusKey(active) : null;
     const caret = active?.matches?.("input[type=search]") ? [active.selectionStart, active.selectionEnd] : null;
     content.replaceChildren(result);
+    // The Pools tab read the boxes before awaiting the source check, and a
+    // box saved elsewhere in that wait was patched into the page this one
+    // replaces (refreshManager), so bring the "In X, Y" lines up to date.
+    if (this.tab === "pools") this.patchUsers();
     // After a refund, focus whatever now stands for that log row: its
     // "refunded <date>" status, or its Refund button if the refund failed.
     const row = this.#focusRow;

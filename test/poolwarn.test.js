@@ -12,12 +12,17 @@ vi.mock("../module/scripts/shop.js", () => ({ refreshShop: vi.fn() }));
 vi.mock("../module/scripts/chat.js", () => ({ postRefundCard: vi.fn() }));
 
 let pools, boxes;
+// How long the stubbed source check takes, in ms (a render awaits it).
+let checkDelay = 0;
 const removed = [];
 vi.mock("../module/scripts/store.js", async importOriginal => ({
   ...(await importOriginal()),
   getPools: () => structuredClone(pools),
   getBoxes: () => structuredClone(boxes),
-  checkSources: async entries => new Map(entries.map(e => [e.uuid, e.missing ? null : { name: e.name, img: e.img, rarity: e.rarity }])),
+  checkSources: async entries => {
+    if (checkDelay) await new Promise(r => setTimeout(r, checkDelay));
+    return new Map(entries.map(e => [e.uuid, e.missing ? null : { name: e.name, img: e.img, rarity: e.rarity }]));
+  },
   sweepPools: async () => [],
   removePool: async id => { removed.push(["pool", id]); },
   removeEntry: async (poolId, uuid) => {
@@ -236,5 +241,23 @@ describe("a pool's header after the boxes change elsewhere", () => {
     expect(app.render).toHaveBeenCalledOnce();
     expect(patch).not.toHaveBeenCalled();
     patch.mockRestore();
+  });
+
+  // A render reads the boxes, then awaits the source check (up to 400 ms).
+  // A box saved elsewhere in that wait is patched into the old page, which
+  // the render then replaces with what it read before the save.
+  it("still shows a box saved elsewhere while a render was waiting on the source check", async () => {
+    const { app } = await openShown();
+    const win = document.createElement("div");
+    win.append(app.element);
+    app.element = win;
+    checkDelay = 150;
+    try {
+      const drawing = app._renderHTML();
+      boxes.royal.pools.push({ id: "spare", share: 1 });
+      refreshManager([SETTINGS.BOXES]);
+      app._replaceHTML(await drawing, win);
+    } finally { checkDelay = 0; }
+    expect(line(app, "spare").textContent).toBe("In Royal Crate");
   });
 });
