@@ -16,9 +16,14 @@
   "Just added", until the next drop or until the manager closes (view.recent,
   view state only; the stored order doesn't change), so a drop on a big,
   collapsed or filtered pool lands where the eye is.
+
+  Each pool's header names the boxes that draw from it, directly or through
+  a pool nested in theirs, and deleting a pool, or removing the last item a
+  box could drop, names the boxes it would leave with nothing inside before
+  it happens (poolUsers, emptiedBy and the text below).
 */
 import { RARITIES, RARITY_LABEL } from "./config.js";
-import { normalizeRarity, sourceStatus, effectiveRarity, sourceRarityOf, entryWeight } from "./odds.js";
+import { normalizeRarity, sourceStatus, effectiveRarity, sourceRarityOf, entryWeight, shopOdds } from "./odds.js";
 
 export const PAGE_ROWS = 50;
 export const OPEN_UP_TO = 60;
@@ -193,9 +198,100 @@ export function poolCount(pool, rows) {
   return `${plural(n, "item", "items")}${counts.length ? " · " + counts.map(([r, c]) => `${c} ${RARITY_LABEL[r].toLowerCase()}`).join(", ") : ""}${never ? ` · ${CHIP_TEXT.never(never)}` : ""}${problems ? ` · <span class="lc-pool__problems">${problems}</span>` : ""}`;
 }
 
-// The always-visible part of a pool: its name and census.
-export function poolSummary(pool, rows, esc) {
-  return `<summary class="lc-pool__summary"><span class="lc-pool__name">${esc(pool.name)}</span><span class="lc-pool__count">${poolCount(pool, rows)}</span></summary>`;
+// The always-visible part of a pool: its name and census, and when `users`
+// (box names) is given, the boxes that draw from it.
+export function poolSummary(pool, rows, esc, users = null) {
+  return `<summary class="lc-pool__summary"><span class="lc-pool__name">${esc(pool.name)}</span><span class="lc-pool__count">${poolCount(pool, rows)}</span>${users ? usersLine(users, esc) : ""}</summary>`;
+}
+
+const listOf = boxes => Array.isArray(boxes) ? boxes : Object.values(boxes ?? {});
+
+// Whether pool `from` is `target` or nests it at any depth. `seen` is
+// flattenPool's cycle guard: a pool already walked is not walked again.
+function reaches(from, target, pools, seen) {
+  if (from === target) return true;
+  if (seen.has(from)) return false;
+  seen.add(from);
+  return (pools[from]?.pools ?? []).some(child => reaches(child, target, pools, seen));
+}
+
+// The boxes (in their stored order) that draw from `poolId`, directly or
+// through nested pools.
+export function poolUsers(poolId, pools, boxes) {
+  return listOf(boxes).filter(b => {
+    const seen = new Set();
+    return (b.pools ?? []).some(ref => reaches(ref.id, poolId, pools, seen));
+  });
+}
+
+// The boxes that can drop something with `before` and nothing with `after`
+// (a missing entry or one at weight 0 drops nothing, as in the shop).
+export function emptiedBy(boxes, before, after) {
+  return listOf(boxes).filter(b => shopOdds(b, before).rows.length > 0 && shopOdds(b, after).rows.length === 0);
+}
+
+// The pools as store.js deletePool leaves them: without `id`, and without
+// it in any other pool's nested list.
+export function withoutPool(pools, id) {
+  const out = {};
+  for (const [k, p] of Object.entries(pools)) if (k !== id) out[k] = { ...p, pools: (p.pools ?? []).filter(c => c !== id) };
+  return out;
+}
+
+// The pools as store.js removeEntry leaves them.
+export function withoutEntry(pools, poolId, uuid) {
+  const pool = pools[poolId];
+  if (!pool) return pools;
+  return { ...pools, [poolId]: { ...pool, entries: (pool.entries ?? []).filter(e => e.uuid !== uuid) } };
+}
+
+/*
+  What deleting a pool does to the boxes: `users` draw from it, `emptied`
+  would drop nothing after, `kept` still drop something from their other
+  pools. A box that was already empty is only a user.
+*/
+export function deleteImpact(poolId, pools, boxes) {
+  const users = poolUsers(poolId, pools, boxes);
+  const after = withoutPool(pools, poolId);
+  const emptied = emptiedBy(users, pools, after);
+  const kept = users.filter(b => !emptied.includes(b) && shopOdds(b, after).rows.length > 0);
+  return { users, emptied, kept };
+}
+
+// The boxes removing one entry from a pool would leave with nothing inside.
+export function removeImpact(poolId, uuid, pools, boxes) {
+  return emptiedBy(poolUsers(poolId, pools, boxes), pools, withoutEntry(pools, poolId, uuid));
+}
+
+// "A", "A and B", "A, B and C".
+export function nameList(names) {
+  return names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
+}
+const strongList = (boxes, esc) => nameList(boxes.map(b => `<strong>${esc(b.name)}</strong>`));
+export const USERS_SHOWN = 3;
+
+// The header's quiet line: "In Adventurer's Crate, Royal Crate", "In A, B, C
+// and 2 more", or "Not in any box".
+export function usersLine(names, esc) {
+  const text = !names.length ? "Not in any box"
+    : `In ${names.slice(0, USERS_SHOWN).join(", ")}${names.length > USERS_SHOWN ? ` and ${names.length - USERS_SHOWN} more` : ""}`;
+  return `<span class="lc-pool__users">${esc(text)}</span>`;
+}
+
+const emptiedText = (emptied, esc) => `${strongList(emptied, esc)} will have nothing inside and can't be bought until ${emptied.length === 1 ? "it has" : "they have"} an item that can drop.`;
+
+// The Delete pool confirm: the boxes that use it by name, and in a sentence
+// of its own the ones it would leave with nothing inside.
+export function deletePoolText(pool, { users = [], emptied = [], kept = [] }, esc) {
+  const out = [`<p>Delete <strong>${esc(pool.name)}</strong>? ${users.length ? `It is in ${strongList(users, esc)}.` : "No box draws from it."}</p>`];
+  if (kept.length) out.push(`<p>${strongList(kept, esc)} can still drop items from ${kept.length === 1 ? "its" : "their"} other pools.</p>`);
+  if (emptied.length) out.push(`<p>${emptiedText(emptied, esc)}</p>`);
+  return out.join("");
+}
+
+// The Remove confirm, asked only when the removal empties a box.
+export function removeEntryText(name, pool, emptied, esc) {
+  return `<p>Remove <strong>${esc(name)}</strong> from <strong>${esc(pool.name)}</strong>? It is the last item ${nameList(emptied.map(b => esc(b.name)))} can drop.</p><p>${emptiedText(emptied, esc)}</p>`;
 }
 
 export function chipsHTML(pool, rows, view, esc) {

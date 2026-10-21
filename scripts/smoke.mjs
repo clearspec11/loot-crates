@@ -86,7 +86,15 @@ async function managerProblems(narrow) {
     if (d.open && selects > 50) out.push(`${d.dataset.pool}: ${selects} rarity selects drawn`);
     if (!d.open && d.querySelector(".lc-entry")) out.push(`${d.dataset.pool}: collapsed but rows drawn`);
     if (!/\d+ items?/.test(d.querySelector("summary .lc-pool__count")?.textContent ?? "")) out.push(`${d.dataset.pool}: no census in the summary`);
+    // The boxes that draw from the pool, on a line of its own that wraps
+    // rather than cuts off, at any width.
+    const users = d.querySelector("summary .lc-pool__users");
+    if (!users) out.push(`${d.dataset.pool}: no line naming its boxes`);
+    else if (users.scrollWidth > users.clientWidth + 1 || users.getBoundingClientRect().right > d.getBoundingClientRect().right + 1) out.push(`${d.dataset.pool}: its boxes line is cut off`);
   }
+  const usersOf = id => document.querySelector(`.lc-pool__details[data-pool="${id}"] .lc-pool__users`)?.textContent;
+  if (usersOf("core") !== "In Adventurer's Crate, Pauper's Box, Royal Vault and 1 more") out.push(`core's boxes line reads "${usersOf("core")}"`);
+  if (usersOf("everything") !== "Not in any box") out.push(`the unused pool's line reads "${usersOf("everything")}"`);
   const everything = document.querySelector('.lc-pool__details[data-pool="everything"]');
   if (everything?.open) out.push("the 200-entry pool should start collapsed");
   if (document.querySelectorAll('[role="status"]').length !== 1) out.push("expected one role=status");

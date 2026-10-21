@@ -26,8 +26,8 @@
   dropped its last item, a Very rare one, on it: the pool opens, the chip
   clears, the row is pinned at the top and focused, and the status line says so)
 */
-import { POOLS, BOX, BOXES, MANAGER_POOLS, MANAGER_SOURCES } from "./sample.js";
-import { poolRows, sortRows, defaultView, poolSummary, poolBody, pinRecent, dropNotice } from "../module/scripts/poolview.js";
+import { POOLS, BOX, BOXES, MANAGER_POOLS, MANAGER_SOURCES, MANAGER_BOXES } from "./sample.js";
+import { poolRows, sortRows, defaultView, poolSummary, poolBody, pinRecent, dropNotice, poolUsers } from "../module/scripts/poolview.js";
 import { draw, seededRng } from "../module/scripts/odds.js";
 import { buildStrip } from "../module/scripts/strip.js";
 import { mountSpin } from "../module/scripts/spin.js";
@@ -221,6 +221,7 @@ function renderManager() {
   const srcOf = e => MANAGER_SOURCES.has(e.uuid) ? MANAGER_SOURCES.get(e.uuid) : { name: e.name, img: e.img, rarity: e.sourceRarity || null, rawRarity: e.sourceRarity ?? null };
   const views = new Map(MANAGER_POOLS.map(p => [p.id, { ...defaultView(p), open: p.id === "compendium" ? true : defaultView(p).open }]));
   const rowsOf = p => sortRows(poolRows(p, srcOf), views.get(p.id).recent);
+  const managerPools = Object.fromEntries(MANAGER_POOLS.map(p => [p.id, p]));
   // The manager's #pinDrop, with the same pure steps.
   let status = "", dropped = null;
   if (q.get("dropped") === "1") {
@@ -238,7 +239,7 @@ function renderManager() {
         ${MANAGER_POOLS.map(p => `
         <article class="lc-pool" data-drop-pool="${esc(p.id)}">
           <details class="lc-pool__details" data-pool="${esc(p.id)}"${views.get(p.id).open ? " open" : ""}>
-            ${poolSummary(p, rowsOf(p), esc)}
+            ${poolSummary(p, rowsOf(p), esc, poolUsers(p.id, managerPools, MANAGER_BOXES).map(b => b.name))}
             <div class="lc-pool__body">${views.get(p.id).open ? poolBody(p, rowsOf(p), views.get(p.id), esc) : ""}</div>
           </details>
         </article>`).join("")}
