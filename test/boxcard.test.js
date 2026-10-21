@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { boxCard, buyReason, crateReason, shopReason, shopNotice, shopHTML, SHOP_NOTICE_ID, oddsPills, pityLine } from "../module/scripts/boxcard.js";
+import { boxCard, buyReason, crateReason, shopReason, shopNotice, shopHTML, SHOP_NOTICE_ID, oddsPills, pityLine, refundRulesLine } from "../module/scripts/boxcard.js";
 import { shopOdds, flattenPool } from "../module/scripts/odds.js";
 import { shortfall } from "../module/scripts/currency.js";
 import { POOLS, BOXES } from "../harness/sample.js";
@@ -252,5 +252,29 @@ describe("the card for a buyer's state", () => {
     expect(pityLine({ pity: { due: false, left: 2, minRarity: "veryRare" } })).toBe("Very rare or better within 2 pulls");
     // No pity rule, no line.
     expect(pity(boxCard(byId("common"), POOLS, ctx))).toBeNull();
+  });
+});
+
+describe("the refund dialog's rules line", () => {
+  const box = rules => ({ name: "Cloak crate", rules });
+  const line = (rules, before, after) => refundRulesLine({ actorName: "Brannoc", itemName: "Cloak of Elvenkind", box: box(rules), before, after });
+
+  it("says where the pity count goes and that the item can drop again", () => {
+    expect(line({ pity: { after: 3, minRarity: "rare" }, noDuplicates: true }, { sinceRare: 0, owned: ["c"] }, { sinceRare: 2, owned: [] }))
+      .toBe("Brannoc's pity count goes back to 2 of 3 pulls, and Cloak of Elvenkind can drop for Brannoc again.");
+  });
+
+  it("says the count stays when a later pull already reset it, and leaves out a rule the box doesn't have", () => {
+    expect(line({ pity: { after: 3, minRarity: "rare" } }, { sinceRare: 1, owned: ["c"] }, { sinceRare: 1, owned: [] })).toBe("Brannoc's pity count stays at 1 of 3 pulls.");
+    expect(line({ noDuplicates: true }, { owned: ["c"] }, { owned: [] })).toBe("Cloak of Elvenkind can drop for Brannoc again.");
+  });
+
+  it("names a pity that comes due again", () => {
+    expect(line({ pity: { after: 3, minRarity: "veryRare" } }, { sinceRare: 0 }, { sinceRare: 3 })).toBe("Brannoc's pity count goes back to 3 of 3 pulls (Very rare or better is due on the next pull).");
+  });
+
+  it("is empty without either rule, or when the item stays owned from another pull", () => {
+    expect(line({ stock: 2 }, { sinceRare: 2, owned: ["c"] }, { sinceRare: 1, owned: [] })).toBe("");
+    expect(line({ noDuplicates: true }, { owned: ["c"] }, { owned: ["c"] })).toBe("");
   });
 });

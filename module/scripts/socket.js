@@ -62,7 +62,7 @@ import { performPull, PullError } from "./pull.js";
 import { getBoxes, getPools, getActorState, setActorState, appendLog, updateLog, newId, isShopOpen, saveBox, enqueueWrite, refreshMissing, markMissing, reportMissing } from "./store.js";
 import { showReveal } from "./reveal.js";
 import { postPullCard } from "./chat.js";
-import { shopOdds } from "./odds.js";
+import { shopOdds, resetsPity } from "./odds.js";
 
 export const GM_TIMEOUT_MS = 30000;
 // After this long without a reveal, the buyer's shop says it is waiting on
@@ -360,7 +360,7 @@ async function doPull(msg, timer, sent, stopWatching) {
     warnIfSlow(timer.elapsed(), { hidden: hiddenAtStart || gmTabHidden(), buyer: actor.name });
     showAndPost(reveal);
 
-    const log = { id: logId, boxId: box.id, boxName: box.name, actorId: actor.id, actorName: actor.name, userId: msg.userId, itemId: out.itemId, name: out.result.name, uuid: out.result.uuid, rarity: out.result.rarity, price: box.price, pity: out.result.pity };
+    const log = { id: logId, boxId: box.id, boxName: box.name, actorId: actor.id, actorName: actor.name, userId: msg.userId, itemId: out.itemId, name: out.result.name, uuid: out.result.uuid, rarity: out.result.rarity, price: box.price, pity: out.result.pity, before: { sinceRare: state.sinceRare ?? 0 }, resetPity: resetsPity(box, out.result.rarity) };
     // Provenance for a GM-set rarity: the source's own, only when it differs.
     const src = out.sourceRarity ?? [];
     if (out.rarityOverride && !(src.length === 1 && src[0] === out.result.rarity)) log.sourceRarity = src;

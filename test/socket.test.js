@@ -866,5 +866,10 @@ describe("the reveal's odds", () => {
     await deliver({ type: "pull", requestId: "next", boxId: "box", actorId: "actor1", userId: "p1" });
     const next = emitted.find(m => m.type === "reveal" && m.requestId === "next");
     expect(next.odds.map(o => `${o.rarity} ${o.label}`)).toEqual(["common 90%", "rare 10%"]);
+    // Each row keeps the count it was pulled at and whether it reset it,
+    // so a refund can put the count back (odds.js undoPull).
+    const [second, first] = game.settings.get("loot-crates", "pullLog");
+    expect(first).toMatchObject({ before: { sinceRare: 2 }, resetPity: true });
+    expect(second).toMatchObject({ before: { sinceRare: 0 }, resetPity: second.rarity === "rare" });
   });
 });

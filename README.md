@@ -12,6 +12,8 @@ A GM can change an item's rarity on its row in the pool editor. That rarity deci
 
 The shop shows each character their own odds. A box's pity rule and its no-duplicates rule apply to the character picked in the shop, the same way the roll applies them: items they already own are left out, and once pity is due only the guaranteed rarities show. The card says where they stand ("Rare or better within 4 pulls", or "guaranteed this pull"), and a box with nothing new for that character can't be bought ("Nothing new for <name>"). The reveal's odds bar shows the odds the shop showed.
 
+A refund from the Pull log undoes the whole pull: the coins come back, the granted item leaves the sheet, the box's stock goes up by one, and the character's pity count and no-duplicates record for that box go back to what they would be without that pull (the confirm dialog says where the count goes and that the item can drop again). Each log row keeps the pity count it was pulled at and whether it reset it (`before.sinceRare`, `resetPity`); a row written by 0.6.0 or earlier has neither, so its refund corrects the no-duplicates record and the pull count and leaves the pity count as it is.
+
 ## Watch again
 
 A pull's chat card carries a small display-only snapshot of its spin (`flags["loot-crates"].replay`: each card's name, art and rarity, where it lands, the odds and the result; no uuids, no purse, no granted item, about 6 KB). Anyone at the table can press **Watch again** on the card to replay that spin on their own screen, in a window titled "Replay: ...". A replay writes nothing, posts nothing, needs no GM and shows nobody's gold. Refunded cards and cards posted before this feature have no button.

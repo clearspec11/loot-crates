@@ -50,7 +50,7 @@
   untick, and says when the box would drop nothing (liveOdds below).
 */
 import { RARITIES, RARITY_LABEL, DEFAULT_WEIGHTS, DEFAULT_PRICE_GP, SETTINGS } from "./config.js";
-import { oddsPills, oddsRibbon, draftBox, boxPreview, boxPreviewHTML, oddsSummary, quietAnnouncer } from "./boxcard.js";
+import { oddsPills, oddsRibbon, draftBox, boxPreview, boxPreviewHTML, oddsSummary, quietAnnouncer, refundRulesLine } from "./boxcard.js";
 
 // A box's odds in the Boxes table: its ribbon over its named pills.
 const oddsCell = rows => rows.length ? `${oddsRibbon(rows)}<div class="lc-odds">${oddsPills(rows)}</div>` : "<em>empty</em>";
@@ -488,9 +488,11 @@ export class CrateManager extends ApplicationV2 {
       ? `and remove <strong>${esc(item.name)}</strong> from their inventory`
       : `(<strong>${esc(row.name)}</strong> is no longer in their inventory, so nothing is removed)`;
     const stockLine = box?.rules?.stock != null ? ` ${esc(box.name)} goes back to ${box.rules.stock + 1} in stock.` : "";
+    const rules = box ? refundRulesLine({ actorName: actor.name, itemName: row.name, box, ...plan.state }) : "";
+    const rulesLine = rules ? ` ${esc(rules)}` : "";
     const ok = await DialogV2.confirm({
       window: { title: "Refund" },
-      content: `<p>Return <strong>${esc(formatPrice(row.price))}</strong> to ${esc(actor.name)} ${itemLine}?${stockLine}</p><p>A pull can only be refunded once.</p>`,
+      content: `<p>Return <strong>${esc(formatPrice(row.price))}</strong> to ${esc(actor.name)} ${itemLine}?${stockLine}${rulesLine}</p><p>A pull can only be refunded once.</p>`,
     });
     if (!ok) return;
     // The Refund button is gone after the render; land on the row's status.

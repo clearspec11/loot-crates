@@ -130,6 +130,28 @@ export function pityLine(odds) {
 }
 
 /*
+  For the refund dialog, what the refund does to the buyer's rules for the
+  box (before/after are their state, odds.js undoPull): "Brannoc's pity
+  count goes back to 2 of 3 pulls, and Cloak of Elvenkind can drop for
+  Brannoc again." Each half only when the box has that rule, and the item
+  half only when it really leaves the no-duplicates record. "" when neither.
+*/
+export function refundRulesLine({ actorName, itemName, box, before = {}, after = {} }) {
+  const pity = box?.rules?.pity;
+  const parts = [];
+  if (pity?.after && pity.minRarity) {
+    const from = Math.min(before.sinceRare ?? 0, pity.after), to = Math.min(after.sinceRare ?? 0, pity.after);
+    const due = to >= pity.after ? ` (${RARITY_LABEL[pity.minRarity] ?? pity.minRarity} or better is due on the next pull)` : "";
+    parts.push(`${actorName}'s pity count ${to === from ? "stays at" : "goes back to"} ${to} of ${pity.after} pulls${due}`);
+  }
+  const freed = box?.rules?.noDuplicates && (before.owned ?? []).length > (after.owned ?? []).length;
+  if (freed) parts.push(`${itemName} can drop for ${actorName} again`);
+  if (!parts.length) return "";
+  const line = parts.join(", and ");
+  return `${line[0].toUpperCase()}${line.slice(1)}.`;
+}
+
+/*
   The shop's one notice: the shop-wide reason, or while a pull is slow, that
   it is waiting for the GM and why. Its text goes in the shop header's single
   live region (SHOP_NOTICE_ID), which stays the same node across renders

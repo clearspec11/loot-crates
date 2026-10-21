@@ -307,15 +307,66 @@ export function draw({ box, pools, rng = Math.random, state = {} }) {
   return { entry, rarity, poolId: entry.poolId, pity: plan.pityApplied };
 }
 
+// Whether a pull of `rarity` from `box` resets the buyer's pity count.
+export function resetsPity(box, rarity) {
+  const pity = box?.rules?.pity;
+  return !!pity?.minRarity && rarityRank(rarity) >= rarityRank(pity.minRarity);
+}
+
 // The state after a pull, for the pity counter and duplicate rule.
 export function nextState(box, state = {}, result) {
-  const pity = box.rules?.pity;
-  const hitFloor = pity?.minRarity && rarityRank(result.rarity) >= rarityRank(pity.minRarity);
   return {
-    sinceRare: hitFloor ? 0 : (state.sinceRare ?? 0) + 1,
+    sinceRare: resetsPity(box, result.rarity) ? 0 : (state.sinceRare ?? 0) + 1,
     owned: [...new Set([...(state.owned ?? []), result.entry.uuid])],
     pulls: (state.pulls ?? 0) + 1,
   };
+}
+
+const at = r => r.at ?? 0;
+
+/*
+  The buyer's state as if the pull in `row` never happened, for a refund.
+  `state` is their current { sinceRare, owned, pulls } for row's actor and
+  box; `log` is the pull log (rows carry `at`; `row` may already be marked
+  refunded in it). Only the actor+box's other unrefunded rows count.
+  - owned loses row.uuid unless another unrefunded row granted it too.
+  - pulls goes down by one.
+  - sinceRare (rows since the change carry `before.sinceRare` and
+    `resetPity`): a row that counted toward it takes its 1 back; a row that
+    reset it gives back the count it wiped, on top of what came after it.
+    A later unrefunded reset already cleared everything before it, so then
+    sinceRare stays.
+  - A row from before the change (no `before`) keeps sinceRare as it is.
+*/
+export function undoPull(state = {}, row, log = []) {
+  const mine = log.filter(r => r.id !== row.id && r.actorId === row.actorId && r.boxId === row.boxId);
+  const live = mine.filter(r => !r.refunded);
+  const owned = (state.owned ?? []).filter(u => u !== row.uuid || live.some(r => r.uuid === u));
+  const out = { ...state, owned, pulls: Math.max(0, (state.pulls ?? 0) - 1) };
+  if (!row.before) return out;
+
+  const since = state.sinceRare ?? 0;
+  if (live.some(r => at(r) > at(row) && r.resetPity)) return out;
+  if (!row.resetPity) return { ...out, sinceRare: Math.max(0, since - 1) };
+  return { ...out, sinceRare: wiped(row, mine) + since };
+}
+
+/*
+  The count a resetting row wiped, as it stands now: its before.sinceRare,
+  less the pulls in that count refunded since (this row, a later reset,
+  kept their own refund from taking their 1 back), plus the count the reset
+  before it wiped if that reset was refunded since too (same reason).
+  "The reset before it" is the nearest one still standing when this row was
+  pulled; before.sinceRare counted from there.
+*/
+function wiped(row, mine) {
+  const prev = mine
+    .filter(m => m.resetPity && m.before && at(m) < at(row) && !(m.refunded && m.refunded < at(row)))
+    .reduce((a, m) => (!a || at(m) > at(a) ? m : a), null);
+  const from = prev ? at(prev) : -Infinity;
+  const masked = mine.filter(e => e.resetPity === false && at(e) > from && at(e) < at(row) && e.refunded > at(row)).length;
+  const own = Math.max(0, (row.before.sinceRare ?? 0) - masked);
+  return own + (prev?.refunded ? wiped(prev, mine) : 0);
 }
 
 // A seeded generator for tests and screenshots (mulberry32).
