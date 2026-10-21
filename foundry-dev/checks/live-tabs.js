@@ -60,7 +60,8 @@ try {
   for (const [key, tab] of [["ArrowRight", "boxes"], ["End", "log"]]) {
     const before = errors.length;
     document.activeElement.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
-    for (let t = 0; t < 60 && app.tab !== tab; t++) await wait(50);
+    // app.tab changes at once; wait for the render that marks the tab selected.
+    for (let t = 0; t < 100 && app.element.querySelector(`.lc-tabs [data-tab="${tab}"]`)?.getAttribute("aria-selected") !== "true"; t++) await wait(50);
     await wait(300);
     const now = app.element.querySelector(`.lc-tabs [data-tab="${tab}"]`);
     const step = { key, tab, appTab: app.tab, selected: now?.getAttribute("aria-selected") ?? null, tabindex: now?.getAttribute("tabindex") ?? null, focusOnTab: document.activeElement?.dataset?.tab === tab, errors: errors.slice(before) };
