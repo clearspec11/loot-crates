@@ -158,6 +158,18 @@ describe("heldState", () => {
     expect(sealStyle()).toBeNull();
   });
 
+  // A reveal that can't be drawn would otherwise hold its item and its
+  // crate (Buy off, "Still spinning") until the page is reloaded.
+  it("is released when the reveal fails to render", async () => {
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    const broken = pull({ requestId: "r9", itemId: "item9", strip: null });
+    await expect(showReveal(broken)).rejects.toThrow();
+    await Promise.resolve();
+    expect(isSealedItem("item9")).toBe(false);
+    expect(heldState("a1", "adventurer")).toBeNull();
+    err.mockRestore();
+  });
+
   it("is never set by a replay, and a replay's snapshot doesn't carry the state", async () => {
     const snapshot = replaySnapshot(pull());
     expect(snapshot).not.toHaveProperty("stateBefore");

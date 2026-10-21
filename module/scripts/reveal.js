@@ -324,6 +324,13 @@ export class CrateReveal extends ApplicationV2 {
     item.sheet.render(true);
   }
 
+  // Ends this reveal's hold without a window (showReveal, when it fails).
+  abandon() {
+    this.#closed = true;
+    this.#spin?.skip();
+    this.#resolveLanded();
+  }
+
   _onClose(options) {
     super._onClose(options);
     // Back to the crate they bought, unless they have moved on elsewhere.
@@ -501,6 +508,13 @@ export function watchAgain(message, html) {
 
 export async function showReveal(reveal) {
   const app = new CrateReveal(reveal);
-  await app.render({ force: true });
+  try {
+    await app.render({ force: true });
+  } catch (err) {
+    // A window that never showed holds nothing back: not the item on the
+    // sheet, the crate in the shop ("Still spinning") or the chat card.
+    app.abandon();
+    throw err;
+  }
   return app;
 }
