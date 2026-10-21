@@ -869,7 +869,7 @@ describe("the reveal's odds", () => {
     // Each row keeps the count it was pulled at and whether it reset it,
     // so a refund can put the count back (odds.js undoPull).
     const [second, first] = game.settings.get("loot-crates", "pullLog");
-    expect(first).toMatchObject({ before: { sinceRare: 2 }, resetPity: true });
+    expect(first).toMatchObject({ before: { sinceRare: 2, hadItem: false }, resetPity: true });
     expect(second).toMatchObject({ before: { sinceRare: 0 }, resetPity: second.rarity === "rare" });
   });
 

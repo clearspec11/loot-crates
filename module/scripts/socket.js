@@ -364,7 +364,7 @@ async function doPull(msg, timer, sent, stopWatching) {
     warnIfSlow(timer.elapsed(), { hidden: hiddenAtStart || gmTabHidden(), buyer: actor.name });
     showAndPost(reveal);
 
-    const log = { id: logId, boxId: box.id, boxName: box.name, actorId: actor.id, actorName: actor.name, userId: msg.userId, itemId: out.itemId, name: out.result.name, uuid: out.result.uuid, rarity: out.result.rarity, price: box.price, pity: out.result.pity, before: { sinceRare: state.sinceRare ?? 0 }, resetPity: resetsPity(box, out.result.rarity) };
+    const log = { id: logId, boxId: box.id, boxName: box.name, actorId: actor.id, actorName: actor.name, userId: msg.userId, itemId: out.itemId, name: out.result.name, uuid: out.result.uuid, rarity: out.result.rarity, price: box.price, pity: out.result.pity, before: { sinceRare: state.sinceRare ?? 0, hadItem: (state.owned ?? []).includes(out.result.uuid) }, resetPity: resetsPity(box, out.result.rarity) };
     // Provenance for a GM-set rarity: the source's own, only when it differs.
     const src = out.sourceRarity ?? [];
     if (out.rarityOverride && !(src.length === 1 && src[0] === out.result.rarity)) log.sourceRarity = src;

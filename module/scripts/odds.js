@@ -329,7 +329,11 @@ const at = r => r.at ?? 0;
   `state` is their current { sinceRare, owned, pulls } for row's actor and
   box; `log` is the pull log (rows carry `at`; `row` may already be marked
   refunded in it). Only the actor+box's other unrefunded rows count.
-  - owned loses row.uuid unless another unrefunded row granted it too.
+  - owned loses row.uuid unless another unrefunded row granted it too. A
+    row that says the item wasn't owned before it (`before.hadItem`
+    false) only counts later rows: an earlier grant had already left the
+    record (a GM reset the state, or its write failed) or it would have
+    been owned.
   - pulls goes down by one.
   - sinceRare (rows since the change carry `before.sinceRare` and
     `resetPity`): a row that counted toward it takes its 1 back; a row that
@@ -341,7 +345,8 @@ const at = r => r.at ?? 0;
 export function undoPull(state = {}, row, log = []) {
   const mine = log.filter(r => r.id !== row.id && r.actorId === row.actorId && r.boxId === row.boxId);
   const live = mine.filter(r => !r.refunded);
-  const owned = (state.owned ?? []).filter(u => u !== row.uuid || live.some(r => r.uuid === u));
+  const fresh = row.before?.hadItem === false;
+  const owned = (state.owned ?? []).filter(u => u !== row.uuid || live.some(r => r.uuid === u && (!fresh || at(r) > at(row))));
   const out = { ...state, owned, pulls: Math.max(0, (state.pulls ?? 0) - 1) };
   if (!row.before) return out;
 

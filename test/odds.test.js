@@ -192,7 +192,7 @@ describe("undoPull", () => {
     let state = {};
     const log = [];
     picks.forEach(([uuid, rarity], i) => {
-      log.unshift({ id: `r${i}`, at: (i + 1) * 10, actorId: "a1", boxId: "b", uuid, rarity, before: { sinceRare: state.sinceRare ?? 0 }, resetPity: resetsPity(PITY, rarity) });
+      log.unshift({ id: `r${i}`, at: (i + 1) * 10, actorId: "a1", boxId: "b", uuid, rarity, before: { sinceRare: state.sinceRare ?? 0, hadItem: (state.owned ?? []).includes(uuid) }, resetPity: resetsPity(PITY, rarity) });
       state = nextState(PITY, state, { rarity, entry: { uuid } });
     });
     return { log, state, row: id => log.find(r => r.id === id) };
@@ -256,6 +256,18 @@ describe("undoPull", () => {
     expect(refund(w, "r0", 110).owned).toEqual([]);
   });
 
+  // Live in cc-dev: a pull of the Flail, then the state reset by hand (not
+  // through a refund), then the Flail again. Refunding the second must free
+  // it: it wasn't owned before that pull, whatever the older row says.
+  it("frees an item the refunded pull granted fresh, though an older row granted it before a reset", () => {
+    const w = pulls(["flail", "common"]);
+    w.state = {};
+    const again = { id: "r1", at: 20, actorId: "a1", boxId: "b", uuid: "flail", rarity: "common", before: { sinceRare: 0, hadItem: false }, resetPity: false };
+    w.log.unshift(again);
+    w.state = nextState(PITY, w.state, { rarity: "common", entry: { uuid: "flail" } });
+    expect(refund(w, "r1", 100)).toEqual({ sinceRare: 0, owned: [], pulls: 0 });
+  });
+
   it("a row from before refunds tracked pity fixes owned and pulls, and keeps the count", () => {
     const legacy = { id: "old", at: 10, actorId: "a1", boxId: "b", uuid: "cloak", rarity: "rare", refunded: 50 };
     const state = { sinceRare: 2, owned: ["cloak", "rope"], pulls: 3 };
@@ -285,7 +297,7 @@ describe("undoPull", () => {
         } else {
           const uuid = uuids[Math.floor(rng() * uuids.length)];
           const rarity = rng() < 0.3 ? "rare" : "common";
-          log.unshift({ id: `r${run}-${step}`, at: ++t, actorId: "a1", boxId: "b", uuid, rarity, before: { sinceRare: state.sinceRare ?? 0 }, resetPity: resetsPity(PITY, rarity) });
+          log.unshift({ id: `r${run}-${step}`, at: ++t, actorId: "a1", boxId: "b", uuid, rarity, before: { sinceRare: state.sinceRare ?? 0, hadItem: (state.owned ?? []).includes(uuid) }, resetPity: resetsPity(PITY, rarity) });
           state = nextState(PITY, state, { rarity, entry: { uuid } });
         }
         const replay = log.filter(r => !r.refunded).reverse().reduce((s, r) => nextState(PITY, s, { rarity: r.rarity, entry: { uuid: r.uuid } }), {});
