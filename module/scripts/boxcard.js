@@ -237,10 +237,34 @@ export function patchShop(content, fresh, notice) {
   const body = live.closest(".lc-shop__body");
   if (body.className !== fresh.className) body.className = fresh.className;
   morph(body.querySelector(".lc-shop__fields"), fresh.querySelector(".lc-shop__fields"));
-  morph(body.querySelector(".lc-shop__grid"), fresh.querySelector(".lc-shop__grid"));
+  const grid = body.querySelector(".lc-shop__grid");
+  const doc = content.ownerDocument;
+  // The crates after the focused one, then those before it, nearest first:
+  // where focus goes if its crate is taken off the shelf (keepFocus).
+  const focused = doc?.activeElement && grid.contains(doc.activeElement) ? doc.activeElement : null;
+  const cards = [...grid.children].filter(c => c.getAttribute("data-box") != null);
+  const at = focused ? cards.findIndex(c => c.contains(focused)) : -1;
+  const near = at < 0 ? [] : [...cards.slice(at + 1), ...cards.slice(0, at).reverse()];
+  const kept = morph(grid, fresh.querySelector(".lc-shop__grid"));
   if (live.textContent !== notice.text) live.textContent = notice.text;
   live.dataset.tone = notice.tone;
+  if (focused && !content.contains(doc.activeElement)) keepFocus(kept, near, live);
   return live;
+}
+
+/*
+  A crate the GM deletes (or a grid rebuilt) while a player's focus is in it
+  takes the focus with it, which drops a keyboard or screen-reader user on
+  the page's body. Focus goes to the nearest crate still on the shelf (the
+  next one, else the one before), else to the empty shelf's line, else to
+  the shop's notice; a line that isn't a control is focused as a target
+  only (tabindex -1).
+*/
+function keepFocus(grid, near, live) {
+  const card = near.find(c => c.parentNode === grid);
+  const target = card?.querySelector(".lc-box__buy") ?? grid.querySelector(".lc-shop__empty") ?? live;
+  if (!target.matches("button, select, input, a[href]") && !target.hasAttribute("tabindex")) target.setAttribute("tabindex", "-1");
+  target.focus();
 }
 
 /*
