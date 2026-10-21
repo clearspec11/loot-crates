@@ -133,12 +133,21 @@ export function mountSpin(container, strip, options = {}) {
   const start = w => Math.max(0, Math.min(2, strip.landIndex) * step - w / 2);
   const setX = x => { track.style.transform = `translate3d(${-x}px, 0, 0)`; };
 
+  // onTick and onPhase run inside the frame loop: one that throws (an audio
+  // context in a bad state) must not end the loop, or the strip never lands
+  // and nothing waiting on the landing (the chat seal, the held shop card,
+  // the item on the sheet) is ever released.
+  const cue = (fn, ...args) => {
+    if (!fn) return;
+    try { fn(...args); } catch (err) { console.error("loot-crates | a spin cue failed", err); }
+  };
+
   let lastIndex = -1;
   const tick = (x, w) => {
     const index = Math.floor((x + w / 2) / step);
     if (index !== lastIndex) {
       lastIndex = index;
-      options.onTick?.(index, strip.cards[index]);
+      cue(options.onTick, index, strip.cards[index]);
     }
   };
 
@@ -218,11 +227,11 @@ export function mountSpin(container, strip, options = {}) {
   function phase(elapsed) {
     if (!braked && elapsed >= brakeMs) {
       braked = true;
-      if (elapsed < settleMs) options.onPhase?.("brake", { at: elapsed, settleIn: settleMs - elapsed });
+      if (elapsed < settleMs) cue(options.onPhase, "brake", { at: elapsed, settleIn: settleMs - elapsed });
     }
     if (!settled && elapsed >= settleMs) {
       settled = true;
-      options.onPhase?.("settle", { at: elapsed, settleIn: 0 });
+      cue(options.onPhase, "settle", { at: elapsed, settleIn: 0 });
     }
   }
 

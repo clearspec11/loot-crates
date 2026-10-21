@@ -191,6 +191,22 @@ describe("the spin's brake and settle cues", () => {
     expect(hidden.phases).toEqual([]);
   });
 
+  it("still lands when a cue throws: a sound that fails never stops the strip", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const spin = mountSpin(fakeElement(), strip(true), {
+      onTick: () => { throw new Error("tick"); },
+      onPhase: () => { throw new Error("phase"); },
+      reducedMotion: false,
+    });
+    spin.viewport.clientWidth = 680;
+    const done = spin.play();
+    for (let now = T0; frames.length; now += 16) frames.shift()(now);
+    await done;
+    expect(spin.landed).toBe(true);
+    expect(error).toHaveBeenCalled();
+    error.mockRestore();
+  });
+
   it("doesn't announce a brake a stalled frame leapt clean past", async () => {
     const { spin, phases, done } = mount();
     frames.shift()(T0);
