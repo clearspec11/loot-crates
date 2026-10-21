@@ -86,7 +86,7 @@ afterEach(() => {
 
 const { showReveal, showReplay, heldState, isSealedItem, sealedItemIds, sealCSS, preSealItem, onRelease, PRESEAL_MS, CrateReveal, _resetHolds } = await import("../module/scripts/reveal.js");
 const { replaySnapshot } = await import("../module/scripts/revealcard.js");
-const { openShop } = await import("../module/scripts/shop.js");
+const { openShop, CrateShop } = await import("../module/scripts/shop.js");
 
 const strip = { landIndex: 30, cards: Array.from({ length: 36 }, (_, i) => ({ uuid: `c${i}`, name: `Card ${i}`, img: "", rarity: "common", result: i === 30 })) };
 const pull = (extra = {}) => ({
@@ -217,6 +217,38 @@ describe("the shop while its crate spins here", () => {
       expect(pills()).not.toMatch(/Legendary/);
       expect(card().className).not.toContain("lc-rarity-legendary");
       expect(all).toContain(legendary.uuid);
+    } finally { delete boxes.crown; }
+  });
+
+  // The held card shows the odds of the pull still spinning, not the ones a
+  // second Buy would be rolled at: "guaranteed this pull" while the GM has
+  // already spent the pity on the spin. So that crate can't be bought until
+  // its spin lands here (the Buy says why), and the action checks it too.
+  it("won't sell a crate again at its held odds while its spin plays", async () => {
+    const { requestPull } = await import("../module/scripts/socket.js");
+    requestPull.mockClear();
+    boxes.crown = { ...boxes.adventurer, id: "crown", rules: { pity: { after: 3, minRarity: "rare" } } };
+    try {
+      states["a1.crown"] = { sinceRare: 3, owned: [], pulls: 3 };
+      const shop = openShop();
+      await Promise.resolve();
+      const buy = () => shop.html.querySelector('.lc-box[data-box="crown"] .lc-box__buy');
+      const why = () => shop.html.querySelector('.lc-box[data-box="crown"] .lc-box__why')?.textContent.trim();
+      expect(buy().getAttribute("aria-disabled")).toBeNull();
+      const app = await showReveal(pull({ box: { id: "crown", name: "Crown", price: 150 }, result: { name: "Wand", rarity: "rare", img: "" }, stateBefore: { sinceRare: 3, owned: [], pulls: 3 } }));
+      states["a1.crown"] = { sinceRare: 0, owned: [], pulls: 4 };
+      await shop.render();
+      expect(shop.html.querySelector('.lc-box[data-box="crown"] .lc-box__pity').textContent.trim()).toBe("Rare or better guaranteed this pull");
+      expect(buy().getAttribute("aria-disabled")).toBe("true");
+      expect(why()).toBe("Still spinning");
+      await CrateShop.DEFAULT_OPTIONS.actions.buy.call(shop, {}, { dataset: { box: "crown" } });
+      expect(requestPull).not.toHaveBeenCalled();
+      // The other crates stay on sale.
+      expect(shop.html.querySelector('.lc-box[data-box="adventurer"] .lc-box__buy').getAttribute("aria-disabled")).toBeNull();
+      await land(app);
+      await Promise.resolve();
+      expect(buy().getAttribute("aria-disabled")).toBeNull();
+      expect(why()).toBeUndefined();
     } finally { delete boxes.crown; }
   });
 

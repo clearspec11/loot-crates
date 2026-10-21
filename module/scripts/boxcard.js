@@ -109,7 +109,12 @@ export function crateReason(box, odds, ctx = {}) {
 
 // A crate that can't give this character anything new can't be bought,
 // rather than failing after a round trip to the GM (pull.js "nothing left").
-function crateState(box, odds, { actorName = "" } = {}) {
+// Nor can one whose last pull is still spinning on this client (`held`,
+// reveal.js heldState): its card shows the odds from before that pull, to
+// keep the result secret, and the GM would roll a second pull at the new
+// ones ("guaranteed this pull" after the pity was spent on the spin).
+function crateState(box, odds, { actorName = "", held } = {}) {
+  if (held?.(box.id)) return "Still spinning";
   if (!odds.rows.length && !odds.nothingNew) return "Nothing inside";
   if (box.rules?.stock != null && box.rules.stock <= 0) return "Sold out";
   if (odds.nothingNew) return actorName ? `Nothing new for ${actorName}` : "Nothing new for this character";
@@ -175,10 +180,10 @@ export function shopNotice(ctx = {}) {
 
 /*
   One box in the shop grid. `ctx` adds { busy, busyBox, waiting, art, esc,
-  stateOf } to buyReason's; stateOf(boxId) is the buyer's pity and
-  ownership state for that box (store.js getActorState), so the odds, the
-  pity line and "Nothing new" are this character's, as draw() will roll
-  them. While a pull is out, every Buy is off, and only the one that was
+  stateOf } to buyReason's (which also takes held(boxId), see crateState);
+  stateOf(boxId) is the buyer's pity and ownership state for that box
+  (store.js getActorState), so the odds, the pity line and "Nothing new"
+  are this character's, as draw() will roll them. While a pull is out, every Buy is off, and only the one that was
   pressed (busyBox) says "Opening…"; with no busyBox, all of them do.
   When the GM is slow to answer (`waiting`, from socket.js onWait) it says
   "Waiting for the GM…" instead; why is in the shop's notice.

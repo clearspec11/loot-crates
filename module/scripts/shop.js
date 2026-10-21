@@ -7,7 +7,9 @@
   the GM writes the new state about 0.3 s after the reveal goes out, and a
   card redrawn from it said whether the pull hit Rare or better seconds
   before the marker stopped. The card changes when the spin lands
-  (onRelease), as part of the payoff.
+  (onRelease), as part of the payoff. Until then that crate's Buy is off
+  ("Still spinning"): the held odds aren't the ones a second pull would be
+  rolled at.
 */
 import { getBoxes, getPools, getActorState, isShopOpen } from "./store.js";
 import { formatGold } from "./currency.js";
@@ -91,6 +93,7 @@ export class CrateShop extends ApplicationV2 {
     return {
       purse: actor?.system?.currency ?? {}, open: isShopOpen() && gm, gmOnline: gm, hasActor: !!actor,
       actorName: actor?.name ?? "", stateOf: boxId => (actor ? heldState(actor.id, boxId) ?? getActorState(actor.id, boxId) : {}),
+      held: boxId => !!(actor && heldState(actor.id, boxId)),
       busy: this.busy, busyBox: this.busyBox, waiting: this.waiting, art: `<i class="fas fa-box-open"></i>`, esc,
     };
   }
