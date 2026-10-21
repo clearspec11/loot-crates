@@ -351,7 +351,11 @@ async function doPull(msg, timer, sent, stopWatching) {
     // The odds are the ones this roll was made at: the buyer's state before
     // it, and the pools performPull drew from, so an entry that went missing
     // mid-pull isn't counted even if marking it in the setting failed.
-    const reveal = { type: "reveal", requestId: msg.requestId, userId: msg.userId, actorId: actor.id, actorName: actor.name, box: { id: box.id, name: box.name, price: box.price }, odds: shopOdds(box, out.pools, state).rows.map(({ rarity, chance, label }) => ({ rarity, chance, label })), result: out.result, strip: out.strip, purse: out.purse, itemId: out.itemId, itemUuid, logId };
+    // stateBefore is the buyer's pity and owned record before this pull: a
+    // client whose spin is still playing shows the shop from it until the
+    // spin lands (reveal.js heldState), since the new state is written
+    // just after this and would tell the result early.
+    const reveal = { type: "reveal", requestId: msg.requestId, userId: msg.userId, actorId: actor.id, actorName: actor.name, box: { id: box.id, name: box.name, price: box.price }, odds: shopOdds(box, out.pools, state).rows.map(({ rarity, chance, label }) => ({ rarity, chance, label })), result: out.result, strip: out.strip, purse: out.purse, itemId: out.itemId, itemUuid, logId, stateBefore: { sinceRare: state.sinceRare ?? 0, owned: [...(state.owned ?? [])], pulls: state.pulls ?? 0 } };
     stopWatching();
     game.socket.emit(SOCKET, reveal);
     timer.mark("broadcast");

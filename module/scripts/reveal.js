@@ -52,6 +52,25 @@
   result shows with the sting, and once a replay has run to its end the
   button goes, focus passing to Close if it was on it. Never offered under
   reduced motion (nothing would move) or after a spin that played out here.
+
+  The sheet and the shop keep the secret too, as the chat card does. The GM
+  creates the item before it broadcasts the reveal, and writes the buyer's
+  pity and owned record just after, so an open character sheet listed the
+  item, and the buyer's open shop redrew its pity line and pills, seconds
+  before the marker stopped. While a pull spins here (`held`, by
+  requestId):
+  - its item is hidden wherever the page shows it by `[data-item-id]` (one
+    generated stylesheet, so sheets already open, re-rendered or opened
+    mid-spin are covered without waiting for a render, and nothing flashes
+    before a render hook could run). The item's createItem, which arrives
+    before the reveal, pre-seals it (preSealItem) for up to PRESEAL_MS until
+    its reveal takes over; an item that no reveal claims is shown then.
+  - heldState(actorId, boxId) gives the shop the buyer's state from before
+    the pull (the reveal's stateBefore), and onRelease tells the shop to
+    redraw when it lands, so the new pity line arrives with the result.
+  Landing, Skip and Close release it; a hidden page or reduced motion lands
+  at once, so nothing is held there. A replay holds nothing. Display only:
+  nothing is written.
 */
 import { MODULE_ID, SETTINGS } from "./config.js";
 import { mountSpin } from "./spin.js";
@@ -76,6 +95,114 @@ const pageHidden = () => document.visibilityState === "hidden";
 // The landed promise of each reveal still spinning on this client, by the
 // pull's logId (what its chat card carries in flags).
 const spinning = new Map();
+
+// Pulls whose result this client is still holding back (spinning here), by
+// requestId: { actorId, boxId, itemId, stateBefore }. Insertion order is the
+// order the reveals arrived, so the oldest hold for a box comes first.
+const held = new Map();
+// Items created by a pull whose reveal hasn't arrived yet: itemId -> timer.
+const preSealed = new Map();
+// How long a pre-sealed item waits for its reveal before it is shown anyway.
+export const PRESEAL_MS = 3000;
+// How old (by the GM's clock, so generous for skew) a created item's pull
+// mark may be and still be pre-sealed: a copy dragged from another sheet
+// carries the mark too, and shouldn't be hidden.
+const FRESH_PULL_MS = 60000;
+const releaseListeners = new Set();
+const SEAL_STYLE_ID = "loot-crates-sealed-items";
+const safeId = id => typeof id === "string" && /^[A-Za-z0-9]+$/.test(id);
+
+// The item ids hidden on this client right now.
+export function sealedItemIds() {
+  const ids = new Set(preSealed.keys());
+  for (const h of held.values()) if (h.itemId) ids.add(h.itemId);
+  return [...ids].filter(safeId);
+}
+
+export const isSealedItem = itemId => sealedItemIds().includes(itemId);
+
+/*
+  The CSS that hides sealed items: one rule over every element that names
+  the item by data-item-id (a dnd5e sheet's inventory row, and any other
+  sheet or module that lists it the same way). Empty when nothing is sealed.
+*/
+export function sealCSS(ids = sealedItemIds()) {
+  return ids.length ? `${ids.map(id => `[data-item-id="${id}"]`).join(",\n")} { display: none !important; }` : "";
+}
+
+function syncSealStyle() {
+  const doc = globalThis.document;
+  if (!doc?.head) return;
+  let style = doc.getElementById?.(SEAL_STYLE_ID) ?? null;
+  const css = sealCSS();
+  if (!css) { style?.remove(); return; }
+  if (!style) {
+    style = doc.createElement("style");
+    style.id = SEAL_STYLE_ID;
+    doc.head.append(style);
+  }
+  style.textContent = css;
+}
+
+// The buyer's pity and owned record for a box from before the oldest of
+// their pulls of it still spinning here, or null when none is.
+export function heldState(actorId, boxId) {
+  for (const h of held.values()) if (h.actorId === actorId && h.boxId === boxId && h.stateBefore) return h.stateBefore;
+  return null;
+}
+
+// Called with { actorId, boxId, itemId } each time a held pull lands here.
+// Returns the function that stops listening.
+export function onRelease(fn) {
+  releaseListeners.add(fn);
+  return () => releaseListeners.delete(fn);
+}
+
+/*
+  createItem: an item a pull just granted is hidden until its reveal arrives
+  (it comes a moment after) and takes the hold over. Nothing else is touched.
+*/
+export function preSealItem(item) {
+  const marks = item?.flags?.[MODULE_ID];
+  const id = item?.id;
+  if (!marks?.boxId || !safeId(id) || item.parent?.documentName !== "Actor") return;
+  if (!(Math.abs(Date.now() - (Number(marks.at) || 0)) < FRESH_PULL_MS)) return;
+  if (preSealed.has(id) || [...held.values()].some(h => h.itemId === id)) return;
+  preSealed.set(id, setTimeout(() => {
+    preSealed.delete(id);
+    syncSealStyle();
+  }, PRESEAL_MS));
+  syncSealStyle();
+}
+
+function hold(reveal, landed) {
+  const key = reveal.requestId ?? reveal.logId ?? reveal.itemId;
+  if (!key || reveal.replay) return;
+  const itemId = reveal.itemId ?? null;
+  if (itemId && preSealed.has(itemId)) {
+    clearTimeout(preSealed.get(itemId));
+    preSealed.delete(itemId);
+  }
+  const entry = { actorId: reveal.actorId ?? null, boxId: reveal.box?.id ?? null, itemId, stateBefore: reveal.stateBefore ?? null };
+  held.set(key, entry);
+  syncSealStyle();
+  landed.then(() => {
+    if (held.get(key) !== entry) return;
+    held.delete(key);
+    syncSealStyle();
+    for (const fn of releaseListeners) {
+      try { fn({ actorId: entry.actorId, boxId: entry.boxId, itemId }); } catch (err) { console.error("loot-crates | a release listener failed", err); }
+    }
+  });
+}
+
+// For tests: nothing held or pre-sealed.
+export function _resetHolds() {
+  for (const t of preSealed.values()) clearTimeout(t);
+  preSealed.clear();
+  held.clear();
+  syncSealStyle();
+}
 
 // Focus is ours to move when nothing else has it, it's already in here, or
 // it's still on what opened this window: the buyer's Buy, or the chat card's
@@ -128,6 +255,8 @@ export class CrateReveal extends ApplicationV2 {
       spinning.set(reveal.logId, this.landed);
       this.landed.then(() => spinning.delete(reveal.logId));
     }
+    // The item on the sheet and the shop's pity line wait for the landing too.
+    hold(reveal, this.landed);
   }
 
   get title() {

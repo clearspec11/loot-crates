@@ -14,6 +14,10 @@ The shop shows each character their own odds. A box's pity rule and its no-dupli
 
 A refund from the Pull log undoes the whole pull: the coins come back, the granted item leaves the sheet, the box's stock goes up by one, and the character's pity count and no-duplicates record for that box go back to what they would be without that pull (the confirm dialog says where the count goes and that the item can drop again). Each log row keeps the pity count it was pulled at and whether it reset it (`before.sinceRare`, `resetPity`); a row written by 0.6.0 or earlier has neither, so its refund corrects the no-duplicates record and the pull count and leaves the pity count as it is.
 
+## The result waits for the spin
+
+Everything that would tell a client the result waits until that client's spin lands (or is skipped or closed). The chat card shows "Opening…" in place of the item. On a character sheet, the granted item's row stays hidden: anything that names it by `data-item-id`, in sheets already open and sheets opened mid-spin. In the shop, that crate's card keeps the character's pity line and odds from before the pull, then changes when the spin lands. Display only: nothing is written, and the item is on the sheet from the moment it is granted. A tab that is hidden, or set to reduced motion, lands at once, so nothing is held there. A replay holds nothing.
+
 ## Watch again
 
 A pull's chat card carries a small display-only snapshot of its spin (`flags["loot-crates"].replay`: each card's name, art and rarity, where it lands, the odds and the result; no uuids, no purse, no granted item, about 6 KB). Anyone at the table can press **Watch again** on the card to replay that spin on their own screen, in a window titled "Replay: ...". A replay writes nothing, posts nothing, needs no GM and shows nobody's gold. Refunded cards and cards posted before this feature have no button.
