@@ -67,7 +67,9 @@ const reveal = {
   strip: { landIndex: 30, cards: Array.from({ length: 36 }, (_, i) => ({ uuid: `c${i}`, name: `Card ${i}`, img: "", rarity: "common", result: i === 30 })) },
 };
 
-const { showReveal, showReplay, sealChatCard, watchAgain, CrateReveal } = await import("../module/scripts/reveal.js");
+const { showReveal, showReplay, sealChatCard, watchAgain, stripVoice, CrateReveal } = await import("../module/scripts/reveal.js");
+const { settleAt } = await import("../module/scripts/spin.js");
+const sound = await import("../module/scripts/sound.js");
 const { replaySnapshot, replayReveal } = await import("../module/scripts/revealcard.js");
 const { playReveal, playSlow } = await import("../module/scripts/sound.js");
 
@@ -111,6 +113,95 @@ describe("a reveal on a hidden page", () => {
     await app.landed;
     expect(app.element.querySelector(".lc-reveal__close").textContent).toBe("Close");
     expect(listeners.size).toBe(0);
+  });
+});
+
+/*
+  Sound on the spin's own clock: the braking sweep is cued by the frame that
+  starts the ease-out, never by a timer, and a near-miss voices the tease and
+  the drop back as two different sounds.
+*/
+describe("sounds in time with the spin", () => {
+  const { playTick } = vi.mocked(sound);
+  beforeEach(() => { playTick.mockClear(); playSlow.mockClear(); });
+  afterEach(() => vi.useRealTimers());
+
+  const nearMiss = {
+    ...reveal,
+    requestId: "nm",
+    strip: { ...reveal.strip, nearMiss: true, cards: reveal.strip.cards.map((c, i) => (i === 31 ? { ...c, rarity: "veryRare" } : c)) },
+  };
+  const play = (start = 0) => { for (let now = start; frames.length; now += 16) frames.shift()(now); };
+
+  it("plays no sweep from timers alone", async () => {
+    // Timers only: requestAnimationFrame stays the hand-driven stub, so no frame runs.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"] });
+    await showReveal(reveal);
+    vi.advanceTimersByTime(4000);
+    expect(playSlow).not.toHaveBeenCalled();
+    expect(frames).toHaveLength(1);
+  });
+
+  it("starts the sweep in the frame the strip begins to brake, lasting until it settles", async () => {
+    const app = await showReveal(reveal);
+    for (let now = 0; now <= 2768; now += 16) frames.shift()(now);
+    expect(playSlow).not.toHaveBeenCalled();
+    frames.shift()(2784);
+    expect(playSlow).toHaveBeenCalledTimes(1);
+    expect(playSlow.mock.calls[0][0]).toBeCloseTo(settleAt() - 2784, 6);
+    play(2800);
+    await app.landed;
+    expect(playSlow).toHaveBeenCalledTimes(1);
+  });
+
+  it("plays no sweep for a spin skipped before it brakes", async () => {
+    const app = await showReveal(reveal);
+    for (let now = 0; now <= 1000; now += 16) frames.shift()(now);
+    app.close();
+    play(1016);
+    await app.landed;
+    expect(playSlow).not.toHaveBeenCalled();
+  });
+
+  it("cuts the sweep when the strip lands early, not seconds later under the sting", async () => {
+    const stop = vi.fn();
+    playSlow.mockReturnValueOnce(stop);
+    const app = await showReveal(reveal);
+    for (let now = 0; now <= 3200; now += 16) frames.shift()(now);
+    expect(playSlow).toHaveBeenCalledTimes(1);
+    expect(stop).not.toHaveBeenCalled();
+    // Skip mid-brake: the strip lands on the next frame and the sweep goes with it.
+    app.close();
+    play(3216);
+    await app.landed;
+    expect(stop).toHaveBeenCalledTimes(1);
+  });
+
+  it("teases on the card past the result, then drops back, in that order, on a near-miss", async () => {
+    const app = await showReveal(nearMiss);
+    play();
+    await app.landed;
+    const voiced = playTick.mock.calls.map(([, voice]) => (voice?.tease ? "tease" : voice?.back ? "back" : "tick"));
+    expect(voiced.filter(v => v !== "tick")).toEqual(["tease", "back"]);
+    expect(voiced.slice(-2)).toEqual(["tease", "back"]);
+  });
+
+  it("never teases or drops back on a plain strip", async () => {
+    const app = await showReveal(reveal);
+    play();
+    await app.landed;
+    expect(playTick.mock.calls.length).toBeGreaterThan(20);
+    expect(playTick.mock.calls.every(([, voice]) => voice === undefined)).toBe(true);
+  });
+
+  it("voices the tease only for the card past the result, and the back only after a tease", () => {
+    const voice = stripVoice({ landIndex: 30, nearMiss: true });
+    [29, 30, 31, 30].forEach(voice);
+    expect(playTick.mock.calls).toEqual([[29 / 30], [1], [1, { tease: true }], [1, { back: true }]]);
+    playTick.mockClear();
+    const plain = stripVoice({ landIndex: 30, nearMiss: false });
+    [29, 30, 31, 30].forEach(plain);
+    expect(playTick.mock.calls.every(c => c.length === 1)).toBe(true);
   });
 });
 

@@ -11,7 +11,7 @@
 import { MODULE_ID } from "./config.js";
 import { registerSettings, setStoreListener, registerIndexFields, getPools, getBoxes, getLog, savePool, saveBox, entriesFromCompendium, entryFromItem, sweepAllPools } from "./store.js";
 import { registerSocket, requestPull, isActiveGM } from "./socket.js";
-import { openShop, refreshShop } from "./shop.js";
+import { openShop, refreshShop, registerShopHooks } from "./shop.js";
 import { openManager, refreshManager, CrateManager } from "./manager.js";
 import { storeRedraw } from "./redraw.js";
 import { performPull } from "./pull.js";
@@ -56,11 +56,8 @@ Hooks.on("renderItemDirectory", (_app, html) => {
   header.appendChild(button);
 });
 
-// Purse changes show in the shop without reopening it.
-Hooks.on("updateActor", (actor, change) => {
-  if (change.system?.currency) refreshShop();
-});
-Hooks.on("userConnected", () => refreshShop());
+// Purse and ownership changes show in the shop without reopening it.
+registerShopHooks(Hooks);
 // A pull's chat card keeps its result back while that pull spins here.
 Hooks.on("renderChatMessageHTML", sealChatCard);
 // A pull's card with a replay snapshot offers "Watch again" (display only).

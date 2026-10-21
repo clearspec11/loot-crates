@@ -81,8 +81,15 @@ const bulk = (prefix, n) => Array.from({ length: n }, (_, i) => {
 });
 export const MANAGER_POOLS = [
   { ...POOLS.core, entries: POOLS.core.entries.map(withIcon) },
-  { id: "compendium", name: "dnd5e items (filtered)", pools: [], entries: bulk("compendium", 130).map(withIcon) },
+  { id: "compendium", name: "dnd5e items (filtered)", pools: ["core"], entries: bulk("compendium", 130).map(withIcon) },
   { id: "everything", name: "Every dnd5e item", pools: [], entries: bulk("everything", 200).map(withIcon) },
+];
+// The boxes the pool editor's headers name: the core pool is in all four
+// (one through the compendium pool, nested), so the line runs long and
+// shows "and 1 more"; the compendium pool is in one; the big one in none.
+export const MANAGER_BOXES = [
+  ...BOXES.slice(0, 3),
+  { id: "hoard", name: "Dragon's Hoard Chest", price: 900, pools: [{ id: "compendium", share: 1 }], weights: {}, rules: {} },
 ];
 // What a source check found: one source gone, one renamed; the rest match.
 export const MANAGER_SOURCES = new Map([

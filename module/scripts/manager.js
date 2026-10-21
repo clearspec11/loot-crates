@@ -45,6 +45,11 @@
   The pin is view state only and goes at the next drop or when the manager
   closes.
 
+  Each pool's header names the boxes that draw from it ("In Adventurer's
+  Crate, Royal Crate" or "Not in any box"). Delete pool's confirm names
+  them, and apart from them the boxes it would leave with nothing inside;
+  Remove asks first only when the item is the last one some box can drop.
+
   The box editor shows the chances a player will see (the shop's ribbon and
   pills) for the form as it stands, redrawn on every keystroke, tick and
   untick, and says when the box would drop nothing (liveOdds below).
@@ -56,7 +61,7 @@ import { oddsPills, oddsRibbon, draftBox, boxPreview, boxPreviewHTML, oddsSummar
 const oddsCell = rows => rows.length ? `${oddsRibbon(rows)}<div class="lc-odds">${oddsPills(rows)}</div>` : "<em>empty</em>";
 import { getPools, getBoxes, getLog, createPool, updatePool, removePool, createBox, updateBox, removeBox, entryFromItem, entriesFromDrop, addEntries, packHasLoot, LOOT_TYPES, isLootType, isShopOpen, setShopOpen, checkSources, sweepPools, removeEntry, patchEntry } from "./store.js";
 import { shopOdds, normalizeRarity, flattenPool, withSources, entryWeight, curateEntries } from "./odds.js";
-import { PAGE_ROWS, FALLBACK_IMG, defaultView, poolRows, sortRows, filterRows, pageRows, nextRows, poolCount, poolSummary, poolBody, chipsHTML, unsetButton, footHTML, entryRow, entryParts, pinRecent, dropNotice } from "./poolview.js";
+import { PAGE_ROWS, FALLBACK_IMG, defaultView, poolRows, sortRows, filterRows, pageRows, nextRows, poolCount, poolSummary, poolBody, chipsHTML, unsetButton, footHTML, entryRow, entryParts, pinRecent, dropNotice, poolUsers, deleteImpact, removeImpact, deletePoolText, removeEntryText } from "./poolview.js";
 import { formatPrice } from "./currency.js";
 import { describeRefund, refundPull } from "./refund.js";
 import { postRefundCard } from "./chat.js";
@@ -264,17 +269,37 @@ export class CrateManager extends ApplicationV2 {
     if (data) { await updatePool(pool.id, { name: data.name || pool.name }); this.render(); }
   }
 
+  // The pools as the last source check found them, so a box's "nothing
+  // inside" is judged on what the shop will draw, not on a stale flag.
+  #livePools() {
+    const pools = getPools();
+    return this.#sources ? withSources(pools, this.#sources) : pools;
+  }
+
+  // The confirm names the boxes that draw from the pool, and apart from
+  // them the ones it would leave with nothing inside.
   static async #deletePool(_e, t) {
     const pool = getPools()[t.dataset.pool];
-    if (await DialogV2.confirm({ window: { title: "Delete pool" }, content: `<p>Delete <strong>${esc(pool.name)}</strong>? Boxes that use it keep their other pools.</p>` })) {
+    if (!pool) return this.render();
+    const content = deletePoolText(pool, deleteImpact(pool.id, this.#livePools(), getBoxes()), esc);
+    if (await DialogV2.confirm({ window: { title: "Delete pool" }, content })) {
       await removePool(pool.id); this.render();
     }
   }
 
+  // Removed at once, unless it is the last item some box can drop: then a
+  // confirm names those boxes first.
   static async #removeEntry(_e, t) {
     const { pool: poolId, uuid } = t.dataset;
     const list = t.closest(".lc-entries");
     const at = list ? [...list.children].findIndex(li => li.dataset.entry === uuid) : -1;
+    const pools = this.#livePools();
+    const emptied = pools[poolId] ? removeImpact(poolId, uuid, pools, getBoxes()) : [];
+    if (emptied.length) {
+      const row = this.#rowsOf(pools[poolId]).find(r => r.e.uuid === uuid);
+      const content = removeEntryText(row?.name ?? uuid, pools[poolId], emptied, esc);
+      if (!await DialogV2.confirm({ window: { title: "Remove item" }, content })) return t.focus?.();
+    }
     await removeEntry(poolId, uuid);
     this.#repaint(poolId, { at: at < 0 ? null : at });
   }
@@ -608,7 +633,9 @@ export class CrateManager extends ApplicationV2 {
   }
 
   async _pools() {
-    const pools = Object.values(getPools());
+    const stored = getPools();
+    const pools = Object.values(stored);
+    const boxes = getBoxes();
     const sources = await this.#checkedSources(pools.flatMap(p => p.entries ?? []));
     // The editor just looked: if a flag the shop reads is stale, sweep now.
     const stale = !this.checking && pools.some(p => p.entries.some(e => sources.has(e.uuid) && !!e.missing !== !sources.get(e.uuid)));
@@ -626,7 +653,7 @@ export class CrateManager extends ApplicationV2 {
         return `
         <article class="lc-pool" data-drop-pool="${esc(p.id)}">
           <details class="lc-pool__details" data-pool="${esc(p.id)}"${view.open ? " open" : ""}>
-            ${poolSummary(p, rows, esc)}
+            ${poolSummary(p, rows, esc, poolUsers(p.id, stored, boxes).map(b => b.name))}
             <div class="lc-pool__body">${view.open ? poolBody(p, rows, view, esc) : ""}</div>
           </details>
         </article>`;

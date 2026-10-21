@@ -13,7 +13,7 @@ vi.mock("../module/scripts/reveal.js", () => ({ showReveal: vi.fn(async () => ({
 vi.mock("../module/scripts/chat.js", () => ({ postPullCard: vi.fn(async () => null) }));
 
 const { registerSocket, requestPull, GM_TIMEOUT_MS, WAIT_NOTICE_MS, TIMED_OUT, SLOW_PULL_MS, _resetSlowWarning } = await import("../module/scripts/socket.js");
-const { registerSettings, setStoreListener, appendLog, sweepAllPools, enqueueWrite, INDEX_FIELDS } = await import("../module/scripts/store.js");
+const { registerSettings, setStoreListener, appendLog, sweepAllPools, enqueueWrite, updateBox, INDEX_FIELDS } = await import("../module/scripts/store.js");
 const { storeRedraw, REDRAW_DELAY_MS } = await import("../module/scripts/redraw.js");
 const { refundPull } = await import("../module/scripts/refund.js");
 const { PullError } = await import("../module/scripts/pull.js");
@@ -134,6 +134,14 @@ describe("a player's requestPull", () => {
     expect(vi.getTimerCount()).toBe(2);
     vi.advanceTimersByTime(GM_TIMEOUT_MS + 1);
     await expect(promise).rejects.toThrow(TIMED_OUT);
+  });
+
+  it("sends the price on the Buy pressed with the pull, and none when it has none", async () => {
+    const { emitted } = makeWorld({ user: PLAYER });
+    requestPull({ boxId: "box", actorId: "actor1", price: 10 });
+    requestPull({ boxId: "box", actorId: "actor1" });
+    expect(emitted[0]).toMatchObject({ type: "pull", boxId: "box", price: 10 });
+    expect("price" in emitted[1]).toBe(false);
   });
 
   it("rejects with the GM's error message", async () => {
@@ -303,6 +311,53 @@ describe("the GM client", () => {
     expect(reveal.purse).toMatchObject({ gp: 490 });
     expect(game.settings.get("loot-crates", "pullLog")).toHaveLength(1);
     expect(showReveal).toHaveBeenCalledWith(reveal);
+  });
+
+  it("a price changed after the Buy is rejected with nothing charged", async () => {
+    // The shop showed 10 gp; the GM's edit is queued ahead of the pull that
+    // is already on its way, as store.js updateBox puts it in the write queue.
+    const { game, actor, emitted, deliver } = makeWorld({ user: GM });
+    await seed(game, { stock: 5 });
+    const edit = updateBox("box", b => ({ ...b, price: 200 }));
+    await deliver({ type: "pull", requestId: "r1", boxId: "box", actorId: "actor1", userId: "p1", price: 10 });
+    await edit;
+    expect(emitted).toEqual([{ type: "error", requestId: "r1", userId: "p1", message: "Test Crate now costs 200 gp (you pressed 10 gp). Nothing was charged." }]);
+    expect(actor.system.currency.gp).toBe(500);
+    expect(actor.updates).toBe(0);
+    expect(actor.items).toHaveLength(0);
+    expect(game.settings.get("loot-crates", "pullLog")).toHaveLength(0);
+    expect(game.settings.get("loot-crates", "boxes").box.rules.stock).toBe(5);
+    expect(showReveal).not.toHaveBeenCalled();
+
+    // Pressed again once the shop shows 200 gp: charged as before.
+    await deliver({ type: "pull", requestId: "r2", boxId: "box", actorId: "actor1", userId: "p1", price: 200 });
+    expect(emitted.filter(m => m.type === "reveal")).toHaveLength(1);
+    expect(emitted.at(-1)).toMatchObject({ type: "reveal", requestId: "r2", box: { price: 200 } });
+    expect(actor.system.currency.gp).toBe(300);
+    expect(actor.items).toHaveLength(1);
+    expect(game.settings.get("loot-crates", "pullLog")).toMatchObject([{ price: 200 }]);
+    expect(game.settings.get("loot-crates", "boxes").box.rules.stock).toBe(4);
+  });
+
+  it("serves a pull without a price (an older client) at the box's price", async () => {
+    const { game, actor, emitted, deliver } = makeWorld({ user: GM });
+    await seed(game, {});
+    await updateBox("box", b => ({ ...b, price: 25 }));
+    await deliver({ type: "pull", requestId: "r1", boxId: "box", actorId: "actor1", userId: "p1" });
+    expect(emitted.filter(m => m.type === "reveal")).toHaveLength(1);
+    expect(actor.system.currency.gp).toBe(475);
+  });
+
+  it("refuses the GM's own stale Buy too, in its shop rather than over the socket", async () => {
+    const { game, actor, emitted } = makeWorld({ user: GM });
+    await seed(game, {});
+    const edit = updateBox("box", b => ({ ...b, price: 200 }));
+    const mine = requestPull({ boxId: "box", actorId: "actor1", price: 10 });
+    await edit;
+    await expect(mine).rejects.toThrow(PullError);
+    await expect(mine).rejects.toThrow("Test Crate now costs 200 gp (you pressed 10 gp). Nothing was charged.");
+    expect(actor.system.currency.gp).toBe(500);
+    expect(emitted).toEqual([]);
   });
 
   it("replies with an error to the buyer when the box is sold out", async () => {

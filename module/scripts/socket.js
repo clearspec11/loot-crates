@@ -4,7 +4,11 @@
   reveal to everyone. No GM online means the shop is closed.
 
   Messages on SOCKET:
-    { type: "pull", requestId, boxId, actorId, userId }   player -> GM
+    { type: "pull", requestId, boxId, actorId, userId, price }
+                                                           player -> GM; price is
+                                                           the one on the Buy pressed
+                                                           (optional: an older client
+                                                           sends none)
     { type: "ack", requestId, userId, hidden: true }       GM -> the buyer, only
                                                            when the GM's tab is hidden
                                                            and the pull is already slow
@@ -162,9 +166,11 @@ export function registerSocket() {
 // everyone else gets), rejects on the GM's error reply or after GM_TIMEOUT_MS.
 // `onWait(why)` is told when the wait gets long: "gm" after WAIT_NOTICE_MS,
 // then "hidden" if the GM's client says its tab is in the background.
-export function requestPull({ boxId, actorId }, { onWait = null } = {}) {
+// `price` is the one the buyer saw on the Buy: the GM charges that or nothing.
+export function requestPull({ boxId, actorId, price }, { onWait = null } = {}) {
   if (!game.users.activeGM) return Promise.reject(new PullError("The shop is closed until a GM is online."));
   const msg = { type: "pull", requestId: uid(), boxId, actorId, userId: game.user.id };
+  if (price != null) msg.price = price;
   if (isActiveGM()) return handlePull(msg);
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => settle(msg.requestId, p => {
@@ -337,7 +343,7 @@ async function doPull(msg, timer, sent, stopWatching) {
         reportMissing([{ poolId: entry.poolId, poolName: getPools()[entry.poolId]?.name ?? entry.poolId, uuid: entry.uuid, name: entry.name }]);
       } catch (err) { console.error(`loot-crates | could not flag ${entry.uuid} as missing`, err); }
     };
-    const out = await performPull({ box, pools: getPools(), actor, state, onMissing });
+    const out = await performPull({ box, pools: getPools(), actor, state, onMissing, expectedPrice: msg.price });
     timer.mark("roll+grant");
     ackIfSlow(msg, timer, sent);
 

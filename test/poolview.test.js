@@ -4,7 +4,7 @@
   show, 50 rows at a time, and markup that draws no more than a page.
 */
 import { describe, it, expect } from "vitest";
-import { PAGE_ROWS, OPEN_UP_TO, defaultView, poolRows, sortRows, filterRows, pageRows, nextRows, chipList, matchesChip, poolCount, poolBody, poolSummary, entryParts, entryRow, pinRecent, dropNotice } from "../module/scripts/poolview.js";
+import { PAGE_ROWS, OPEN_UP_TO, defaultView, poolRows, sortRows, filterRows, pageRows, nextRows, chipList, matchesChip, poolCount, poolBody, poolSummary, entryParts, entryRow, pinRecent, dropNotice, poolUsers, emptiedBy, withoutPool, withoutEntry, deleteImpact, removeImpact, deletePoolText, removeEntryText, usersLine, nameList } from "../module/scripts/poolview.js";
 
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const entry = (uuid, name, rarity, extra = {}) => ({ uuid, name, img: "", rarity, sourceRarity: rarity, weight: 1, ...extra });
@@ -241,5 +241,104 @@ describe("a dropped item", () => {
     expect(dropNotice({ pool: { name: "Core magic items" }, rows: many, label: "SRD Items" })).toBe("Added 40 items from SRD Items to Core magic items; they are at the top.");
     const page = many.concat(sortRows(poolRows(big, src), big.entries.slice(40, 50).map(e => e.uuid)).filter(r => r.recent));
     expect(dropNotice({ pool: { name: "Core" }, rows: page, label: "SRD Items", added: 130 })).toBe("Added 130 items from SRD Items to Core; the first 50 are at the top.");
+  });
+});
+
+/*
+  Which boxes draw from a pool, and which a delete or a removal would leave
+  with nothing inside: the shop's "Nothing inside", judged before it lands.
+*/
+describe("pool users and what a delete or removal empties", () => {
+  const item = (uuid, rarity = "rare", extra = {}) => entry(uuid, uuid, rarity, extra);
+  const pools = {
+    core: { id: "core", name: "Core", pools: [], entries: [item("sword"), item("ring", "uncommon")] },
+    gems: { id: "gems", name: "Gems", pools: [], entries: [item("ruby")] },
+    hoard: { id: "hoard", name: "Hoard", pools: ["gems"], entries: [] },
+    lone: { id: "lone", name: "Lone", pools: [], entries: [item("wand"), item("dud", "rare", { weight: 0 }), item("ghost", "rare", { missing: true })] },
+    // A cycle: each nests the other.
+    a: { id: "a", name: "A", pools: ["b"], entries: [item("x")] },
+    b: { id: "b", name: "B", pools: ["a"], entries: [] },
+  };
+  const box = (id, ...refs) => ({ id, name: `${id} crate`, price: 10, pools: refs.map(r => ({ id: r, share: 1 })), weights: {}, rules: {} });
+  const boxes = {
+    adventurer: box("adventurer", "core", "lone"),
+    royal: box("royal", "core"),
+    dragon: box("dragon", "hoard"),
+    solo: box("solo", "lone"),
+    loop: box("loop", "b"),
+  };
+  const ids = list => list.map(b => b.id);
+
+  it("poolUsers finds direct and nested users, in stored order", () => {
+    expect(ids(poolUsers("core", pools, boxes))).toEqual(["adventurer", "royal"]);
+    expect(ids(poolUsers("gems", pools, boxes))).toEqual(["dragon"]);
+    expect(ids(poolUsers("hoard", pools, boxes))).toEqual(["dragon"]);
+    expect(poolUsers("nowhere", pools, boxes)).toEqual([]);
+    expect(ids(poolUsers("core", pools, Object.values(boxes)))).toEqual(["adventurer", "royal"]);
+  });
+
+  it("poolUsers survives a cycle of nested pools", () => {
+    expect(ids(poolUsers("a", pools, boxes))).toEqual(["loop"]);
+    expect(ids(poolUsers("b", pools, boxes))).toEqual(["loop"]);
+    expect(poolUsers("core", pools, { loop: boxes.loop })).toEqual([]);
+  });
+
+  it("emptiedBy flags a box whose only pool is deleted, not a mixed box", () => {
+    const after = withoutPool(pools, "core");
+    expect(ids(emptiedBy(boxes, pools, after))).toEqual(["royal"]);
+    // Nested: deleting Gems leaves Hoard, and the Dragon box, empty.
+    expect(ids(emptiedBy(boxes, pools, withoutPool(pools, "gems")))).toEqual(["dragon"]);
+    expect(withoutPool(pools, "gems").hoard.pools).toEqual([]);
+  });
+
+  it("emptiedBy flags a box whose pool loses its last droppable entry; weight 0 and missing don't count", () => {
+    // Lone holds wand, plus one at weight 0 and one missing: wand is the last.
+    const after = withoutEntry(pools, "lone", "wand");
+    expect(ids(emptiedBy(boxes, pools, after))).toEqual(["solo"]);
+    expect(after.lone.entries.map(e => e.uuid)).toEqual(["dud", "ghost"]);
+    // Removing one of two leaves the box something to drop.
+    expect(emptiedBy(boxes, pools, withoutEntry(pools, "core", "sword"))).toEqual([]);
+    // Removing the weight-0 or missing one empties nothing.
+    expect(removeImpact("lone", "dud", pools, boxes)).toEqual([]);
+    expect(removeImpact("lone", "ghost", pools, boxes)).toEqual([]);
+    expect(ids(removeImpact("lone", "wand", pools, boxes))).toEqual(["solo"]);
+  });
+
+  it("a box already empty before isn't flagged", () => {
+    const empty = { ...pools, lone: { ...pools.lone, entries: [item("dud", "rare", { weight: 0 })] } };
+    expect(emptiedBy(boxes, empty, withoutPool(empty, "lone"))).toEqual([]);
+    const impact = deleteImpact("lone", empty, boxes);
+    expect(ids(impact.users)).toEqual(["adventurer", "solo"]);
+    expect(impact.emptied).toEqual([]);
+    expect(ids(impact.kept)).toEqual(["adventurer"]);
+  });
+
+  it("deleteImpact splits users into kept and emptied", () => {
+    const impact = deleteImpact("core", pools, boxes);
+    expect(ids(impact.users)).toEqual(["adventurer", "royal"]);
+    expect(ids(impact.emptied)).toEqual(["royal"]);
+    expect(ids(impact.kept)).toEqual(["adventurer"]);
+  });
+
+  it("the header line names the boxes, at most three, or says none", () => {
+    expect(usersLine([], esc)).toBe('<span class="lc-pool__users">Not in any box</span>');
+    expect(usersLine(["Adventurer's Crate", "Royal Crate"], esc)).toBe('<span class="lc-pool__users">In Adventurer&#39;s Crate, Royal Crate</span>');
+    expect(usersLine(["A", "B", "C", "D", "E"], esc)).toContain(">In A, B, C and 2 more<");
+    expect(poolSummary(POOL, ROWS, esc, ["Royal Crate"])).toContain('<span class="lc-pool__users">In Royal Crate</span></summary>');
+    expect(poolSummary(POOL, ROWS, esc)).not.toContain("lc-pool__users");
+  });
+
+  it("the confirms name the boxes, and the emptied ones in a sentence of their own", () => {
+    expect(nameList(["A"])).toBe("A");
+    expect(nameList(["A", "B", "C"])).toBe("A, B and C");
+    const text = deletePoolText(pools.core, deleteImpact("core", pools, boxes), esc);
+    expect(text).toBe("<p>Delete <strong>Core</strong>? It is in <strong>adventurer crate</strong> and <strong>royal crate</strong>.</p>"
+      + "<p><strong>adventurer crate</strong> can still drop items from its other pools.</p>"
+      + "<p><strong>royal crate</strong> will have nothing inside and can't be bought until it has an item that can drop.</p>");
+    expect(deletePoolText(pools.a, { users: [] }, esc)).toBe("<p>Delete <strong>A</strong>? No box draws from it.</p>");
+    const two = [boxes.royal, boxes.solo];
+    expect(deletePoolText(pools.core, { users: two, emptied: two }, esc)).toContain("<strong>royal crate</strong> and <strong>solo crate</strong> will have nothing inside and can't be bought until they have an item that can drop.");
+    expect(removeEntryText("Wand <1>", pools.lone, [boxes.solo], esc)).toBe("<p>Remove <strong>Wand &lt;1&gt;</strong> from <strong>Lone</strong>? It is the last item solo crate can drop.</p>"
+      + "<p><strong>solo crate</strong> will have nothing inside and can't be bought until it has an item that can drop.</p>");
   });
 });

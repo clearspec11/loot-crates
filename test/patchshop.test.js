@@ -60,7 +60,8 @@ describe("patchShop keeps the pressed Buy", () => {
       render(extra, f);
       expect(buy("common")).toBe(btn);
       expect(doc.activeElement).toBe(btn);
-      expect(btn.textContent.trim()).toBe(label);
+      // The crate's name for screen readers, then the visible label.
+      expect(btn.textContent.trim()).toBe(`Pauper's Box: ${label}`);
       expect(cards().every((c, i) => c === before[i])).toBe(true);
     }
     expect(content.querySelector(".lc-shop__purse").textContent).toBe("395 gp");

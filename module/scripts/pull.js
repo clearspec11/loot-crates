@@ -7,7 +7,7 @@
 import { RARITIES } from "./config.js";
 import { draw, nextState, markEntriesMissing } from "./odds.js";
 import { buildStrip } from "./strip.js";
-import { charge, canAfford } from "./currency.js";
+import { charge, canAfford, formatPrice } from "./currency.js";
 
 export class PullError extends Error {}
 
@@ -39,11 +39,22 @@ export function sourceRaritiesOf(data) {
   marked missing) come back as `pools`, so the reveal shows the odds of that
   roll even when onMissing couldn't save the mark.
 */
+/*
+  `expectedPrice` is the price on the Buy the buyer pressed (socket.js passes
+  the pull message's `price`). A GM's price edit runs through the same write
+  queue ahead of a pull already in flight, so the box read here can cost more
+  or less than the buyer agreed to: such a pull is refused before anything is
+  charged, never charged and refunded after. Without one (a direct caller, or
+  an older client's message) the box's own price is charged, as before.
+*/
 const MAX_REDRAWS = 3;
-export async function performPull({ box, pools, actor, state = {}, rng = rollRng(), grant = true, onMissing = null }) {
+export async function performPull({ box, pools, actor, state = {}, rng = rollRng(), grant = true, onMissing = null, expectedPrice }) {
   if (!box) throw new PullError("That box no longer exists.");
   if (!actor) throw new PullError("No character to buy with.");
   if (box.rules?.stock != null && box.rules.stock <= 0) throw new PullError(`${box.name} is sold out.`);
+  if (expectedPrice != null && Number(expectedPrice) !== Number(box.price)) {
+    throw new PullError(`${box.name} now costs ${formatPrice(box.price)} (you pressed ${formatPrice(expectedPrice)}). Nothing was charged.`);
+  }
 
   // A copy: the live currency object is what actor.update rewrites, and the
   // grant-failure branch below needs the purse as it was before the charge.

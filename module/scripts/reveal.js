@@ -92,6 +92,23 @@ function usedSlots() {
 
 const pageHidden = () => document.visibilityState === "hidden";
 
+// The strip's tick for each card that passes the marker, one voice per
+// mount. On a near-miss the card past the result is a tease, and the next
+// tick back on the result is the drop back; every other tick falls in pitch
+// with progress as before.
+export function stripVoice(strip) {
+  let teased = false;
+  return index => {
+    if (strip.nearMiss && index === strip.landIndex + 1) {
+      teased = true;
+      playTick(1, { tease: true });
+    } else if (teased && index === strip.landIndex) {
+      teased = false;
+      playTick(1, { back: true });
+    } else playTick(index / strip.landIndex);
+  };
+}
+
 // The landed promise of each reveal still spinning on this client, by the
 // pull's logId (what its chat card carries in flags).
 const spinning = new Map();
@@ -245,7 +262,8 @@ export class CrateReveal extends ApplicationV2 {
 
   #resolveLanded;
   #spin = null;
-  #slowSound = null;
+  // The braking sweep's stop(), while one may still be sounding.
+  #sweep = null;
   #closed = false;
   #landedAt = -Infinity;
   #onHidden = null;
@@ -337,7 +355,6 @@ export class CrateReveal extends ApplicationV2 {
     const buy = ownBuy(this.reveal) ?? replayReturn(this.reveal, this.returnTo);
     if (buy?.isConnected && focusIsFree(this.element)) buy.focus({ preventScroll: true });
     this.#closed = true;
-    clearTimeout(this.#slowSound);
     this.#stopWatching();
     // End the loop now rather than animating a detached strip for seconds.
     this.#spin?.skip();
@@ -390,11 +407,15 @@ export class CrateReveal extends ApplicationV2 {
     const sound = game.settings.get(MODULE_ID, SETTINGS.SOUND);
     const r = this.reveal;
     this.#stopWatching();
-    clearTimeout(this.#slowSound);
     const spin = this.#spin = mountSpin(host, r.strip, {
-      onTick: sound ? i => playTick(i / r.strip.landIndex) : null,
+      onTick: sound ? stripVoice(r.strip) : null,
+      // The braking sweep starts with the ease-out and lasts until the strip
+      // turns back, both read from the spin's own frames.
+      // A strip that lands early (Skip, Close, hidden) cuts the sweep with it.
+      onPhase: sound ? (phase, { settleIn }) => { if (phase === "brake" && !pageHidden()) this.#sweep = playSlow(settleIn); } : null,
       onLand: () => {
-        clearTimeout(this.#slowSound);
+        this.#sweep?.();
+        this.#sweep = null;
         this.#stopWatching();
         if (!replay) this.#resolveLanded();
         if (this.#closed) return;
@@ -411,7 +432,6 @@ export class CrateReveal extends ApplicationV2 {
       this.#onHidden = () => { if (pageHidden()) spin.skip({ now: true }); };
       document.addEventListener("visibilitychange", this.#onHidden);
     }
-    if (sound && !spin.landed && !pageHidden()) this.#slowSound = setTimeout(playSlow, 3600);
     spin.play();
   }
 

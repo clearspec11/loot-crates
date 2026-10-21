@@ -87,6 +87,23 @@ export function buyReason(box, odds, ctx = {}) {
   return crateState(box, odds, ctx) || shopReason(ctx) || crateReason(box, odds, ctx);
 }
 
+/*
+  Which character the shop buys for, picked again on every render and Buy:
+  ownership changes while the shop is open (the GM takes a character away,
+  gives one, assigns the player's own), and a pick made once at open sent
+  pulls the GM refused ("You don't own that character."). `actors` are the
+  characters the player owns now (shop.js buyableActors); `storedId` is the
+  one the shop had, kept while it is still among them; else the user's own
+  character (an actor or its id) if owned, else the first owned, else null.
+*/
+export function pickActor(storedId, actors = [], mainCharacter = null) {
+  const owned = id => id != null && actors.some(a => a.id === id);
+  if (owned(storedId)) return storedId;
+  const main = typeof mainCharacter === "string" ? mainCharacter : mainCharacter?.id;
+  if (owned(main)) return main;
+  return actors[0]?.id ?? null;
+}
+
 // Why no crate can be bought at all, or "": the shop is shut, no GM is there
 // to roll, or there's no character to pay. Said once, not under every card.
 export function shopReason({ hasActor = false, open = true, gmOnline = true } = {}) {
@@ -194,6 +211,10 @@ export function shopNotice(ctx = {}) {
   It is described by every reason that applies: the shop's notice (shared,
   by id) and the card's own line. A shop-wide reason is never repeated under
   the cards. The card carries data-box, so patchShop can find it again.
+  Every Buy starts with the crate's name, for screen readers only (a list of
+  buttons read out of context said "Open for 25 gp" twice for two crates at
+  one price); the visible label follows it, so the label a sighted user
+  says is still part of the button's name (WCAG 2.5.3), in every state.
   The card keeps a lc-rarity-<best> class naming the best rarity it can drop;
   its colour is not painted over the card, since the ribbon shows how likely
   that is.
@@ -213,6 +234,8 @@ export function boxCard(box, pools, ctx) {
   const peek = peekItems(box, pools, odds, 3, state);
   const stock = odds.rows.length && box.rules?.stock != null ? `<div class="lc-box__stock">${esc(box.rules.stock)} left</div>` : "";
   const pity = pityLine(odds);
+  // The price this Buy says, which the shop sends with the pull (shop.js #buy).
+  const price = Number.isFinite(Number(box.price)) && box.price !== "" && box.price != null ? String(Number(box.price)) : "";
   return `
       <div class="lc-box ${rarityClass}" data-box="${esc(box.id)}">
         <div class="lc-box__band"><h3 class="lc-box__name">${esc(box.name)}</h3></div>
@@ -221,8 +244,8 @@ export function boxCard(box, pools, ctx) {
           ${odds.rows.length ? `${oddsRibbon(odds.rows)}<div class="lc-box__odds">${oddsPills(odds.rows)}</div>` : ""}
           ${pity ? `<div class="lc-box__pity lc-rarity-${odds.pity.minRarity}${odds.pity.due ? " lc-box__pity--due" : ""}">${esc(pity)}</div>` : ""}
           ${stock}
-          <button type="button" class="lc-box__buy" data-action="buy" data-box="${esc(box.id)}"${off ? ` aria-disabled="true"` : ""}${off && describedBy ? ` aria-describedby="${esc(describedBy)}"` : ""}>
-            ${opening ? (waiting ? "Waiting for the GM…" : "Opening…") : `Open for ${esc(formatPrice(box.price))}`}
+          <button type="button" class="lc-box__buy" data-action="buy" data-box="${esc(box.id)}"${price ? ` data-price="${esc(price)}"` : ""}${off ? ` aria-disabled="true"` : ""}${off && describedBy ? ` aria-describedby="${esc(describedBy)}"` : ""}>
+            <span class="lc-sr-only">${esc(box.name)}: </span>${opening ? (waiting ? "Waiting for the GM…" : "Opening…") : `Open for ${esc(formatPrice(box.price))}`}
           </button>
           ${reason ? `<div class="lc-box__why" id="${esc(whyId)}">${esc(reason)}</div>` : ""}
         </div>

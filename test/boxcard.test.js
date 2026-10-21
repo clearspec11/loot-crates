@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { boxCard, buyReason, crateReason, shopReason, shopNotice, shopHTML, SHOP_NOTICE_ID, oddsPills, pityLine, refundRulesLine } from "../module/scripts/boxcard.js";
+import { boxCard, buyReason, crateReason, shopReason, shopNotice, shopHTML, SHOP_NOTICE_ID, oddsPills, pityLine, refundRulesLine, pickActor } from "../module/scripts/boxcard.js";
 import { shopOdds, flattenPool } from "../module/scripts/odds.js";
 import { shortfall } from "../module/scripts/currency.js";
 import { POOLS, BOXES } from "../harness/sample.js";
@@ -96,6 +96,32 @@ describe("the crate's peek and ribbon", () => {
     expect(html).toMatch(/^<div class="lc-ribbon" aria-hidden="true">/);
     expect([...html.matchAll(/flex-grow:([\d.]+)/g)].map(m => +m[1])).toEqual([0.85, 0.15]);
     expect(oddsRibbon([])).toBe("");
+  });
+  const button = html => html.match(/<button[^>]*>/)[0];
+  it("names its crate in the Buy for screen readers, before the visible label, in every state", () => {
+    const sr = `<span class="lc-sr-only">Pauper's Box: </span>`;
+    const states = [
+      [ctx, "Open for 25 gp"],
+      [{ ...ctx, busy: true, busyBox: "common" }, "Opening…"],
+      [{ ...ctx, busy: true, busyBox: "common", waiting: "gm" }, "Waiting for the GM…"],
+    ];
+    for (const [c, label] of states) {
+      const html = boxCard(byId("common"), POOLS, c);
+      const inner = html.match(/<button[^>]*>([\s\S]*?)<\/button>/)[1].trim();
+      // The accessible name is "Pauper's Box: <label>": the visible label is
+      // part of it (WCAG 2.5.3), so no aria-label overrides it.
+      expect(inner).toBe(`${sr}${label}`);
+      expect(button(html)).not.toMatch(/aria-label=/);
+    }
+    // The name is escaped like every string that reaches innerHTML.
+    const esc = s => String(s).replace(/</g, "&lt;");
+    expect(boxCard({ ...byId("common"), name: "<b>x" }, POOLS, { ...ctx, esc })).toContain(`<span class="lc-sr-only">&lt;b>x: </span>`);
+  });
+  it("carries the price it shows on the Buy, so the shop sends that one", () => {
+    expect(button(boxCard(byId("common"), POOLS, ctx))).toContain(` data-price="25"`);
+    expect(button(boxCard({ ...byId("common"), price: 12.5 }, POOLS, ctx))).toContain(` data-price="12.5"`);
+    expect(button(boxCard({ ...byId("common"), price: 0 }, POOLS, ctx))).toContain(` data-price="0"`);
+    expect(button(boxCard({ ...byId("common"), price: undefined }, POOLS, ctx))).not.toContain("data-price");
   });
   it("only the pressed crate says Opening… while every Buy is off", () => {
     const busy = { ...ctx, busy: true, busyBox: "common" };
@@ -276,5 +302,26 @@ describe("the refund dialog's rules line", () => {
   it("is empty without either rule, or when the item stays owned from another pull", () => {
     expect(line({ stock: 2 }, { sinceRare: 2, owned: ["c"] }, { sinceRare: 1, owned: [] })).toBe("");
     expect(line({ noDuplicates: true }, { owned: ["c"] }, { owned: ["c"] })).toBe("");
+  });
+});
+
+describe("pickActor", () => {
+  const tam = { id: "a1" }, orla = { id: "a2" }, pip = { id: "a3" };
+  // [stored, owned now, the user's character, picked]
+  const table = [
+    ["a2", [tam, orla, pip], tam, "a2"], // still owned: kept, even over the user's own
+    ["a2", [tam, pip], tam, "a1"], // taken away: the user's own character
+    ["a2", [pip, tam], tam, "a1"], // the user's own, wherever it sits in the list
+    ["a2", [pip, tam], null, "a3"], // no character assigned: the first owned
+    ["a2", [pip, tam], orla, "a3"], // the user's own isn't owned any more: the first owned
+    ["a1", [], tam, null], // owns nothing: nobody
+    [null, [], null, null], // opened empty
+    [null, [orla], null, "a2"], // given one since
+    [null, [tam, orla], orla, "a2"], // first pick is the user's own
+    [null, [tam, orla], "a2", "a2"], // which may be given as its id
+    [undefined, [orla], undefined, "a2"],
+  ];
+  it.each(table)("stored %s, owned %j, own %j: %s", (stored, owned, main, want) => {
+    expect(pickActor(stored, owned, main)).toBe(want);
   });
 });

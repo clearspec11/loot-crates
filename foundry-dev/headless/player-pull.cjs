@@ -129,7 +129,7 @@ async function join(browser, user, { readySweep = false } = {}) {
     // change. If the installed module registered the settings first and
     // Foundry kept its entries, point their onChange at the branch's too.
     const { storeRedraw } = await import(base + "scripts/redraw.js");
-    const { refreshShop } = await import(base + "scripts/shop.js");
+    const { refreshShop, registerShopHooks } = await import(base + "scripts/shop.js");
     const { refreshManager } = await import(base + "scripts/manager.js");
     const redraw = storeRedraw({ refreshShop, refreshManager });
     store.setStoreListener(redraw);
@@ -137,12 +137,20 @@ async function join(browser, user, { readySweep = false } = {}) {
       const cfg = game.settings.settings.get(`loot-crates.${key}`);
       if (cfg && !String(cfg.onChange ?? "").includes("storeChanged")) cfg.onChange = () => redraw(key);
     }
+    // What main.js does for the shop: it redraws on the purse and on
+    // ownership changes.
+    registerShopHooks?.(Hooks);
     // What main.js does for chat: a pull's card stays sealed while it spins here.
     // And "Watch again" on a pull's card.
     const { sealChatCard, watchAgain, preSealItem } = await import(base + "scripts/reveal.js");
     Hooks.on("renderChatMessageHTML", sealChatCard);
     Hooks.on("renderChatMessageHTML", watchAgain);
-    // And for the sheet: a pull's item stays hidden until it lands here.
+    // And for the sheet: a pull's item stays hidden until it lands here. The
+    // installed module (0.7.0 on) pre-seals too, into the same <style>, and
+    // with its socket listener off it never takes the hold over: its pre-seal
+    // timer ran out mid-spin and emptied the style the branch's hold had
+    // filled. Only the branch's pre-seal runs, as with the socket.
+    for (const h of [...(Hooks.events?.createItem ?? [])]) if (h.fn?.name === "preSealItem") Hooks.off("createItem", h.id);
     Hooks.on("createItem", preSealItem);
     // What main.js's ready hook does on the active GM.
     if (readySweep && socket.isActiveGM()) store.sweepAllPools();

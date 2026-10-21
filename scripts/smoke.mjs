@@ -86,7 +86,15 @@ async function managerProblems(narrow) {
     if (d.open && selects > 50) out.push(`${d.dataset.pool}: ${selects} rarity selects drawn`);
     if (!d.open && d.querySelector(".lc-entry")) out.push(`${d.dataset.pool}: collapsed but rows drawn`);
     if (!/\d+ items?/.test(d.querySelector("summary .lc-pool__count")?.textContent ?? "")) out.push(`${d.dataset.pool}: no census in the summary`);
+    // The boxes that draw from the pool, on a line of its own that wraps
+    // rather than cuts off, at any width.
+    const users = d.querySelector("summary .lc-pool__users");
+    if (!users) out.push(`${d.dataset.pool}: no line naming its boxes`);
+    else if (users.scrollWidth > users.clientWidth + 1 || users.getBoundingClientRect().right > d.getBoundingClientRect().right + 1) out.push(`${d.dataset.pool}: its boxes line is cut off`);
   }
+  const usersOf = id => document.querySelector(`.lc-pool__details[data-pool="${id}"] .lc-pool__users`)?.textContent;
+  if (usersOf("core") !== "In Adventurer's Crate, Pauper's Box, Royal Vault and 1 more") out.push(`core's boxes line reads "${usersOf("core")}"`);
+  if (usersOf("everything") !== "Not in any box") out.push(`the unused pool's line reads "${usersOf("everything")}"`);
   const everything = document.querySelector('.lc-pool__details[data-pool="everything"]');
   if (everything?.open) out.push("the 200-entry pool should start collapsed");
   if (document.querySelectorAll('[role="status"]').length !== 1) out.push("expected one role=status");
@@ -238,6 +246,15 @@ async function shopProblems(mode) {
     if (!whys.length || whys.some(why => !why || !why.textContent.trim() || why.getBoundingClientRect().height === 0)) out.push(`unbuyable Buy without a visible reason: ${btn.dataset.box}`);
   }
   if (!document.querySelectorAll('.lc-box__buy[aria-disabled="true"]').length) out.push("sample shop has no unbuyable Buy to check");
+  // Each Buy's name starts with its crate's, said only to screen readers:
+  // the crate name in the Buy takes no visible room.
+  for (const btn of document.querySelectorAll(".lc-box__buy")) {
+    const name = btn.closest(".lc-box")?.querySelector(".lc-box__name")?.textContent.trim();
+    const sr = btn.querySelector(".lc-sr-only");
+    if (!name || !btn.textContent.trim().startsWith(`${name}: `)) out.push(`Buy doesn't name its crate: "${btn.textContent.trim()}"`);
+    const box = sr?.getBoundingClientRect();
+    if (!sr || box.width > 1 || box.height > 1) out.push(`the crate name in ${btn.dataset.box}'s Buy is visible`);
+  }
   const status = document.querySelectorAll('[role="status"]');
   if (status.length !== 1 || !status[0].matches(".lc-shop__head .lc-shop__notice")) out.push(`expected one role=status, the header notice; got ${status.length}`);
   const notice = document.querySelector(".lc-shop__notice");
@@ -285,7 +302,7 @@ async function shopProblems(mode) {
       if (document.activeElement !== btn) out.push(`after the ${label} render, focus is on ${document.activeElement?.tagName}`);
       if (document.querySelector('.lc-box__buy[data-box="common"]') !== btn) out.push(`the ${label} render replaced the pressed Buy`);
       if ([...document.querySelectorAll(".lc-box")].some((c, i) => c !== cards[i])) out.push(`the ${label} render replaced a card`);
-      if (btn.textContent.trim() !== text) out.push(`after the ${label} render the Buy reads "${btn.textContent.trim()}"`);
+      if (btn.textContent.trim() !== `Pauper's Box: ${text}`) out.push(`after the ${label} render the Buy reads "${btn.textContent.trim()}"`);
     }
     if (btn.getAttribute("aria-disabled") !== "true") out.push("the pressed Buy isn't aria-disabled while busy");
     if (document.querySelectorAll('.lc-box__buy:not([aria-disabled="true"])').length) out.push("a Buy is on while a pull is out");
