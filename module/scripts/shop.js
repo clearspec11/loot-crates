@@ -234,9 +234,9 @@ export class CrateShop extends ApplicationV2 {
 
   // Why a Buy did nothing is about that press; a shop opened again later
   // starts without it.
-  async _onClose(options) {
+  _onClose(options) {
     this.said = null;
-    return super._onClose?.(options);
+    super._onClose?.(options);
   }
 
   // The notice node, the cards and the focused Buy are kept across renders

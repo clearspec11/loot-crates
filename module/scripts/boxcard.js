@@ -201,9 +201,9 @@ export function shopNotice(ctx = {}) {
   later and, for a press, said nothing: the cards were drawn a moment before
   the data changed. `box` is the crate as it stands now (undefined once the
   GM took it off the shelf), `reason` its fresh crateReason, `shown` the
-  price on the pressed Buy (its data-price). A price the GM raised past this
-  character's purse is named with both figures, since the card the player
-  pressed still says the old one. A shop-wide reason is the notice's own, so
+  price on the pressed Buy (its data-price). A price the GM changed to one
+  past this character's purse is named with the new figure, since the card
+  the player pressed still says the old one. A shop-wide reason is the notice's own, so
   the caller leaves those out.
 */
 export function refusalLine({ box, reason = "", shown, purse = {}, actorName = "" }) {
