@@ -6,7 +6,7 @@
 
   The card reads like a dnd5e card: the crate's name on a band, its bet as a
   ribbon (one bar of its real drop chances) over named odds, the price on the
-  button. A disabled Buy says why in visible text, linked to the button with
+  button. An unbuyable Buy says why in visible text, linked to the button with
   aria-describedby, so keyboard, screen-reader and touch users all learn it:
   a reason that is the crate's own under the card, a reason that holds for
   the whole shop once in its header.
@@ -136,9 +136,13 @@ export function shopNotice(ctx = {}) {
   was pressed (busyBox) says "Opening…"; with no busyBox, all of them do.
   When the GM is slow to answer (`waiting`, from socket.js onWait) it says
   "Waiting for the GM…" instead; why is in the shop's notice.
-  A disabled Buy is described by every reason that applies: the shop's
-  notice (shared, by id) and the card's own line. A shop-wide reason is never
-  repeated under the cards.
+  An unbuyable Buy is aria-disabled, never `disabled`: a disabled button
+  can't hold focus, so the Buy a keyboard user just pressed would drop them
+  on the page's body the moment it said "Opening…". It stays focusable and
+  says it is off; the shop's action checks again before buying (shop.js).
+  It is described by every reason that applies: the shop's notice (shared,
+  by id) and the card's own line. A shop-wide reason is never repeated under
+  the cards. The card carries data-box, so patchShop can find it again.
   The card keeps a lc-rarity-<best> class naming the best rarity it can drop;
   its colour is not painted over the card, since the ribbon shows how likely
   that is.
@@ -150,20 +154,20 @@ export function boxCard(box, pools, ctx) {
   const notice = shopNotice(ctx).text;
   const whyId = `lc-why-${box.id}`;
   const describedBy = [notice ? SHOP_NOTICE_ID : "", reason ? whyId : ""].filter(Boolean).join(" ");
-  const disabled = !!(reason || notice || ctx.busy);
+  const off = !!(reason || notice || ctx.busy);
   const rarityClass = odds.top ? `lc-rarity-${odds.top}` : "lc-box--empty";
   const opening = ctx.busy && (ctx.busyBox == null || ctx.busyBox === box.id);
   const waiting = opening && WAITING[ctx.waiting];
   const peek = peekItems(box, pools, odds);
   const stock = odds.rows.length && box.rules?.stock != null ? `<div class="lc-box__stock">${esc(box.rules.stock)} left</div>` : "";
   return `
-      <div class="lc-box ${rarityClass}">
+      <div class="lc-box ${rarityClass}" data-box="${esc(box.id)}">
         <div class="lc-box__band"><h3 class="lc-box__name">${esc(box.name)}</h3></div>
         <div class="lc-box__body">
           <div class="lc-box__art" aria-hidden="true">${peek.length ? peekHTML(peek, esc) : ctx.art ?? ""}</div>
           ${odds.rows.length ? `${oddsRibbon(odds.rows)}<div class="lc-box__odds">${oddsPills(odds.rows)}</div>` : ""}
           ${stock}
-          <button type="button" class="lc-box__buy" data-action="buy" data-box="${esc(box.id)}"${disabled ? " disabled" : ""}${disabled && describedBy ? ` aria-describedby="${esc(describedBy)}"` : ""}>
+          <button type="button" class="lc-box__buy" data-action="buy" data-box="${esc(box.id)}"${off ? ` aria-disabled="true"` : ""}${off && describedBy ? ` aria-describedby="${esc(describedBy)}"` : ""}>
             ${opening ? (waiting ? "Waiting for the GM…" : "Opening…") : `Open for ${esc(formatPrice(box.price))}`}
           </button>
           ${reason ? `<div class="lc-box__why" id="${esc(whyId)}">${esc(reason)}</div>` : ""}
@@ -190,8 +194,11 @@ export function shopHTML({ fields, cards, notice }) {
 /*
   Puts a freshly rendered shop body (`fresh`, an element holding shopHTML
   with its notice text in `notice`) into `content`. The first time it moves
-  the whole body in; after that it swaps the fields and the grid and only
-  rewrites the existing notice's text, so the live region node survives.
+  the whole body in; after that it morphs the fields and the grid into the
+  fresh ones (morph), so every node that is still wanted stays the same node:
+  the Buy a keyboard user pressed keeps focus through "Opening…", the GM's
+  charge and back, and the character <select> through a pick. The notice
+  only has its text rewritten, so the live region node survives.
   Returns the notice element.
 */
 export function patchShop(content, fresh, notice) {
@@ -204,12 +211,73 @@ export function patchShop(content, fresh, notice) {
     return node;
   }
   const body = live.closest(".lc-shop__body");
-  body.className = fresh.className;
-  body.querySelector(".lc-shop__fields").replaceWith(fresh.querySelector(".lc-shop__fields"));
-  body.querySelector(".lc-shop__grid").replaceWith(fresh.querySelector(".lc-shop__grid"));
+  if (body.className !== fresh.className) body.className = fresh.className;
+  morph(body.querySelector(".lc-shop__fields"), fresh.querySelector(".lc-shop__fields"));
+  morph(body.querySelector(".lc-shop__grid"), fresh.querySelector(".lc-shop__grid"));
   if (live.textContent !== notice.text) live.textContent = notice.text;
   live.dataset.tone = notice.tone;
   return live;
+}
+
+/*
+  Makes `old` (in the page) look like `fresh` (detached) while keeping every
+  node that can be kept, and returns the node that ends up in the page.
+  Elements match by tag and key (data-box, else id): a crate is the same
+  card however the grid around it changes. A match has its attributes and
+  text brought up to date in place; a node is moved only when the order
+  really changed, added only when new and removed only when gone, since
+  moving or removing a focused node drops its focus. A <select> keeps its
+  node and takes the fresh one's value. Plain DOM, no Foundry.
+*/
+const ELEMENT = 1;
+const keyOf = node => node.nodeType === ELEMENT ? node.getAttribute("data-box") ?? node.getAttribute("id") ?? null : null;
+const sameKind = (a, b) => a.nodeType === b.nodeType && a.nodeName === b.nodeName && keyOf(a) === keyOf(b);
+
+export function morph(old, fresh) {
+  if (!sameKind(old, fresh)) {
+    old.replaceWith(fresh);
+    return fresh;
+  }
+  if (old.nodeType !== ELEMENT) {
+    if (old.nodeValue !== fresh.nodeValue) old.nodeValue = fresh.nodeValue;
+    return old;
+  }
+  for (const name of old.getAttributeNames()) if (!fresh.hasAttribute(name)) old.removeAttribute(name);
+  for (const name of fresh.getAttributeNames()) {
+    const value = fresh.getAttribute(name);
+    if (old.getAttribute(name) !== value) old.setAttribute(name, value);
+  }
+  morphChildren(old, fresh);
+  if (old.nodeName === "SELECT" && old.value !== fresh.value) old.value = fresh.value;
+  return old;
+}
+
+// Whitespace between elements is the markup's indentation (every container
+// here is a flex or grid box, where it draws nothing). It is dropped rather
+// than paired by position, since pairing it would move the cards between it.
+const blank = node => node.nodeType === 3 && !node.nodeValue.trim();
+
+function morphChildren(parent, freshParent) {
+  const olds = [...parent.childNodes].filter(n => !blank(n) || n.remove());
+  const keyed = new Map(olds.filter(n => keyOf(n) != null).map(n => [keyOf(n), n]));
+  const loose = olds.filter(n => keyOf(n) == null);
+  const used = new Set();
+  // Pair each fresh child with an old one first, so nothing is moved or
+  // dropped on a guess.
+  const pairs = [...freshParent.childNodes].filter(n => !blank(n)).map(fresh => {
+    const key = keyOf(fresh);
+    let match = key != null ? keyed.get(key) : loose.find(n => !used.has(n) && sameKind(n, fresh));
+    if (match && (used.has(match) || !sameKind(match, fresh))) match = null;
+    if (match) used.add(match);
+    return [match, fresh];
+  });
+  for (const node of olds) if (!used.has(node)) node.remove();
+  pairs.forEach(([match, fresh], i) => {
+    const at = parent.childNodes[i] ?? null;
+    const node = match ?? fresh;
+    if (node !== at) parent.insertBefore(node, at);
+    if (match) morph(match, fresh);
+  });
 }
 
 /*

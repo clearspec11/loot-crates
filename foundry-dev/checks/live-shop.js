@@ -46,7 +46,9 @@ const boxes = [...el.querySelectorAll(".lc-box")].map(card => {
     pills: [...card.querySelectorAll(".lc-odd")].map(p => p.textContent),
     colour: [...card.classList].find(c => c.startsWith("lc-rarity-") || c === "lc-box--empty"),
     expectedColour: top ? `lc-rarity-${top}` : "lc-box--empty",
-    disabled: btn.disabled,
+    // Off by aria-disabled, never disabled, so a pressed Buy keeps focus.
+    disabled: btn.getAttribute("aria-disabled") === "true",
+    reallyDisabled: btn.disabled,
     title: btn.getAttribute("title"),
     reason: why ? { text: why.textContent, visible: why.shown } : null,
   };
@@ -58,6 +60,7 @@ const problems = [
   ...boxes.filter(b => b.colour !== b.expectedColour).map(b => `${b.name} coloured ${b.colour}, best drop ${b.expectedColour}`),
   ...boxes.filter(b => b.disabled && !(b.reason?.text && b.reason.visible)).map(b => `${b.name}: disabled Buy with no visible reason`),
   ...boxes.filter(b => b.title).map(b => `${b.name}: Buy still has a title`),
+  ...boxes.filter(b => b.reallyDisabled).map(b => `${b.name}: Buy is disabled (can't hold focus); should be aria-disabled`),
 ];
 const blockers = boxes.filter(b => b.disabled && /Nothing inside|Needs .* more/.test(b.reason?.text ?? ""));
 if (!blockers.length) problems.push("no empty or unaffordable box to check a reason on");

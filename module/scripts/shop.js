@@ -4,7 +4,8 @@
 */
 import { getBoxes, getPools, isShopOpen } from "./store.js";
 import { formatGold } from "./currency.js";
-import { boxCard, shopHTML, shopNotice, patchShop } from "./boxcard.js";
+import { boxCard, buyReason, shopHTML, shopNotice, patchShop } from "./boxcard.js";
+import { shopOdds } from "./odds.js";
 import { requestPull } from "./socket.js";
 
 const { ApplicationV2 } = foundry.applications.api;
@@ -34,9 +35,16 @@ export class CrateShop extends ApplicationV2 {
 
   get actor() { return game.actors.get(this.actorId) ?? null; }
 
+  /*
+    An unbuyable Buy is aria-disabled, not disabled (it keeps focus), so a
+    click or Enter on it still lands here: check again, from fresh data, that
+    nothing is out and this crate can be bought now.
+  */
   static async #buy(_event, target) {
     if (this.busy) return;
     const boxId = target.dataset.box;
+    const box = getBoxes()[boxId];
+    if (!box || buyReason(box, shopOdds(box, getPools()), this.#ctx())) return;
     this.busy = true;
     this.busyBox = boxId;
     this.render();
@@ -64,6 +72,16 @@ export class CrateShop extends ApplicationV2 {
     this.render();
   }
 
+  // What decides whether a crate can be bought, for the cards and for #buy.
+  #ctx() {
+    const actor = this.actor;
+    const gm = !!game.users.activeGM;
+    return {
+      purse: actor?.system?.currency ?? {}, open: isShopOpen() && gm, gmOnline: gm, hasActor: !!actor,
+      busy: this.busy, busyBox: this.busyBox, waiting: this.waiting, art: `<i class="fas fa-box-open"></i>`, esc,
+    };
+  }
+
   async _renderHTML() {
     const root = document.createElement("div");
     root.className = "lc-shop__body";
@@ -72,11 +90,7 @@ export class CrateShop extends ApplicationV2 {
     const boxes = Object.values(getBoxes());
     const pools = getPools();
     const purse = actor?.system?.currency ?? {};
-    const ctx = {
-      purse, open: isShopOpen() && !!game.users.activeGM, gmOnline: !!game.users.activeGM, hasActor: !!actor,
-      busy: this.busy, busyBox: this.busyBox, waiting: this.waiting, art: `<i class="fas fa-box-open"></i>`, esc,
-    };
-
+    const ctx = this.#ctx();
     const picker = actors.length > 1
       ? `<label class="lc-shop__field"><span class="lc-label">Character</span><select class="lc-shop__actor">${actors.map(a => `<option value="${a.id}"${a.id === this.actorId ? " selected" : ""}>${esc(a.name)}</option>`).join("")}</select></label>`
       : `<div class="lc-shop__field"><span class="lc-label">Character</span><span class="lc-shop__who">${esc(actor?.name ?? "No character")}</span></div>`;
@@ -94,7 +108,9 @@ export class CrateShop extends ApplicationV2 {
     return root;
   }
 
-  // The notice node is kept across renders (see boxcard.js patchShop).
+  // The notice node, the cards and the focused Buy are kept across renders
+  // (see boxcard.js patchShop). The <select> is kept too, with the change
+  // listener it got on the first render.
   _replaceHTML(result, content) { patchShop(content, result, this.notice); }
 }
 

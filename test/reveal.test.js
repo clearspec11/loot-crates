@@ -15,7 +15,7 @@ const fakeElement = () => ({
   append(...kids) { this.children.push(...kids); },
   appendChild(kid) { this.children.push(kid); },
   replaceChildren() {},
-  focus() {},
+  focus() { if (doc) doc.activeElement = this; },
   contains: () => false,
 });
 
@@ -24,7 +24,7 @@ class FakeApp {
   async render() {
     const html = await this._renderHTML();
     const parts = new Map();
-    this.element = { querySelector: sel => parts.get(sel) ?? parts.set(sel, fakeElement()).get(sel) };
+    this.element = { querySelector: sel => parts.get(sel) ?? parts.set(sel, fakeElement()).get(sel), contains: el => [...parts.values()].includes(el) };
     this._replaceHTML(html, fakeElement());
     this.state = 1;
     this._onRender();
@@ -45,6 +45,7 @@ beforeEach(() => {
     activeElement: null,
     body: {},
     createElement: fakeElement,
+    querySelectorAll: () => [],
     addEventListener: (type, fn) => listeners.set(fn, type),
     removeEventListener: (_type, fn) => listeners.delete(fn),
   };
@@ -171,5 +172,68 @@ describe("the chat card while a spin plays here", () => {
     const refunded = cardHTML({ refunded: true });
     sealChatCard(message("L4"), refunded.html);
     expect(refunded.card.classes.has("lc-chat--sealed")).toBe(false);
+  });
+});
+
+/*
+  The shop keeps focus on the Buy the buyer pressed (boxcard.js patchShop),
+  so that focus mustn't count as "busy elsewhere": the buyer's Close still
+  gets focus on landing, and closing hands it back to the crate they bought.
+  Anyone else's focus on a Buy is theirs to keep.
+*/
+describe("focus between the buyer's Buy and the reveal", () => {
+  const buyFor = box => ({ dataset: { box }, isConnected: true, focus() { doc.activeElement = this; } });
+  const land = async app => {
+    for (let now = 0; frames.length; now += 16) frames.shift()(now);
+    await app.landed;
+  };
+  const mine = { ...reveal, userId: "u" };
+
+  it("moves the buyer's focus from their Buy to Close on landing, and back on close", async () => {
+    const buy = buyFor("b");
+    doc.querySelectorAll = sel => sel === ".lc-shop .lc-box__buy" ? [buyFor("other"), buy] : [];
+    buy.focus();
+    const app = await showReveal(mine);
+    expect(doc.activeElement).toBe(buy);
+    await land(app);
+    const close = app.element.querySelector(".lc-reveal__close");
+    expect(doc.activeElement).toBe(close);
+    app.close();
+    expect(doc.activeElement).toBe(buy);
+  });
+
+  it("leaves focus on a Buy that isn't this pull's buyer's", async () => {
+    const buy = buyFor("b");
+    doc.querySelectorAll = () => [buy];
+    buy.focus();
+    // Another player's pull of the same crate.
+    const app = await showReveal(reveal);
+    await land(app);
+    expect(doc.activeElement).toBe(buy);
+    // The buyer's own Buy for another crate isn't theirs to leave either.
+    const other = buyFor("x");
+    doc.querySelectorAll = () => [other];
+    other.focus();
+    const app2 = await showReveal({ ...mine, requestId: "r2" });
+    await land(app2);
+    expect(doc.activeElement).toBe(other);
+  });
+
+  it("doesn't pull focus back to the Buy when the buyer has moved on, or the Buy is gone", async () => {
+    const buy = buyFor("b");
+    doc.querySelectorAll = () => [buy];
+    buy.focus();
+    const app = await showReveal(mine);
+    await land(app);
+    const chat = { focus() {} };
+    doc.activeElement = chat;
+    app.close();
+    expect(doc.activeElement).toBe(chat);
+    const app2 = await showReveal({ ...mine, requestId: "r3" });
+    await land(app2);
+    buy.isConnected = false;
+    doc.activeElement = app2.element.querySelector(".lc-reveal__close");
+    app2.close();
+    expect(doc.activeElement).not.toBe(buy);
   });
 });

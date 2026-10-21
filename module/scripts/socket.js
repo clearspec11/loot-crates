@@ -201,10 +201,31 @@ export function gmTabHidden() {
 // Tells a waiting buyer the GM's tab is in the background, once per pull and
 // only once the pull is already slow: on a responsive client the reveal
 // follows within a second, and an extra message first would only delay it.
+// Never after the reveal has gone out (sent.ack is set then).
 function ackIfSlow(msg, timer, sent) {
   if (sent.ack || msg.userId === game.user.id || !gmTabHidden() || timer.elapsed() <= SLOW_PULL_MS) return;
   sent.ack = true;
   game.socket.emit(SOCKET, { type: "ack", requestId: msg.requestId, userId: msg.userId, hidden: true });
+}
+
+/*
+  Checks for the ack on a timer from the moment the request arrives, as well
+  as between doPull's steps: a pull can sit for many seconds inside one step
+  (a throttled tab's server round trip) or in the queue behind another pull,
+  and a check at the step's end comes with the reveal, too late to tell the
+  buyer anything. A hidden tab runs this timer late too (about once a second),
+  which is still seconds sooner than the step. Returns the stop function.
+*/
+function watchForSlow(msg, timer, sent) {
+  if (msg.userId === game.user.id) return () => {};
+  let handle = null;
+  const check = () => {
+    ackIfSlow(msg, timer, sent);
+    // Not slow-and-hidden yet (the tab may be hidden later): look again.
+    if (!sent.ack) handle = setTimeout(check, 1000);
+  };
+  handle = setTimeout(check, SLOW_PULL_MS + 1);
+  return () => { sent.ack = true; clearTimeout(handle); };
 }
 
 // The GM hears about a slow pull once per session, with its time, in a toast
@@ -228,7 +249,9 @@ export function _resetSlowWarning() { warnedSlow = false; }
 // are read after the previous pull (or refund) has finished writing.
 function handlePull(msg) {
   const timer = stepTimer(`pull ${msg.requestId}`);
-  return enqueueWrite(() => doPull(msg, timer));
+  const sent = { ack: false };
+  const stop = watchForSlow(msg, timer, sent);
+  return enqueueWrite(() => doPull(msg, timer, sent, stop)).finally(stop);
 }
 
 /*
@@ -288,10 +311,9 @@ async function recordPull({ msg, box, actor, out, log }) {
   globalThis.ui?.notifications?.error(`Loot Crates: ${actor.name} got ${log.name} from ${box.name}, but the pull log, stock or pity count wasn't saved. Check the console.`);
 }
 
-async function doPull(msg, timer = stepTimer(`pull ${msg.requestId}`)) {
+async function doPull(msg, timer, sent, stopWatching) {
   timer.mark("queue");
   const hiddenAtStart = gmTabHidden();
-  const sent = { ack: false };
   const reply = payload => {
     if (msg.userId === game.user.id) return;
     game.socket.emit(SOCKET, { ...payload, requestId: msg.requestId });
@@ -327,6 +349,7 @@ async function doPull(msg, timer = stepTimer(`pull ${msg.requestId}`)) {
     // Charged now: a cancel from here on is too late to drop the pull.
     rememberCharge(msg.requestId, { requestId: msg.requestId, userId: msg.userId, buyerName: buyer.name, actorName: actor.name, boxName: box.name, itemName: out.result.name, logId });
     const reveal = { type: "reveal", requestId: msg.requestId, userId: msg.userId, actorId: actor.id, actorName: actor.name, box: { id: box.id, name: box.name, price: box.price }, odds: shopOdds(box, getPools()).rows.map(({ rarity, chance, label }) => ({ rarity, chance, label })), result: out.result, strip: out.strip, purse: out.purse, itemId: out.itemId, itemUuid, logId };
+    stopWatching();
     game.socket.emit(SOCKET, reveal);
     timer.mark("broadcast");
     // A cancel that came in while the coins were being taken.

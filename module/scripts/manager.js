@@ -39,7 +39,7 @@
   pills) for the form as it stands, redrawn on every keystroke, tick and
   untick, and says when the box would drop nothing (liveOdds below).
 */
-import { RARITIES, RARITY_LABEL, DEFAULT_WEIGHTS, DEFAULT_PRICE_GP } from "./config.js";
+import { RARITIES, RARITY_LABEL, DEFAULT_WEIGHTS, DEFAULT_PRICE_GP, SETTINGS } from "./config.js";
 import { oddsPills, oddsRibbon, draftBox, boxPreview, boxPreviewHTML, oddsSummary, quietAnnouncer } from "./boxcard.js";
 
 // A box's odds in the Boxes table: its ribbon over its named pills.
@@ -48,7 +48,6 @@ import { getPools, getBoxes, getLog, createPool, updatePool, removePool, createB
 import { shopOdds, normalizeRarity, flattenPool, withSources, entryWeight, curateEntries } from "./odds.js";
 import { PAGE_ROWS, FALLBACK_IMG, defaultView, poolRows, sortRows, filterRows, pageRows, nextRows, poolCount, poolSummary, poolBody, chipsHTML, unsetButton, footHTML, entryRow, entryParts } from "./poolview.js";
 import { formatPrice } from "./currency.js";
-import { refreshShop } from "./shop.js";
 import { describeRefund, refundPull } from "./refund.js";
 import { postRefundCard } from "./chat.js";
 import { refundTime } from "./chatcard.js";
@@ -216,13 +215,13 @@ export class CrateManager extends ApplicationV2 {
   static async #editPool(_e, t) {
     const pool = getPools()[t.dataset.pool];
     const data = await promptForm("Edit pool", `<label>Name <input name="name" value="${esc(pool.name)}"></label>`);
-    if (data) { await updatePool(pool.id, { name: data.name || pool.name }); this.render(); refreshShop(); }
+    if (data) { await updatePool(pool.id, { name: data.name || pool.name }); this.render(); }
   }
 
   static async #deletePool(_e, t) {
     const pool = getPools()[t.dataset.pool];
     if (await DialogV2.confirm({ window: { title: "Delete pool" }, content: `<p>Delete <strong>${esc(pool.name)}</strong>? Boxes that use it keep their other pools.</p>` })) {
-      await removePool(pool.id); this.render(); refreshShop();
+      await removePool(pool.id); this.render();
     }
   }
 
@@ -231,7 +230,7 @@ export class CrateManager extends ApplicationV2 {
     const list = t.closest(".lc-entries");
     const at = list ? [...list.children].findIndex(li => li.dataset.entry === uuid) : -1;
     await removeEntry(poolId, uuid);
-    this.#repaint(poolId, { at: at < 0 ? null : at }); refreshShop();
+    this.#repaint(poolId, { at: at < 0 ? null : at });
   }
 
   // Renamed at the source: take its current name, image and rarity.
@@ -241,7 +240,7 @@ export class CrateManager extends ApplicationV2 {
     if (!src) { ui.notifications.warn("That item's source is gone; drop an item on the row to relink it."); return this.render(); }
     await patchEntry(t.dataset.pool, t.dataset.uuid, { name: src.name, img: src.img, rarity: src.rarity, sourceRarity: src.rawRarity ?? undefined });
     this.#sources?.set(t.dataset.uuid, src);
-    this.#repaint(t.dataset.pool, { uuid: t.dataset.uuid }); refreshShop();
+    this.#repaint(t.dataset.pool, { uuid: t.dataset.uuid });
   }
 
   // Relink without dragging (keyboard, screen reader, touch): paste the
@@ -274,7 +273,7 @@ export class CrateManager extends ApplicationV2 {
     if (!RARITIES.includes(data?.rarity)) return;
     const saved = await updatePool(poolId, fresh => ({ ...fresh, entries: curateEntries(fresh.entries, unset, { sourceRarity: "", rarityOverride: data.rarity }) }));
     if (saved) ui.notifications.info(`${n} item${n === 1 ? "" : "s"} in ${pool.name} set to ${RARITY_LABEL[data.rarity]}.`);
-    this.#repaint(poolId); refreshShop();
+    this.#repaint(poolId);
   }
 
   // A rarity or weight changed on a row: save just that, then update the row
@@ -295,7 +294,7 @@ export class CrateManager extends ApplicationV2 {
     const entry = saved?.entries?.find(x => x.uuid === uuid);
     const row = el.closest(".lc-entry");
     const poolEl = el.closest(".lc-pool");
-    if (!entry || !row || !poolEl) { this.render(); refreshShop(); return; }
+    if (!entry || !row || !poolEl) { this.render(); return; }
     // The row stays where it is even if it no longer matches the chip, so
     // focus stays on it; the census and chips catch up.
     const src = this.#srcOf(entry);
@@ -309,7 +308,6 @@ export class CrateManager extends ApplicationV2 {
     this.#paintChips(poolEl, saved, rows);
     const unsetEl = poolEl.querySelector(".lc-pool__unset");
     if (unsetEl) unsetEl.innerHTML = unsetButton(saved, filterRows(rows, view), view, esc);
-    refreshShop();
   }
 
   // What the editor knows of an entry's source: the last check, else its
@@ -371,11 +369,11 @@ export class CrateManager extends ApplicationV2 {
     if (action !== "add") return false;
     const added = await addEntries(poolId, plan.entries);
     ui.notifications.info(`Added ${added} item${added === 1 ? "" : "s"} from ${plan.label} to ${pool.name}.`);
-    this.render(); refreshShop();
+    this.render();
     return true;
   }
 
-  static async #addBox() { await createBox({ name: "New box", price: DEFAULT_PRICE_GP, weights: { ...DEFAULT_WEIGHTS } }); this.render(); refreshShop(); }
+  static async #addBox() { await createBox({ name: "New box", price: DEFAULT_PRICE_GP, weights: { ...DEFAULT_WEIGHTS } }); this.render(); }
 
   static async #editBox(_e, t) {
     const box = getBoxes()[t.dataset.box];
@@ -424,13 +422,13 @@ export class CrateManager extends ApplicationV2 {
       };
     });
     if (!saved) ui.notifications.warn(`${box.name} was deleted while you were editing it.`);
-    this.render(); refreshShop();
+    this.render();
   }
 
   static async #deleteBox(_e, t) {
     const box = getBoxes()[t.dataset.box];
     if (await DialogV2.confirm({ window: { title: "Delete box" }, content: `<p>Delete <strong>${esc(box.name)}</strong>?</p>` })) {
-      await removeBox(box.id); this.render(); refreshShop();
+      await removeBox(box.id); this.render();
     }
   }
 
@@ -460,10 +458,10 @@ export class CrateManager extends ApplicationV2 {
     } else {
       ui.notifications.warn(done.message);
     }
-    this.render(); refreshShop();
+    this.render();
   }
 
-  static async #toggleShop() { await setShopOpen(!isShopOpen()); this.render(); refreshShop(); }
+  static async #toggleShop() { await setShopOpen(!isShopOpen()); this.render(); }
 
   async _renderHTML() {
     const root = document.createElement("div");
@@ -519,7 +517,7 @@ export class CrateManager extends ApplicationV2 {
       const type = Object.keys(plan.skipped.notLoot)[0];
       return ui.notifications.warn(`${plan.label} is a ${SKIPPED_NAMES[type]?.[0] ?? type}, not loot. A pool takes weapons, equipment, consumables, tools, loot and containers.`);
     }
-    if (await addEntries(poolId, plan.entries)) { this.render(); refreshShop(); }
+    if (await addEntries(poolId, plan.entries)) { this.render(); }
   }
 
   // An item dropped on a missing row replaces its source; the weight stays.
@@ -539,7 +537,7 @@ export class CrateManager extends ApplicationV2 {
     const { name, img, rarity, sourceRarity } = entryFromItem(item);
     const done = await patchEntry(poolId, uuid, { uuid: item.uuid, name, img, rarity, sourceRarity });
     if (!done) ui.notifications.info(`${item.name} is already in ${getPools()[poolId]?.name ?? "that pool"}; remove the missing entry instead.`);
-    this.#repaint(poolId, { uuid: done ? item.uuid : uuid }); refreshShop();
+    this.#repaint(poolId, { uuid: done ? item.uuid : uuid });
   }
 
   async _pools() {
@@ -549,7 +547,6 @@ export class CrateManager extends ApplicationV2 {
     const stale = !this.checking && pools.some(p => p.entries.some(e => sources.has(e.uuid) && !!e.missing !== !sources.get(e.uuid)));
     if (stale) {
       sweepPools(pools.map(p => p.id))
-        .then(() => refreshShop())
         .catch(err => console.error(`loot-crates | checking pools for missing items failed`, err));
     }
     // One status line for the whole tab: the source check, then what a
@@ -735,6 +732,29 @@ function liveOdds(form, box, poolIds) {
   form.addEventListener("input", paint);
   form.addEventListener("change", paint);
   paint();
+}
+
+/*
+  Whether the manager's open tab shows a changed world setting, so a pull, a
+  late cancel or another GM's edit redraws it (redraw.js). The shop toggle is
+  in the nav, so every tab shows it. The pools tab redraws itself after its
+  own edits (#repaint), and a full render of up to 50 rows per pool on every
+  sweep flag would undo its paging, so a pools change redraws only the Boxes
+  tab, whose odds read the pools. The pity state shows nowhere here.
+*/
+export function managerShows(tab, key) {
+  if (key === SETTINGS.SHOP_OPEN) return true;
+  if (key === SETTINGS.LOG) return tab === "log";
+  if (key === SETTINGS.BOXES || key === SETTINGS.POOLS) return tab === "boxes";
+  return false;
+}
+
+// One render for any number of changed keys; focus and a typed search are
+// kept across it (_replaceHTML).
+export function refreshManager(keys) {
+  if (!manager?.rendered) return;
+  const list = typeof keys === "string" ? [keys] : [...keys];
+  if (list.some(k => managerShows(manager.tab, k))) manager.render();
 }
 
 let manager = null;

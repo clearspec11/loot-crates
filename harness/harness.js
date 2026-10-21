@@ -87,9 +87,15 @@ function renderShop(extra = {}) {
     notice,
   });
   patchShop(stage, fresh, notice);
-  stage.querySelectorAll(".lc-box__buy:not([disabled])").forEach(btn => btn.addEventListener("click", () => { location.search = `?state=spin&seed=${Date.now() % 100000}&box=${btn.dataset.box}&buyer=1&theme=${theme}`; }));
   window.__lootCrates = { renderShop };
 }
+// One listener for every Buy, since patchShop keeps the buttons across
+// renders; an aria-disabled one is off.
+stage.addEventListener("click", e => {
+  const btn = e.target.closest?.(".lc-box__buy");
+  if (state !== "shop" || !btn || btn.getAttribute("aria-disabled") === "true") return;
+  location.search = `?state=spin&seed=${Date.now() % 100000}&box=${btn.dataset.box}&buyer=1&theme=${theme}`;
+});
 
 async function renderSpin() {
   const rng = seededRng(seed);

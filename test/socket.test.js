@@ -13,7 +13,8 @@ vi.mock("../module/scripts/reveal.js", () => ({ showReveal: vi.fn(async () => ({
 vi.mock("../module/scripts/chat.js", () => ({ postPullCard: vi.fn(async () => null) }));
 
 const { registerSocket, requestPull, GM_TIMEOUT_MS, WAIT_NOTICE_MS, TIMED_OUT, SLOW_PULL_MS, _resetSlowWarning } = await import("../module/scripts/socket.js");
-const { registerSettings, appendLog, sweepAllPools, enqueueWrite, INDEX_FIELDS } = await import("../module/scripts/store.js");
+const { registerSettings, setStoreListener, appendLog, sweepAllPools, enqueueWrite, INDEX_FIELDS } = await import("../module/scripts/store.js");
+const { storeRedraw, REDRAW_DELAY_MS } = await import("../module/scripts/redraw.js");
 const { refundPull } = await import("../module/scripts/refund.js");
 const { PullError } = await import("../module/scripts/pull.js");
 const { seededRng, oddsTable } = await import("../module/scripts/odds.js");
@@ -54,6 +55,8 @@ function makeActor(gp = 500) {
 // a message to the registered handler.
 function makeWorld({ user, activeGM = GM, actor = makeActor() }) {
   const settings = new Map();
+  // Like Foundry, a world setting's onChange runs after its write lands.
+  const onChange = new Map();
   const handlers = [];
   const emitted = [];
   const game = {
@@ -61,9 +64,9 @@ function makeWorld({ user, activeGM = GM, actor = makeActor() }) {
     users: { activeGM, get: id => [GM, PLAYER].find(u => u.id === id) ?? null },
     actors: { get: id => (id === actor.id ? actor : null) },
     settings: {
-      register: (ns, key, { default: def }) => settings.set(`${ns}.${key}`, def),
+      register: (ns, key, { default: def, onChange: fn }) => { settings.set(`${ns}.${key}`, def); if (fn) onChange.set(`${ns}.${key}`, fn); },
       get: (ns, key) => settings.get(`${ns}.${key}`),
-      async set(ns, key, value) { await tick(); settings.set(`${ns}.${key}`, value); },
+      async set(ns, key, value) { await tick(); settings.set(`${ns}.${key}`, value); onChange.get(`${ns}.${key}`)?.(value); },
     },
     socket: {
       on: (_name, fn) => handlers.push(fn),
@@ -98,6 +101,7 @@ afterEach(() => {
   delete globalThis.foundry;
   delete globalThis.fromUuid;
   delete globalThis.ui;
+  setStoreListener(null);
 });
 
 describe("a player's requestPull", () => {
@@ -221,6 +225,10 @@ describe("the GM client", () => {
     globalThis.ui = { notifications: { warn: (...a) => warnings.push(a) } };
     const { game, actor, emitted, deliver } = makeWorld({ user: GM });
     await seed(game, {});
+    // What each pull log write told the open windows: whether the row was
+    // marked by then (an open Pull log redraws from it).
+    const heard = [];
+    setStoreListener(key => { if (key === "pullLog") heard.push(!!game.settings.get("loot-crates", "pullLog")[0]?.lateCancel); });
     const warn = console.warn;
     console.warn = () => {};
     try {
@@ -245,6 +253,9 @@ describe("the GM client", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].lateCancel).toEqual(expect.any(Number));
     expect(rows[0].id).toBe(emitted.find(m => m.type === "reveal").logId);
+    // The pull's row, then the late mark: the second write reaches the
+    // listener with the mark in place.
+    expect(heard).toEqual([false, true]);
   });
 
   it("answers a cancel that arrives while the coins are being taken as a late one, after the row is written", async () => {
@@ -514,6 +525,74 @@ describe("how quickly the GM answers", () => {
     expect(options?.permanent).not.toBe(true);
   });
 
+  it("tells the buyer as soon as a hidden tab's pull is slow, not when the slow step ends", async () => {
+    // Round 6 carried defect (b): the ack was only checked between doPull's
+    // steps, so a buyer whose pull sat 20 s in one step (a throttled server
+    // round trip) or in the queue behind another pull heard nothing until it
+    // ended, which is when the reveal came anyway.
+    vi.stubGlobal("document", { visibilityState: "hidden" });
+    const { game, emitted, deliver } = makeWorld({ user: GM });
+    await seed(game, {});
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    vi.spyOn(performance, "now").mockImplementation(() => Date.now());
+    const resolve = globalThis.fromUuid;
+    let release;
+    const gate = new Promise(r => { release = r; });
+    globalThis.fromUuid = async uuid => { await gate; return resolve(uuid); };
+    const warn = console.warn;
+    console.warn = () => {};
+    try {
+      const first = deliver({ type: "pull", requestId: "r1", boxId: "box", actorId: "actor1", userId: "p1" });
+      // A second buyer's pull waits in the queue behind the first.
+      const second = deliver({ type: "pull", requestId: "r2", boxId: "box", actorId: "actor1", userId: "p1" });
+      await vi.advanceTimersByTimeAsync(SLOW_PULL_MS - 100);
+      expect(emitted).toEqual([]);
+      await vi.advanceTimersByTimeAsync(200);
+      // Both hear why within the slow mark, while the first is still stuck.
+      expect(emitted).toEqual([
+        { type: "ack", requestId: "r1", userId: "p1", hidden: true },
+        { type: "ack", requestId: "r2", userId: "p1", hidden: true },
+      ]);
+      release();
+      await vi.advanceTimersByTimeAsync(SLOW_PULL_MS * 2);
+      await Promise.all([first, second]);
+    } finally { console.warn = warn; release(); }
+    // Once per pull, and never after its reveal.
+    expect(emitted.map(m => `${m.type} ${m.requestId}`)).toEqual(["ack r1", "ack r2", "reveal r1", "reveal r2"]);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("sends no ack while the tab is visible, sends it once the tab hides mid-pull, never for the GM's own pull", async () => {
+    vi.stubGlobal("document", { visibilityState: "visible" });
+    const { game, emitted, deliver } = makeWorld({ user: GM });
+    await seed(game, {});
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    vi.spyOn(performance, "now").mockImplementation(() => Date.now());
+    const resolve = globalThis.fromUuid;
+    let release;
+    const gate = new Promise(r => { release = r; });
+    globalThis.fromUuid = async uuid => { await gate; return resolve(uuid); };
+    const warn = console.warn;
+    console.warn = () => {};
+    try {
+      const first = deliver({ type: "pull", requestId: "r1", boxId: "box", actorId: "actor1", userId: "p1" });
+      const own = deliver({ type: "pull", requestId: "r2", boxId: "box", actorId: "actor1", userId: "gm" });
+      await vi.advanceTimersByTimeAsync(SLOW_PULL_MS + 500);
+      expect(emitted).toEqual([]);
+      // The GM switches tabs while the buyer's pull is still stuck.
+      globalThis.document.visibilityState = "hidden";
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(emitted).toEqual([{ type: "ack", requestId: "r1", userId: "p1", hidden: true }]);
+      await vi.advanceTimersByTimeAsync(SLOW_PULL_MS * 2);
+      expect(emitted).toHaveLength(1);
+      release();
+      await vi.advanceTimersByTimeAsync(100);
+      await Promise.all([first, own]);
+    } finally { console.warn = warn; release(); }
+    expect(emitted.map(m => `${m.type} ${m.requestId}`)).toEqual(["ack r1", "reveal r1", "reveal r2"]);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("posts the chat card with the result, without waiting for its own spin to land", async () => {
     // A hidden GM page: its reveal never lands while nobody looks.
     showReveal.mockImplementation(async () => ({ landed: new Promise(() => {}) }));
@@ -722,5 +801,25 @@ describe("the pull log and a GM's rarity", () => {
   it("records an empty set when the source had no rarity", async () => {
     const row = await pullWith(entry({ rarity: "common", sourceRarity: "", rarityOverride: "rare" }), []);
     expect(row.sourceRarity).toEqual([]);
+  });
+});
+
+describe("open windows after a pull", () => {
+  it("redraw once for the three settings a pull writes, after they are all written", async () => {
+    const { game, deliver } = makeWorld({ user: GM });
+    await seed(game, { stock: 3 });
+    const refreshShop = vi.fn();
+    const refreshManager = vi.fn();
+    const keys = [];
+    const redraw = storeRedraw({ refreshShop, refreshManager });
+    setStoreListener(key => { keys.push(key); redraw(key); });
+    await deliver({ type: "pull", requestId: "r1", boxId: "box", actorId: "actor1", userId: "p1" });
+    expect([...keys].sort()).toEqual(["actorState", "boxes", "pullLog"]);
+    expect(refreshShop).not.toHaveBeenCalled();
+    await new Promise(r => setTimeout(r, REDRAW_DELAY_MS + 50));
+    expect(refreshShop).toHaveBeenCalledTimes(1);
+    expect(refreshManager).toHaveBeenCalledTimes(1);
+    expect([...refreshManager.mock.calls[0][0]].sort()).toEqual(["actorState", "boxes", "pullLog"]);
+    expect(game.settings.get("loot-crates", "boxes").box.rules.stock).toBe(2);
   });
 });

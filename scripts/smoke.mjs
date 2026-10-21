@@ -29,6 +29,9 @@ const THEMES = ["dark", "light"];
 const STATES = [
   ["shop", "state=shop"],
   ["shop-closed", "state=shop&closed=1"],
+  // The Buy a keyboard user pressed, mid-pull: it keeps focus (and its node)
+  // through every re-render, and the others are off without losing theirs.
+  ["shop-busy", "state=shop"],
   ["landed", "state=landed&seed=7"],
   ["landed-legendary", "state=landed&seed=36&box=royal"],
   ["landed-buyer", "state=landed&seed=7&buyer=1"],
@@ -99,22 +102,25 @@ function revealProblems(buyer) {
 }
 
 // The shop's honesty rules, read from the DOM: no "0%" anywhere, every pill
-// names its rarity, every disabled Buy points at visible reasons, a shop-wide
+// names its rarity, every unbuyable Buy (aria-disabled, never disabled, so it
+// keeps focus) points at visible reasons, a shop-wide
 // reason is said once (in the header's notice, never under a card), and the
 // shop has one live region, which keeps its node across a re-render.
-async function shopProblems(closed) {
+async function shopProblems(mode) {
+  const closed = mode === "closed";
   const out = [];
   const text = document.querySelector(".lc-shop__body")?.innerText ?? "";
   if (/(^|[^\d<>])0%/.test(text)) out.push("shop shows a 0% chance");
   for (const pill of document.querySelectorAll(".lc-odd")) {
     if (!/^[A-Z][a-z. ]+ (<1|>99|\d{1,3})%$/.test(pill.textContent.trim())) out.push(`pill without a name: "${pill.textContent}"`);
   }
-  for (const btn of document.querySelectorAll(".lc-box__buy[disabled]")) {
+  if (document.querySelector(".lc-box__buy[disabled]")) out.push("a Buy is disabled (it can't keep focus); use aria-disabled");
+  for (const btn of document.querySelectorAll('.lc-box__buy[aria-disabled="true"]')) {
     const ids = (btn.getAttribute("aria-describedby") ?? "").split(/\s+/).filter(Boolean);
     const whys = ids.map(id => document.getElementById(id));
-    if (!whys.length || whys.some(why => !why || !why.textContent.trim() || why.getBoundingClientRect().height === 0)) out.push(`disabled Buy without a visible reason: ${btn.dataset.box}`);
+    if (!whys.length || whys.some(why => !why || !why.textContent.trim() || why.getBoundingClientRect().height === 0)) out.push(`unbuyable Buy without a visible reason: ${btn.dataset.box}`);
   }
-  if (!document.querySelectorAll(".lc-box__buy[disabled]").length) out.push("sample shop has no disabled Buy to check");
+  if (!document.querySelectorAll('.lc-box__buy[aria-disabled="true"]').length) out.push("sample shop has no unbuyable Buy to check");
   const status = document.querySelectorAll('[role="status"]');
   if (status.length !== 1 || !status[0].matches(".lc-shop__head .lc-shop__notice")) out.push(`expected one role=status, the header notice; got ${status.length}`);
   const notice = document.querySelector(".lc-shop__notice");
@@ -123,11 +129,39 @@ async function shopProblems(closed) {
   if (closed) {
     if (notice?.textContent !== "Closed until a GM is online.") out.push(`closed shop's notice reads "${notice?.textContent}"`);
     if ((text.match(/Closed until a GM is online/g) ?? []).length !== 1) out.push("the closed reason isn't said exactly once");
-    if (document.querySelectorAll(".lc-box__buy:not([disabled])").length) out.push("a Buy is on in a closed shop");
+    if (document.querySelectorAll('.lc-box__buy:not([aria-disabled="true"])').length) out.push("a Buy is on in a closed shop");
     if (![...document.querySelectorAll(".lc-box__why")].some(w => /Needs .* more|Nothing inside/.test(w.textContent))) out.push("per-crate reasons are gone from a closed shop");
     return out;
   }
   if (notice?.textContent) out.push(`open shop's notice isn't empty: "${notice.textContent}"`);
+  if (mode === "busy") {
+    // As shop.js #buy does: focus the Buy, then busy, waiting, the purse
+    // charged and idle renders. After each (two frames, for Chrome's focus
+    // fixup) the same button and cards are there and the Buy has focus.
+    const frames = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const btn = document.querySelector('.lc-box__buy[data-box="common"]');
+    const cards = [...document.querySelectorAll(".lc-box")];
+    btn.focus();
+    const steps = [
+      ["busy", { busy: true, busyBox: "common" }, "Opening…"],
+      ["waiting", { busy: true, busyBox: "common", waiting: "gm" }, "Waiting for the GM…"],
+      ["charged", { busy: true, busyBox: "common", purse: { gp: 395, sp: 7, cp: 3 } }, "Opening…"],
+      ["idle", {}, "Open for 25 gp"],
+      // Left pressed for the screenshot.
+      ["busy again", { busy: true, busyBox: "common" }, "Opening…"],
+    ];
+    for (const [label, extra, text] of steps) {
+      window.__lootCrates.renderShop(extra);
+      await frames();
+      if (document.activeElement !== btn) out.push(`after the ${label} render, focus is on ${document.activeElement?.tagName}`);
+      if (document.querySelector('.lc-box__buy[data-box="common"]') !== btn) out.push(`the ${label} render replaced the pressed Buy`);
+      if ([...document.querySelectorAll(".lc-box")].some((c, i) => c !== cards[i])) out.push(`the ${label} render replaced a card`);
+      if (btn.textContent.trim() !== text) out.push(`after the ${label} render the Buy reads "${btn.textContent.trim()}"`);
+    }
+    if (btn.getAttribute("aria-disabled") !== "true") out.push("the pressed Buy isn't aria-disabled while busy");
+    if (document.querySelectorAll('.lc-box__buy:not([aria-disabled="true"])').length) out.push("a Buy is on while a pull is out");
+    return out;
+  }
   // Re-render as the shop does when the GM is slow, then back: same node, new text.
   window.__lootCrates.renderShop({ busy: true, busyBox: "common", waiting: "gm" });
   const after = document.querySelector(".lc-shop__notice");
@@ -162,7 +196,7 @@ try {
       if (name.startsWith("manager")) await page.waitForSelector("body[data-ready]", { timeout: 10000 });
       await page.waitForTimeout(500);
       const wide = await page.evaluate(() => document.scrollingElement.scrollWidth > document.scrollingElement.clientWidth + 1);
-      if (name.startsWith("shop")) problems0.push(...await page.evaluate(shopProblems, name === "shop-closed"));
+      if (name.startsWith("shop")) problems0.push(...await page.evaluate(shopProblems, name.slice(5)));
       else if (name.startsWith("manager")) problems0.push(...await page.evaluate(managerProblems, name === "manager-narrow"));
       else problems0.push(...await page.evaluate(revealProblems, name === "landed-buyer"));
       await page.evaluate(() => document.fonts.ready);

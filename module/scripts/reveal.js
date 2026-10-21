@@ -16,7 +16,10 @@
   The one button reads Skip during the spin and Close once landed, so a
   keyboard or screen-reader user is never stuck behind six seconds of
   animation. On landing, focus moves to it, unless the viewer is busy
-  somewhere else (typing in chat while another player's crate opens).
+  somewhere else (typing in chat while another player's crate opens). The
+  buyer's own Buy for this crate doesn't count as busy: the shop keeps focus
+  on the Buy they pressed (boxcard.js patchShop), so their Close still gets
+  it, and closing the reveal hands focus back to that Buy.
 
   A hidden page runs no animation frames, so a spin there would wait, frozen,
   until the viewer came back and then play six seconds the table had already
@@ -56,9 +59,15 @@ const pageHidden = () => document.visibilityState === "hidden";
 // pull's logId (what its chat card carries in flags).
 const spinning = new Map();
 
-function focusIsFree(root) {
+function focusIsFree(root, reveal) {
   const a = document.activeElement;
-  return !a || a === document.body || a === document.documentElement || root.contains(a);
+  return !a || a === document.body || a === document.documentElement || root?.contains(a) || (!!reveal && a === ownBuy(reveal));
+}
+
+// The shop's Buy for this pull's crate, when this client is the buyer.
+function ownBuy(reveal) {
+  if (!reveal.userId || reveal.userId !== game.user.id || reveal.box?.id == null) return null;
+  return [...document.querySelectorAll(".lc-shop .lc-box__buy")].find(b => b.dataset.box === reveal.box.id) ?? null;
 }
 
 export class CrateReveal extends ApplicationV2 {
@@ -119,6 +128,9 @@ export class CrateReveal extends ApplicationV2 {
 
   _onClose(options) {
     super._onClose(options);
+    // Back to the crate they bought, unless they have moved on elsewhere.
+    const buy = ownBuy(this.reveal);
+    if (buy?.isConnected && focusIsFree(this.element)) buy.focus({ preventScroll: true });
     this.#closed = true;
     clearTimeout(this.#slowTimer);
     this.#stopWatching();
@@ -182,7 +194,7 @@ export class CrateReveal extends ApplicationV2 {
         open.hidden = !this.#itemStillThere();
         btn.dataset.action = "dismiss";
         btn.textContent = "Close";
-        if (focusIsFree(root)) btn.focus({ preventScroll: true });
+        if (focusIsFree(root, r)) btn.focus({ preventScroll: true });
         if (sound && !pageHidden()) playReveal(r.result.rarity);
       },
     });

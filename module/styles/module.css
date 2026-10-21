@@ -151,8 +151,10 @@
   display: inline-flex; align-items: center; justify-content: center; gap: 6px; line-height: 1.1;
   transition: border-color 120ms ease, background-color 120ms ease, color 120ms ease;
 }
-:where(.loot-crates .window-content) button:not(:disabled):hover { border-color: var(--lc-rule); }
-:where(.loot-crates .window-content) button:disabled { cursor: not-allowed; color: var(--lc-ink-mute); border-style: dashed; }
+:where(.loot-crates .window-content) button:not(:disabled, [aria-disabled="true"]):hover { border-color: var(--lc-rule); }
+/* A Buy that is off says so with aria-disabled (it keeps focus; boxcard.js),
+   and looks exactly like a disabled button. */
+:where(.loot-crates .window-content) button:is(:disabled, [aria-disabled="true"]) { cursor: not-allowed; color: var(--lc-ink-mute); border-style: dashed; }
 .loot-crates .lc-box__buy, .loot-crates .lc-reveal__close {
   position: relative; background: var(--lc-btn); color: var(--lc-btn-ink); border: none;
   font-weight: 700; box-shadow: var(--lc-shadow); min-height: 36px; padding: 0 16px;
@@ -160,10 +162,10 @@
 .loot-crates .lc-box__buy::after, .loot-crates .lc-reveal__close::after {
   content: ""; position: absolute; inset: 3px; border: 1px solid var(--lc-btn-rule); border-radius: 3px; pointer-events: none;
 }
-.loot-crates .lc-box__buy:not(:disabled):hover, .loot-crates .lc-reveal__close:not(:disabled):hover { color: var(--lc-pin); }
-.loot-crates .lc-box__buy:not(:disabled):hover::after, .loot-crates .lc-reveal__close:not(:disabled):hover::after { border-color: var(--lc-btn-ink); }
-.loot-crates .lc-box__buy:disabled { background: var(--lc-row-alt); color: var(--lc-ink-mute); box-shadow: none; }
-.loot-crates .lc-box__buy:disabled::after { border: 1px dashed var(--lc-rule-soft); }
+.loot-crates .lc-box__buy:not([aria-disabled="true"]):hover, .loot-crates .lc-reveal__close:not(:disabled):hover { color: var(--lc-pin); }
+.loot-crates .lc-box__buy:not([aria-disabled="true"]):hover::after, .loot-crates .lc-reveal__close:not(:disabled):hover::after { border-color: var(--lc-btn-ink); }
+.loot-crates .lc-box__buy[aria-disabled="true"] { background: var(--lc-row-alt); color: var(--lc-ink-mute); box-shadow: none; }
+.loot-crates .lc-box__buy[aria-disabled="true"]::after { border: 1px dashed var(--lc-rule-soft); }
 
 :where(.loot-crates .window-content) :is(input, select) {
   font-family: var(--lc-body); font-size: 13px; min-height: 30px; padding: 0 8px; box-sizing: border-box;

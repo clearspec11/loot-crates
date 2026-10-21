@@ -1,0 +1,69 @@
+/*
+  An unbuyable Buy is aria-disabled, not disabled, so it keeps focus; a click
+  or Enter on it still reaches the shop's action. The action must check again
+  and never ask the GM for a pull it shouldn't.
+*/
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { POOLS, BOXES } from "../harness/sample.js";
+
+const boxes = Object.fromEntries(BOXES.map(b => [b.id, b]));
+let shopOpen = true;
+vi.mock("../module/scripts/store.js", () => ({ getBoxes: () => boxes, getPools: () => POOLS, isShopOpen: () => shopOpen }));
+const requestPull = vi.fn(async () => ({}));
+vi.mock("../module/scripts/socket.js", () => ({ requestPull: (...args) => requestPull(...args) }));
+
+class FakeApp {
+  render() { return this; }
+}
+const actor = { id: "a1", type: "character", name: "Tam", system: { currency: { gp: 420, sp: 7, cp: 3 } }, testUserPermission: () => true };
+const actors = [actor];
+actors.get = id => actors.find(a => a.id === id);
+let activeGM;
+vi.stubGlobal("foundry", { applications: { api: { ApplicationV2: FakeApp } }, utils: { escapeHTML: s => s } });
+vi.stubGlobal("ui", { notifications: { warn: vi.fn() } });
+vi.stubGlobal("game", { user: { id: "u", character: actor }, actors, users: { get activeGM() { return activeGM; } } });
+
+const { CrateShop } = await import("../module/scripts/shop.js");
+const buy = (app, box) => CrateShop.DEFAULT_OPTIONS.actions.buy.call(app, {}, { dataset: { box } });
+
+beforeEach(() => {
+  requestPull.mockClear();
+  shopOpen = true;
+  activeGM = { id: "gm" };
+});
+
+describe("the shop's Buy action", () => {
+  it("asks the GM for a crate that can be bought", async () => {
+    const app = new CrateShop();
+    await buy(app, "common");
+    expect(requestPull).toHaveBeenCalledTimes(1);
+    expect(requestPull.mock.calls[0][0]).toEqual({ boxId: "common", actorId: "a1" });
+    expect(app.busy).toBe(false);
+  });
+
+  it("does nothing while a pull is out (busy)", async () => {
+    const app = new CrateShop();
+    app.busy = true;
+    app.busyBox = "adventurer";
+    await buy(app, "common");
+    expect(requestPull).not.toHaveBeenCalled();
+    expect(app.busyBox).toBe("adventurer");
+  });
+
+  it("does nothing for a crate the character can't afford", async () => {
+    await buy(new CrateShop(), "royal");
+    expect(requestPull).not.toHaveBeenCalled();
+  });
+
+  it("does nothing for an empty crate, a closed shop, no GM or an unknown crate", async () => {
+    await buy(new CrateShop(), "empty");
+    shopOpen = false;
+    await buy(new CrateShop(), "common");
+    shopOpen = true;
+    activeGM = null;
+    await buy(new CrateShop(), "common");
+    activeGM = { id: "gm" };
+    await buy(new CrateShop(), "nope");
+    expect(requestPull).not.toHaveBeenCalled();
+  });
+});
