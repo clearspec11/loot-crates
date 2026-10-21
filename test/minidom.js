@@ -1,10 +1,11 @@
 /*
-  A minimal DOM for tests of pure DOM helpers (boxcard.js patchShop, morph):
-  elements and text nodes, attributes, innerHTML parsing of the module's own
-  markup, simple selectors (tag, .class, [attr], [attr="v"] and descendant
-  combinators), a <select>'s value, and focus. Like a browser, a focused
-  node that is removed or moved drops focus to the body, so a test can tell
-  "kept the node" from "rebuilt it".
+  A minimal DOM for tests of pure DOM helpers (boxcard.js patchShop, morph)
+  and of a manager drop: elements and text nodes, attributes, listeners,
+  innerHTML parsing of the module's own markup, simple selectors (tag,
+  .class, [attr], [attr="v"] and descendant combinators), a <select>'s
+  value, and focus. Like a browser, a focused node that is removed or moved
+  drops focus to the body, so a test can tell "kept the node" from "rebuilt
+  it".
 */
 const VOID = new Set(["img", "input", "br", "hr", "meta", "link"]);
 const decode = s => s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&");
@@ -61,7 +62,22 @@ class Element extends Node {
   getAttributeNames() { return [...this.attrs.keys()]; }
   get className() { return this.getAttribute("class") ?? ""; }
   set className(v) { this.setAttribute("class", v); }
-  get classList() { return { contains: c => this.className.split(/\s+/).includes(c) }; }
+  get classList() {
+    const list = () => this.className.split(/\s+/).filter(Boolean);
+    return {
+      contains: c => list().includes(c),
+      add: (...cs) => { this.className = [...new Set([...list(), ...cs])].join(" "); },
+      remove: (...cs) => { this.className = list().filter(c => !cs.includes(c)).join(" "); },
+    };
+  }
+  // Listeners run on the target only (no bubbling): enough for a test that
+  // dispatches on the element a handler was added to.
+  addEventListener(type, fn) { ((this._listeners ??= new Map()).get(type) ?? this._listeners.set(type, []).get(type)).push(fn); }
+  dispatchEvent(event) {
+    event.target ??= this;
+    for (const fn of this._listeners?.get(event.type) ?? []) fn(event);
+    return !event.defaultPrevented;
+  }
   get id() { return this.getAttribute("id") ?? ""; }
   get children() { return this.childNodes.filter(n => n.nodeType === 1); }
   get textContent() { return this.childNodes.map(n => n.textContent).join(""); }
@@ -104,9 +120,11 @@ class Element extends Node {
 
 // One compound selector: tag, .class, [attr] and [attr="v"], in any mix.
 function matchesCompound(el, compound) {
-  const tag = compound.match(/^[a-z][a-z0-9]*/i)?.[0];
+  // Classes are read with the attribute values taken out ([data-entry="Item.x"]).
+  const bare = compound.replace(/\[[^\]]*\]/g, "");
+  const tag = bare.match(/^[a-z][a-z0-9]*/i)?.[0];
   if (tag && el.nodeName !== tag.toUpperCase()) return false;
-  for (const [, c] of compound.matchAll(/\.([\w-]+)/g)) if (!el.classList.contains(c)) return false;
+  for (const [, c] of bare.matchAll(/\.([\w-]+)/g)) if (!el.classList.contains(c)) return false;
   for (const [, name, value] of compound.matchAll(/\[([\w-]+)(?:="([^"]*)")?\]/g)) {
     if (!el.hasAttribute(name) || (value != null && el.getAttribute(name) !== value)) return false;
   }

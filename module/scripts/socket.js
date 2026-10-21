@@ -348,7 +348,10 @@ async function doPull(msg, timer, sent, stopWatching) {
     const logId = newId();
     // Charged now: a cancel from here on is too late to drop the pull.
     rememberCharge(msg.requestId, { requestId: msg.requestId, userId: msg.userId, buyerName: buyer.name, actorName: actor.name, boxName: box.name, itemName: out.result.name, logId });
-    const reveal = { type: "reveal", requestId: msg.requestId, userId: msg.userId, actorId: actor.id, actorName: actor.name, box: { id: box.id, name: box.name, price: box.price }, odds: shopOdds(box, getPools(), state).rows.map(({ rarity, chance, label }) => ({ rarity, chance, label })), result: out.result, strip: out.strip, purse: out.purse, itemId: out.itemId, itemUuid, logId };
+    // The odds are the ones this roll was made at: the buyer's state before
+    // it, and the pools performPull drew from, so an entry that went missing
+    // mid-pull isn't counted even if marking it in the setting failed.
+    const reveal = { type: "reveal", requestId: msg.requestId, userId: msg.userId, actorId: actor.id, actorName: actor.name, box: { id: box.id, name: box.name, price: box.price }, odds: shopOdds(box, out.pools, state).rows.map(({ rarity, chance, label }) => ({ rarity, chance, label })), result: out.result, strip: out.strip, purse: out.purse, itemId: out.itemId, itemUuid, logId };
     stopWatching();
     game.socket.emit(SOCKET, reveal);
     timer.mark("broadcast");

@@ -99,7 +99,7 @@ export function pinRecent(view, rows, uuids) {
 }
 
 /*
-  What the status line and the toast say after a drop: where it went, at
+  What the status line says after a drop: where it went, at
   what rarity, and what was cleared to show it.
     "Flame Tongue added to Core magic items, Rare, at the top."
     "Added 40 items from SRD Items to Core magic items; they are at the top."
