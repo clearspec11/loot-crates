@@ -58,6 +58,7 @@ import { formatPrice } from "./currency.js";
 import { describeRefund, refundPull } from "./refund.js";
 import { postRefundCard } from "./chat.js";
 import { refundTime } from "./chatcard.js";
+import { changeCount } from "./redraw.js";
 
 const { ApplicationV2, DialogV2 } = foundry.applications.api;
 const esc = s => foundry.utils.escapeHTML(String(s ?? ""));
@@ -507,7 +508,11 @@ export class CrateManager extends ApplicationV2 {
 
   static async #toggleShop() { await setShopOpen(!isShopOpen()); this.render(); }
 
+  // redraw.js's change count when this render read the settings.
+  seen = -1;
+
   async _renderHTML() {
+    this.seen = changeCount();
     const root = document.createElement("div");
     root.className = "lc-manager__body";
     const tabs = [["pools", "Pools"], ["boxes", "Boxes"], ["log", "Pull log"]];
@@ -799,9 +804,12 @@ export function managerShows(tab, key) {
 }
 
 // One render for any number of changed keys; focus and a typed search are
-// kept across it (_replaceHTML).
-export function refreshManager(keys) {
+// kept across it (_replaceHTML). `upTo` is redraw.js's count at the batch's
+// last change: a render that started after it already shows the batch (a GM
+// action renders once its own write is heard), so it isn't drawn twice.
+export function refreshManager(keys, upTo = Infinity) {
   if (!manager?.rendered) return;
+  if (manager.seen >= upTo) return;
   const list = typeof keys === "string" ? [keys] : [...keys];
   if (list.some(k => managerShows(manager.tab, k))) manager.render();
 }

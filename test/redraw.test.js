@@ -110,7 +110,7 @@ describe("storeRedraw", () => {
 });
 
 describe("the manager", () => {
-  let managerShows, refreshManager, openManager;
+  let managerShows, refreshManager, openManager, CrateManager;
   let renders = 0;
   beforeAll(async () => {
     class ApplicationV2 {
@@ -118,7 +118,7 @@ describe("the manager", () => {
       render() { renders++; this.rendered = true; return this; }
     }
     vi.stubGlobal("foundry", { utils: { escapeHTML: s => String(s), deepClone: v => structuredClone(v) }, applications: { api: { ApplicationV2, DialogV2: class {} } } });
-    ({ managerShows, refreshManager, openManager } = await import("../module/scripts/manager.js"));
+    ({ managerShows, refreshManager, openManager, CrateManager } = await import("../module/scripts/manager.js"));
   });
   afterAll(() => vi.unstubAllGlobals());
 
@@ -155,5 +155,54 @@ describe("the manager", () => {
     app.rendered = false;
     refreshManager([SETTINGS.SHOP_OPEN]);
     expect(renders).toBe(3);
+  });
+
+  /*
+    A GM action on the Boxes or Pull log tab (add, edit or delete a box, a
+    refund, the shop switch) awaits its write, whose onChange the store
+    listener hears, then renders the manager itself; the batch 100 ms later
+    must not render it a second time. A change the manager hasn't drawn yet
+    (another client's pull) still does.
+  */
+  it("renders once for a GM's own action, not again when its write's batch lands", async () => {
+    vi.useFakeTimers();
+    const app = openManager();
+    app.rendered = true;
+    app.tab = "boxes";
+    const { changeCount } = await import("../module/scripts/redraw.js");
+    // The real _renderHTML notes the count before it reads anything.
+    vi.stubGlobal("document", { createElement: () => { throw new Error("stop here"); } });
+    const before = changeCount();
+    await expect(CrateManager.prototype._renderHTML.call(app)).rejects.toThrow("stop here");
+    expect(app.seen).toBe(before);
+    vi.unstubAllGlobals();
+    vi.stubGlobal("foundry", { utils: { escapeHTML: s => String(s), deepClone: v => structuredClone(v) }, applications: { api: { ApplicationV2: class {}, DialogV2: class {} } } });
+    // Then a render is that: count, then draw.
+    app.render = function () { renders++; this.seen = changeCount(); return this; };
+    const listen = storeRedraw({ refreshShop: () => {}, refreshManager });
+    renders = 0;
+    // #addBox: await createBox (heard) then this.render().
+    listen(SETTINGS.BOXES);
+    app.render();
+    vi.advanceTimersByTime(REDRAW_DELAY_MS);
+    expect(renders).toBe(1);
+    // #refund on the log tab: log, actor and stock written, then a render.
+    app.tab = "log";
+    listen(SETTINGS.LOG);
+    listen(SETTINGS.BOXES);
+    app.render();
+    vi.advanceTimersByTime(REDRAW_DELAY_MS);
+    expect(renders).toBe(2);
+    // Another client's pull: nothing here rendered after it, so it draws.
+    listen(SETTINGS.LOG);
+    vi.advanceTimersByTime(REDRAW_DELAY_MS);
+    expect(renders).toBe(3);
+    // A change heard while a render is under way, after it read the
+    // settings, is drawn again.
+    listen(SETTINGS.LOG);
+    app.render();
+    listen(SETTINGS.LOG);
+    vi.advanceTimersByTime(REDRAW_DELAY_MS);
+    expect(renders).toBe(5);
   });
 });
