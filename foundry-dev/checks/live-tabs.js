@@ -54,7 +54,20 @@ try {
     step.ok = step.appTab === tab && step.active && step.selected === "true" && step.panelLabelledBy === `lc-manager-tab-${tab}` && step.focusOnTab && !step.errors.length;
     steps.push(step);
   }
-  return { ok: steps.every(s => s.ok), base: MODULE_BASE, steps };
+  // The keyboard: ArrowRight from the focused Pools tab opens Boxes and
+  // keeps focus on it; End then opens the Pull log.
+  const keys = [];
+  for (const [key, tab] of [["ArrowRight", "boxes"], ["End", "log"]]) {
+    const before = errors.length;
+    document.activeElement.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
+    for (let t = 0; t < 60 && app.tab !== tab; t++) await wait(50);
+    await wait(300);
+    const now = app.element.querySelector(`.lc-tabs [data-tab="${tab}"]`);
+    const step = { key, tab, appTab: app.tab, selected: now?.getAttribute("aria-selected") ?? null, tabindex: now?.getAttribute("tabindex") ?? null, focusOnTab: document.activeElement?.dataset?.tab === tab, errors: errors.slice(before) };
+    step.ok = step.appTab === tab && step.selected === "true" && step.tabindex === "0" && step.focusOnTab && !step.errors.length;
+    keys.push(step);
+  }
+  return { ok: steps.every(s => s.ok) && keys.every(s => s.ok), base: MODULE_BASE, steps, keys };
 } finally {
   console.error = consoleError;
   window.removeEventListener("error", onError);

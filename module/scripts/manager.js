@@ -518,11 +518,21 @@ export class CrateManager extends ApplicationV2 {
     const tabs = [["pools", "Pools"], ["boxes", "Boxes"], ["log", "Pull log"]];
     root.innerHTML = `
       <nav class="lc-tabs">
-        <div class="lc-tabs__list" role="tablist" aria-label="Loot Crates sections">${tabs.map(([k, l]) => `<button type="button" role="tab" id="lc-manager-tab-${k}" aria-controls="lc-manager-panel" aria-selected="${k === this.tab}" data-action="switchTab" data-tab="${k}" class="${k === this.tab ? "active" : ""}">${l}</button>`).join("")}</div>
+        <div class="lc-tabs__list" role="tablist" aria-label="Loot Crates sections">${tabs.map(([k, l]) => `<button type="button" role="tab" id="lc-manager-tab-${k}" aria-controls="lc-manager-panel" aria-selected="${k === this.tab}" tabindex="${k === this.tab ? 0 : -1}" data-action="switchTab" data-tab="${k}" class="${k === this.tab ? "active" : ""}">${l}</button>`).join("")}</div>
         <span class="lc-tabs__spacer"></span>
         <button type="button" data-action="toggleShop" class="lc-shop-toggle" data-open="${isShopOpen()}" aria-pressed="${isShopOpen()}" title="${isShopOpen() ? "Players can buy now. Click to close the shop." : "Players can't buy now. Click to open the shop."}">${isShopOpen() ? "Shop open" : "Shop closed"}</button>
       </nav>
       <section class="lc-tab" role="tabpanel" id="lc-manager-panel" aria-labelledby="lc-manager-tab-${this.tab}">${await this[`_${this.tab}`]()}</section>`;
+    // The tabs as one stop in the tab order, arrows between them (the ARIA
+    // tabs pattern a screen reader announces). Focus moves first, so the
+    // render keeps it on the tab it lands on.
+    root.querySelector("[role=tablist]")?.addEventListener("keydown", e => {
+      const next = tabAfter(tabs.map(([k]) => k), this.tab, e.key);
+      if (!next) return;
+      e.preventDefault();
+      root.querySelector(`[role=tab][data-tab="${next}"]`)?.focus();
+      if (next !== this.tab) { this.tab = next; this.render(); }
+    });
     root.querySelectorAll("[data-drop-pool]").forEach(el => {
       el.addEventListener("dragover", e => { e.preventDefault(); el.classList.add("lc-drop--over"); });
       el.addEventListener("dragleave", () => el.classList.remove("lc-drop--over"));
@@ -671,6 +681,14 @@ export class CrateManager extends ApplicationV2 {
     again.focus();
     if (caret && again.setSelectionRange) try { again.setSelectionRange(...caret); } catch { /* not a text input */ }
   }
+}
+
+// The tab an arrow, Home or End key moves to from `current`, wrapping; null
+// for any other key.
+export function tabAfter(keys, current, key) {
+  const i = Math.max(0, keys.indexOf(current));
+  const at = { ArrowRight: i + 1, ArrowDown: i + 1, ArrowLeft: i - 1, ArrowUp: i - 1, Home: 0, End: keys.length - 1 }[key];
+  return at == null ? null : keys[(at + keys.length) % keys.length];
 }
 
 // A selector that finds the same control in a fresh render: its tag, its

@@ -67,6 +67,9 @@ async function managerProblems(narrow) {
   const selected = tabs.filter(t => t.getAttribute("aria-selected") === "true");
   if (selected.length !== 1) out.push(`expected one selected tab, got ${selected.length}`);
   else if (getComputedStyle(selected[0]).borderBottomColor === getComputedStyle(tabs.find(t => t !== selected[0])).borderBottomColor) out.push("the selected tab is not underlined");
+  // One stop in the tab order: the selected tab (arrows move between them).
+  const stops = tabs.filter(t => t.tabIndex === 0);
+  if (stops.length !== 1 || stops[0] !== selected[0]) out.push(`expected only the selected tab in the tab order, got ${stops.length}`);
   if (document.querySelector('[role="tablist"] .lc-shop-toggle')) out.push("the shop switch is inside the tablist");
   if (!document.querySelector('.lc-tab[role="tabpanel"]')) out.push("no role=tabpanel");
   const pools = [...document.querySelectorAll(".lc-pool__details")];
