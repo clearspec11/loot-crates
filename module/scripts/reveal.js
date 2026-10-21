@@ -71,16 +71,19 @@ function usedSlots() {
   return [...apps].filter(app => app.options?.classes?.includes("lc-reveal") && app.state > 0).map(app => app.slot);
 }
 
-// Focus is ours to move when nothing else has it, or it's already in here.
 const pageHidden = () => document.visibilityState === "hidden";
 
 // The landed promise of each reveal still spinning on this client, by the
 // pull's logId (what its chat card carries in flags).
 const spinning = new Map();
 
-function focusIsFree(root, reveal) {
+// Focus is ours to move when nothing else has it, it's already in here, or
+// it's still on what opened this window: the buyer's Buy, or the chat card's
+// Watch again that opened a replay (`opener`). Enter on either leads to
+// Close on landing, and back again on close.
+function focusIsFree(root, reveal, opener = null) {
   const a = document.activeElement;
-  return !a || a === document.body || a === document.documentElement || root?.contains(a) || (!!reveal && a === ownBuy(reveal));
+  return !a || a === document.body || a === document.documentElement || root?.contains(a) || (!!reveal && a === ownBuy(reveal)) || (!!opener && a === opener);
 }
 
 // The shop's Buy for this pull's crate, when this client is the buyer.
@@ -270,7 +273,7 @@ export class CrateReveal extends ApplicationV2 {
     root.querySelector(".lc-reveal__watch").hidden = this.#watched || spin.reducedMotion;
     btn.dataset.action = "dismiss";
     btn.textContent = "Close";
-    if (focusIsFree(root, r)) btn.focus({ preventScroll: true });
+    if (focusIsFree(root, r, this.returnTo)) btn.focus({ preventScroll: true });
   }
 
   // The same result again, unhidden rather than rewritten, so a screen

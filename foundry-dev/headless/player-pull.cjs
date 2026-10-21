@@ -62,7 +62,9 @@
 // result, no gold line and no Open item, that a second click brings the same
 // window forward rather than opening another, and that the chat message
 // count, the Pull log's rows, the character's purse and items are unchanged.
-// Close is then clicked and focus must return to the Watch again button.
+// Focus must move from the clicked Watch again to the replay's Close on
+// landing (focusAtLanding); Close is then clicked and focus must return to
+// the Watch again button (focusBack).
 //
 // chatRenders lists each rendering of the pull's chat card on the player's
 // client and whether it was sealed (head and "Opening…", reveal.js
@@ -211,6 +213,10 @@ async function replayCheck(page) {
   await btn.scrollIntoViewIfNeeded();
   await btn.click();
   await page.waitForSelector(".application.lc-reveal .lc-card--landed", { timeout: 15000 });
+  await page.waitForTimeout(200);
+  // The click left focus on Watch again; on landing it moves to the
+  // replay's Close, as a Buy's does to the reveal's.
+  const focusAtLanding = await page.evaluate(() => document.activeElement?.matches?.(".application.lc-reveal .lc-reveal__close") ? "Close" : document.activeElement?.matches?.(".lc-chat__replay") ? "Watch again" : document.activeElement?.tagName ?? "none");
   const seen = await page.evaluate(() => {
     const el = [...document.querySelectorAll(".application.lc-reveal")].find(a => /^Replay:/.test(a.querySelector(".window-title")?.textContent.trim() ?? ""));
     if (!el) return null;
@@ -237,8 +243,9 @@ async function replayCheck(page) {
   const focusBack = await page.evaluate(id => document.activeElement?.matches?.(`[data-message-id="${id}"] .lc-chat__replay`) ?? false, before.messageId);
   const unchanged = ["messages", "logRows", "purse", "items"].every(k => before[k] === after[k]);
   const ok = !!seen && /^Replay: .+ opens .+/.test(seen.title) && seen.landedName === before.stored.name && seen.landedRarity === before.stored.rarity
-    && !seen.gold && !seen.openItem && seen.button === "Close" && replayWindows === 1 && unchanged;
-  return { ok, seen, stored: before.stored, replayBytes: before.replayBytes, replayWindows, unchanged, before, after, focusBack };
+    && !seen.gold && !seen.openItem && seen.button === "Close" && replayWindows === 1 && unchanged
+    && focusAtLanding === "Close" && focusBack;
+  return { ok, seen, stored: before.stored, replayBytes: before.replayBytes, replayWindows, unchanged, before, after, focusAtLanding, focusBack };
 }
 
 /*

@@ -295,6 +295,26 @@ describe("a replay window", () => {
     expect(doc.activeElement).toBe(back);
   });
 
+  it("takes focus from the Watch again that opened it to Close on landing, as a Buy does", async () => {
+    const back = { isConnected: true, focus() { doc.activeElement = this; } };
+    back.focus();
+    const app = await showReplay(snapshot, "m7", { returnTo: back });
+    expect(doc.activeElement).toBe(back);
+    for (let now = 0; frames.length; now += 16) frames.shift()(now);
+    await app.landed;
+    expect(doc.activeElement).toBe(app.element.querySelector(".lc-reveal__close"));
+    app.close();
+    expect(doc.activeElement).toBe(back);
+    // Moved on elsewhere during the replay: left there.
+    back.focus();
+    const app2 = await showReplay(snapshot, "m8", { returnTo: back });
+    const elsewhere = { focus() {} };
+    doc.activeElement = elsewhere;
+    for (let now = 0; frames.length; now += 16) frames.shift()(now);
+    await app2.landed;
+    expect(doc.activeElement).toBe(elsewhere);
+  });
+
   it("opens nothing for a snapshot it can't play", async () => {
     expect(await showReplay({ strip: { cards: [] } }, "m6")).toBeNull();
   });
