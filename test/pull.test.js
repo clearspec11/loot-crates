@@ -69,6 +69,48 @@ describe("performPull", () => {
     expect(actor.items[0].flags["loot-crates"].sourceUuid).toBe(out.result.uuid);
   });
 
+  describe("the price on the Buy pressed (expectedPrice)", () => {
+    const source = () => { globalThis.fromUuid = async uuid => ({ name: `Item ${uuid}`, img: "", toObject: () => ({ name: `Item ${uuid}`, type: "loot", flags: {} }) }); };
+    it("refuses a pull whose box now costs something else, before anything is charged or granted", async () => {
+      source();
+      const actor = makeActor();
+      const promise = performPull({ box: { ...BOX, price: 200 }, pools: POOLS, actor, state: {}, rng: () => 0.5, expectedPrice: 12.5 });
+      await expect(promise).rejects.toBeInstanceOf(PullError);
+      await expect(promise).rejects.toThrow("Test Crate now costs 200 gp (you pressed 12 gp 5 sp). Nothing was charged.");
+      expect(actor.writes).toHaveLength(0);
+      expect(actor.items).toHaveLength(0);
+    });
+    it("refuses a cheaper price too: the buyer agreed to one price", async () => {
+      source();
+      const actor = makeActor();
+      await expect(performPull({ box: { ...BOX, price: 5 }, pools: POOLS, actor, state: {}, rng: () => 0.5, expectedPrice: 12.5 }))
+        .rejects.toThrow("Test Crate now costs 5 gp (you pressed 12 gp 5 sp). Nothing was charged.");
+      expect(actor.writes).toHaveLength(0);
+    });
+    it("charges as before when it matches, as a number or the Buy's data-price string", async () => {
+      for (const expectedPrice of [12.5, "12.5"]) {
+        source();
+        const actor = makeActor();
+        await performPull({ box: BOX, pools: POOLS, actor, state: {}, rng: () => 0.5, expectedPrice });
+        expect(actor.system.currency).toEqual({ pp: 0, gp: 487, ep: 0, sp: 5, cp: 0 });
+        expect(actor.items).toHaveLength(1);
+      }
+    });
+    it("charges the box's price when none is given (a direct caller or an older client)", async () => {
+      for (const expectedPrice of [undefined, null]) {
+        source();
+        const actor = makeActor();
+        await performPull({ box: { ...BOX, price: 20 }, pools: POOLS, actor, state: {}, rng: () => 0.5, expectedPrice });
+        expect(actor.system.currency.gp).toBe(480);
+      }
+    });
+    it("says sold out, not the price, for a box that is both", async () => {
+      source();
+      await expect(performPull({ box: { ...BOX, price: 200, rules: { stock: 0 } }, pools: POOLS, actor: makeActor(), state: {}, expectedPrice: 12.5 }))
+        .rejects.toThrow("Test Crate is sold out.");
+    });
+  });
+
   it("re-rolls once past an entry whose source vanished, and charges only after a live source is found", async () => {
     const pools = { pool: { id: "pool", name: "Pool", pools: [], entries: [
       { uuid: "gone", name: "Flame Tongue", img: "", rarity: "rare", weight: 1 },

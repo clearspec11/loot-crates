@@ -27,7 +27,7 @@ vi.stubGlobal("ui", { notifications: { warn: vi.fn() } });
 vi.stubGlobal("game", { user: { id: "u", character: actor }, actors, users: { get activeGM() { return activeGM; } } });
 
 const { CrateShop } = await import("../module/scripts/shop.js");
-const buy = (app, box) => CrateShop.DEFAULT_OPTIONS.actions.buy.call(app, {}, { dataset: { box } });
+const buy = (app, box, price) => CrateShop.DEFAULT_OPTIONS.actions.buy.call(app, {}, { dataset: price === undefined ? { box } : { box, price } });
 
 beforeEach(() => {
   requestPull.mockClear();
@@ -39,10 +39,26 @@ beforeEach(() => {
 describe("the shop's Buy action", () => {
   it("asks the GM for a crate that can be bought", async () => {
     const app = new CrateShop();
-    await buy(app, "common");
+    await buy(app, "common", "25");
     expect(requestPull).toHaveBeenCalledTimes(1);
-    expect(requestPull.mock.calls[0][0]).toEqual({ boxId: "common", actorId: "a1" });
+    expect(requestPull.mock.calls[0][0]).toEqual({ boxId: "common", actorId: "a1", price: 25 });
     expect(app.busy).toBe(false);
+  });
+
+  it("sends the price the pressed Buy showed, not the setting's current one", async () => {
+    // The GM raised it after this card was drawn: the GM refuses such a pull
+    // (pull.js expectedPrice), so the shop must not quietly send the new one.
+    const was = boxes.common.price;
+    boxes.common.price = 30;
+    try {
+      await buy(new CrateShop(), "common", "25");
+      expect(requestPull.mock.calls[0][0]).toMatchObject({ boxId: "common", price: 25 });
+    } finally { boxes.common.price = was; }
+  });
+
+  it("sends no price from a Buy without one, and the GM charges the box's", async () => {
+    await buy(new CrateShop(), "common");
+    expect(requestPull.mock.calls[0][0].price).toBeUndefined();
   });
 
   it("does nothing while a pull is out (busy)", async () => {

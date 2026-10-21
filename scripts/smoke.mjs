@@ -238,6 +238,15 @@ async function shopProblems(mode) {
     if (!whys.length || whys.some(why => !why || !why.textContent.trim() || why.getBoundingClientRect().height === 0)) out.push(`unbuyable Buy without a visible reason: ${btn.dataset.box}`);
   }
   if (!document.querySelectorAll('.lc-box__buy[aria-disabled="true"]').length) out.push("sample shop has no unbuyable Buy to check");
+  // Each Buy's name starts with its crate's, said only to screen readers:
+  // the crate name in the Buy takes no visible room.
+  for (const btn of document.querySelectorAll(".lc-box__buy")) {
+    const name = btn.closest(".lc-box")?.querySelector(".lc-box__name")?.textContent.trim();
+    const sr = btn.querySelector(".lc-sr-only");
+    if (!name || !btn.textContent.trim().startsWith(`${name}: `)) out.push(`Buy doesn't name its crate: "${btn.textContent.trim()}"`);
+    const box = sr?.getBoundingClientRect();
+    if (!sr || box.width > 1 || box.height > 1) out.push(`the crate name in ${btn.dataset.box}'s Buy is visible`);
+  }
   const status = document.querySelectorAll('[role="status"]');
   if (status.length !== 1 || !status[0].matches(".lc-shop__head .lc-shop__notice")) out.push(`expected one role=status, the header notice; got ${status.length}`);
   const notice = document.querySelector(".lc-shop__notice");
@@ -285,7 +294,7 @@ async function shopProblems(mode) {
       if (document.activeElement !== btn) out.push(`after the ${label} render, focus is on ${document.activeElement?.tagName}`);
       if (document.querySelector('.lc-box__buy[data-box="common"]') !== btn) out.push(`the ${label} render replaced the pressed Buy`);
       if ([...document.querySelectorAll(".lc-box")].some((c, i) => c !== cards[i])) out.push(`the ${label} render replaced a card`);
-      if (btn.textContent.trim() !== text) out.push(`after the ${label} render the Buy reads "${btn.textContent.trim()}"`);
+      if (btn.textContent.trim() !== `Pauper's Box: ${text}`) out.push(`after the ${label} render the Buy reads "${btn.textContent.trim()}"`);
     }
     if (btn.getAttribute("aria-disabled") !== "true") out.push("the pressed Buy isn't aria-disabled while busy");
     if (document.querySelectorAll('.lc-box__buy:not([aria-disabled="true"])').length) out.push("a Buy is on while a pull is out");

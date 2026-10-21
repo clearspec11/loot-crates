@@ -64,8 +64,13 @@ export class CrateShop extends ApplicationV2 {
       this.waiting = why;
       this.render();
     };
+    // The price this Buy showed, not the setting's now: if the GM changed it
+    // since this card was drawn, the GM refuses the pull rather than charge
+    // a price the buyer never saw (pull.js expectedPrice).
+    const shown = target.dataset.price;
+    const price = shown != null && shown !== "" && Number.isFinite(Number(shown)) ? Number(shown) : undefined;
     try {
-      await requestPull({ boxId, actorId: this.actorId }, { onWait });
+      await requestPull({ boxId, actorId: this.actorId, price }, { onWait });
     } catch (err) {
       ui.notifications.warn(err.message);
     } finally {

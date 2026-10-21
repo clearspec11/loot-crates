@@ -97,6 +97,32 @@ describe("the crate's peek and ribbon", () => {
     expect([...html.matchAll(/flex-grow:([\d.]+)/g)].map(m => +m[1])).toEqual([0.85, 0.15]);
     expect(oddsRibbon([])).toBe("");
   });
+  const button = html => html.match(/<button[^>]*>/)[0];
+  it("names its crate in the Buy for screen readers, before the visible label, in every state", () => {
+    const sr = `<span class="lc-sr-only">Pauper's Box: </span>`;
+    const states = [
+      [ctx, "Open for 25 gp"],
+      [{ ...ctx, busy: true, busyBox: "common" }, "Opening…"],
+      [{ ...ctx, busy: true, busyBox: "common", waiting: "gm" }, "Waiting for the GM…"],
+    ];
+    for (const [c, label] of states) {
+      const html = boxCard(byId("common"), POOLS, c);
+      const inner = html.match(/<button[^>]*>([\s\S]*?)<\/button>/)[1].trim();
+      // The accessible name is "Pauper's Box: <label>": the visible label is
+      // part of it (WCAG 2.5.3), so no aria-label overrides it.
+      expect(inner).toBe(`${sr}${label}`);
+      expect(button(html)).not.toMatch(/aria-label=/);
+    }
+    // The name is escaped like every string that reaches innerHTML.
+    const esc = s => String(s).replace(/</g, "&lt;");
+    expect(boxCard({ ...byId("common"), name: "<b>x" }, POOLS, { ...ctx, esc })).toContain(`<span class="lc-sr-only">&lt;b>x: </span>`);
+  });
+  it("carries the price it shows on the Buy, so the shop sends that one", () => {
+    expect(button(boxCard(byId("common"), POOLS, ctx))).toContain(` data-price="25"`);
+    expect(button(boxCard({ ...byId("common"), price: 12.5 }, POOLS, ctx))).toContain(` data-price="12.5"`);
+    expect(button(boxCard({ ...byId("common"), price: 0 }, POOLS, ctx))).toContain(` data-price="0"`);
+    expect(button(boxCard({ ...byId("common"), price: undefined }, POOLS, ctx))).not.toContain("data-price");
+  });
   it("only the pressed crate says Opening… while every Buy is off", () => {
     const busy = { ...ctx, busy: true, busyBox: "common" };
     const pressed = boxCard(byId("common"), POOLS, busy);
