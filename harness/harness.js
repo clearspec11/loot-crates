@@ -7,6 +7,7 @@
   ?waiting=gm | hidden (shop: the first crate pressed and the GM slow to answer)
   ?closed=1 (shop: closed because no GM is online; ?closed=gm, closed by the GM)
   ?width=<px> (the window's width, as a GM sizes it, whatever the screen's)
+  ?height=<px> (the window's height, shorter than its content: the shop must scroll its grid)
   ?characters=2 (shop: the player owns two characters, so the head has the
   character select; aria-disabled while a pull is out)
   ?pity=due (shop: Tam has gone 8 pulls without a Rare from the Adventurer's
@@ -60,6 +61,9 @@ const WINDOWS = { shop: ["lc-shop", "Crate Shop"], manager: ["lc-manager", "Loot
 const [appClass, appTitle] = WINDOWS[state] ?? ["lc-reveal", "Opening a crate"];
 document.getElementById("app").classList.add(appClass);
 if (Number(q.get("width")) > 0) Object.assign(document.getElementById("app").style, { width: `${Number(q.get("width"))}px`, maxWidth: "100%" });
+// ?height=<px>: a window shorter than its content, as Foundry caps every
+// window at the screen's height (or a player sizes it down).
+if (Number(q.get("height")) > 0) document.getElementById("app").style.height = `${Number(q.get("height"))}px`;
 document.getElementById("title").textContent = appTitle;
 // Font Awesome isn't loaded here; this stands in for the shop's fa-box-open.
 const CRATE_ICON = `<svg class="lc-box__icon" viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M3 8.5 12 4l9 4.5v8L12 21l-9-4.5z"/><path d="M3 8.5 12 13l9-4.5M12 13v8"/></svg>`;

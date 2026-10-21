@@ -24,7 +24,8 @@ const FOUNDRY_GLOBALS = {
 
 export default defineConfig([
   // foundry-dev/checks/*.js are async function bodies run by headless/run.cjs (top-level return), not modules.
-  globalIgnores(["dist", "node_modules", "screenshots", ".claude", "foundry-dev/checks"]),
+  // .council/ is the improvement council's local files (git-excluded), including a workflow script.
+  globalIgnores(["dist", "node_modules", "screenshots", ".claude", ".council", "foundry-dev/checks"]),
   {
     files: ["**/*.{js,mjs,cjs}"],
     extends: [js.configs.recommended],
