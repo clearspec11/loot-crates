@@ -41,11 +41,13 @@ const MODULE_BASE = process.env.MODULE_BASE || "http://localhost:8766/";
     const store = await import(base + "scripts/store.js");
     try { store.registerSettings(); } catch { /* the installed module registered them */ }
     const { watchAgain } = await import(base + "scripts/reveal.js");
-    const msg = game.messages.contents.filter(m => m.flags?.["loot-crates"]?.replay).at(-1);
+    // A refunded card has no Watch again: the newest one that wasn't refunded.
+    const msg = game.messages.contents.filter(m => m.flags?.["loot-crates"]?.replay && !m.flags["loot-crates"].refundedAt).at(-1);
     const li = msg && document.querySelector(`#chat .chat-log [data-message-id="${msg.id}"]`);
-    if (!li) return { error: "no pull card with a replay snapshot in the chat log" };
+    if (!li) return { error: "no unrefunded pull card with a replay snapshot in the chat log" };
     li.querySelector(".lc-chat__replay")?.remove();
     watchAgain(msg, li);
+    if (!li.querySelector(".lc-chat__replay")) return { error: `the card for ${msg.id} drew no Watch again` };
     const ctx = game.audio.interface;
     const rec = globalThis.__lcSound = { osc: 0, toGainNode: 0, toDestination: 0 };
     const createOscillator = ctx.createOscillator;
