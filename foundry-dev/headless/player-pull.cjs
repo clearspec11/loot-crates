@@ -455,7 +455,18 @@ async function gmWatchCheck(page) {
         const renderHook = Hooks.on("renderActorSheetV2", app => { if (app.document === actor) sheetRenders.push(Math.round(performance.now() - t0)); });
         const rows = () => itemId ? [...document.querySelectorAll(`[data-item-id="${itemId}"]`)] : [];
         const visible = () => rows().some(el => el.getClientRects().length > 0);
-        const frame = () => { if (done) return; frames++; if (visible()) leakFrames++; requestAnimationFrame(frame); };
+        // The landing is read on the frame itself: the loop below polls for
+        // it every 50 ms, and the item is shown (rightly) the moment the spin
+        // lands, so frames in that gap were counted as leaks.
+        const revealsBefore = new Set(document.querySelectorAll(".lc-reveal"));
+        const landedNow = () => [...document.querySelectorAll(".lc-reveal")].some(el => !revealsBefore.has(el) && el.querySelector(".lc-card--landed"));
+        const leakAt = [];
+        const frame = () => {
+          if (done || landedNow()) { done = true; return; }
+          frames++;
+          if (visible()) { leakFrames++; if (leakAt.length < 5) leakAt.push(Math.round(performance.now() - t0)); }
+          requestAnimationFrame(frame);
+        };
         requestAnimationFrame(frame);
         const before = { pity: pity(), odds: odds() };
         const snaps = {};
@@ -479,7 +490,7 @@ async function gmWatchCheck(page) {
               && mid && !mid.rowVisible && mid.pity === before.pity && mid.odds === before.odds && mid.buyOff && mid.why === "Still spinning"
               && after && after.rows > 0 && after.rowVisible && after.pity === after.expectedPity && after.why !== "Still spinning"
               && (after.pity !== before.pity || after.odds !== before.odds);
-            return { ok, itemId, sheetOpen, frames, leakFrames, before, mid, after, createdMs: createdAt && Math.round(createdAt - t0), sheetRenders, longTasks };
+            return { ok, itemId, sheetOpen, frames, leakFrames, leakAt, before, mid, after, createdMs: createdAt && Math.round(createdAt - t0), sheetRenders, longTasks };
           },
         };
       }

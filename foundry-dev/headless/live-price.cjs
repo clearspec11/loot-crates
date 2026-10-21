@@ -131,7 +131,10 @@ async function setPrice(gm, boxId, price) {
       return {
         boxId: card?.dataset.box ?? null, label: buy?.textContent.replace(/\s+/g, " ").trim() ?? null, dataPrice: buy?.dataset.price ?? null,
         off: buy?.getAttribute("aria-disabled") === "true",
-        purseCp: toCopper(actor.system.currency), purse: JSON.stringify(actor.system.currency), items: actor.items.size,
+        purseCp: toCopper(actor.system.currency), purse: JSON.stringify(actor.system.currency),
+        // Granted items only: dnd5e adds a spell for an item's cast activity
+        // (flags.dnd5e.cachedFor), so a Circlet of Blasting adds two.
+        items: actor.items.filter(i => !i.getFlag("dnd5e", "cachedFor")).length,
         newestRow: getLog()[0] ?? null, reveals: document.querySelectorAll(".lc-reveal").length,
       };
     }, { base: MODULE_BASE, box: BOX });

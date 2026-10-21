@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { boxCard, buyReason, crateReason, shopReason, shopNotice, shopHTML, SHOP_NOTICE_ID, oddsPills, pityLine, refundRulesLine, pickActor } from "../module/scripts/boxcard.js";
+import { boxCard, buyReason, crateReason, shopReason, shopNotice, shopHTML, SHOP_NOTICE_ID, oddsPills, pityLine, refundRulesLine, pickActor, refusalLine, changedCharacterLine, actorPicker } from "../module/scripts/boxcard.js";
 import { shopOdds, flattenPool } from "../module/scripts/odds.js";
 import { shortfall } from "../module/scripts/currency.js";
 import { POOLS, BOXES } from "../harness/sample.js";
@@ -323,5 +323,36 @@ describe("pickActor", () => {
   ];
   it.each(table)("stored %s, owned %j, own %j: %s", (stored, owned, main, want) => {
     expect(pickActor(stored, owned, main)).toBe(want);
+  });
+});
+
+describe("refusalLine", () => {
+  const common = byId("common");
+  it("names a price raised past the purse, with the crate and the character", () => {
+    expect(refusalLine({ box: { ...common, price: 500 }, shown: "25", purse, actorName: "Tam", reason: "Needs 79 gp 2 sp 7 cp more" })).toBe("Pauper's Box now costs 500 gp, more than Tam has.");
+    expect(refusalLine({ box: { ...common, price: 500 }, shown: "25", purse })).toBe("Pauper's Box now costs 500 gp, more than this character has.");
+  });
+  it("gives the crate's own reason otherwise, and nothing when there is none", () => {
+    expect(refusalLine({ box: common, shown: "25", purse: { gp: 1 }, reason: "Needs 24 gp more" })).toBe("Couldn't open Pauper's Box: needs 24 gp more.");
+    expect(refusalLine({ box: { ...common, price: 30 }, shown: "25", purse, reason: "" })).toBe("");
+    expect(refusalLine({ box: undefined })).toBe("That crate is no longer on the shelf.");
+  });
+  it("says a re-picked character", () => {
+    expect(changedCharacterLine("Orla")).toBe("Your character changed to Orla; check the crate and press Buy again.");
+  });
+});
+
+describe("actorPicker", () => {
+  const actors = [{ id: "a1", name: "Tam" }, { id: "a2", name: "Orla" }];
+  it("is a select with the charged character selected, aria-disabled (never disabled) while busy", () => {
+    expect(actorPicker({ actors, actorId: "a2" })).toContain(`<option value="a2" selected>Orla</option>`);
+    expect(actorPicker({ actors, actorId: "a2" })).not.toContain("aria-disabled");
+    const busy = actorPicker({ actors, actorId: "a1", busy: true });
+    expect(busy).toContain(`<select class="lc-shop__actor" aria-disabled="true">`);
+    expect(busy).not.toMatch(/\sdisabled/);
+  });
+  it("names the one character, or none", () => {
+    expect(actorPicker({ actors: actors.slice(0, 1), actorId: "a1" })).toContain(`<span class="lc-shop__who" tabindex="-1">Tam</span>`);
+    expect(actorPicker({ actors: [], actorId: null })).toContain("No character");
   });
 });

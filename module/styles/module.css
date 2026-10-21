@@ -213,6 +213,11 @@
 .loot-crates .lc-shop__field { display: grid; gap: 3px; margin: 0; }
 .loot-crates .lc-shop__field--purse { margin-left: auto; text-align: right; }
 .loot-crates .lc-shop__actor { min-width: 12em; }
+/* While a pull is out the select is aria-disabled (it keeps focus; shop.js):
+   drawn as the off Buy is, dashed and in mute ink, the name still legible. */
+.loot-crates .lc-shop__actor[aria-disabled="true"], .loot-crates .lc-shop__actor[aria-disabled="true"]:hover {
+  cursor: not-allowed; color: var(--lc-ink-mute); background: var(--lc-row-alt); border-style: dashed; border-color: var(--lc-rule-soft);
+}
 .loot-crates .lc-shop__who { font-family: var(--lc-slab); font-size: 15px; font-weight: 700; min-height: 30px; display: flex; align-items: center; }
 .loot-crates .lc-shop__purse { font-family: var(--lc-slab); font-size: 15px; font-weight: 700; color: var(--lc-ink); min-height: 30px; display: flex; align-items: center; justify-content: flex-end; font-variant-numeric: tabular-nums; }
 /* The shop's one notice (a live region that is always there): why nothing

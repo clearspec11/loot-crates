@@ -17,13 +17,19 @@ const requestPull = vi.fn(async () => ({}));
 vi.mock("../module/scripts/socket.js", () => ({ requestPull: (...args) => requestPull(...args) }));
 
 // ApplicationV2 stand-in: counts renders and, when a document is stubbed,
-// keeps the last rendered body in `last` (a promise, as _renderHTML is async).
+// puts each rendered body in `content` through _replaceHTML, as ApplicationV2
+// does; `last` is a promise of `content` once the latest render is in.
 class FakeApp {
   renders = 0;
   get rendered() { return this.renders > 0; }
   render() {
     this.renders++;
-    if (globalThis.document) this.last = this._renderHTML();
+    if (globalThis.document) {
+      this.last = this._renderHTML().then(body => {
+        this._replaceHTML(body, this.content ??= globalThis.document.createElement("div"));
+        return this.content;
+      });
+    }
     return this;
   }
 }
@@ -260,5 +266,220 @@ describe("what redraws an open shop", () => {
     expect(redraws(() => on.updateUser({ id: "someone" }, { character: "a2" }))).toBe(0);
     expect(redraws(() => on.updateUser({ id: "u" }, { color: "#fff" }))).toBe(0);
     expect(redraws(() => on.userConnected({ id: "gm" }, true))).toBe(1);
+  });
+});
+
+/*
+  Round 11's review: mid-pull the character select stayed live, so picking
+  another character switched the name and purse on screen while the pull
+  still charged the first; and two Buys did nothing without a word for the
+  ~100 ms before the redraw (the character re-picked under the cards, a
+  price the GM raised past the purse while the card showed the old one).
+*/
+describe("the shop mid-purchase, and a Buy that does nothing", () => {
+  beforeEach(() => { globalThis.document = createDocument(); });
+  afterEach(() => { delete globalThis.document; });
+
+  const draw = async app => { app.render(); return app.last; };
+  const notice = app => app.content.querySelector(".lc-shop__notice").textContent;
+  const select = app => app.content.querySelector(".lc-shop__actor");
+  const key = (el, k) => {
+    const e = { type: "keydown", key: k, preventDefault() { this.defaultPrevented = true; } };
+    el.dispatchEvent(e);
+    return !!e.defaultPrevented;
+  };
+  const pick = async (app, el, id) => {
+    el.value = id;
+    el.dispatchEvent({ type: "change", currentTarget: el });
+    await app.last;
+  };
+  // A Buy the shop drew as live, as the button in the page is.
+  const press = (app, box, price, off = false) => CrateShop.DEFAULT_OPTIONS.actions.buy.call(app, {}, {
+    dataset: { box, price }, getAttribute: name => (name === "aria-disabled" && off ? "true" : null),
+  });
+
+  it("holds the character select (aria-disabled, changes put back) while a pull is out, and frees it once it settles", async () => {
+    owns = new Set(["a1", "a2"]);
+    let settle;
+    requestPull.mockImplementation(() => new Promise(r => { settle = r; }));
+    const app = new CrateShop();
+    await draw(app);
+    const el = select(app);
+    expect(el.getAttribute("aria-disabled")).toBeNull();
+    expect(key(el, "ArrowDown")).toBe(false);
+
+    const pressed = press(app, "common", "25");
+    await app.last;
+    expect(select(app)).toBe(el);
+    expect(el.getAttribute("aria-disabled")).toBe("true");
+    expect(el.hasAttribute("disabled")).toBe(false);
+    // Keys and presses that would open or change it do nothing; Tab moves on.
+    for (const k of ["ArrowDown", "ArrowUp", "Home", "End", " ", "Enter", "o"]) expect(key(el, k)).toBe(true);
+    expect(key(el, "Tab")).toBe(false);
+    expect(key(el, "Escape")).toBe(false);
+    const down = { type: "mousedown", preventDefault() { this.defaultPrevented = true; } };
+    el.dispatchEvent(down);
+    expect(down.defaultPrevented).toBe(true);
+    // A change that gets through anyway (a touch picker) is put back.
+    const renders = app.renders;
+    await pick(app, el, "a2");
+    expect(app.actorId).toBe("a1");
+    expect(el.value).toBe("a1");
+    expect(app.renders).toBe(renders);
+    expect(app.content.querySelector(".lc-shop__purse").textContent).toBe("420 gp 7 sp 3 cp");
+
+    settle({});
+    await pressed;
+    await app.last;
+    expect(select(app)).toBe(el);
+    expect(el.getAttribute("aria-disabled")).toBeNull();
+    expect(key(el, "ArrowDown")).toBe(false);
+    await pick(app, el, "a2");
+    expect(app.actorId).toBe("a2");
+    expect(app.content.querySelector(".lc-shop__purse").textContent).toBe("300 gp");
+    expect(requestPull.mock.calls[0][0].actorId).toBe("a1");
+  });
+
+  it("says so in the notice when the character was re-picked under the Buy, sends nothing, and clears it on the next Buy", async () => {
+    owns = new Set(["a1", "a2"]);
+    const app = new CrateShop();
+    await draw(app);
+    const live = app.content.querySelector(".lc-shop__notice");
+    owns.delete("a1");
+    await press(app, "common", "25");
+    await app.last;
+    expect(requestPull).not.toHaveBeenCalled();
+    expect(app.content.querySelector(".lc-shop__notice")).toBe(live);
+    expect(notice(app)).toBe("Your character changed to Orla; check the crate and press Buy again.");
+    expect(live.dataset.tone).toBe("warn");
+    // It isn't a shop-wide reason: the cards stay live.
+    expect(app.content.querySelector('.lc-box__buy[data-box="common"]').getAttribute("aria-disabled")).toBeNull();
+    // Still true on a redraw.
+    await draw(app);
+    expect(notice(app)).toMatch(/^Your character changed to Orla/);
+    await press(app, "common", "25");
+    await app.last;
+    expect(requestPull).toHaveBeenCalledTimes(1);
+    expect(requestPull.mock.calls[0][0].actorId).toBe("a2");
+    expect(notice(app)).toBe("");
+  });
+
+  it("says a price raised past the purse, with both the crate and the character, sends nothing, and clears it on the next Buy", async () => {
+    const was = boxes.common.price;
+    const app = new CrateShop();
+    await draw(app);
+    try {
+      // The GM raised it; the card the player pressed still says 25 gp.
+      boxes.common.price = 500;
+      await press(app, "common", "25");
+      await app.last;
+      expect(requestPull).not.toHaveBeenCalled();
+      expect(notice(app)).toBe("Pauper's Box now costs 500 gp, more than Tam has.");
+      await draw(app);
+      expect(notice(app)).toBe("Pauper's Box now costs 500 gp, more than Tam has.");
+      // Back within reach: the next Buy goes out and the line goes.
+      boxes.common.price = 30;
+      await press(app, "common", "30");
+      await app.last;
+      expect(requestPull).toHaveBeenCalledTimes(1);
+      expect(notice(app)).toBe("");
+    } finally { boxes.common.price = was; }
+  });
+
+  it("drops the line on a redraw where it no longer holds", async () => {
+    const was = boxes.common.price;
+    const app = new CrateShop();
+    await draw(app);
+    try {
+      boxes.common.price = 500;
+      await press(app, "common", "25");
+      await app.last;
+      expect(notice(app)).toMatch(/now costs 500 gp/);
+      boxes.common.price = was;
+      await draw(app);
+      expect(notice(app)).toBe("");
+    } finally { boxes.common.price = was; }
+  });
+
+  it("says why for a crate that became unbuyable or left the shelf before the redraw, and stays quiet for an off Buy", async () => {
+    const app = new CrateShop();
+    await draw(app);
+    const stock = boxes.royal.rules.stock;
+    const old = boxes.common;
+    try {
+      boxes.common = { ...old, rules: { stock: 0 } };
+      await press(app, "common", "25");
+      await app.last;
+      expect(notice(app)).toBe("Couldn't open Pauper's Box: sold out.");
+      delete boxes.common;
+      await press(app, "common", "25");
+      await app.last;
+      expect(notice(app)).toBe("That crate is no longer on the shelf.");
+      boxes.common = old;
+      await draw(app);
+      expect(notice(app)).toBe("");
+      // The Royal Vault's Buy is drawn off with its reason under it: a press
+      // on it adds nothing and doesn't redraw.
+      const renders = app.renders;
+      await press(app, "royal", "1200", true);
+      expect(app.renders).toBe(renders);
+      expect(notice(app)).toBe("");
+      expect(requestPull).not.toHaveBeenCalled();
+    } finally { boxes.common = old; boxes.royal.rules.stock = stock; }
+  });
+
+  it("leaves a shop-wide reason to the notice alone", async () => {
+    const app = new CrateShop();
+    await draw(app);
+    shopOpen = false;
+    await press(app, "common", "25");
+    await app.last;
+    expect(notice(app)).toBe("The GM has closed the shop.");
+    expect(requestPull).not.toHaveBeenCalled();
+  });
+
+  // The GM takes a character away mid-pull, leaving one: the select gives
+  // way to the name. A keyboard user on the select stays in the head
+  // rather than being dropped on the page's body.
+  it("keeps focus in the head when the select gives way to a name", async () => {
+    owns = new Set(["a1", "a2"]);
+    let settle;
+    requestPull.mockImplementation(() => new Promise(r => { settle = r; }));
+    const app = new CrateShop();
+    await draw(app);
+    select(app).focus();
+    const pressed = press(app, "common", "25");
+    await app.last;
+    owns.delete("a2");
+    await draw(app);
+    expect(select(app)).toBeNull();
+    const who = app.content.querySelector(".lc-shop__who");
+    expect(who.textContent).toBe("Tam");
+    expect(globalThis.document.activeElement).toBe(who);
+    // A later render keeps it a focus target, so focus stays on it.
+    await draw(app);
+    expect(app.content.querySelector(".lc-shop__who")).toBe(who);
+    expect(who.getAttribute("tabindex")).toBe("-1");
+    expect(globalThis.document.activeElement).toBe(who);
+    settle({});
+    await pressed;
+  });
+
+  // A Buy's line is about that press: a shop closed and opened again later
+  // starts without it (the notice is announced afresh on open).
+  it("forgets why a Buy did nothing when the shop is closed", async () => {
+    const app = new CrateShop();
+    await draw(app);
+    const old = boxes.common;
+    try {
+      delete boxes.common;
+      await press(app, "common", "25");
+      await app.last;
+      expect(notice(app)).toBe("That crate is no longer on the shelf.");
+      await app._onClose?.({});
+      app.content = null;
+      await draw(app);
+      expect(notice(app)).toBe("");
+    } finally { boxes.common = old; }
   });
 });

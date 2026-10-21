@@ -84,6 +84,12 @@ class Element extends Node {
   get textContent() { return this.childNodes.map(n => n.textContent).join(""); }
   set textContent(v) { this.replaceChildren(...(v ? [new Text(this.ownerDocument, String(v))] : [])); }
   set innerHTML(html) { this.replaceChildren(...parse(this.ownerDocument, html)); }
+  get childElementCount() { return this.children.length; }
+  // "beforeend" only: what the manager's Show more uses.
+  insertAdjacentHTML(where, html) {
+    if (where !== "beforeend") throw new Error(`minidom: insertAdjacentHTML ${where} not supported`);
+    this.append(...parse(this.ownerDocument, html));
+  }
   get value() {
     if (this.nodeName !== "SELECT") return this.getAttribute("value") ?? "";
     const options = this.querySelectorAll("option");

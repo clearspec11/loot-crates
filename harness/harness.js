@@ -7,6 +7,8 @@
   ?waiting=gm | hidden (shop: the first crate pressed and the GM slow to answer)
   ?closed=1 (shop: closed because no GM is online; ?closed=gm, closed by the GM)
   ?width=<px> (the window's width, as a GM sizes it, whatever the screen's)
+  ?characters=2 (shop: the player owns two characters, so the head has the
+  character select; aria-disabled while a pull is out)
   ?pity=due (shop: Tam has gone 8 pulls without a Rare from the Adventurer's
   Crate, so its pity is due: only Rare or better shows, and its line says so)
   "landed" plays the spin at zero duration, for deterministic screenshots.
@@ -34,7 +36,7 @@ import { mountSpin } from "../module/scripts/spin.js";
 import { charge, formatPrice, formatGold } from "../module/scripts/currency.js";
 import { resultHTML, replaySnapshot, replayReveal, replayTitle, revealActionsHTML } from "../module/scripts/revealcard.js";
 import { RARITY_LABEL } from "../module/scripts/config.js";
-import { boxCard, oddsRibbon, shopHTML, shopNotice, patchShop } from "../module/scripts/boxcard.js";
+import { actorPicker, boxCard, oddsRibbon, shopHTML, shopNotice, patchShop } from "../module/scripts/boxcard.js";
 import { shopOdds } from "../module/scripts/odds.js";
 
 const q = new URLSearchParams(location.search);
@@ -47,6 +49,9 @@ const unwatched = q.get("watched") === "0";
 const waiting = q.get("waiting");
 const closed = q.get("closed");
 const pityDue = q.get("pity") === "due";
+const characters = q.get("characters") === "2"
+  ? [{ id: "tam", name: "Tam Thornwick" }, { id: "orla", name: "Orla Vane" }]
+  : [{ id: "tam", name: "Tam Thornwick" }];
 const theme = q.get("theme") === "light" ? "light" : "dark";
 document.body.classList.replace("theme-dark", `theme-${theme}`);
 
@@ -98,7 +103,7 @@ function renderShop(extra = {}) {
   fresh.className = "lc-shop__body";
   const notice = shopNotice(ctx);
   fresh.innerHTML = shopHTML({
-    fields: `<div class="lc-shop__field"><span class="lc-label">Character</span><span class="lc-shop__who">Tam Thornwick</span></div>
+    fields: `${actorPicker({ actors: characters, actorId: "tam", busy: !!ctx.busy })}
         <div class="lc-shop__field lc-shop__field--purse"><span class="lc-label">Purse</span><span class="lc-shop__purse">${formatGold(purse)}</span></div>`,
     cards: BOXES.map(b => boxCard(b, POOLS, ctx)).join(""),
     notice,
