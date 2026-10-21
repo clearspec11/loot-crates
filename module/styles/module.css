@@ -473,6 +473,10 @@
 .loot-crates .lc-entry input.lc-entry__weight { flex: none; width: 3.8em; min-height: 30px; padding: 0 6px; font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
 .loot-crates .lc-entry--never img, .loot-crates .lc-entry--never .lc-entry__name { opacity: .55; }
 .loot-crates .lc-entry--never .lc-entry__status { color: var(--lc-ink-mute); }
+/* Just dropped: pinned at the top with its rarity as a left edge (edges on
+   paper, DESIGN.md), the note in plain ink. Clears at the next drop. */
+.loot-crates .lc-entry--recent { box-shadow: inset 3px 0 0 var(--lc-rarity, var(--lc-ink-mute)); padding-left: 8px; }
+.loot-crates .lc-entry__new { color: var(--lc-ink); font-weight: 700; }
 /* Entries whose source is gone or changed: full width at the top. */
 .loot-crates .lc-entry--missing, .loot-crates .lc-entry--renamed {
   grid-column: 1 / -1; padding: 6px 8px; margin: 2px 0; border: 1px dashed color-mix(in srgb, var(--lc-warn) 55%, transparent);

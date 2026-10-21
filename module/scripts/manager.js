@@ -35,6 +35,13 @@
   Remove, Relink and the bulk rarity redraw only that pool and keep focus
   near where it was. One status line in the toolbar speaks for them all.
 
+  A drop says where it went: the new rows are pinned at the top of their
+  pool (opened, and its chip and search cleared if they would hide one),
+  focus goes to the first one's rarity select, and the status line and a
+  toast name it ("Flame Tongue added to Core magic items, Rare, at the
+  top."). A single item already in the pool is pinned the same way. The pin
+  is view state only and goes at the next drop or when the manager closes.
+
   The box editor shows the chances a player will see (the shop's ribbon and
   pills) for the form as it stands, redrawn on every keystroke, tick and
   untick, and says when the box would drop nothing (liveOdds below).
@@ -46,7 +53,7 @@ import { oddsPills, oddsRibbon, draftBox, boxPreview, boxPreviewHTML, oddsSummar
 const oddsCell = rows => rows.length ? `${oddsRibbon(rows)}<div class="lc-odds">${oddsPills(rows)}</div>` : "<em>empty</em>";
 import { getPools, getBoxes, getLog, createPool, updatePool, removePool, createBox, updateBox, removeBox, entryFromItem, entriesFromDrop, addEntries, packHasLoot, LOOT_TYPES, isLootType, isShopOpen, setShopOpen, checkSources, sweepPools, removeEntry, patchEntry } from "./store.js";
 import { shopOdds, normalizeRarity, flattenPool, withSources, entryWeight, curateEntries } from "./odds.js";
-import { PAGE_ROWS, FALLBACK_IMG, defaultView, poolRows, sortRows, filterRows, pageRows, nextRows, poolCount, poolSummary, poolBody, chipsHTML, unsetButton, footHTML, entryRow, entryParts } from "./poolview.js";
+import { PAGE_ROWS, FALLBACK_IMG, defaultView, poolRows, sortRows, filterRows, pageRows, nextRows, poolCount, poolSummary, poolBody, chipsHTML, unsetButton, footHTML, entryRow, entryParts, pinRecent, dropNotice } from "./poolview.js";
 import { formatPrice } from "./currency.js";
 import { describeRefund, refundPull } from "./refund.js";
 import { postRefundCard } from "./chat.js";
@@ -101,7 +108,7 @@ export class CrateManager extends ApplicationV2 {
     if (!v) this.#view.set(pool.id, (v = defaultView(pool)));
     return v;
   }
-  #rowsOf(pool) { return sortRows(poolRows(pool, e => this.#srcOf(e))); }
+  #rowsOf(pool) { return sortRows(poolRows(pool, e => this.#srcOf(e)), this.#viewOf(pool).recent); }
   #poolEl(poolId) { return this.element?.querySelector(`.lc-pool[data-drop-pool="${CSS.escape(poolId)}"]`) ?? null; }
   #announce(text) {
     const el = this.element?.querySelector(".lc-manager__status");
@@ -112,7 +119,7 @@ export class CrateManager extends ApplicationV2 {
   // put back near where it was: on the row `uuid`, else the row now at
   // index `at` (or the one before it), else the pool's search or summary.
   // Falls back to a full render when the pool isn't on screen.
-  #repaint(poolId, { uuid = null, at = null } = {}) {
+  #repaint(poolId, { uuid = null, at = null, scroll = false } = {}) {
     const el = this.#poolEl(poolId);
     const pool = getPools()[poolId];
     if (!el || !pool) return this.render();
@@ -121,7 +128,41 @@ export class CrateManager extends ApplicationV2 {
     const li = (uuid && list?.querySelector(`[data-entry="${CSS.escape(uuid)}"]`))
       || (at != null && (list?.children[at] ?? list?.children[at - 1]));
     const target = li?.querySelector("select, input, button") ?? el.querySelector(".lc-pool__search") ?? el.querySelector("summary");
-    target?.focus();
+    target?.focus(scroll ? { preventScroll: true } : undefined);
+    if (scroll) (li || target)?.scrollIntoView?.({ block: "nearest" });
+  }
+
+  /*
+    Show what a drop put in (or found already in) a pool: pin `uuids` at the
+    top of its first page, open it, clear a chip or search that would hide
+    them, focus the first, and say so in the status line and a toast. Any
+    earlier pin, on any pool, goes.
+  */
+  #pinDrop(poolId, uuids, { label = "", added = uuids.length, duplicate = false } = {}) {
+    const pool = getPools()[poolId];
+    if (!pool || !uuids.length) return this.render();
+    for (const [id, v] of this.#view) {
+      if (id === poolId || !v.recent?.length) continue;
+      v.recent = [];
+      const el = this.#poolEl(id);
+      const other = getPools()[id];
+      if (el && other) this.#fillBody(el, other);
+    }
+    const { view, cleared } = pinRecent(this.#viewOf(pool), poolRows(pool, e => this.#srcOf(e)), uuids);
+    this.#view.set(poolId, view);
+    const rows = this.#rowsOf(pool).filter(r => r.recent);
+    const text = dropNotice({ pool, rows, label, added, duplicate, cleared });
+    const details = this.#poolEl(poolId)?.querySelector(".lc-pool__details");
+    if (details) details.open = true;
+    this.#repaint(poolId, { uuid: view.recent[0], scroll: true });
+    this.#announce(text);
+    ui.notifications.info(text);
+  }
+
+  // Closing the manager lets go of every pin.
+  async _onClose(options) {
+    for (const v of this.#view.values()) v.recent = [];
+    return super._onClose?.(options);
   }
 
   #fillBody(el, pool) {
@@ -300,7 +341,7 @@ export class CrateManager extends ApplicationV2 {
     // The row stays where it is even if it no longer matches the chip, so
     // focus stays on it; the census and chips catch up.
     const src = this.#srcOf(entry);
-    const fresh = entryParts(poolRows({ entries: [entry] }, () => src)[0], esc);
+    const fresh = entryParts(sortRows(poolRows({ entries: [entry] }, () => src), this.#viewOf(saved).recent)[0], esc);
     row.className = fresh.className;
     row.querySelector(".lc-entry__text")?.replaceWith(htmlNode(fresh.text));
     if (el.dataset.curate === "weight") el.defaultValue = String(entryWeight(entry));
@@ -369,9 +410,10 @@ export class CrateManager extends ApplicationV2 {
       rejectClose: false,
     });
     if (action !== "add") return false;
+    const had = new Set((getPools()[poolId]?.entries ?? []).map(e => e.uuid));
     const added = await addEntries(poolId, plan.entries);
-    ui.notifications.info(`Added ${added} item${added === 1 ? "" : "s"} from ${plan.label} to ${pool.name}.`);
-    this.render();
+    if (!added) { ui.notifications.info(`Nothing new to add to ${pool.name} from ${plan.label}.`); this.render(); return false; }
+    this.#pinDrop(poolId, plan.entries.map(e => e.uuid).filter(u => !had.has(u)), { label: plan.label, added });
     return true;
   }
 
@@ -516,11 +558,14 @@ export class CrateManager extends ApplicationV2 {
     if (!plan) return ui.notifications.warn("Drop an item, an Items folder, an item compendium or a roll table.");
     if (data.type !== "Item") return this.#previewAdd(poolId, plan);
     if (!plan.entries.length) {
-      if (plan.skipped.duplicates) return ui.notifications.info(`${plan.label} is already in ${pool.name}.`);
+      if (plan.skipped.duplicates) {
+        if (pool.entries.some(e => e.uuid === data.uuid)) return this.#pinDrop(poolId, [data.uuid], { duplicate: true });
+        return ui.notifications.info(`${plan.label} is already in ${pool.name}.`);
+      }
       const type = Object.keys(plan.skipped.notLoot)[0];
       return ui.notifications.warn(`${plan.label} is a ${SKIPPED_NAMES[type]?.[0] ?? type}, not loot. A pool takes weapons, equipment, consumables, tools, loot and containers.`);
     }
-    if (await addEntries(poolId, plan.entries)) { this.render(); }
+    if (await addEntries(poolId, plan.entries)) this.#pinDrop(poolId, plan.entries.map(e => e.uuid));
   }
 
   // An item dropped on a missing row replaces its source; the weight stays.

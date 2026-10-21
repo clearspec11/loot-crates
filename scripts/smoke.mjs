@@ -39,6 +39,9 @@ const STATES = [
   // A manager window sized 480 px wide, on any screen: its rows follow the
   // window (a container query), so names wrap in full rather than cut off.
   ["manager-narrow", "state=manager&width=480"],
+  // A dropped item on a big pool that was collapsed and filtered to Rare:
+  // opened, the chip cleared, the row pinned first and focused, and said.
+  ["manager-dropped", "state=manager&dropped=1"],
 ];
 
 // The pool editor as a craft table, read from the DOM: an open pool draws at
@@ -87,6 +90,26 @@ async function managerProblems(narrow) {
   if (!rows.length || rows.some(li => !li.classList.contains("lc-entry--unset"))) out.push("the 'No rarity set' chip shows other rows");
   if (rows.length !== Math.min(50, n)) out.push(`chip says ${n}, shows ${rows.length}`);
   big.querySelector('[data-chip="unset"]').click();
+  return out;
+}
+
+// The drop, read from the DOM: the collapsed 200-entry pool is open, its Rare
+// chip cleared, the dropped row first on page one with "Just added" and its
+// rarity edge, its rarity select focused, and the status line names it.
+function droppedProblems() {
+  const out = [];
+  const uuid = "sample.everything.199";
+  const d = document.querySelector('.lc-pool__details[data-pool="everything"]');
+  if (!d?.open) out.push("the pool dropped on is not open");
+  if (d?.querySelector('[data-chip][aria-pressed="true"]')) out.push("a chip that hides the dropped item is still pressed");
+  const first = d?.querySelector(".lc-entries > .lc-entry");
+  if (first?.dataset.entry !== uuid) out.push(`first row is ${first?.dataset.entry}, not the dropped item`);
+  if (!first?.classList.contains("lc-entry--recent") || !/Just added/.test(first?.textContent ?? "")) out.push("the dropped row isn't marked Just added");
+  if (first && getComputedStyle(first).boxShadow === "none") out.push("the dropped row has no rarity edge");
+  if (document.activeElement !== first?.querySelector("select.lc-entry__rarity")) out.push("focus is not on the dropped row's rarity select");
+  const status = document.querySelector(".lc-manager__status")?.textContent ?? "";
+  if (!/Staff of Power 199 added to Every dnd5e item, Very rare, at the top\. Cleared the Rare filter/.test(status)) out.push(`status line says "${status}"`);
+  if (document.querySelectorAll(".lc-entry--recent").length !== 1) out.push("more than one row pinned");
   return out;
 }
 
@@ -206,6 +229,7 @@ try {
       await page.waitForTimeout(500);
       const wide = await page.evaluate(() => document.scrollingElement.scrollWidth > document.scrollingElement.clientWidth + 1);
       if (name.startsWith("shop")) problems0.push(...await page.evaluate(shopProblems, name.slice(5)));
+      else if (name === "manager-dropped") problems0.push(...await page.evaluate(droppedProblems));
       else if (name.startsWith("manager")) problems0.push(...await page.evaluate(managerProblems, name === "manager-narrow"));
       else problems0.push(...await page.evaluate(revealProblems, name === "landed-buyer"));
       await page.evaluate(() => document.fonts.ready);

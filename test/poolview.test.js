@@ -4,7 +4,7 @@
   show, 50 rows at a time, and markup that draws no more than a page.
 */
 import { describe, it, expect } from "vitest";
-import { PAGE_ROWS, OPEN_UP_TO, defaultView, poolRows, sortRows, filterRows, pageRows, nextRows, chipList, matchesChip, poolCount, poolBody, poolSummary } from "../module/scripts/poolview.js";
+import { PAGE_ROWS, OPEN_UP_TO, defaultView, poolRows, sortRows, filterRows, pageRows, nextRows, chipList, matchesChip, poolCount, poolBody, poolSummary, entryParts, entryRow, pinRecent, dropNotice } from "../module/scripts/poolview.js";
 
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const entry = (uuid, name, rarity, extra = {}) => ({ uuid, name, img: "", rarity, sourceRarity: rarity, weight: 1, ...extra });
@@ -154,5 +154,92 @@ describe("markup", () => {
 
   it("the census reads the same as before", () => {
     expect(poolCount(POOL, ROWS)).toBe('7 items · 2 common, 2 uncommon, 1 rare · 1 never drops · <span class="lc-pool__problems">1 missing, 1 renamed, 2 no rarity set</span>');
+  });
+});
+
+/*
+  A drop says where it went: what was just added is pinned above everything,
+  problems included, on the first page of its pool, marked "Just added", and
+  a chip or search that would hide it is cleared and named.
+*/
+describe("a dropped item", () => {
+  it("sorts recent rows first, ahead of missing and renamed rows, newest first", () => {
+    const sorted = sortRows(ROWS, ["g", "a"]);
+    expect(uuids(sorted)).toEqual(["g", "a", "d", "f", "b", "c", "e"]);
+    expect(sorted.slice(0, 2).every(r => r.recent)).toBe(true);
+    expect(sorted.slice(2).some(r => r.recent)).toBe(false);
+    // An unknown uuid (removed since) changes nothing; no list is the old order.
+    expect(uuids(sortRows(ROWS, ["gone"]))).toEqual(uuids(sortRows(ROWS)));
+    expect(defaultView(POOL).recent).toEqual([]);
+  });
+
+  const big = { id: "c", name: "dnd5e items (filtered)", entries: Array.from({ length: 130 }, (_, i) => entry(`u${i}`, `Item ${i}`, i % 2 ? "common" : "rare")) };
+  big.entries[3] = entry("u3", "Old Shield", "uncommon"); // renamed at the source
+  const src = srcOf({ u3: { name: "Shield +1", img: "", rarity: "uncommon", rawRarity: "uncommon" } });
+
+  it("puts the newest entry of a 130-entry pool on page one, first", () => {
+    const plain = pageRows(sortRows(poolRows(big, src)));
+    expect(uuids(plain.rows)).not.toContain("u129");
+    const pinned = pageRows(sortRows(poolRows(big, src), ["u129"]));
+    expect(pinned.rows[0].e.uuid).toBe("u129");
+    expect(pinned.rows[1].e.uuid).toBe("u3"); // then the problems, as before
+    const html = poolBody(big, sortRows(poolRows(big, src), ["u129"]), { ...defaultView(big), recent: ["u129"] }, esc);
+    expect(html.indexOf('data-entry="u129"')).toBeLessThan(html.indexOf('data-entry="u3"'));
+  });
+
+  it("marks a recent row Just added, with a class for its edge", () => {
+    const [row] = sortRows(poolRows(big, src), ["u129"]);
+    const parts = entryParts(row, esc);
+    expect(parts.className).toContain("lc-entry--recent");
+    expect(parts.text).toContain("Just added");
+    const other = entryParts(sortRows(poolRows(big, src), ["u129"])[5], esc);
+    expect(other.className).not.toContain("lc-entry--recent");
+    expect(other.text).not.toContain("Just added");
+    // Alongside a problem note, both are said.
+    const unset = sortRows(poolRows(POOL, srcOf({})), ["b"])[0];
+    expect(entryRow("p", unset, esc)).toMatch(/Just added<\/span> · No rarity set/);
+  });
+
+  it("opens the pool, back to page one, and keeps a chip and search that still show it", () => {
+    const view = { ...defaultView(big), chip: "common", q: "item", shown: 150 };
+    const out = pinRecent(view, poolRows(big, src), ["u129"]);
+    expect(out.view).toMatchObject({ open: true, shown: PAGE_ROWS, chip: "common", q: "item", recent: ["u129"] });
+    expect(out.cleared).toEqual([]);
+    expect(view.recent).toEqual([]); // the old view is left alone
+  });
+
+  it("clears a chip that would hide it, and says so", () => {
+    const view = { ...defaultView(big), chip: "rare" };
+    const rows = poolRows(big, src);
+    const out = pinRecent(view, rows, ["u129"]); // u129 is common
+    expect(out.view.chip).toBe(null);
+    expect(out.cleared).toEqual(["the Rare filter"]);
+    const shown = sortRows(rows, out.view.recent);
+    expect(uuids(pageRows(filterRows(shown, out.view)).rows)[0]).toBe("u129");
+    const text = dropNotice({ pool: big, rows: shown.filter(r => r.recent), cleared: out.cleared });
+    expect(text).toBe("Item 129 added to dnd5e items (filtered), Common, at the top. Cleared the Rare filter so it shows.");
+  });
+
+  it("clears a search that would hide it, and a problem chip by its name", () => {
+    const out = pinRecent({ ...defaultView(big), chip: "renamed", q: "shield" }, poolRows(big, src), ["u129"]);
+    expect(out.view).toMatchObject({ chip: null, q: "" });
+    expect(out.cleared).toEqual(["the Renamed filter", "the search"]);
+  });
+
+  it("pins at most a page", () => {
+    const all = big.entries.map(e => e.uuid);
+    expect(pinRecent(defaultView(big), poolRows(big, src), all).view.recent).toHaveLength(PAGE_ROWS);
+  });
+
+  it("names the item, its pool, its rarity and where it is", () => {
+    const rows = sortRows(poolRows(POOL, srcOf({})), ["c"]).filter(r => r.recent);
+    expect(dropNotice({ pool: POOL, rows })).toBe("WAND OF WEB added to Big pool, Rare, at the top.");
+    const unset = sortRows(poolRows(POOL, srcOf({})), ["b"]).filter(r => r.recent);
+    expect(dropNotice({ pool: POOL, rows: unset })).toBe("Longsword added to Big pool, no rarity set (draws as Common), at the top.");
+    expect(dropNotice({ pool: POOL, rows, duplicate: true })).toBe("WAND OF WEB is already in Big pool; it is at the top.");
+    const many = sortRows(poolRows(big, src), big.entries.slice(0, 40).map(e => e.uuid)).filter(r => r.recent);
+    expect(dropNotice({ pool: { name: "Core magic items" }, rows: many, label: "SRD Items" })).toBe("Added 40 items from SRD Items to Core magic items; they are at the top.");
+    const page = many.concat(sortRows(poolRows(big, src), big.entries.slice(40, 50).map(e => e.uuid)).filter(r => r.recent));
+    expect(dropNotice({ pool: { name: "Core" }, rows: page, label: "SRD Items", added: 130 })).toBe("Added 130 items from SRD Items to Core; the first 50 are at the top.");
   });
 });
