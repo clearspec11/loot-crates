@@ -627,7 +627,7 @@ export class CrateManager extends ApplicationV2 {
           <td>${esc(b.name)}</td><td>${esc(formatPrice(b.price))}</td>
           <td>${(b.pools ?? []).map(r => esc(pools[r.id]?.name ?? "missing")).join(", ") || "<em>none</em>"}</td>
           <td>${oddsCell(shopOdds(b, pools).rows)}</td>
-          <td>${[b.rules?.pity ? `pity ${b.rules.pity.after}` : "", b.rules?.noDuplicates ? "no dupes" : "", b.rules?.stock != null ? `${b.rules.stock} left` : ""].filter(Boolean).join(", ")}</td>
+          <td>${[b.rules?.pity ? esc(`${RARITY_LABEL[b.rules.pity.minRarity] ?? b.rules.pity.minRarity} or better after ${b.rules.pity.after} pulls`) : "", b.rules?.noDuplicates ? "no dupes" : "", b.rules?.stock != null ? `${b.rules.stock} left` : ""].filter(Boolean).join(", ")}</td>
           <td><button type="button" data-action="editBox" data-box="${esc(b.id)}" aria-label="Edit ${esc(b.name)}" data-tooltip="Edit"><i class="fas fa-pen" inert></i></button> <button type="button" data-action="deleteBox" data-box="${esc(b.id)}" aria-label="Delete ${esc(b.name)}" data-tooltip="Delete"><i class="fas fa-trash" inert></i></button></td>
         </tr>`).join("")}</tbody></table>` : `<p class="lc-empty">No boxes. A box prices a pull from one or more pools.</p>`}`;
   }
@@ -788,7 +788,8 @@ function liveOdds(form, box, poolIds) {
   in the nav, so every tab shows it. The pools tab redraws itself after its
   own edits (#repaint), and a full render of up to 50 rows per pool on every
   sweep flag would undo its paging, so a pools change redraws only the Boxes
-  tab, whose odds read the pools. The pity state shows nowhere here.
+  tab, whose odds read the pools. The pity state shows nowhere here (each
+  buyer's shop shows their own).
 */
 export function managerShows(tab, key) {
   if (key === SETTINGS.SHOP_OPEN) return true;

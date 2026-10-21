@@ -29,6 +29,9 @@ const THEMES = ["dark", "light"];
 const STATES = [
   ["shop", "state=shop"],
   ["shop-closed", "state=shop&closed=1"],
+  // Tam's pity on the Adventurer's Crate is due: its odds are only what the
+  // roll can give (Rare or better) and its line says it is guaranteed.
+  ["shop-pity", "state=shop&pity=due"],
   // The Buy a keyboard user pressed, mid-pull: it keeps focus (and its node)
   // through every re-render, and the others are off without losing theirs.
   ["shop-busy", "state=shop"],
@@ -166,6 +169,18 @@ async function shopProblems(mode) {
     return out;
   }
   if (notice?.textContent) out.push(`open shop's notice isn't empty: "${notice.textContent}"`);
+  // The pity line: on the crate with a pity rule only, at the reason lines' 12px,
+  // and when due, the odds are only the guaranteed rarities.
+  const pity = [...document.querySelectorAll(".lc-box__pity")];
+  if (pity.length !== 1 || pity[0].closest(".lc-box")?.dataset.box !== "adventurer") out.push(`expected one pity line, on the Adventurer's Crate; got ${pity.length}`);
+  else {
+    const want = mode === "pity" ? "Rare or better guaranteed this pull" : "Rare or better within 9 pulls";
+    if (pity[0].textContent.trim() !== want) out.push(`pity line reads "${pity[0].textContent.trim()}", not "${want}"`);
+    if (parseFloat(getComputedStyle(pity[0]).fontSize) < 12) out.push("pity line under 12px");
+    const names = [...pity[0].closest(".lc-box").querySelectorAll(".lc-odd")].map(p => p.textContent.trim().split(" ")[0]);
+    if (mode === "pity" && names.some(n => ["Common", "Uncommon"].includes(n))) out.push(`a due pity still shows ${names.join(", ")}`);
+    if (mode !== "pity" && !names.includes("Common")) out.push("the Adventurer's Crate lost its Common odds before pity is due");
+  }
   if (mode === "busy") {
     // As shop.js #buy does: focus the Buy, then busy, waiting, the purse
     // charged and idle renders. After each (two frames, for Chrome's focus

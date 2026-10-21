@@ -195,23 +195,45 @@ export function oddsTable(box, pools) {
 }
 
 /*
-  The odds a buyer sees: { rows: [{ rarity, chance, label }], top }. Unlike
-  oddsTable it drops rarities the box weighs at 0 (they can never land), and
-  when every rarity the pools hold weighs 0 it shows them at equal chance,
-  which is what draw() falls back to. Labels are whole percents that sum to
-  100 (largest remainder, so 62.5/37.5 reads 63/37, not 63/38), and never
-  read "0%" or "100%" for a chance that isn't: under 1% is "<1%", over 99% is
-  ">99%". `top` is the best rarity the box can actually drop, null when none.
+  The odds a buyer sees: { rows: [{ rarity, chance, label }], top, pity? }.
+  Read from drawPlan, the same plan draw() rolls on, so for a buyer's
+  `state` (per actor and box: { sinceRare, owned }) the shown odds are that
+  buyer's: under noDuplicates what they own is out, and once their pity is
+  due only the guaranteed rarities show. Unlike oddsTable it drops rarities
+  the box weighs at 0 (they can never land), and when every rarity left
+  weighs 0 it shows them at equal chance, which is what draw() does. Labels
+  are whole percents that sum to 100 (largest remainder, so 62.5/37.5 reads
+  63/37, not 63/38), and never read "0%" or "100%" for a chance that isn't:
+  under 1% is "<1%", over 99% is ">99%". `top` is the best rarity the box
+  can actually drop, null when none.
+  `nothingNew: true` when the box holds items but this buyer owns every one
+  of them under noDuplicates (rows is then empty). `pity: { due, left,
+  minRarity }` when the box has a pity rule this buyer can reach: `left` is
+  the pulls up to and including the guaranteed one (1 when it is due).
 */
-export function shopOdds(box, pools) {
-  const table = oddsTable(box, pools);
-  const live = table.filter(row => row.chance > 0);
-  const rows = live.length ? live : table.map(row => ({ ...row, chance: 1 / table.length }));
-  const pcts = wholePercents(rows.map(row => row.chance));
-  return {
-    rows: rows.map((row, i) => ({ ...row, label: chanceLabel(row.chance, pcts[i]) })),
-    top: rows.length ? rows[rows.length - 1].rarity : null,
+export function shopOdds(box, pools, state = {}) {
+  const plan = drawPlan(box, pools, state);
+  if (!plan) {
+    const out = { rows: [], top: null };
+    if (box.rules?.noDuplicates && state.owned?.length && drawPlan(box, pools, {})) out.nothingNew = true;
+    return out;
+  }
+  const rows = plan.candidates.map(rarity => ({ rarity, weight: plan.weightOf(rarity) })).filter(row => row.weight > 0);
+  const total = rows.reduce((n, row) => n + row.weight, 0);
+  const pcts = wholePercents(rows.map(row => row.weight / total));
+  const out = {
+    rows: rows.map((row, i) => ({ rarity: row.rarity, chance: row.weight / total, label: chanceLabel(row.weight / total, pcts[i]) })),
+    top: rows[rows.length - 1].rarity,
   };
+  const pity = box.rules?.pity;
+  // Only a floor this buyer can reach: past it draw() falls back to the
+  // best rarity left, and "Legendary or better" would be a promise it breaks.
+  if (pity?.after && pity.minRarity && plan.available.some(r => rarityRank(r) >= rarityRank(pity.minRarity))) {
+    const since = Math.max(0, Number(state.sinceRare) || 0);
+    const due = since >= pity.after;
+    out.pity = { due, left: due ? 1 : pity.after - since + 1, minRarity: normalizeRarity(pity.minRarity) };
+  }
+  return out;
 }
 
 // Whole percents for chances summing to 1, adding up to exactly 100.
@@ -238,11 +260,16 @@ function pityFloor(box, state) {
 }
 
 /*
-  Returns { entry, rarity, poolId, pity } or null when the box has nothing to
-  give (every entry excluded, or no pools). `state` is per actor and box:
-  { sinceRare, owned: [uuid] }.
+  What one pull from `box` can land on for one buyer: the noDuplicates and
+  pity rules applied to their `state`. draw() rolls on it and shopOdds()
+  shows it, so the odds next to Buy and the roll can't drift apart. Returns
+  null when nothing is left to give, else { perPool: [{ share, entries }],
+  available: [rarity] (what is left, low to high), candidates: [rarity]
+  (what this pull can land on), weightOf(rarity), pityApplied }. When every
+  candidate weighs 0 (a box whose weights exclude what it holds), weightOf
+  treats them as equal rather than giving nothing.
 */
-export function draw({ box, pools, rng = Math.random, state = {} }) {
+function drawPlan(box, pools, state = {}) {
   const weights = { ...DEFAULT_WEIGHTS, ...(box.weights ?? {}) };
   const owned = new Set(box.rules?.noDuplicates ? state.owned ?? [] : []);
   const floor = pityFloor(box, state);
@@ -252,22 +279,32 @@ export function draw({ box, pools, rng = Math.random, state = {} }) {
     .filter(p => p.entries.length);
   if (!perPool.length) return null;
 
-  const available = new Set(perPool.flatMap(p => p.entries.map(e => e.rarity)));
-  let candidates = RARITIES.filter(r => available.has(r) && rarityRank(r) >= floor);
+  const held = new Set(perPool.flatMap(p => p.entries.map(e => e.rarity)));
+  const available = RARITIES.filter(r => held.has(r));
+  let candidates = available.filter(r => rarityRank(r) >= floor);
   // Pity asked for more than the box holds: fall back to its best rarity.
-  if (!candidates.length) candidates = [RARITIES.filter(r => available.has(r)).pop()];
+  if (!candidates.length) candidates = [available[available.length - 1]];
   const pityApplied = floor >= 0 && candidates.every(r => rarityRank(r) >= floor);
 
-  let rarity = weightedPick(candidates, r => weights[r], rng);
-  // Every candidate weighs zero (a box whose weights exclude what it holds):
-  // treat them as equal rather than giving nothing.
-  if (!rarity) rarity = weightedPick(candidates, () => 1, rng);
+  const weightOf = r => Math.max(0, Number(weights[r]) || 0);
+  const weighed = candidates.some(r => weightOf(r) > 0);
+  return { perPool, available, candidates, weightOf: weighed ? weightOf : () => 1, pityApplied };
+}
 
-  const holders = perPool.filter(p => p.entries.some(e => e.rarity === rarity));
+/*
+  Returns { entry, rarity, poolId, pity } or null when the box has nothing to
+  give (every entry excluded, or no pools). `state` is per actor and box:
+  { sinceRare, owned: [uuid] }.
+*/
+export function draw({ box, pools, rng = Math.random, state = {} }) {
+  const plan = drawPlan(box, pools, state);
+  if (!plan) return null;
+  const rarity = weightedPick(plan.candidates, plan.weightOf, rng);
+  const holders = plan.perPool.filter(p => p.entries.some(e => e.rarity === rarity));
   const pool = weightedPick(holders, p => p.share, rng) ?? holders[0];
   const entry = weightedPick(pool.entries.filter(e => e.rarity === rarity), e => e.weight, rng);
   if (!entry) return null;
-  return { entry, rarity, poolId: entry.poolId, pity: pityApplied };
+  return { entry, rarity, poolId: entry.poolId, pity: plan.pityApplied };
 }
 
 // The state after a pull, for the pity counter and duplicate rule.

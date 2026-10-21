@@ -40,7 +40,8 @@ const boxes = [...el.querySelectorAll(".lc-box")].map(card => {
   // aria-describedby may name the shop's notice and the card's own line.
   const whys = (btn.getAttribute("aria-describedby") ?? "").split(/\s+/).filter(Boolean).map(id => el.querySelector(`#${CSS.escape(id)}`));
   const why = whys.length ? { textContent: whys.map(w => w?.textContent ?? "").join(" "), shown: whys.every(w => w && w.getBoundingClientRect().height > 0 && getComputedStyle(w).visibility !== "hidden") } : null;
-  const top = shopOdds(box, pools).top;
+  // The odds are this character's (noDuplicates, pity), as the card shows them.
+  const top = shopOdds(box, pools, store.getActorState(actor.id, box.id)).top;
   return {
     name: card.querySelector(".lc-box__name").textContent,
     pills: [...card.querySelectorAll(".lc-odd")].map(p => p.textContent),
@@ -62,7 +63,7 @@ const problems = [
   ...boxes.filter(b => b.title).map(b => `${b.name}: Buy still has a title`),
   ...boxes.filter(b => b.reallyDisabled).map(b => `${b.name}: Buy is disabled (can't hold focus); should be aria-disabled`),
 ];
-const blockers = boxes.filter(b => b.disabled && /Nothing inside|Needs .* more/.test(b.reason?.text ?? ""));
+const blockers = boxes.filter(b => b.disabled && /Nothing inside|Nothing new|Needs .* more/.test(b.reason?.text ?? ""));
 if (!blockers.length) problems.push("no empty or unaffordable box to check a reason on");
 return {
   ok: !problems.length,

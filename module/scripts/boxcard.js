@@ -75,13 +75,14 @@ function peekHTML(items, esc) {
 
 /*
   Why this box can't be bought now, or "" when it can. `ctx`:
-  { purse, hasActor, open, gmOnline }. The box's own state comes first (an
-  empty or sold-out box stays unbuyable whoever asks), then the shop's, then
-  the buyer's. The shop and the cards split this in two: shopReason is said
-  once in the shop's header, crateReason under the card it belongs to.
+  { purse, hasActor, actorName, open, gmOnline }. `odds` is shopOdds for the
+  buyer's state. The box's own state comes first (an empty or sold-out box
+  stays unbuyable whoever asks), then the shop's, then the buyer's. The
+  shop and the cards split this in two: shopReason is said once in the
+  shop's header, crateReason under the card it belongs to.
 */
 export function buyReason(box, odds, ctx = {}) {
-  return crateState(box, odds) || shopReason(ctx) || crateReason(box, odds, ctx);
+  return crateState(box, odds, ctx) || shopReason(ctx) || crateReason(box, odds, ctx);
 }
 
 // Why no crate can be bought at all, or "": the shop is shut, no GM is there
@@ -93,19 +94,37 @@ export function shopReason({ hasActor = false, open = true, gmOnline = true } = 
 }
 
 // Why this crate in particular can't be bought, or "": it holds nothing, it
-// sold out, or this character is short (said even while the shop is shut,
-// so a player knows what to save for).
-export function crateReason(box, odds, { purse = {}, hasActor = false } = {}) {
-  const state = crateState(box, odds);
+// sold out, it has nothing this character doesn't own yet (noDuplicates), or
+// this character is short (said even while the shop is shut, so a player
+// knows what to save for).
+export function crateReason(box, odds, ctx = {}) {
+  const state = crateState(box, odds, ctx);
   if (state) return state;
+  const { purse = {}, hasActor = false } = ctx;
   if (hasActor && !canAfford(purse, box.price)) return `Needs ${formatPrice(shortfall(purse, box.price))} more`;
   return "";
 }
 
-function crateState(box, odds) {
-  if (!odds.rows.length) return "Nothing inside";
+// A crate that can't give this character anything new can't be bought,
+// rather than failing after a round trip to the GM (pull.js "nothing left").
+function crateState(box, odds, { actorName = "" } = {}) {
+  if (!odds.rows.length && !odds.nothingNew) return "Nothing inside";
   if (box.rules?.stock != null && box.rules.stock <= 0) return "Sold out";
+  if (odds.nothingNew) return actorName ? `Nothing new for ${actorName}` : "Nothing new for this character";
   return "";
+}
+
+/*
+  The pity rule as this buyer stands with it, under the odds: "Rare or
+  better guaranteed this pull" once it is due (the odds above then show only
+  those rarities), else "Rare or better within 4 pulls". "" when the box
+  has no pity this buyer can reach.
+*/
+export function pityLine(odds) {
+  const pity = odds?.pity;
+  if (!pity) return "";
+  const what = `${RARITY_LABEL[pity.minRarity] ?? pity.minRarity} or better`;
+  return pity.due ? `${what} guaranteed this pull` : `${what} within ${pity.left} pulls`;
 }
 
 /*
@@ -131,9 +150,12 @@ export function shopNotice(ctx = {}) {
 }
 
 /*
-  One box in the shop grid. `ctx` adds { busy, busyBox, waiting, art, esc }
-  to buyReason's. While a pull is out, every Buy is off, and only the one that
-  was pressed (busyBox) says "Opening…"; with no busyBox, all of them do.
+  One box in the shop grid. `ctx` adds { busy, busyBox, waiting, art, esc,
+  stateOf } to buyReason's; stateOf(boxId) is the buyer's pity and
+  ownership state for that box (store.js getActorState), so the odds, the
+  pity line and "Nothing new" are this character's, as draw() will roll
+  them. While a pull is out, every Buy is off, and only the one that was
+  pressed (busyBox) says "Opening…"; with no busyBox, all of them do.
   When the GM is slow to answer (`waiting`, from socket.js onWait) it says
   "Waiting for the GM…" instead; why is in the shop's notice.
   An unbuyable Buy is aria-disabled, never `disabled`: a disabled button
@@ -149,7 +171,7 @@ export function shopNotice(ctx = {}) {
 */
 export function boxCard(box, pools, ctx) {
   const esc = ctx.esc ?? (s => String(s ?? ""));
-  const odds = shopOdds(box, pools);
+  const odds = shopOdds(box, pools, ctx.stateOf?.(box.id) ?? {});
   const reason = crateReason(box, odds, ctx);
   const notice = shopNotice(ctx).text;
   const whyId = `lc-why-${box.id}`;
@@ -160,12 +182,14 @@ export function boxCard(box, pools, ctx) {
   const waiting = opening && WAITING[ctx.waiting];
   const peek = peekItems(box, pools, odds);
   const stock = odds.rows.length && box.rules?.stock != null ? `<div class="lc-box__stock">${esc(box.rules.stock)} left</div>` : "";
+  const pity = pityLine(odds);
   return `
       <div class="lc-box ${rarityClass}" data-box="${esc(box.id)}">
         <div class="lc-box__band"><h3 class="lc-box__name">${esc(box.name)}</h3></div>
         <div class="lc-box__body">
           <div class="lc-box__art" aria-hidden="true">${peek.length ? peekHTML(peek, esc) : ctx.art ?? ""}</div>
           ${odds.rows.length ? `${oddsRibbon(odds.rows)}<div class="lc-box__odds">${oddsPills(odds.rows)}</div>` : ""}
+          ${pity ? `<div class="lc-box__pity lc-rarity-${odds.pity.minRarity}${odds.pity.due ? " lc-box__pity--due" : ""}">${esc(pity)}</div>` : ""}
           ${stock}
           <button type="button" class="lc-box__buy" data-action="buy" data-box="${esc(box.id)}"${off ? ` aria-disabled="true"` : ""}${off && describedBy ? ` aria-describedby="${esc(describedBy)}"` : ""}>
             ${opening ? (waiting ? "Waiting for the GM…" : "Opening…") : `Open for ${esc(formatPrice(box.price))}`}

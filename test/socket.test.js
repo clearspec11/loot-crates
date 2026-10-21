@@ -823,3 +823,21 @@ describe("open windows after a pull", () => {
     expect(game.settings.get("loot-crates", "boxes").box.rules.stock).toBe(2);
   });
 });
+
+describe("the reveal's odds", () => {
+  it("are the buyer's, as their shop showed them: pity due, only the guaranteed rarity", async () => {
+    const { game, emitted, deliver } = makeWorld({ user: GM });
+    const pool = { ...POOL, entries: [...POOL.entries, { uuid: "r", name: "r", img: "", rarity: "rare", weight: 1 }] };
+    await game.settings.set("loot-crates", "pools", { pool });
+    await game.settings.set("loot-crates", "boxes", { box: { ...box({ pity: { after: 2, minRarity: "rare" } }), weights: { common: 9, rare: 1 } } });
+    await game.settings.set("loot-crates", "actorState", { "actor1.box": { sinceRare: 2 } });
+    await deliver({ type: "pull", requestId: "due", boxId: "box", actorId: "actor1", userId: "p1" });
+    const due = emitted.find(m => m.type === "reveal" && m.requestId === "due");
+    expect(due.odds).toEqual([{ rarity: "rare", chance: 1, label: "100%" }]);
+    expect(due.result.rarity).toBe("rare");
+    // The pity reset after the Rare: the next reveal shows the box's full odds.
+    await deliver({ type: "pull", requestId: "next", boxId: "box", actorId: "actor1", userId: "p1" });
+    const next = emitted.find(m => m.type === "reveal" && m.requestId === "next");
+    expect(next.odds.map(o => `${o.rarity} ${o.label}`)).toEqual(["common 90%", "rare 10%"]);
+  });
+});

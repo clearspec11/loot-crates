@@ -7,6 +7,8 @@
   ?waiting=gm | hidden (shop: the first crate pressed and the GM slow to answer)
   ?closed=1 (shop: closed because no GM is online; ?closed=gm, closed by the GM)
   ?width=<px> (the window's width, as a GM sizes it, whatever the screen's)
+  ?pity=due (shop: Tam has gone 8 pulls without a Rare from the Adventurer's
+  Crate, so its pity is due: only Rare or better shows, and its line says so)
   "landed" plays the spin at zero duration, for deterministic screenshots.
   buyer=1 shows the reveal as the buyer (or a GM) sees it: gold left and an
   Open item button; without it, as the rest of the table sees it.
@@ -34,6 +36,7 @@ const purse = { pp: 0, gp: 420, ep: 0, sp: 7, cp: 3 };
 const buyer = q.get("buyer") === "1";
 const waiting = q.get("waiting");
 const closed = q.get("closed");
+const pityDue = q.get("pity") === "due";
 const theme = q.get("theme") === "light" ? "light" : "dark";
 document.body.classList.replace("theme-dark", `theme-${theme}`);
 
@@ -77,7 +80,8 @@ const stage = document.getElementById("stage");
 // change, so the smoke can check the notice node survives.
 function renderShop(extra = {}) {
   const ctx = {
-    purse, hasActor: true, open: !closed, gmOnline: closed !== "1", art: CRATE_ICON,
+    purse, hasActor: true, actorName: "Tam Thornwick", open: !closed, gmOnline: closed !== "1", art: CRATE_ICON,
+    stateOf: id => (pityDue && id === BOX.id ? { sinceRare: BOX.rules.pity.after } : {}),
     ...(waiting ? { busy: true, busyBox: BOXES[0].id, waiting } : {}), ...extra,
   };
   const fresh = document.createElement("div");

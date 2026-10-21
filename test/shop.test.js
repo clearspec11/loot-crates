@@ -5,10 +5,13 @@
 */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { POOLS, BOXES } from "../harness/sample.js";
+import { flattenPool } from "../module/scripts/odds.js";
 
 const boxes = Object.fromEntries(BOXES.map(b => [b.id, b]));
 let shopOpen = true;
-vi.mock("../module/scripts/store.js", () => ({ getBoxes: () => boxes, getPools: () => POOLS, isShopOpen: () => shopOpen }));
+// The pity and ownership state per "actorId.boxId", as the world setting holds it.
+let states = {};
+vi.mock("../module/scripts/store.js", () => ({ getBoxes: () => boxes, getPools: () => POOLS, isShopOpen: () => shopOpen, getActorState: (a, b) => states[`${a}.${b}`] ?? {} }));
 const requestPull = vi.fn(async () => ({}));
 vi.mock("../module/scripts/socket.js", () => ({ requestPull: (...args) => requestPull(...args) }));
 
@@ -29,6 +32,7 @@ const buy = (app, box) => CrateShop.DEFAULT_OPTIONS.actions.buy.call(app, {}, { 
 beforeEach(() => {
   requestPull.mockClear();
   shopOpen = true;
+  states = {};
   activeGM = { id: "gm" };
 });
 
@@ -65,5 +69,18 @@ describe("the shop's Buy action", () => {
     activeGM = { id: "gm" };
     await buy(new CrateShop(), "nope");
     expect(requestPull).not.toHaveBeenCalled();
+  });
+
+  it("does nothing for a crate with nothing new for this character, and asks for one with something", async () => {
+    const all = [...flattenPool("core", POOLS), ...flattenPool("homebrew", POOLS)].map(e => e.uuid);
+    boxes.dupes = { ...boxes.common, id: "dupes", rules: { noDuplicates: true } };
+    try {
+      states["a1.dupes"] = { owned: all };
+      await buy(new CrateShop(), "dupes");
+      expect(requestPull).not.toHaveBeenCalled();
+      states["a1.dupes"] = { owned: all.slice(1) };
+      await buy(new CrateShop(), "dupes");
+      expect(requestPull).toHaveBeenCalledTimes(1);
+    } finally { delete boxes.dupes; }
   });
 });

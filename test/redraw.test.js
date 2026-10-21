@@ -73,17 +73,23 @@ describe("storeRedraw", () => {
     expect(refreshManager.mock.calls[1][0]).toEqual([SETTINGS.SHOP_OPEN]);
   });
 
-  it("leaves the shop alone for a log or pity change, which it doesn't show", () => {
+  it("leaves the shop alone for a log change, which it doesn't show", () => {
     const { refreshShop, refreshManager, listen } = make();
     listen(SETTINGS.LOG);
-    listen(SETTINGS.STATE);
     vi.advanceTimersByTime(REDRAW_DELAY_MS);
     expect(refreshShop).not.toHaveBeenCalled();
     expect(refreshManager).toHaveBeenCalledOnce();
   });
 
-  it("redraws the shop for boxes, pools and the shop being opened or closed", () => {
-    for (const key of [SETTINGS.BOXES, SETTINGS.POOLS, SETTINGS.SHOP_OPEN]) {
+  it("redraws the shop for a pity state change, so its odds and pity line follow a pull", () => {
+    const { refreshShop, listen } = make();
+    listen(SETTINGS.STATE);
+    vi.advanceTimersByTime(REDRAW_DELAY_MS);
+    expect(refreshShop).toHaveBeenCalledOnce();
+  });
+
+  it("redraws the shop for boxes, pools, pity state and the shop being opened or closed", () => {
+    for (const key of [SETTINGS.BOXES, SETTINGS.POOLS, SETTINGS.STATE, SETTINGS.SHOP_OPEN]) {
       const { refreshShop, listen } = make();
       listen(key);
       vi.advanceTimersByTime(REDRAW_DELAY_MS);

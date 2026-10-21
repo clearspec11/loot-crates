@@ -2,7 +2,7 @@
   The player's Crate Shop: the boxes on offer, what each costs, whether this
   character can afford it, and a Buy button that asks the GM to do the pull.
 */
-import { getBoxes, getPools, isShopOpen } from "./store.js";
+import { getBoxes, getPools, getActorState, isShopOpen } from "./store.js";
 import { formatGold } from "./currency.js";
 import { boxCard, buyReason, shopHTML, shopNotice, patchShop } from "./boxcard.js";
 import { shopOdds } from "./odds.js";
@@ -44,7 +44,8 @@ export class CrateShop extends ApplicationV2 {
     if (this.busy) return;
     const boxId = target.dataset.box;
     const box = getBoxes()[boxId];
-    if (!box || buyReason(box, shopOdds(box, getPools()), this.#ctx())) return;
+    const ctx = this.#ctx();
+    if (!box || buyReason(box, shopOdds(box, getPools(), ctx.stateOf(boxId)), ctx)) return;
     this.busy = true;
     this.busyBox = boxId;
     this.render();
@@ -73,11 +74,15 @@ export class CrateShop extends ApplicationV2 {
   }
 
   // What decides whether a crate can be bought, for the cards and for #buy.
+  // stateOf reads this character's pity count and owned items per box (a
+  // world setting, so a player's client can read it), so each card shows
+  // the odds draw() will use for them.
   #ctx() {
     const actor = this.actor;
     const gm = !!game.users.activeGM;
     return {
       purse: actor?.system?.currency ?? {}, open: isShopOpen() && gm, gmOnline: gm, hasActor: !!actor,
+      actorName: actor?.name ?? "", stateOf: boxId => (actor ? getActorState(actor.id, boxId) : {}),
       busy: this.busy, busyBox: this.busyBox, waiting: this.waiting, art: `<i class="fas fa-box-open"></i>`, esc,
     };
   }
