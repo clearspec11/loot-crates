@@ -3,16 +3,22 @@
 // redraw listener in place of the installed module's (as player-pull.cjs
 // does), it saves a test pool "Live pity pool" (two entries of the lowest
 // rarity in "Live UI pool", one of its highest) and a 1 gp box "Live pity
-// crate" (pity after 2 for the high rarity, no duplicates), then sets
-// Crate Tester's pity state for that box and reads the card each time:
+// crate" (pity after 2 for the high rarity, no duplicates), picks Crate
+// Tester in the shop's character select, then sets Crate Tester's pity state
+// for that box and reads the card each time:
 //   fresh (sinceRare 1)   both rarities, "<High> or better within 2 pulls"
 //   owns all three        "Nothing new for Crate Tester", Buy aria-disabled
 //                          with that visible reason
 //   due (sinceRare 2)     only the high rarity, "... guaranteed this pull"
 // Every card's pills must equal shopOdds(box, pools, state). Then it presses
-// Buy once (one real 1 gp purchase, from the fresh state) and times the open
-// shop's pity line changing to what the new state says (within 1 s of the
-// GM's writes), and checks the reveal's odds were the shop's.
+// Buy once with a pointer press (one real 1 gp purchase, from the fresh
+// state) and watches every frame until the reveal lands. Since 0.7.0 the
+// buyer's shop holds the result back until their spin lands (reveal.js
+// heldState): the GM writes the new state ~0.3 s into the spin, but the
+// card's pity line and pills must stay as they were before the click on
+// every frame from that write until this pull's card is under the marker
+// (.lc-card--landed), then change to what the new state says within 1 s of
+// the landing. It also checks the reveal's odds were the shop's.
 //
 //   FOUNDRY_URL=http://192.168.0.57:30000 MODULE_BASE=http://192.168.0.190:8766/ \
 //     NODE_PATH=$(npm root -g) node foundry-dev/headless/run.cjs foundry-dev/checks/live-shop-pity.js --shot /tmp/pity.png
@@ -68,11 +74,34 @@ const box = await store.saveBox({
   rules: { pity: { after: 2, minRarity: high.rarity }, noDuplicates: true, stock: null },
 });
 
-const app = openShop();
-app.actorId = actor.id;
-await app.render({ force: true });
 const frames = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
 const wait = ms => new Promise(r => setTimeout(r, ms));
+const until = async (fn, ms = 5000) => { for (let t = 0; t < ms && !fn(); t += 50) await wait(50); return fn(); };
+// A person's press: pointer and mouse down (which focuses a button), up,
+// then the click.
+const press = el => {
+  const at = { bubbles: true, cancelable: true, composed: true, button: 0, view: window };
+  el.dispatchEvent(new PointerEvent("pointerdown", { ...at, pointerType: "mouse", isPrimary: true }));
+  el.dispatchEvent(new MouseEvent("mousedown", at));
+  el.focus();
+  el.dispatchEvent(new PointerEvent("pointerup", { ...at, pointerType: "mouse", isPrimary: true }));
+  el.dispatchEvent(new MouseEvent("mouseup", at));
+  el.dispatchEvent(new MouseEvent("click", at));
+};
+
+// Crate Tester, chosen in the shop's character select as a person does.
+const app = openShop();
+await app.render({ force: true });
+const picker = () => app.element?.querySelector(".lc-shop__actor");
+if (picker() && picker().value !== actor.id) {
+  picker().focus();
+  picker().value = actor.id;
+  picker().dispatchEvent(new Event("input", { bubbles: true }));
+  picker().dispatchEvent(new Event("change", { bubbles: true }));
+}
+if (!await until(() => app.actorId === actor.id && app.element?.querySelector(`.lc-box[data-box="${CSS.escape(box.id)}"] .lc-box__buy`))) {
+  throw new Error(`the shop did not switch to Crate Tester (on ${app.actor?.name ?? "nobody"})`);
+}
 const card = () => app.element.querySelector(`.lc-box[data-box="${CSS.escape(box.id)}"]`);
 const read = () => {
   const c = card();
@@ -121,30 +150,48 @@ await setState({ sinceRare: 1, owned: [] });
 const before = store.getActorState(actor.id, box.id);
 const shownBefore = read();
 const purseBefore = { ...actor.system.currency };
+const revealsBefore = new Set(document.querySelectorAll(".lc-reveal"));
 const t0 = performance.now();
-const btn = card().querySelector(".lc-box__buy");
-btn.focus();
-btn.click();
-// The state write lands after the reveal; poll the line until it changes.
-let lineMs = null, stateMs = null;
-const deadline = t0 + 15000;
+press(card().querySelector(".lc-box__buy"));
+// Every frame from the click: when the GM's state write arrives, when this
+// pull's reveal opens and lands, and the first frame the card differs from
+// the card before the click. The write comes ~0.3 s into the spin; the card
+// must hold until the landing, then follow within 1 s.
+let stateMs = null, revealMs = null, landedMs = null, lineMs = null, revealEl = null;
+const early = [];
+let heldFrames = 0;
+const deadline = t0 + 20000;
 while (performance.now() < deadline) {
   await new Promise(r => requestAnimationFrame(r));
+  const now = performance.now() - t0;
   const s = store.getActorState(actor.id, box.id);
-  if (stateMs == null && (s.pulls ?? 0) !== (before.pulls ?? 0)) stateMs = performance.now() - t0;
-  if (stateMs != null && read().pity !== shownBefore.pity) { lineMs = performance.now() - t0; break; }
+  if (stateMs == null && (s.pulls ?? 0) !== (before.pulls ?? 0)) stateMs = now;
+  revealEl ??= [...document.querySelectorAll(".lc-reveal")].find(el => !revealsBefore.has(el)) ?? null;
+  if (revealEl && revealMs == null) revealMs = now;
+  if (revealEl && landedMs == null && revealEl.querySelector(".lc-card--landed")) landedMs = now;
+  const shown = read();
+  const changed = shown.pity !== shownBefore.pity || JSON.stringify(shown.pills) !== JSON.stringify(shownBefore.pills);
+  if (landedMs == null) {
+    if (stateMs != null && !changed) heldFrames++;
+    if (changed && early.length < 3) early.push({ ms: Math.round(now), pity: shown.pity, pills: shown.pills });
+  } else if (changed) { lineMs = now; break; }
+  else if (now - landedMs > 3000) break;
 }
 const after = store.getActorState(actor.id, box.id);
 const row = store.getLog().find(r => r.boxId === box.id && r.actorId === actor.id);
 const wantLine = after.sinceRare >= 2 ? `${what} guaranteed this pull` : `${what} within ${2 - after.sinceRare + 1} pulls`;
-cases.afterPull = { ...read(), state: after, got: row?.name, rarity: row?.rarity };
 if (stateMs == null) problems.push("the pull's state was never written");
-if (lineMs == null) problems.push("the open shop's pity line never changed after the pull");
-else if (lineMs - stateMs > 1000) problems.push(`pity line redrew ${Math.round(lineMs - stateMs)} ms after the state write (> 1 s)`);
+if (revealMs == null) problems.push("no reveal opened for the pull");
+else if (landedMs == null) problems.push("the reveal never landed (.lc-card--landed)");
+if (stateMs != null && landedMs != null && stateMs >= landedMs) problems.push(`the state write (${Math.round(stateMs)} ms) came after the landing (${Math.round(landedMs)} ms), so the hold was not tested`);
+if (early.length) problems.push(`the card changed during the spin, before the landing: ${JSON.stringify(early)}`);
+if (landedMs != null && lineMs == null) problems.push("the open shop's pity line never changed after the landing");
+else if (lineMs != null && lineMs - landedMs > 1000) problems.push(`pity line redrew ${Math.round(lineMs - landedMs)} ms after the landing (> 1 s)`);
+if (lineMs != null) await frames();
+cases.afterPull = { ...read(), state: after, got: row?.name, rarity: row?.rarity };
 if (cases.afterPull.pity !== wantLine) problems.push(`after the pull the line reads "${cases.afterPull.pity}", want "${wantLine}"`);
 if (JSON.stringify(cases.afterPull.pills) !== JSON.stringify(expectPills(after))) problems.push(`after-pull pills ${cases.afterPull.pills} != ${expectPills(after)}`);
 // The reveal's ribbon is the odds the shop showed before the click.
-const revealEl = [...document.querySelectorAll(".lc-reveal")].pop();
 const ribbon = [...(revealEl?.querySelectorAll(".lc-ribbon__seg") ?? [])].map(s => s.getAttribute("title"));
 const reveal = { ribbon, shownBefore: shownBefore.pills };
 const wantRibbon = shopOdds(box, store.getPools(), before).rows.map(r => `${RARITY_LABEL[r.rarity]} ${r.label}`);
@@ -155,7 +202,17 @@ return {
   problems,
   box: { id: box.id, low: low[0].rarity, high: high.rarity },
   cases,
-  timings: { stateWrittenMs: stateMs && Math.round(stateMs), lineRedrawnMs: lineMs && Math.round(lineMs), redrawAfterWriteMs: lineMs && stateMs && Math.round(lineMs - stateMs) },
+  timings: {
+    stateWrittenMs: stateMs && Math.round(stateMs),
+    revealMs: revealMs && Math.round(revealMs),
+    landedMs: landedMs && Math.round(landedMs),
+    lineRedrawnMs: lineMs && Math.round(lineMs),
+    // How long the line stayed as it was after the GM wrote the new state,
+    // and how soon after the landing it changed (<= 1 s).
+    heldAfterWriteMs: stateMs != null && landedMs != null ? Math.round(landedMs - stateMs) : null,
+    heldFrames,
+    changedAfterLandingMs: lineMs != null && landedMs != null ? Math.round(lineMs - landedMs) : null,
+  },
   reveal,
   purse: { before: purseBefore, after: actor.system.currency },
 };
