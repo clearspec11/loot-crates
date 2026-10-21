@@ -37,6 +37,10 @@ const STATES = [
   // The player owns two characters: the select is off (aria-disabled, still
   // legible) while the pull is out, and on again once it settles.
   ["shop-busy", "state=shop&characters=2"],
+  // A shop window shorter than its crates (Foundry caps windows at the
+  // screen's height; a player can size it down): the grid scrolls under the
+  // head, which stays in view, and a wheel over the grid reaches the last crate.
+  ["shop-short", "state=shop&height=420"],
   ["landed", "state=landed&seed=7"],
   ["landed-legendary", "state=landed&seed=36&box=royal"],
   ["landed-buyer", "state=landed&seed=7&buyer=1"],
@@ -356,6 +360,25 @@ try {
       else if (name === "replay") problems0.push(...await page.evaluate(replayProblems));
       else problems0.push(...await page.evaluate(revealProblems, name === "landed-buyer" || name === "landed-missed"));
       if (name === "landed-missed") problems0.push(...await page.evaluate(missedProblems));
+      if (name === "shop-short") {
+        const grid = await page.$(".lc-shop__grid");
+        const box = await grid.boundingBox();
+        const before = await page.evaluate(() => ({ scrollable: (g => g.scrollHeight > g.clientHeight + 1)(document.querySelector(".lc-shop__grid")), top: document.querySelector(".lc-shop__grid").scrollTop }));
+        if (!before.scrollable) problems0.push("short shop: the grid doesn't overflow, so the state tests nothing");
+        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+        for (let i = 0; i < 12; i++) await page.mouse.wheel(0, 400);
+        await page.waitForTimeout(300);
+        problems0.push(...await page.evaluate(() => {
+          const out = [];
+          const grid = document.querySelector(".lc-shop__grid"), head = document.querySelector(".lc-shop__head");
+          const win = document.getElementById("app").getBoundingClientRect(), g = grid.getBoundingClientRect(), h = head.getBoundingClientRect();
+          if (grid.scrollTop < 1) out.push("short shop: a mouse wheel over the crates doesn't scroll them");
+          const last = [...grid.querySelectorAll(".lc-box")].at(-1)?.getBoundingClientRect();
+          if (!last || last.bottom > g.bottom + 1 || last.bottom > win.bottom + 1) out.push("short shop: the last crate can't be scrolled into view");
+          if (h.top < win.top || h.bottom > g.top + 1) out.push("short shop: the head (character, purse) scrolled away");
+          return out;
+        }));
+      }
       await page.evaluate(() => document.fonts.ready);
       await page.screenshot({ path: path.join(OUT, w.tag, `${shot}.png`), fullPage: true });
       const problems = [...errors, ...problems0, ...(wide ? ["page scrolls sideways"] : [])];
