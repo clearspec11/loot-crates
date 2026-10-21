@@ -12,6 +12,7 @@
 // (sounds, all into the interface gainNode), Close, the hotbar Mute, Watch
 // again (no oscillators), Close, Unmute, Watch again (sounds again), Close.
 // A replay is display only: nothing in the world changes.
+/* global game -- used inside page.evaluate, which runs in the Foundry page */
 const { chromium } = require("playwright");
 const FOUNDRY = process.env.FOUNDRY_URL || "http://localhost:30000";
 const MODULE_BASE = process.env.MODULE_BASE || "http://localhost:8766/";
