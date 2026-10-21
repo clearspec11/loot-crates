@@ -27,7 +27,7 @@ vi.mock("../module/scripts/store.js", async importOriginal => ({
 }));
 
 const confirm = vi.fn();
-let CrateManager;
+let CrateManager, openManager, refreshManager, SETTINGS;
 beforeAll(async () => {
   vi.stubGlobal("document", createDocument());
   vi.stubGlobal("CSS", { escape: s => String(s) });
@@ -37,7 +37,8 @@ beforeAll(async () => {
     applications: { api: { ApplicationV2: class { render() {} }, DialogV2: class { static confirm = confirm; } } },
   });
   vi.stubGlobal("game", { settings: { get: () => true } });
-  ({ CrateManager } = await import("../module/scripts/manager.js"));
+  ({ CrateManager, openManager, refreshManager } = await import("../module/scripts/manager.js"));
+  ({ SETTINGS } = await import("../module/scripts/config.js"));
 });
 afterAll(() => vi.unstubAllGlobals());
 
@@ -136,5 +137,104 @@ describe("Remove", () => {
     const app = await openPools();
     await press(app, "removeEntry", removeButton(app, "Item.ruby"));
     expect(removed).toEqual([["entry", "gems", "Item.ruby"]]);
+  });
+});
+
+/*
+  Another GM or client changes the boxes (or nests a pool) while this
+  manager shows the Pools tab: each drawn pool's "In X, Y" line follows,
+  patched in place, and nothing else is redrawn, so a typed search, a pool
+  paged past its first 50 rows and focus all stay. A pull that only counts
+  down a box's stock changes no line and writes nothing.
+*/
+describe("a pool's header after the boxes change elsewhere", () => {
+  const settle = () => new Promise(r => setTimeout(r, 200));
+  async function openShown() {
+    pools.spare.entries = Array.from({ length: 60 }, (_, i) => item(`Item.cog${i}`, `Cog ${i}`));
+    const app = openManager();
+    app.tab = "pools";
+    const root = await app._renderHTML();
+    document.body.replaceChildren(root);
+    app.element = root;
+    app.rendered = true;
+    // The GM searches Core for "Flame" and pages Spare parts to all 60.
+    const search = card(app, "core").querySelector(".lc-pool__search");
+    search.setAttribute("value", "Flame");
+    root.dispatchEvent({ type: "input", target: search });
+    await settle();
+    // The manager is one window kept across these tests, and keeps each
+    // pool's view: after the first, Spare parts is drawn paged already.
+    const more = card(app, "spare").querySelector('[data-action="showMore"]');
+    if (more) await press(app, "showMore", more);
+    search.focus();
+    app.render = vi.fn();
+    return { app, search };
+  }
+  const line = (app, id) => card(app, id).querySelector("summary .lc-pool__users");
+  const rows = (app, id) => card(app, id).querySelectorAll(".lc-entries li").length;
+
+  it("names a box that now draws from the pool, in place, keeping the search, the page and focus", async () => {
+    const { app, search } = await openShown();
+    expect(line(app, "spare").textContent).toBe("Not in any box");
+    expect(rows(app, "core")).toBe(1);
+    expect(rows(app, "spare")).toBe(60);
+    const coreLine = line(app, "core");
+    const coreText = coreLine.firstChild ?? coreLine.childNodes[0];
+    const spareList = card(app, "spare").querySelector(".lc-entries");
+
+    boxes.royal.pools.push({ id: "spare", share: 1 });
+    const patch = vi.spyOn(app, "patchUsers");
+    refreshManager([SETTINGS.BOXES]);
+
+    expect(app.render).not.toHaveBeenCalled();
+    expect(patch).toHaveReturnedWith(1);
+    expect(line(app, "spare").textContent).toBe("In Royal Crate");
+    // The unchanged lines are left alone, down to their text node.
+    expect(line(app, "core")).toBe(coreLine);
+    expect(coreLine.childNodes[0]).toBe(coreText);
+    expect(line(app, "core").textContent).toBe("In Adventurer's Crate, Royal Crate");
+    // The search, the page and focus are as the GM left them.
+    expect(card(app, "core").querySelector(".lc-pool__search")).toBe(search);
+    expect(search.value).toBe("Flame");
+    expect(document.activeElement).toBe(search);
+    expect(rows(app, "core")).toBe(1);
+    expect(card(app, "spare").querySelector(".lc-entries")).toBe(spareList);
+    expect(rows(app, "spare")).toBe(60);
+    patch.mockRestore();
+  });
+
+  it("follows a pool nested into another pool a box draws from", async () => {
+    const { app } = await openShown();
+    pools.hoard.pools.push("spare");
+    refreshManager([SETTINGS.POOLS]);
+    expect(app.render).not.toHaveBeenCalled();
+    expect(line(app, "spare").textContent).toBe("In Adventurer's Crate, Dragon Chest");
+  });
+
+  it("touches nothing when only a box's stock changed", async () => {
+    const { app, search } = await openShown();
+    const before = ["core", "gems", "hoard", "spare"].map(id => [line(app, id), line(app, id).childNodes[0]]);
+    boxes.royal.rules = { stock: 4 };
+    const patch = vi.spyOn(app, "patchUsers");
+    refreshManager([SETTINGS.BOXES, SETTINGS.STATE, SETTINGS.LOG]);
+    expect(app.render).not.toHaveBeenCalled();
+    expect(patch).toHaveReturnedWith(0);
+    for (const [i, id] of ["core", "gems", "hoard", "spare"].entries()) {
+      expect(line(app, id)).toBe(before[i][0]);
+      expect(line(app, id).childNodes[0]).toBe(before[i][1]);
+    }
+    expect(document.activeElement).toBe(search);
+    expect(rows(app, "spare")).toBe(60);
+    patch.mockRestore();
+  });
+
+  it("is left to the full render on the Boxes tab", async () => {
+    const { app } = await openShown();
+    const patch = vi.spyOn(app, "patchUsers");
+    app.tab = "boxes";
+    refreshManager([SETTINGS.BOXES]);
+    expect(app.render).toHaveBeenCalledOnce();
+    expect(patch).not.toHaveBeenCalled();
+    patch.mockRestore();
   });
 });

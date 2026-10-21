@@ -61,7 +61,7 @@ import { oddsPills, oddsRibbon, draftBox, boxPreview, boxPreviewHTML, oddsSummar
 const oddsCell = rows => rows.length ? `${oddsRibbon(rows)}<div class="lc-odds">${oddsPills(rows)}</div>` : "<em>empty</em>";
 import { getPools, getBoxes, getLog, createPool, updatePool, removePool, createBox, updateBox, removeBox, entryFromItem, entriesFromDrop, addEntries, packHasLoot, LOOT_TYPES, isLootType, isShopOpen, setShopOpen, checkSources, sweepPools, removeEntry, patchEntry } from "./store.js";
 import { shopOdds, normalizeRarity, flattenPool, withSources, entryWeight, curateEntries } from "./odds.js";
-import { PAGE_ROWS, FALLBACK_IMG, defaultView, poolRows, sortRows, filterRows, pageRows, nextRows, poolCount, poolSummary, poolBody, chipsHTML, unsetButton, footHTML, entryRow, entryParts, pinRecent, dropNotice, poolUsers, deleteImpact, removeImpact, deletePoolText, removeEntryText } from "./poolview.js";
+import { PAGE_ROWS, FALLBACK_IMG, defaultView, poolRows, sortRows, filterRows, pageRows, nextRows, poolCount, poolSummary, poolBody, chipsHTML, unsetButton, footHTML, entryRow, entryParts, pinRecent, dropNotice, poolUsers, usersText, deleteImpact, removeImpact, deletePoolText, removeEntryText } from "./poolview.js";
 import { formatPrice } from "./currency.js";
 import { describeRefund, refundPull } from "./refund.js";
 import { postRefundCard } from "./chat.js";
@@ -165,6 +165,30 @@ export class CrateManager extends ApplicationV2 {
     if (details) details.open = true;
     this.#repaint(poolId, { uuid: view.recent[0], scroll: true });
     this.#announce(text);
+  }
+
+  /*
+    Each drawn pool's "In X, Y" line, worked out again from the stored boxes
+    and pools after another client changed them (refreshManager). Only a line
+    whose text differs is written, in place, so paging, a typed search, focus
+    and scroll stay put, and a pull that only counts down a box's stock
+    writes nothing. Returns how many lines changed.
+  */
+  patchUsers() {
+    const lines = this.element?.querySelectorAll(".lc-pool__summary .lc-pool__users") ?? [];
+    if (!lines.length) return 0;
+    const pools = getPools();
+    const boxes = getBoxes();
+    let changed = 0;
+    for (const line of lines) {
+      const id = line.closest(".lc-pool__details")?.dataset.pool;
+      if (!id || !pools[id]) continue;
+      const text = usersText(poolUsers(id, pools, boxes).map(b => b.name));
+      if (line.textContent === text) continue;
+      line.textContent = text;
+      changed++;
+    }
+    return changed;
   }
 
   // Closing the manager lets go of every pin.
@@ -842,7 +866,9 @@ function liveOdds(form, box, poolIds) {
   in the nav, so every tab shows it. The pools tab redraws itself after its
   own edits (#repaint), and a full render of up to 50 rows per pool on every
   sweep flag would undo its paging, so a pools change redraws only the Boxes
-  tab, whose odds read the pools. The pity state shows nowhere here (each
+  tab, whose odds read the pools. On the Pools tab a boxes or pools change
+  patches only the pools' "In X, Y" lines, and only those that differ
+  (CrateManager.patchUsers). The pity state shows nowhere here (each
   buyer's shop shows their own).
 */
 export function managerShows(tab, key) {
@@ -851,6 +877,9 @@ export function managerShows(tab, key) {
   if (key === SETTINGS.BOXES || key === SETTINGS.POOLS) return tab === "boxes";
   return false;
 }
+
+// What a pool's users line reads: the boxes' pool lists, and pools nested in pools.
+const USERS_KEYS = [SETTINGS.BOXES, SETTINGS.POOLS];
 
 // One render for any number of changed keys; focus and a typed search are
 // kept across it (_replaceHTML). `upTo` is redraw.js's count at the batch's
@@ -861,6 +890,7 @@ export function refreshManager(keys, upTo = Infinity) {
   if (manager.seen >= upTo) return;
   const list = typeof keys === "string" ? [keys] : [...keys];
   if (list.some(k => managerShows(manager.tab, k))) manager.render();
+  else if (manager.tab === "pools" && list.some(k => USERS_KEYS.includes(k))) manager.patchUsers();
 }
 
 let manager = null;

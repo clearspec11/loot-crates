@@ -272,10 +272,12 @@ export const USERS_SHOWN = 3;
 
 // The header's quiet line: "In Adventurer's Crate, Royal Crate", "In A, B, C
 // and 2 more", or "Not in any box".
-export function usersLine(names, esc) {
-  const text = !names.length ? "Not in any box"
+export function usersText(names) {
+  return !names.length ? "Not in any box"
     : `In ${names.slice(0, USERS_SHOWN).join(", ")}${names.length > USERS_SHOWN ? ` and ${names.length - USERS_SHOWN} more` : ""}`;
-  return `<span class="lc-pool__users">${esc(text)}</span>`;
+}
+export function usersLine(names, esc) {
+  return `<span class="lc-pool__users">${esc(usersText(names))}</span>`;
 }
 
 const emptiedText = (emptied, esc) => `${strongList(emptied, esc)} will have nothing inside and can't be bought until ${emptied.length === 1 ? "it has" : "they have"} an item that can drop.`;
