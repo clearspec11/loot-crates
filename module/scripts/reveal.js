@@ -262,6 +262,8 @@ export class CrateReveal extends ApplicationV2 {
 
   #resolveLanded;
   #spin = null;
+  // The braking sweep's stop(), while one may still be sounding.
+  #sweep = null;
   #closed = false;
   #landedAt = -Infinity;
   #onHidden = null;
@@ -409,8 +411,11 @@ export class CrateReveal extends ApplicationV2 {
       onTick: sound ? stripVoice(r.strip) : null,
       // The braking sweep starts with the ease-out and lasts until the strip
       // turns back, both read from the spin's own frames.
-      onPhase: sound ? (phase, { settleIn }) => { if (phase === "brake" && !pageHidden()) playSlow(settleIn); } : null,
+      // A strip that lands early (Skip, Close, hidden) cuts the sweep with it.
+      onPhase: sound ? (phase, { settleIn }) => { if (phase === "brake" && !pageHidden()) this.#sweep = playSlow(settleIn); } : null,
       onLand: () => {
+        this.#sweep?.();
+        this.#sweep = null;
         this.#stopWatching();
         if (!replay) this.#resolveLanded();
         if (this.#closed) return;

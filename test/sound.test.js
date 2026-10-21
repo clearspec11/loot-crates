@@ -8,9 +8,11 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { playTick, playSlow, playReveal, TICK_HZ, TEASE_HZ, BACK_HZ } from "../module/scripts/sound.js";
 
 const param = () => ({
-  value: 1, set: [], ramps: [],
+  value: 1, set: [], ramps: [], linear: [], cancelled: [],
   setValueAtTime(v, t) { this.set.push([v, t]); },
   exponentialRampToValueAtTime(v, t) { this.ramps.push([v, t]); },
+  linearRampToValueAtTime(v, t) { this.linear.push([v, t]); },
+  cancelScheduledValues(t) { this.cancelled.push(t); },
 });
 
 function fakeContext({ volume = 0.5 } = {}) {
@@ -25,7 +27,7 @@ function fakeContext({ volume = 0.5 } = {}) {
       return n;
     },
     createOscillator() {
-      const o = Object.assign(ctx.node("osc"), { type: "", frequency: param(), started: 0, start() { this.started++; }, stop() {} });
+      const o = Object.assign(ctx.node("osc"), { type: "", frequency: param(), started: 0, start() { this.started++; }, stops: [], stop(t) { this.stops.push(t); } });
       ctx.oscillators.push(o);
       return o;
     },
@@ -125,6 +127,30 @@ describe("the braking sweep and the near-miss voices", () => {
     // The lowpass closes as the pitch falls.
     const [lp] = ctx.filters;
     expect(lp.frequency.ramps[0][0]).toBeLessThan(lp.frequency.set[0][0]);
+  });
+
+  it("is cut within a few ms by its stop(), for a strip that lands early", () => {
+    const stop = playSlow(2560);
+    const [osc] = ctx.oscillators;
+    const [envelope] = ctx.envelopes;
+    expect(osc.stops).toEqual([10 + 2.56]);
+    ctx.currentTime = 11; // a second into the brake, Skip is pressed
+    stop();
+    expect(envelope.gain.cancelled).toEqual([11]);
+    expect(envelope.gain.linear).toEqual([[0, 11.04]]);
+    expect(osc.stops.at(-1)).toBeCloseTo(11.04, 9);
+    stop();
+    expect(osc.stops).toHaveLength(2);
+  });
+
+  it("leaves a sweep that has run its course alone, and stop() is safe with no channel", () => {
+    const stop = playSlow(1000);
+    ctx.currentTime = 11.5;
+    stop();
+    expect(ctx.oscillators[0].stops).toHaveLength(1);
+    expect(ctx.envelopes[0].gain.cancelled).toHaveLength(0);
+    globalThis.game.audio.locked = true;
+    expect(() => playSlow(1000)()).not.toThrow();
   });
 
   it("still sweeps down on a context with no filters", () => {

@@ -56,9 +56,13 @@ export function playTick(progress, { tease = false, back = false } = {}) {
 // The strip braking: a sawtooth falling from 260 Hz to 90 Hz through a
 // lowpass that closes with it, fading out over `ms` (the braking's length),
 // so it winds down with the strip instead of buzzing at one pitch.
+// Returns stop(): a strip that lands early (Skip, Close, a hidden page)
+// cuts the sweep in a few ms rather than letting it wind down for seconds
+// under the reveal's sting. Nothing built, nothing to stop.
+const SWEEP_CUT_S = 0.04;
 export function playSlow(ms = 900) {
   const ctx = channel();
-  if (!ctx) return;
+  if (!ctx) return () => {};
   const t = ctx.currentTime;
   const end = t + Math.max(0.2, ms / 1000);
   const osc = ctx.createOscillator();
@@ -79,6 +83,20 @@ export function playSlow(ms = 900) {
   head.connect(g).connect(ctx.gainNode);
   osc.start(t);
   osc.stop(end);
+  let cut = false;
+  return () => {
+    const now = ctx.currentTime;
+    if (cut || now >= end) return;
+    cut = true;
+    try {
+      g.gain.cancelScheduledValues(now);
+      g.gain.setValueAtTime(g.gain.value, now);
+      g.gain.linearRampToValueAtTime(0, now + SWEEP_CUT_S);
+      osc.stop(now + SWEEP_CUT_S);
+    } catch (err) {
+      console.error("loot-crates | could not cut the braking sweep", err);
+    }
+  };
 }
 
 export function playReveal(rarity) {

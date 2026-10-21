@@ -163,6 +163,20 @@ describe("sounds in time with the spin", () => {
     expect(playSlow).not.toHaveBeenCalled();
   });
 
+  it("cuts the sweep when the strip lands early, not seconds later under the sting", async () => {
+    const stop = vi.fn();
+    playSlow.mockReturnValueOnce(stop);
+    const app = await showReveal(reveal);
+    for (let now = 0; now <= 3200; now += 16) frames.shift()(now);
+    expect(playSlow).toHaveBeenCalledTimes(1);
+    expect(stop).not.toHaveBeenCalled();
+    // Skip mid-brake: the strip lands on the next frame and the sweep goes with it.
+    app.close();
+    play(3216);
+    await app.landed;
+    expect(stop).toHaveBeenCalledTimes(1);
+  });
+
   it("teases on the card past the result, then drops back, in that order, on a near-miss", async () => {
     const app = await showReveal(nearMiss);
     play();
