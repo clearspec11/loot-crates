@@ -73,8 +73,9 @@
 // element naming it ([data-item-id]) was visible in any animation frame
 // between the click and the landing (leakFrames, must be 0), at reveal +1 s
 // (row hidden, the shop card's pity text and odds unchanged from before the
-// click) and at landed +0.5 s (row visible, the pity text now what the new
-// state says, and the pity text or odds changed). reveal.js holds both until
+// click, and the crate's Buy off with "Still spinning") and at landed +0.5 s
+// (row visible, the pity text now what the new state says, the pity text or
+// odds changed, and "Still spinning" gone). reveal.js holds both until
 // this client's spin lands. longTasks and sheetRenders show what kept the
 // player's page busy: on this VM an open dnd5e sheet takes ~0.9 s to
 // re-render, once for the charge and once for the item, and the reveal
@@ -451,7 +452,11 @@ async function gmWatchCheck(page) {
         const before = { pity: pity(), odds: odds() };
         const snaps = {};
         const waits = [];
-        const snap = () => ({ rows: rows().length, rowVisible: visible(), pity: pity(), odds: odds(), expectedPity: expectedPity() });
+        // The crate's Buy: off while its spin plays here ("Still spinning"),
+        // since the held card's odds aren't what a second pull would roll.
+        const buyOff = () => shopCard()?.querySelector(".lc-box__buy")?.getAttribute("aria-disabled") === "true";
+        const why = () => shopCard()?.querySelector(".lc-box__why")?.textContent.trim() ?? "";
+        const snap = () => ({ rows: rows().length, rowVisible: visible(), pity: pity(), odds: odds(), expectedPity: expectedPity(), buyOff: buyOff(), why: why() });
         return {
           at(name, ms) { waits.push(new Promise(r => setTimeout(() => { snaps[name] = snap(); r(); }, ms))); },
           landed() { done = true; },
@@ -463,8 +468,8 @@ async function gmWatchCheck(page) {
             const sheetOpen = [...foundry.applications.instances.values()].some(a => a.document === actor && a.rendered);
             const { mid, after } = snaps;
             const ok = !!itemId && sheetOpen && leakFrames === 0 && frames > 0
-              && mid && !mid.rowVisible && mid.pity === before.pity && mid.odds === before.odds
-              && after && after.rows > 0 && after.rowVisible && after.pity === after.expectedPity
+              && mid && !mid.rowVisible && mid.pity === before.pity && mid.odds === before.odds && mid.buyOff && mid.why === "Still spinning"
+              && after && after.rows > 0 && after.rowVisible && after.pity === after.expectedPity && after.why !== "Still spinning"
               && (after.pity !== before.pity || after.odds !== before.odds);
             return { ok, itemId, sheetOpen, frames, leakFrames, before, mid, after, createdMs: createdAt && Math.round(createdAt - t0), sheetRenders, longTasks };
           },
