@@ -9,7 +9,7 @@ vi.mock("../module/scripts/sound.js", () => ({ playTick: vi.fn(), playSlow: vi.f
 
 const fakeElement = () => ({
   className: "", textContent: "", innerHTML: "", clientWidth: 600, dataset: {}, children: [], hidden: false,
-  classList: { add() {} },
+  classList: { add() {}, remove() {} },
   style: { transform: "", setProperty() {} },
   setAttribute() {},
   append(...kids) { this.children.push(...kids); },
@@ -347,5 +347,158 @@ describe("Watch again on the chat card", () => {
     watchAgain({ flags: {} }, legacy.html);
     watchAgain(null, legacy.html);
     expect(legacy.card.kids).toHaveLength(0);
+  });
+});
+
+/*
+  Watch again in the reveal itself: offered only when this client didn't see
+  the spin play out (it landed hidden, was hidden mid-spin, or was skipped),
+  never after a natural landing or under reduced motion. It replays the same
+  strip in the same host, display only: `landed` and the chat card's seal
+  are the first spin's alone.
+*/
+describe("Watch again in a reveal this client didn't see spin", () => {
+  let now;
+  beforeEach(() => {
+    now = 1000;
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+    playReveal.mockClear();
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  const $ = (app, sel) => app.element.querySelector(sel);
+  // ApplicationV2 runs a button's data-action handler with the window as
+  // this. The fake root doesn't parse markup, so a button's first action is
+  // given here (revealActionsHTML): Skip on the spin's button, watchAgain.
+  const press = (app, button, detail = 1) => {
+    const first = button === $(app, ".lc-reveal__close") ? "skip" : "watchAgain";
+    return CrateReveal.DEFAULT_OPTIONS.actions[button.dataset.action ?? first].call(app, { detail }, button);
+  };
+  const run = () => { for (let t = 0; frames.length; t += 16) frames.shift()(t); };
+  const skipped = async (extra = {}) => {
+    const app = await showReveal({ ...reveal, ...extra });
+    frames.shift()(0);
+    press(app, $(app, ".lc-reveal__close"));
+    run();
+    await app.landed;
+    return app;
+  };
+
+  it("is not offered after a spin that played to its end", async () => {
+    const app = await showReveal(reveal);
+    run();
+    await app.landed;
+    expect($(app, ".lc-reveal__watch").hidden).toBe(true);
+  });
+
+  it("is offered after Skip, a hidden-page land and a hidden-mid-spin land", async () => {
+    const a = await skipped();
+    expect($(a, ".lc-reveal__close").textContent).toBe("Close");
+    expect($(a, ".lc-reveal__watch").hidden).toBe(false);
+
+    doc.visibilityState = "hidden";
+    const b = await showReveal({ ...reveal, requestId: "h1" });
+    await b.landed;
+    expect($(b, ".lc-reveal__watch").hidden).toBe(false);
+
+    doc.visibilityState = "visible";
+    const c = await showReveal({ ...reveal, requestId: "h2" });
+    for (let t = 0; t < 500; t += 16) frames.shift()(t);
+    doc.visibilityState = "hidden";
+    for (const [fn] of listeners) fn();
+    await c.landed;
+    expect($(c, ".lc-reveal__watch").hidden).toBe(false);
+  });
+
+  it("is never offered under reduced motion, hidden or skipped", async () => {
+    vi.stubGlobal("matchMedia", () => ({ matches: true }));
+    const a = await showReveal(reveal);
+    await a.landed;
+    expect($(a, ".lc-reveal__watch").hidden).toBe(true);
+    doc.visibilityState = "hidden";
+    const b = await showReveal({ ...reveal, requestId: "rm2" });
+    await b.landed;
+    expect($(b, ".lc-reveal__watch").hidden).toBe(true);
+  });
+
+  it("replays in place, display only, and goes once a replay runs to its end with focus on Close", async () => {
+    const app = await skipped({ requestId: "w1", logId: "LW1" });
+    const watch = $(app, ".lc-reveal__watch");
+    const close = $(app, ".lc-reveal__close");
+    const host = $(app, ".lc-reveal__spin");
+    const mounted = host.children.length;
+    const reveals = playReveal.mock.calls.length;
+    watch.focus();
+    now += 2000;
+    press(app, watch);
+    // The pressed button keeps focus and now reads Skip; the result waits.
+    expect(watch.textContent).toBe("Skip");
+    expect(watch.dataset.action).toBe("skip");
+    expect(doc.activeElement).toBe(watch);
+    expect($(app, ".lc-reveal__result").hidden).toBe(true);
+    // A fresh strip in the same host, playing.
+    expect(host.children.length).toBe(mounted + 1);
+    expect(frames).toHaveLength(1);
+    // Close is still Close, and the chat card isn't sealed again.
+    expect(close.textContent).toBe("Close");
+    expect(close.dataset.action).toBe("dismiss");
+    const { card, html } = cardHTML();
+    sealChatCard(message("LW1"), html);
+    expect(card.classes.has("lc-chat--sealed")).toBe(false);
+    run();
+    expect($(app, ".lc-reveal__result").hidden).toBe(false);
+    expect(watch.hidden).toBe(true);
+    expect(doc.activeElement).toBe(close);
+    // The sting again, for the same result.
+    expect(playReveal.mock.calls.length).toBe(reveals + 1);
+    expect(playReveal).toHaveBeenLastCalledWith("rare");
+    // Gone: pressing it again does nothing.
+    press(app, Object.assign(watch, { dataset: { action: "watchAgain" } }));
+    expect(frames).toHaveLength(0);
+  });
+
+  it("comes back when its replay is skipped, keeping focus, and ignores a double press", async () => {
+    const app = await skipped({ requestId: "w2" });
+    const watch = $(app, ".lc-reveal__watch");
+    watch.focus();
+    now += 2000;
+    press(app, watch);
+    // The second click of a double-click lands on Skip: ignored.
+    press(app, watch, 2);
+    now += 100;
+    press(app, watch);
+    frames.shift()(0);
+    // Still playing: neither ignored press skipped it.
+    expect(watch.textContent).toBe("Skip");
+    now += 1000;
+    press(app, watch);
+    run();
+    expect(watch.textContent).toBe("Watch again");
+    expect(watch.dataset.action).toBe("watchAgain");
+    expect(watch.hidden).toBe(false);
+    expect(doc.activeElement).toBe(watch);
+    expect($(app, ".lc-reveal__result").hidden).toBe(false);
+  });
+
+  it("doesn't take focus back on the replay's landing when the viewer moved on", async () => {
+    const app = await skipped({ requestId: "w3" });
+    now += 2000;
+    press(app, $(app, ".lc-reveal__watch"));
+    const chat = { focus() {} };
+    doc.activeElement = chat;
+    run();
+    expect($(app, ".lc-reveal__watch").hidden).toBe(true);
+    expect(doc.activeElement).toBe(chat);
+  });
+
+  it("ends quietly when the window closes mid-replay", async () => {
+    const app = await skipped({ requestId: "w4" });
+    now += 2000;
+    press(app, $(app, ".lc-reveal__watch"));
+    const reveals = playReveal.mock.calls.length;
+    app.close();
+    run();
+    expect(playReveal.mock.calls.length).toBe(reveals);
+    expect(listeners.size).toBe(0);
   });
 });

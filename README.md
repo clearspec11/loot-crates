@@ -16,6 +16,8 @@ The shop shows each character their own odds. A box's pity rule and its no-dupli
 
 A pull's chat card carries a small display-only snapshot of its spin (`flags["loot-crates"].replay`: each card's name, art and rarity, where it lands, the odds and the result; no uuids, no purse, no granted item, about 6 KB). Anyone at the table can press **Watch again** on the card to replay that spin on their own screen, in a window titled "Replay: ...". A replay writes nothing, posts nothing, needs no GM and shows nobody's gold. Refunded cards and cards posted before this feature have no button.
 
+A reveal that this client didn't see spin (it landed while the tab was hidden, the tab was hidden mid-spin, or Skip was pressed) also offers **Watch again** beside Close. It replays the same strip in the same window, display only, reading Skip while it plays; once a replay has run to its end the button goes. It never appears after a spin that played out, or with reduced motion on.
+
 ## Development
 
 ```

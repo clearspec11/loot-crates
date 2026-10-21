@@ -5,7 +5,7 @@
   the buyer's gold, and it stays small enough to live in a message's flags.
 */
 import { describe, it, expect } from "vitest";
-import { replaySnapshot, replayReveal, replayTitle, replayWindowId, resultHTML } from "../module/scripts/revealcard.js";
+import { replaySnapshot, replayReveal, replayTitle, replayWindowId, resultHTML, revealActionsHTML } from "../module/scripts/revealcard.js";
 import { buildStrip, STRIP_LENGTH } from "../module/scripts/strip.js";
 import { draw, seededRng, shopOdds } from "../module/scripts/odds.js";
 import { POOLS, BOX } from "../harness/sample.js";
@@ -98,5 +98,16 @@ describe("a replay's result block", () => {
     expect(html).not.toMatch(/gp left/);
     expect(html).not.toContain("lc-reveal__gold");
     expect(html).not.toContain("inventory");
+  });
+});
+
+describe("the reveal's buttons", () => {
+  it("are Open item, Watch again, then Skip (later Close); the first two start hidden", () => {
+    const html = revealActionsHTML();
+    const buttons = [...html.matchAll(/<button ([^>]*)>([^<]*)</g)].map(([, attrs, text]) => ({ attrs, text }));
+    expect(buttons.map(b => b.text)).toEqual(["Open item", "Watch again", "Skip"]);
+    expect(buttons.map(b => b.attrs.match(/data-action="(\w+)"/)[1])).toEqual(["openItem", "watchAgain", "skip"]);
+    expect(buttons.map(b => / hidden$/.test(b.attrs))).toEqual([true, true, false]);
+    expect(buttons.every(b => /type="button"/.test(b.attrs))).toBe(true);
   });
 });

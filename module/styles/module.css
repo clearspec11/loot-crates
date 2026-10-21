@@ -377,6 +377,9 @@
 
 /* The result, inside the vault, under the strip. */
 .loot-crates .lc-reveal__result { min-height: 64px; text-align: center; margin-top: 8px; }
+/* Hidden while Watch again replays the spin, keeping its room so the
+   window doesn't jump when it comes back. */
+.loot-crates .lc-reveal__result[hidden] { display: block; visibility: hidden; }
 .loot-crates .lc-reveal__name {
   font-family: var(--lc-display); font-size: 34px; font-weight: 700; line-height: 1;
   color: var(--lc-rarity, var(--lc-vault-ink)); overflow-wrap: anywhere; text-wrap: balance;

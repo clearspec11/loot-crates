@@ -41,13 +41,22 @@
   only, in a window titled "Replay: ...". A replay shows no purse and no Open
   item, writes nothing, posts nothing and never seals a chat card. One
   replay window per card: a second press brings the open one forward.
-  showReplay is the one replay path (a reveal that offers its own Watch
-  again uses it too).
+  showReplay is the one way to open a replay window.
+
+  Watch again in the reveal itself: a reveal this client didn't see spin (it
+  landed on a hidden page, the page was hidden mid-spin, or Skip was
+  pressed) offers Watch again beside Close. It plays the same strip again in
+  the same host, through the same #mount as the first spin, display only: it
+  leaves `landed`, the chat card's seal and the GM's side alone. While it
+  plays the button reads Skip and the result is hidden; on landing the same
+  result shows with the sting, and once a replay has run to its end the
+  button goes, focus passing to Close if it was on it. Never offered under
+  reduced motion (nothing would move) or after a spin that played out here.
 */
 import { MODULE_ID, SETTINGS } from "./config.js";
 import { mountSpin } from "./spin.js";
 import { formatPrice } from "./currency.js";
-import { cascadeOffset, canSeePurse, resultHTML, freeSlot, CLOSE_GRACE_MS, replayReveal, replayTitle, replayWindowId } from "./revealcard.js";
+import { cascadeOffset, canSeePurse, resultHTML, freeSlot, CLOSE_GRACE_MS, replayReveal, replayTitle, replayWindowId, revealActionsHTML } from "./revealcard.js";
 import { REFUNDED_CLASS } from "./chatcard.js";
 import { oddsRibbon } from "./boxcard.js";
 import { playTick, playSlow, playReveal } from "./sound.js";
@@ -86,15 +95,20 @@ export class CrateReveal extends ApplicationV2 {
     classes: ["loot-crates", "lc-reveal"],
     window: { title: "Opening a crate", resizable: false },
     position: { width: 720, height: "auto" },
-    actions: { dismiss: CrateReveal.#dismiss, skip: CrateReveal.#skip, openItem: CrateReveal.#openItem },
+    actions: { dismiss: CrateReveal.#dismiss, skip: CrateReveal.#skip, openItem: CrateReveal.#openItem, watchAgain: CrateReveal.#watchAgain },
   };
 
   #resolveLanded;
   #spin = null;
-  #slowTimer = null;
+  #slowSound = null;
   #closed = false;
   #landedAt = -Infinity;
   #onHidden = null;
+  // True only once a spin has played to its natural end on this client.
+  #watched = false;
+  #replaying = false;
+  // When Watch again last turned into Skip or back.
+  #swappedAt = -Infinity;
   landed = new Promise(resolve => { this.#resolveLanded = resolve; });
 
   constructor(reveal, options = {}) {
@@ -134,7 +148,24 @@ export class CrateReveal extends ApplicationV2 {
     if (event?.detail > 1 || performance.now() - this.#landedAt < CLOSE_GRACE_MS) return;
     this.close();
   }
-  static #skip() { this.#spin?.skip(); }
+  // On Watch again's replay, the second click of a double-click (or a held
+  // Enter) on Watch again would land on Skip: ignore it for a moment.
+  static #skip(event) {
+    if (this.#replaying && (event?.detail > 1 || performance.now() - this.#swappedAt < CLOSE_GRACE_MS)) return;
+    this.#spin?.skip();
+  }
+
+  static #watchAgain(event, button) {
+    if (this.#replaying || this.#closed || this.#watched) return;
+    if (event?.detail > 1 || performance.now() - this.#swappedAt < CLOSE_GRACE_MS) return;
+    this.#replaying = true;
+    this.#swappedAt = performance.now();
+    // The same node keeps focus; only its words and action change.
+    button.textContent = "Skip";
+    button.dataset.action = "skip";
+    this.element.querySelector(".lc-reveal__result").hidden = true;
+    this.#mount({ replay: true });
+  }
 
   static async #openItem(_event, button) {
     const item = this.reveal.itemUuid ? await fromUuid(this.reveal.itemUuid).catch(() => null) : null;
@@ -152,7 +183,7 @@ export class CrateReveal extends ApplicationV2 {
     const buy = ownBuy(this.reveal) ?? this.returnTo;
     if (buy?.isConnected && focusIsFree(this.element)) buy.focus({ preventScroll: true });
     this.#closed = true;
-    clearTimeout(this.#slowTimer);
+    clearTimeout(this.#slowSound);
     this.#stopWatching();
     // End the loop now rather than animating a detached strip for seconds.
     this.#spin?.skip();
@@ -174,10 +205,7 @@ export class CrateReveal extends ApplicationV2 {
         <div class="lc-reveal__spin"></div>
         <div class="lc-reveal__result lc-rarity-${esc(r.result.rarity)}" aria-live="polite"></div>
       </div>
-      <div class="lc-reveal__actions">
-        <button type="button" class="lc-reveal__open" data-action="openItem" hidden>Open item</button>
-        <button type="button" class="lc-reveal__close" data-action="skip">Skip</button>
-      </div>`;
+      ${revealActionsHTML()}`;
     return root;
   }
 
@@ -194,37 +222,73 @@ export class CrateReveal extends ApplicationV2 {
     this.#onHidden = null;
   }
 
-  _onRender() {
+  _onRender() { this.#mount(); }
+
+  /*
+    Plays the strip in the window's host: the first time (the pull) and on
+    Watch again (`replay`). Only the first resolves `landed`, which opens
+    this client's sealed chat card; a replay touches nothing outside the
+    window.
+  */
+  #mount({ replay = false } = {}) {
     const root = this.element;
     const host = root.querySelector(".lc-reveal__spin");
-    const out = root.querySelector(".lc-reveal__result");
-    const btn = root.querySelector(".lc-reveal__close");
-    const open = root.querySelector(".lc-reveal__open");
     const sound = game.settings.get(MODULE_ID, SETTINGS.SOUND);
     const r = this.reveal;
-    this.#spin = mountSpin(host, r.strip, {
+    this.#stopWatching();
+    clearTimeout(this.#slowSound);
+    const spin = this.#spin = mountSpin(host, r.strip, {
       onTick: sound ? i => playTick(i / r.strip.landIndex) : null,
       onLand: () => {
-        clearTimeout(this.#slowTimer);
+        clearTimeout(this.#slowSound);
         this.#stopWatching();
-        this.#resolveLanded();
+        if (!replay) this.#resolveLanded();
         if (this.#closed) return;
-        this.#landedAt = performance.now();
-        out.innerHTML = resultHTML(r, { esc, canSee: this.canSee });
-        open.hidden = !this.#itemStillThere();
-        btn.dataset.action = "dismiss";
-        btn.textContent = "Close";
-        if (focusIsFree(root, r)) btn.focus({ preventScroll: true });
+        // Played to its end here: not skipped, not landed hidden, not
+        // reduced motion (which lands without moving).
+        if (!spin.skipped && !spin.reducedMotion) this.#watched = true;
+        if (replay) this.#landReplay(root);
+        else this.#landFirst(root, spin);
         if (sound && !pageHidden()) playReveal(r.result.rarity);
       },
     });
-    if (pageHidden()) this.#spin.skip();
+    if (pageHidden()) spin.skip();
     else {
-      this.#onHidden = () => { if (pageHidden()) this.#spin?.skip({ now: true }); };
+      this.#onHidden = () => { if (pageHidden()) spin.skip({ now: true }); };
       document.addEventListener("visibilitychange", this.#onHidden);
     }
-    if (sound && !this.#spin.landed && !pageHidden()) this.#slowTimer = setTimeout(playSlow, 3600);
-    this.#spin.play();
+    if (sound && !spin.landed && !pageHidden()) this.#slowSound = setTimeout(playSlow, 3600);
+    spin.play();
+  }
+
+  #landFirst(root, spin) {
+    const r = this.reveal;
+    const btn = root.querySelector(".lc-reveal__close");
+    this.#landedAt = performance.now();
+    root.querySelector(".lc-reveal__result").innerHTML = resultHTML(r, { esc, canSee: this.canSee });
+    root.querySelector(".lc-reveal__open").hidden = !this.#itemStillThere();
+    root.querySelector(".lc-reveal__watch").hidden = this.#watched || spin.reducedMotion;
+    btn.dataset.action = "dismiss";
+    btn.textContent = "Close";
+    if (focusIsFree(root, r)) btn.focus({ preventScroll: true });
+  }
+
+  // The same result again, unhidden rather than rewritten, so a screen
+  // reader isn't told it twice. Focus stays where the viewer left it, unless
+  // it was on Watch again and Watch again is going.
+  #landReplay(root) {
+    const watch = root.querySelector(".lc-reveal__watch");
+    this.#replaying = false;
+    this.#swappedAt = performance.now();
+    root.querySelector(".lc-reveal__result").hidden = false;
+    if (this.#watched) {
+      const had = document.activeElement === watch;
+      watch.hidden = true;
+      if (had) root.querySelector(".lc-reveal__close").focus({ preventScroll: true });
+    } else {
+      watch.textContent = "Watch again";
+      watch.dataset.action = "watchAgain";
+    }
   }
 }
 

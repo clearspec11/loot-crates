@@ -120,3 +120,17 @@ export function replayReveal(snapshot, key) {
 // second purchase.
 export const replayTitle = reveal => `Replay: ${reveal.actorName} opens ${reveal.box.name}`;
 export const replayWindowId = key => `loot-crates-reveal-replay-${key}`;
+
+/*
+  The reveal's buttons, in reading order. Open item (the buyer and GMs, once
+  landed). Watch again (once landed, only on a client that didn't see the
+  spin play out: it landed hidden or was skipped; it reads Skip while its
+  replay plays). Then the one button that reads Skip and becomes Close.
+  Watch again sits beside Close, not in the vault: it is an action on the
+  window, like Close, and needs no new pattern.
+*/
+export const revealActionsHTML = () => `<div class="lc-reveal__actions">
+        <button type="button" class="lc-reveal__open" data-action="openItem" hidden>Open item</button>
+        <button type="button" class="lc-reveal__watch" data-action="watchAgain" hidden>Watch again</button>
+        <button type="button" class="lc-reveal__close" data-action="skip">Skip</button>
+      </div>`;

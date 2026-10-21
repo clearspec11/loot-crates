@@ -19,7 +19,7 @@ function fakeElement() {
   return {
     children: [], dataset: {}, attrs: {}, clientWidth: 0, className: "",
     style: { setProperty(k, v) { this[k] = v; } },
-    classList: { add: (...c) => c.forEach(x => classes.add(x)), contains: c => classes.has(c) },
+    classList: { add: (...c) => c.forEach(x => classes.add(x)), remove: (...c) => c.forEach(x => classes.delete(x)), contains: c => classes.has(c) },
     append(...k) { this.children.push(...k); },
     appendChild(k) { this.children.push(k); return k; },
     setAttribute(k, v) { this.attrs[k] = String(v); },

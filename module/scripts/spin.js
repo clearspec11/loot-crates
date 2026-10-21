@@ -13,6 +13,10 @@
     spin.skip();   // land on the next frame, through the same land() path
     spin.skip({ now: true });   // land in this call, for a host that is hidden
                                 // (a hidden page runs no animation frames)
+    spin.skipped, spin.reducedMotion   // how it landed: cut short, or never ran
+
+  Mounting again into the same container (Watch again) starts from a fresh,
+  unlanded strip.
 
   The strip is aria-hidden: a screen reader would otherwise read every filler
   card's name before the result the host announces.
@@ -84,6 +88,8 @@ export function mountSpin(container, strip, options = {}) {
   const step = cardWidth + gap;
 
   container.classList.add("lc-spin");
+  container.classList.remove("lc-spin--landed");
+  delete container.dataset.rarity;
   container.innerHTML = "";
   const viewport = document.createElement("div");
   viewport.className = "lc-spin__viewport";
@@ -195,5 +201,5 @@ export function mountSpin(container, strip, options = {}) {
     if (now && playing && !landed) { setX(target(width())); land(); }
   }
 
-  return { play, skip, viewport, track, cards, get landed() { return landed; } };
+  return { play, skip, viewport, track, cards, reducedMotion, get landed() { return landed; }, get skipped() { return skipped; } };
 }

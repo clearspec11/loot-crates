@@ -6,7 +6,7 @@ import { mountSpin, nearMissOvershoot, spinDistance, SPIN_ACCEL, SPIN_CRUISE, CA
 
 const fakeElement = () => ({
   className: "", textContent: "", innerHTML: "", clientWidth: 0, dataset: {}, children: [],
-  classList: { add() {} },
+  classList: { add() {}, remove() {} },
   style: { transform: "", setProperty() {} },
   setAttribute() {},
   append(...kids) { this.children.push(...kids); },

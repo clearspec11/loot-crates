@@ -10,6 +10,9 @@
   ?pity=due (shop: Tam has gone 8 pulls without a Rare from the Adventurer's
   Crate, so its pity is due: only Rare or better shows, and its line says so)
   "landed" plays the spin at zero duration, for deterministic screenshots.
+  ?watched=0 (landed: this client didn't see it spin, it landed hidden or was
+  skipped, so the reveal offers Watch again beside Close, which replays the
+  strip in place at full length; it goes once a replay has run to its end)
   buyer=1 shows the reveal as the buyer (or a GM) sees it: gold left and an
   Open item button; without it, as the rest of the table sees it.
   "replay" is "Watch again": the landed pull's chat card (with its button)
@@ -29,7 +32,7 @@ import { draw, seededRng } from "../module/scripts/odds.js";
 import { buildStrip } from "../module/scripts/strip.js";
 import { mountSpin } from "../module/scripts/spin.js";
 import { charge, formatPrice, formatGold } from "../module/scripts/currency.js";
-import { resultHTML, replaySnapshot, replayReveal, replayTitle } from "../module/scripts/revealcard.js";
+import { resultHTML, replaySnapshot, replayReveal, replayTitle, revealActionsHTML } from "../module/scripts/revealcard.js";
 import { RARITY_LABEL } from "../module/scripts/config.js";
 import { boxCard, oddsRibbon, shopHTML, shopNotice, patchShop } from "../module/scripts/boxcard.js";
 import { shopOdds } from "../module/scripts/odds.js";
@@ -40,6 +43,7 @@ const seed = Number(q.get("seed") ?? 7);
 const duration = q.has("duration") ? Number(q.get("duration")) : state === "landed" || state === "replay" ? 0 : undefined;
 const purse = { pp: 0, gp: 420, ep: 0, sp: 7, cp: 3 };
 const buyer = q.get("buyer") === "1";
+const unwatched = q.get("watched") === "0";
 const waiting = q.get("waiting");
 const closed = q.get("closed");
 const pityDue = q.get("pity") === "due";
@@ -56,11 +60,11 @@ document.getElementById("title").textContent = appTitle;
 const CRATE_ICON = `<svg class="lc-box__icon" viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M3 8.5 12 4l9 4.5v8L12 21l-9-4.5z"/><path d="M3 8.5 12 13l9-4.5M12 13v8"/></svg>`;
 
 const nav = document.getElementById("nav");
-for (const [label, query] of [["shop", "state=shop"], ["spin", "state=spin"], ["landed", "state=landed"], ["landed, buyer", "state=landed&buyer=1"], ["replay", "state=replay"], ["manager", "state=manager"]]) {
+for (const [label, query] of [["shop", "state=shop"], ["spin", "state=spin"], ["landed", "state=landed"], ["landed, buyer", "state=landed&buyer=1"], ["missed", "state=landed&buyer=1&watched=0"], ["replay", "state=replay"], ["manager", "state=manager"]]) {
   const a = document.createElement("a");
   a.href = `?${query}&seed=${seed}&theme=${theme}`;
   a.textContent = label;
-  if (query === `state=${state}${buyer ? "&buyer=1" : ""}`) a.classList.add("active");
+  if (query === `state=${state}${buyer ? "&buyer=1" : ""}${unwatched ? "&watched=0" : ""}`) a.classList.add("active");
   nav.append(a);
 }
 if (state !== "shop" && state !== "manager") {
@@ -138,27 +142,50 @@ async function renderSpin() {
         <div class="lc-reveal__spin"></div>
         <div class="lc-reveal__result lc-rarity-${result.rarity}" aria-live="polite"></div>
       </div>
-      <div class="lc-reveal__actions">
-        <button type="button" class="lc-reveal__open" hidden>Open item</button>
-        <button type="button" class="lc-reveal__close">Skip</button>
-      </div>
+      ${revealActionsHTML()}
     </div>`;
   const out = stage.querySelector(".lc-reveal__result");
   const btn = stage.querySelector(".lc-reveal__close");
   const open = stage.querySelector(".lc-reveal__open");
+  const watch = stage.querySelector(".lc-reveal__watch");
+  const host = stage.querySelector(".lc-reveal__spin");
   let landed = false;
-  const spin = mountSpin(stage.querySelector(".lc-reveal__spin"), strip, {
+  let spin = mountSpin(host, strip, {
     duration,
     reducedMotion: duration === 0,
     onLand: () => {
       landed = true;
       out.innerHTML = resultHTML(reveal, { canSee });
       open.hidden = !canSee;
+      watch.hidden = !unwatched;
       btn.textContent = "Close";
       btn.focus({ preventScroll: true });
     },
   });
   btn.addEventListener("click", () => { if (landed) location.search = `?state=${replay ? "replay" : "shop"}&seed=${seed}&theme=${theme}`; else spin.skip(); });
+  // Watch again as reveal.js plays it: the same strip in the same host, the
+  // button reading Skip and the result hidden until it lands again.
+  let replaying = false;
+  watch.addEventListener("click", () => {
+    if (replaying) { spin.skip(); return; }
+    replaying = true;
+    watch.textContent = "Skip";
+    out.hidden = true;
+    const again = mountSpin(host, strip, {
+      duration: 6200,
+      reducedMotion: false,
+      onLand: () => {
+        replaying = false;
+        out.hidden = false;
+        if (again.skipped) { watch.textContent = "Watch again"; return; }
+        const had = document.activeElement === watch;
+        watch.hidden = true;
+        if (had) btn.focus({ preventScroll: true });
+      },
+    });
+    spin = again;
+    again.play();
+  });
   await spin.play();
   document.body.dataset.landed = "1";
   window.__lootCrates = { result, strip };
