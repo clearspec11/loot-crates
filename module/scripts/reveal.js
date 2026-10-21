@@ -219,6 +219,21 @@ function ownBuy(reveal) {
   return [...document.querySelectorAll(".lc-shop .lc-box__buy")].find(b => b.dataset.box === reveal.box.id) ?? null;
 }
 
+/*
+  Where a replay's focus goes back to on close: the Watch again that opened
+  it, or, when its chat card was drawn again meanwhile (a refund, an edit,
+  the log scrolled back in) and that node is gone, the card's new Watch
+  again by message id (the chat log's copy before a notification's), and
+  failing that the chat input. Never the page's body.
+*/
+function replayReturn(reveal, opener) {
+  if (opener?.isConnected) return opener;
+  if (!reveal.replay) return opener ?? null;
+  const key = reveal.replayKey;
+  const again = safeId(key) ? [...document.querySelectorAll(`[data-message-id="${key}"] .lc-chat__replay`)].filter(b => b.isConnected) : [];
+  return again.find(b => b.closest?.(".chat-log")) ?? again[0] ?? [...document.querySelectorAll("#chat-message")][0] ?? null;
+}
+
 export class CrateReveal extends ApplicationV2 {
   static DEFAULT_OPTIONS = {
     id: "loot-crates-reveal-{id}",
@@ -312,7 +327,7 @@ export class CrateReveal extends ApplicationV2 {
   _onClose(options) {
     super._onClose(options);
     // Back to the crate they bought, unless they have moved on elsewhere.
-    const buy = ownBuy(this.reveal) ?? this.returnTo;
+    const buy = ownBuy(this.reveal) ?? replayReturn(this.reveal, this.returnTo);
     if (buy?.isConnected && focusIsFree(this.element)) buy.focus({ preventScroll: true });
     this.#closed = true;
     clearTimeout(this.#slowSound);
