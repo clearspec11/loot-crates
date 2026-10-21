@@ -15,7 +15,7 @@ import { openShop, refreshShop } from "./shop.js";
 import { openManager, refreshManager, CrateManager } from "./manager.js";
 import { storeRedraw } from "./redraw.js";
 import { performPull } from "./pull.js";
-import { showReveal, showReplay, sealChatCard, watchAgain } from "./reveal.js";
+import { showReveal, showReplay, sealChatCard, watchAgain, preSealItem } from "./reveal.js";
 import { draw, oddsTable, seededRng } from "./odds.js";
 import { buildStrip } from "./strip.js";
 
@@ -65,3 +65,6 @@ Hooks.on("userConnected", () => refreshShop());
 Hooks.on("renderChatMessageHTML", sealChatCard);
 // A pull's card with a replay snapshot offers "Watch again" (display only).
 Hooks.on("renderChatMessageHTML", watchAgain);
+// A pull's item reaches the sheet just before its reveal: hidden until the
+// spin lands here (reveal.js hold), as the chat card is.
+Hooks.on("createItem", preSealItem);

@@ -79,6 +79,7 @@ class Element extends Node {
     return !event.defaultPrevented;
   }
   get id() { return this.getAttribute("id") ?? ""; }
+  set id(v) { this.setAttribute("id", v); }
   get children() { return this.childNodes.filter(n => n.nodeType === 1); }
   get textContent() { return this.childNodes.map(n => n.textContent).join(""); }
   set textContent(v) { this.replaceChildren(...(v ? [new Text(this.ownerDocument, String(v))] : [])); }
@@ -167,10 +168,12 @@ export function createDocument() {
   doc.createElement = tag => new Element(doc, tag);
   doc.createTextNode = text => new Text(doc, text);
   doc.documentElement = new Element(doc, "html");
+  doc.head = new Element(doc, "head");
   doc.body = new Element(doc, "body");
-  doc.documentElement.appendChild(doc.body);
+  doc.documentElement.append(doc.head, doc.body);
   doc.activeElement = doc.body;
   doc.querySelector = sel => doc.documentElement.querySelector(sel);
   doc.querySelectorAll = sel => doc.documentElement.querySelectorAll(sel);
+  doc.getElementById = id => doc.documentElement.querySelectorAll("[id]").find(el => el.id === id) ?? null;
   return doc;
 }

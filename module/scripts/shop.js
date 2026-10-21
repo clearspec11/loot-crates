@@ -1,12 +1,22 @@
 /*
   The player's Crate Shop: the boxes on offer, what each costs, whether this
   character can afford it, and a Buy button that asks the GM to do the pull.
+
+  While a pull of a crate spins on this client, that crate's card keeps the
+  character's pity line and odds from before the pull (reveal.js heldState):
+  the GM writes the new state about 0.3 s after the reveal goes out, and a
+  card redrawn from it said whether the pull hit Rare or better seconds
+  before the marker stopped. The card changes when the spin lands
+  (onRelease), as part of the payoff. Until then that crate's Buy is off
+  ("Still spinning"): the held odds aren't the ones a second pull would be
+  rolled at.
 */
 import { getBoxes, getPools, getActorState, isShopOpen } from "./store.js";
 import { formatGold } from "./currency.js";
 import { boxCard, buyReason, shopHTML, shopNotice, patchShop } from "./boxcard.js";
 import { shopOdds } from "./odds.js";
 import { requestPull } from "./socket.js";
+import { heldState, onRelease } from "./reveal.js";
 
 const { ApplicationV2 } = foundry.applications.api;
 const esc = s => foundry.utils.escapeHTML(String(s ?? ""));
@@ -82,7 +92,8 @@ export class CrateShop extends ApplicationV2 {
     const gm = !!game.users.activeGM;
     return {
       purse: actor?.system?.currency ?? {}, open: isShopOpen() && gm, gmOnline: gm, hasActor: !!actor,
-      actorName: actor?.name ?? "", stateOf: boxId => (actor ? getActorState(actor.id, boxId) : {}),
+      actorName: actor?.name ?? "", stateOf: boxId => (actor ? heldState(actor.id, boxId) ?? getActorState(actor.id, boxId) : {}),
+      held: boxId => !!(actor && heldState(actor.id, boxId)),
       busy: this.busy, busyBox: this.busyBox, waiting: this.waiting, art: `<i class="fas fa-box-open"></i>`, esc,
     };
   }
@@ -126,3 +137,5 @@ export function openShop() {
   return shop;
 }
 export function refreshShop() { if (shop?.rendered) shop.render(); }
+// A held pity line and odds change when the spin lands.
+onRelease(() => refreshShop());

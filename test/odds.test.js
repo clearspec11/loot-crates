@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { draw, nextState, oddsTable, shopOdds, chanceLabel, wholePercents, flattenPool, normalizeRarity, seededRng, weightedPick, markEntriesMissing, sourceStatus, withSources } from "../module/scripts/odds.js";
+import { draw, nextState, undoPull, resetsPity, oddsTable, shopOdds, chanceLabel, wholePercents, flattenPool, normalizeRarity, seededRng, weightedPick, markEntriesMissing, sourceStatus, withSources } from "../module/scripts/odds.js";
 import { POOLS, BOX, BOXES } from "../harness/sample.js";
 
 const tally = (n, fn) => {
@@ -177,6 +177,133 @@ describe("nextState", () => {
     expect(s2.owned).toEqual(["a", "b"]);
     const s3 = nextState(box, s2, { rarity: "common", entry: { uuid: "a" } });
     expect(s3.owned).toEqual(["a", "b"]);
+  });
+});
+
+/*
+  A refund undoes the pull's record: the pity count and the no-duplicates
+  list read as if the pull never happened. Rows are the pull log's, with
+  `before.sinceRare` and `resetPity` as socket.js writes them.
+*/
+describe("undoPull", () => {
+  const PITY = { rules: { pity: { after: 3, minRarity: "rare" }, noDuplicates: true } };
+  // Pulls in order; returns the log (newest first) and the state after them.
+  const pulls = (...picks) => {
+    let state = {};
+    const log = [];
+    picks.forEach(([uuid, rarity], i) => {
+      log.unshift({ id: `r${i}`, at: (i + 1) * 10, actorId: "a1", boxId: "b", uuid, rarity, before: { sinceRare: state.sinceRare ?? 0, hadItem: (state.owned ?? []).includes(uuid) }, resetPity: resetsPity(PITY, rarity) });
+      state = nextState(PITY, state, { rarity, entry: { uuid } });
+    });
+    return { log, state, row: id => log.find(r => r.id === id) };
+  };
+  const refund = (w, id, at) => { const row = w.row(id); row.refunded = at; w.state = undoPull(w.state, row, w.log); return w.state; };
+
+  it("puts the latest pull back: the item is new again and the pity count drops by one", () => {
+    const w = pulls(["rope", "common"], ["torch", "common"]);
+    expect(w.state).toEqual({ sinceRare: 2, owned: ["rope", "torch"], pulls: 2 });
+    expect(refund(w, "r1", 100)).toEqual({ sinceRare: 1, owned: ["rope"], pulls: 1 });
+  });
+
+  it("gives back the pity a refunded rare wiped, and the rare can drop again", () => {
+    // Orla's box: Cloak (rare), Rope, Torch; pity Rare after 3.
+    const before = { sinceRare: 2, owned: [], pulls: 2 };
+    const w = pulls(["rope", "common"], ["torch", "common"], ["cloak", "rare"]);
+    w.log.find(r => r.id === "r0").refunded = 1; w.log.find(r => r.id === "r1").refunded = 2;
+    w.state = { sinceRare: 0, owned: ["cloak"], pulls: 1 };
+    // Only the Cloak pull stands; rope and torch were refunded before it.
+    w.row("r2").before = { sinceRare: 2 };
+    const box = { ...PITY, pools: [{ id: "p", share: 1 }] };
+    const pools = { p: { id: "p", entries: [{ uuid: "cloak", rarity: "rare", weight: 1 }, { uuid: "rope", rarity: "common", weight: 1 }, { uuid: "torch", rarity: "common", weight: 1 }] } };
+    expect(shopOdds(box, pools, w.state).rows.map(r => r.rarity)).toEqual(["common"]);
+    const after = refund(w, "r2", 100);
+    expect(after).toEqual({ ...before, owned: [], pulls: 0 });
+    expect(shopOdds(box, pools, after).rows.map(r => r.rarity)).toEqual(["common", "rare"]);
+  });
+
+  it("an older pull with later ones after it: only its own effects come back", () => {
+    const w = pulls(["rope", "common"], ["torch", "common"], ["lamp", "common"]);
+    expect(refund(w, "r0", 100)).toEqual({ sinceRare: 2, owned: ["torch", "lamp"], pulls: 2 });
+  });
+
+  it("a pull before a standing rare leaves the pity count alone", () => {
+    const w = pulls(["rope", "common"], ["cloak", "rare"], ["torch", "common"]);
+    expect(w.state.sinceRare).toBe(1);
+    expect(refund(w, "r0", 100)).toEqual({ sinceRare: 1, owned: ["cloak", "torch"], pulls: 2 });
+  });
+
+  it("a rare that reset pity, with no later reset: its wiped count comes back on top", () => {
+    const w = pulls(["rope", "common"], ["torch", "common"], ["cloak", "rare"], ["lamp", "common"]);
+    expect(w.state.sinceRare).toBe(1);
+    expect(refund(w, "r2", 100)).toEqual({ sinceRare: 3, owned: ["rope", "torch", "lamp"], pulls: 3 });
+  });
+
+  it("a rare that reset pity, with a later rare still standing: the count stays", () => {
+    const w = pulls(["rope", "common"], ["cloak", "rare"], ["lamp", "common"], ["wand", "rare"], ["torch", "common"]);
+    expect(refund(w, "r1", 100)).toEqual({ sinceRare: 1, owned: ["rope", "lamp", "wand", "torch"], pulls: 4 });
+  });
+
+  it("a rare refunded after a later reset was itself refunded counts across both", () => {
+    const w = pulls(["rope", "common"], ["cloak", "rare"], ["lamp", "common"], ["wand", "rare"], ["torch", "common"]);
+    refund(w, "r3", 100);
+    expect(w.state.sinceRare).toBe(2);
+    expect(refund(w, "r1", 110)).toEqual({ sinceRare: 3, owned: ["rope", "lamp", "torch"], pulls: 3 });
+  });
+
+  it("an item granted twice stays owned after one refund, and goes after the second", () => {
+    const w = pulls(["rope", "common"], ["rope", "common"]);
+    expect(refund(w, "r1", 100).owned).toEqual(["rope"]);
+    expect(refund(w, "r0", 110).owned).toEqual([]);
+  });
+
+  // Live in cc-dev: a pull of the Flail, then the state reset by hand (not
+  // through a refund), then the Flail again. Refunding the second must free
+  // it: it wasn't owned before that pull, whatever the older row says.
+  it("frees an item the refunded pull granted fresh, though an older row granted it before a reset", () => {
+    const w = pulls(["flail", "common"]);
+    w.state = {};
+    const again = { id: "r1", at: 20, actorId: "a1", boxId: "b", uuid: "flail", rarity: "common", before: { sinceRare: 0, hadItem: false }, resetPity: false };
+    w.log.unshift(again);
+    w.state = nextState(PITY, w.state, { rarity: "common", entry: { uuid: "flail" } });
+    expect(refund(w, "r1", 100)).toEqual({ sinceRare: 0, owned: [], pulls: 0 });
+  });
+
+  it("a row from before refunds tracked pity fixes owned and pulls, and keeps the count", () => {
+    const legacy = { id: "old", at: 10, actorId: "a1", boxId: "b", uuid: "cloak", rarity: "rare", refunded: 50 };
+    const state = { sinceRare: 2, owned: ["cloak", "rope"], pulls: 3 };
+    expect(undoPull(state, legacy, [legacy])).toEqual({ sinceRare: 2, owned: ["rope"], pulls: 2 });
+  });
+
+  it("only counts the same character's rows for the same box, and never goes below zero", () => {
+    const row = { id: "x", at: 10, actorId: "a1", boxId: "b", uuid: "rope", before: { sinceRare: 0 }, resetPity: false };
+    const others = [{ id: "y", at: 5, actorId: "a2", boxId: "b", uuid: "rope" }, { id: "z", at: 6, actorId: "a1", boxId: "c", uuid: "rope" }];
+    expect(undoPull({}, row, [row, ...others])).toEqual({ owned: [], pulls: 0, sinceRare: 0 });
+  });
+
+  // Any mix of pulls and refunds, in any order, ends where a replay of only
+  // the pulls still standing would.
+  it("matches a replay of the unrefunded pulls after any order of refunds", () => {
+    const rng = seededRng(42);
+    const uuids = ["rope", "torch", "lamp", "cloak", "wand"];
+    for (let run = 0; run < 200; run++) {
+      let state = {}, t = 0;
+      const log = [];
+      for (let step = 0; step < 14; step++) {
+        const standing = log.filter(r => !r.refunded);
+        if (standing.length && rng() < 0.4) {
+          const row = standing[Math.floor(rng() * standing.length)];
+          row.refunded = ++t;
+          state = undoPull(state, row, log);
+        } else {
+          const uuid = uuids[Math.floor(rng() * uuids.length)];
+          const rarity = rng() < 0.3 ? "rare" : "common";
+          log.unshift({ id: `r${run}-${step}`, at: ++t, actorId: "a1", boxId: "b", uuid, rarity, before: { sinceRare: state.sinceRare ?? 0, hadItem: (state.owned ?? []).includes(uuid) }, resetPity: resetsPity(PITY, rarity) });
+          state = nextState(PITY, state, { rarity, entry: { uuid } });
+        }
+        const replay = log.filter(r => !r.refunded).reverse().reduce((s, r) => nextState(PITY, s, { rarity: r.rarity, entry: { uuid: r.uuid } }), {});
+        expect({ ...state, owned: [...(state.owned ?? [])].sort() }).toEqual({ sinceRare: replay.sinceRare ?? 0, owned: [...(replay.owned ?? [])].sort(), pulls: replay.pulls ?? 0 });
+      }
+    }
   });
 });
 

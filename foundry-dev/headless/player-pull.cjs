@@ -66,6 +66,21 @@
 // landing (focusAtLanding); Close is then clicked and focus must return to
 // the Watch again button (focusBack).
 //
+// SEAL=1 (use a BOX with a pity rule, e.g. "Live pity crate"): before the
+// purchase the player opens their character's sheet from the Actors sidebar
+// (a click on its name, as a person does) and its Inventory tab, with the
+// shop still open. `seal` reports, for the item the pull grants: whether any
+// element naming it ([data-item-id]) was visible in any animation frame
+// between the click and the landing (leakFrames, must be 0), at reveal +1 s
+// (row hidden, the shop card's pity text and odds unchanged from before the
+// click, and the crate's Buy off with "Still spinning") and at landed +0.5 s
+// (row visible, the pity text now what the new state says, the pity text or
+// odds changed, and "Still spinning" gone). reveal.js holds both until
+// this client's spin lands. longTasks and sheetRenders show what kept the
+// player's page busy: on this VM an open dnd5e sheet takes ~0.9 s to
+// re-render, once for the charge and once for the item, and the reveal
+// waits behind both (~2.4 s from the click instead of ~0.5 s).
+//
 // chatRenders lists each rendering of the pull's chat card on the player's
 // client and whether it was sealed (head and "Opening…", reveal.js
 // sealChatCard): a card rendered while that client's spin plays must be, and
@@ -86,6 +101,7 @@ const COUNT = Math.min(3, Math.max(1, Number(process.env.COUNT) || 1));
 const GM_LOG = process.env.GM_LOG === "1";
 const CLOSE_SHOP = process.env.CLOSE_SHOP === "1";
 const REPLAY = process.env.REPLAY === "1";
+const SEAL = process.env.SEAL === "1";
 const shot = process.argv.includes("--shot") ? process.argv[process.argv.indexOf("--shot") + 1] : null;
 
 async function join(browser, user, { readySweep = false } = {}) {
@@ -123,9 +139,11 @@ async function join(browser, user, { readySweep = false } = {}) {
     }
     // What main.js does for chat: a pull's card stays sealed while it spins here.
     // And "Watch again" on a pull's card.
-    const { sealChatCard, watchAgain } = await import(base + "scripts/reveal.js");
+    const { sealChatCard, watchAgain, preSealItem } = await import(base + "scripts/reveal.js");
     Hooks.on("renderChatMessageHTML", sealChatCard);
     Hooks.on("renderChatMessageHTML", watchAgain);
+    // And for the sheet: a pull's item stays hidden until it lands here.
+    Hooks.on("createItem", preSealItem);
     // What main.js's ready hook does on the active GM.
     if (readySweep && socket.isActiveGM()) store.sweepAllPools();
   }, [MODULE_BASE, readySweep, CANVAS]);
@@ -182,6 +200,44 @@ async function closeShopCheck(player, gm) {
   const ok = closed.was === "Shop open" && closedSeen.ms != null && closedSeen.ms <= 2000 && /closed/i.test(closedSeen.notice)
     && openedSeen?.ms != null && openedSeen.ms <= 2000 && (await isOpen());
   return { before, toggled: closed.was, closed: closedSeen, reopened: openedSeen, shopOpenAtEnd: await isOpen(), ok };
+}
+
+/*
+  SEAL: the player opens their character's sheet as a person does: the
+  Actors tab in the sidebar, a click on the character's name, then the
+  sheet's Inventory tab.
+*/
+async function openSheet(page) {
+  const id = await page.evaluate(() => game.actors.find(a => a.isOwner && a.type === "character")?.id);
+  await page.locator('#sidebar [data-tab="actors"]').first().click();
+  await page.waitForTimeout(600);
+  const entry = page.locator(`#actors [data-entry-id="${id}"] .entry-name`).first();
+  // Open its folder (and any folder above it) first, as a person would.
+  if (!(await entry.isVisible())) {
+    const folders = await page.evaluate(id => {
+      const out = [];
+      for (let f = game.actors.get(id)?.folder; f; f = f.folder) out.unshift(f.id);
+      return out;
+    }, id);
+    for (const fid of folders) {
+      const folder = page.locator(`#actors .folder[data-folder-id="${fid}"]`).first();
+      if (!(await folder.evaluate(el => el.classList.contains("expanded")))) {
+        await folder.locator(":scope > header").first().click();
+        await page.waitForTimeout(400);
+      }
+    }
+  }
+  await entry.click();
+  const sheet = page.locator(`.application.sheet.actor[id$="${id}"]`).first();
+  await sheet.waitFor({ timeout: 15000 });
+  await page.waitForTimeout(800);
+  await sheet.locator('nav [data-tab="inventory"]').first().click();
+  await page.waitForTimeout(600);
+  return page.evaluate(id => {
+    const el = [...document.querySelectorAll(".application.sheet.actor")].find(e => e.id.endsWith(id));
+    const active = el?.querySelector('nav [data-tab].active')?.dataset.tab ?? null;
+    return { id: el?.id ?? null, tab: active, rows: el?.querySelectorAll("[data-item-id]").length ?? 0 };
+  }, id);
 }
 
 /*
@@ -353,7 +409,8 @@ async function gmWatchCheck(page) {
         setTimeout(() => clearInterval(watch), 60000);
       }, MODULE_BASE);
     }
-    const result = await pl.page.evaluate(async ({ base, box, count }) => {
+    if (SEAL) out.sheetOpened = await openSheet(pl.page);
+    const result = await pl.page.evaluate(async ({ base, box, count, seal }) => {
       const { openShop } = await import(base + "scripts/shop.js");
       const actor = game.actors.find(a => a.isOwner && a.type === "character");
       if (!actor) throw new Error(`${game.user.name} owns no character`);
@@ -363,6 +420,61 @@ async function gmWatchCheck(page) {
       const pick = app.element.querySelector(".lc-shop__actor");
       if (pick && pick.value !== actor.id) { pick.value = actor.id; pick.dispatchEvent(new Event("change")); await new Promise(r => setTimeout(r, 800)); }
       const purchases = [];
+      /*
+        SEAL: watches the item this pull grants on every animation frame
+        from the click to the landing (any element naming it visible is a
+        leak), and reads the shop card's pity text and odds at two moments.
+      */
+      async function sealWatch(base, actor, card) {
+        const { getActorState, getBoxes, getPools } = await import(base + "scripts/store.js");
+        const { shopOdds } = await import(base + "scripts/odds.js");
+        const { pityLine } = await import(base + "scripts/boxcard.js");
+        const boxId = card.dataset.box;
+        const shopCard = () => document.querySelector(`.lc-shop .lc-box[data-box="${boxId}"]`);
+        // "" when the card has no pity line (none this buyer can reach).
+        const pity = () => shopCard()?.querySelector(".lc-box__pity")?.textContent.trim() ?? "";
+        const odds = () => shopCard()?.querySelector(".lc-box__odds")?.textContent.replace(/\s+/g, " ").trim() ?? null;
+        const expectedPity = () => pityLine(shopOdds(getBoxes()[boxId], getPools(), getActorState(actor.id, boxId)));
+        let itemId = null, createdAt = null, leakFrames = 0, frames = 0, done = false;
+        const hook = Hooks.on("createItem", item => { if (item.parent === actor && item.flags?.["loot-crates"]?.boxId) { itemId ??= item.id; createdAt ??= performance.now(); } });
+        // What kept this client's main thread busy (an open sheet re-renders
+        // on the charge and on the new item), and when the sheet rendered.
+        const t0 = performance.now();
+        const longTasks = [];
+        const observer = new PerformanceObserver(list => { for (const e of list.getEntries()) longTasks.push([Math.round(e.startTime - t0), Math.round(e.duration)]); });
+        try { observer.observe({ type: "longtask" }); } catch { /* not supported */ }
+        const sheetRenders = [];
+        const renderHook = Hooks.on("renderActorSheetV2", app => { if (app.document === actor) sheetRenders.push(Math.round(performance.now() - t0)); });
+        const rows = () => itemId ? [...document.querySelectorAll(`[data-item-id="${itemId}"]`)] : [];
+        const visible = () => rows().some(el => el.getClientRects().length > 0);
+        const frame = () => { if (done) return; frames++; if (visible()) leakFrames++; requestAnimationFrame(frame); };
+        requestAnimationFrame(frame);
+        const before = { pity: pity(), odds: odds() };
+        const snaps = {};
+        const waits = [];
+        // The crate's Buy: off while its spin plays here ("Still spinning"),
+        // since the held card's odds aren't what a second pull would roll.
+        const buyOff = () => shopCard()?.querySelector(".lc-box__buy")?.getAttribute("aria-disabled") === "true";
+        const why = () => shopCard()?.querySelector(".lc-box__why")?.textContent.trim() ?? "";
+        const snap = () => ({ rows: rows().length, rowVisible: visible(), pity: pity(), odds: odds(), expectedPity: expectedPity(), buyOff: buyOff(), why: why() });
+        return {
+          at(name, ms) { waits.push(new Promise(r => setTimeout(() => { snaps[name] = snap(); r(); }, ms))); },
+          landed() { done = true; },
+          async report() {
+            await Promise.all(waits);
+            Hooks.off("createItem", hook);
+            Hooks.off("renderActorSheetV2", renderHook);
+            observer.disconnect();
+            const sheetOpen = [...foundry.applications.instances.values()].some(a => a.document === actor && a.rendered);
+            const { mid, after } = snaps;
+            const ok = !!itemId && sheetOpen && leakFrames === 0 && frames > 0
+              && mid && !mid.rowVisible && mid.pity === before.pity && mid.odds === before.odds && mid.buyOff && mid.why === "Still spinning"
+              && after && after.rows > 0 && after.rowVisible && after.pity === after.expectedPity && after.why !== "Still spinning"
+              && (after.pity !== before.pity || after.odds !== before.odds);
+            return { ok, itemId, sheetOpen, frames, leakFrames, before, mid, after, createdMs: createdAt && Math.round(createdAt - t0), sheetRenders, longTasks };
+          },
+        };
+      }
       // When the table's client sees each Loot Crates chat card.
       const cards = [];
       Hooks.on("createChatMessage", m => { if (m.flags?.["loot-crates"] && !m.flags["loot-crates"].refunded) cards.push(performance.now()); });
@@ -391,6 +503,9 @@ async function gmWatchCheck(page) {
         const onCharge = Hooks.on("updateActor", (a, change) => {
           if (a === actor && change.system?.currency) setTimeout(() => { charged ??= where(); }, 100);
         });
+        // SEAL: the granted item's rows, frame by frame, and the card's pity
+        // text and odds at reveal +1 s and landed +0.5 s.
+        const sl = seal ? await sealWatch(base, actor, card) : null;
         buy.focus();
         const t0 = performance.now();
         const clickedAt = Date.now();
@@ -402,8 +517,8 @@ async function gmWatchCheck(page) {
           const label = app.element.querySelector(`.lc-box__buy[data-box="${card.querySelector(".lc-box__buy").dataset.box}"]`)?.textContent.trim();
           if (label && labels.at(-1)?.text !== label) labels.push({ text: label, ms: Math.round(performance.now() - t0) });
           rv ??= [...document.querySelectorAll(".lc-reveal")].find(el => !seen.has(el)) ?? null;
-          if (rv && revealAt == null) revealAt = performance.now() - t0;
-          if (rv?.querySelector(".lc-card--landed")) landedAt = performance.now() - t0;
+          if (rv && revealAt == null) { revealAt = performance.now() - t0; sl?.at("mid", 1000); }
+          if (rv?.querySelector(".lc-card--landed")) { landedAt = performance.now() - t0; sl?.landed(); sl?.at("after", 500); }
         }
         await new Promise(r => setTimeout(r, 1200));
         Hooks.off("updateActor", onCharge);
@@ -423,11 +538,12 @@ async function gmWatchCheck(page) {
           buyLabels: labels,
           focus: { afterCharge: charged, atLanding: focusAtLanding, afterClose: focusAfterClose, sameBuyNode, ok: ["Buy", "reveal Close"].includes(charged) && focusAtLanding === "reveal Close" && focusAfterClose === "Buy" && sameBuyNode },
           result: rv?.querySelector(".lc-reveal__result")?.innerText,
+          ...(sl ? { seal: await sl.report() } : {}),
         });
       }
       const granted = actor.items.filter(i => (i.flags?.["loot-crates"]?.at ?? 0) > Date.now() - 120000).map(i => i.name);
       return { actor: actor.name, before, after: actor.system.currency, granted, purchases };
-    }, { base: MODULE_BASE, box: BOX, count: COUNT });
+    }, { base: MODULE_BASE, box: BOX, count: COUNT, seal: SEAL });
     Object.assign(out, result);
     if (REPLAY) out.replay = await replayCheck(pl.page);
     if (GM_LOG) {

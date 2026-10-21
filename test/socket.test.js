@@ -866,5 +866,27 @@ describe("the reveal's odds", () => {
     await deliver({ type: "pull", requestId: "next", boxId: "box", actorId: "actor1", userId: "p1" });
     const next = emitted.find(m => m.type === "reveal" && m.requestId === "next");
     expect(next.odds.map(o => `${o.rarity} ${o.label}`)).toEqual(["common 90%", "rare 10%"]);
+    // Each row keeps the count it was pulled at and whether it reset it,
+    // so a refund can put the count back (odds.js undoPull).
+    const [second, first] = game.settings.get("loot-crates", "pullLog");
+    expect(first).toMatchObject({ before: { sinceRare: 2, hadItem: false }, resetPity: true });
+    expect(second).toMatchObject({ before: { sinceRare: 0 }, resetPity: second.rarity === "rare" });
+  });
+
+  it("carry the buyer's state from before the pull, so a spinning client can hold its shop back", async () => {
+    const { game, emitted, deliver } = makeWorld({ user: GM });
+    await game.settings.set("loot-crates", "pools", { pool: POOL });
+    await game.settings.set("loot-crates", "boxes", { box: box({ pity: { after: 8, minRarity: "rare" } }) });
+    await game.settings.set("loot-crates", "actorState", { "actor1.box": { sinceRare: 5, owned: ["x"], pulls: 5 } });
+    await deliver({ type: "pull", requestId: "s1", boxId: "box", actorId: "actor1", userId: "p1" });
+    const reveal = emitted.find(m => m.type === "reveal" && m.requestId === "s1");
+    expect(reveal.stateBefore).toEqual({ sinceRare: 5, owned: ["x"], pulls: 5 });
+    // The world setting has moved on; the reveal's copy hasn't.
+    expect(game.settings.get("loot-crates", "actorState")["actor1.box"]).toMatchObject({ sinceRare: 6, pulls: 6 });
+    // A first pull: an empty record, spelled out.
+    await deliver({ type: "pull", requestId: "s2", boxId: "box", actorId: "actor1", userId: "p1" });
+    await game.settings.set("loot-crates", "actorState", {});
+    await deliver({ type: "pull", requestId: "s3", boxId: "box", actorId: "actor1", userId: "p1" });
+    expect(emitted.find(m => m.requestId === "s3" && m.type === "reveal").stateBefore).toEqual({ sinceRare: 0, owned: [], pulls: 0 });
   });
 });

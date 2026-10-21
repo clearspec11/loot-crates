@@ -3,7 +3,7 @@
   only, removes only the item it granted, and puts the box's stock back.
 */
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { registerSettings, appendLog, getLog, getBoxes } from "../module/scripts/store.js";
+import { registerSettings, appendLog, getLog, getBoxes, getActorState, enqueueWrite } from "../module/scripts/store.js";
 import { refundPull, describeRefund, grantedItem } from "../module/scripts/refund.js";
 import { toCopper, isWholeCoins } from "../module/scripts/currency.js";
 
@@ -110,6 +110,81 @@ describe("refundPull", () => {
     expect((await refundPull("nope")).status).toBe("missing");
     expect((await refundPull(rowId)).status).toBe("no-actor");
     expect(getLog()[0].refunded).toBeUndefined();
+  });
+});
+
+/*
+  The refund also undoes the pull's record for the character: the pity
+  count and the no-duplicates list (odds.js undoPull), in the same queued
+  write as the coins and stock, and only once.
+*/
+describe("refundPull and the buyer's pity and no-duplicates record", () => {
+  const RULED = { ...BOX, rules: { stock: 2, pity: { after: 3, minRarity: "rare" }, noDuplicates: true } };
+  // The Wand was a Rare that reset a pity count of 2.
+  const PULLED = { ...ROW, before: { sinceRare: 2 }, resetPity: true };
+
+  async function seedState(actor, state) {
+    const rowId = await seed(actor, { box: RULED, row: PULLED });
+    await globalThis.game.settings.set("loot-crates", "actorState", { "actor1.box": state });
+    const writes = [];
+    const set = globalThis.game.settings.set;
+    globalThis.game.settings.set = async (ns, key, value) => { if (key === "actorState") writes.push(structuredClone(value)); return set(ns, key, value); };
+    return { rowId, writes };
+  }
+
+  it("puts the pity count and the item back in the same queued write as the coins", async () => {
+    const actor = makeActor({ gp: 500 }, [GRANTED]);
+    const { rowId, writes } = await seedState(actor, { sinceRare: 0, owned: [ROW.uuid], pulls: 3 });
+    const shown = describeRefund(rowId).state;
+    expect(shown.after).toEqual({ sinceRare: 2, owned: [], pulls: 2 });
+    const pending = refundPull(rowId);
+    // Whatever is queued next sees the refund whole: coins, stock and state.
+    const next = enqueueWrite(() => ({ gp: actor.system.currency.gp, stock: getBoxes().box.rules.stock, state: getActorState("actor1", "box") }));
+    const out = await pending;
+    expect(out.state).toEqual({ before: { sinceRare: 0, owned: [ROW.uuid], pulls: 3 }, after: shown.after });
+    expect(await next).toEqual({ gp: 517, stock: 3, state: { sinceRare: 2, owned: [], pulls: 2 } });
+    expect(writes).toHaveLength(1);
+  });
+
+  it("writes nothing the second time", async () => {
+    const actor = makeActor({ gp: 500 }, [GRANTED]);
+    const { rowId, writes } = await seedState(actor, { sinceRare: 1, owned: [ROW.uuid, "other"], pulls: 4 });
+    const [a, b] = await Promise.all([refundPull(rowId), refundPull(rowId)]);
+    expect([a.status, b.status].sort()).toEqual(["already", "refunded"]);
+    expect((await refundPull(rowId)).status).toBe("already");
+    expect(writes).toHaveLength(1);
+    expect(getActorState("actor1", "box")).toEqual({ sinceRare: 3, owned: ["other"], pulls: 3 });
+  });
+
+  // The coins and the item are back by then: a failed state write is the
+  // GM's to fix, reported, and the refund still finishes (the card is
+  // marked and the manager posts its refund card), as with the chat write.
+  it("finishes the refund when the state write fails, and says so", async () => {
+    const actor = makeActor({ gp: 500 }, [GRANTED]);
+    const { rowId } = await seedState(actor, { sinceRare: 0, owned: [ROW.uuid], pulls: 3 });
+    const card = message("m1", { uuid: ROW.uuid, logId: rowId });
+    globalThis.game.messages = { contents: [card] };
+    globalThis.foundry.utils.escapeHTML = escapeHTML;
+    const set = globalThis.game.settings.set;
+    globalThis.game.settings.set = async (ns, key, value) => { if (key === "actorState") throw new Error("socket down"); return set(ns, key, value); };
+    const notify = vi.fn();
+    globalThis.ui = { notifications: { error: notify } };
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const out = await refundPull(rowId);
+      expect(out).toMatchObject({ status: "refunded", removedItem: "Wand", card: true, state: null });
+      expect(actor.system.currency.gp).toBe(517);
+      expect(err).toHaveBeenCalled();
+      expect(notify.mock.calls[0][0]).toMatch(/pity count/);
+    } finally { err.mockRestore(); delete globalThis.ui; }
+  });
+
+  it("leaves a deleted box's state alone", async () => {
+    const actor = makeActor({ gp: 500 }, [GRANTED]);
+    const rowId = await seed(actor, { box: null, row: PULLED });
+    const out = await refundPull(rowId);
+    expect(out).toMatchObject({ status: "refunded", state: null });
+    expect(getActorState("actor1", "box")).toEqual({});
   });
 });
 

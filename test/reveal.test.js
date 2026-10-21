@@ -315,6 +315,37 @@ describe("a replay window", () => {
     expect(doc.activeElement).toBe(elsewhere);
   });
 
+  // The card is drawn again while the replay plays (a refund marks it, the
+  // log is re-rendered): the Watch again that opened it is gone.
+  it("gives focus to the redrawn card's Watch again, or the chat input, never the body", async () => {
+    const node = (extra = {}) => ({ isConnected: true, closest: () => null, focus() { doc.activeElement = this; }, ...extra });
+    const gone = node({ isConnected: false });
+    const inLog = node({ closest: sel => (sel === ".chat-log" ? {} : null) });
+    const popup = node();
+    const input = node();
+    const asked = [];
+    doc.querySelectorAll = sel => {
+      asked.push(sel);
+      if (sel === '[data-message-id="m9"] .lc-chat__replay') return [popup, inLog];
+      if (sel === "#chat-message") return [input];
+      return [];
+    };
+    const app = await showReplay(snapshot, "m9", { returnTo: gone });
+    for (let now = 0; frames.length; now += 16) frames.shift()(now);
+    await app.landed;
+    doc.activeElement = doc.body;
+    app.close();
+    expect(doc.activeElement).toBe(inLog);
+    // A refunded card has no Watch again: the chat input.
+    const app2 = await showReplay(snapshot, "m10", { returnTo: gone });
+    for (let now = 0; frames.length; now += 16) frames.shift()(now);
+    await app2.landed;
+    doc.activeElement = doc.body;
+    app2.close();
+    expect(doc.activeElement).toBe(input);
+    expect(asked).toContain('[data-message-id="m10"] .lc-chat__replay');
+  });
+
   it("opens nothing for a snapshot it can't play", async () => {
     expect(await showReplay({ strip: { cards: [] } }, "m6")).toBeNull();
   });

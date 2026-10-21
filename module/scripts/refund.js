@@ -1,7 +1,9 @@
 /*
   Undo one pull from the log, on a GM client: the coins go back in the same
   whole gp/sp/cp that charge() took, the granted item (and only that item) is
-  removed, and the box's stock goes back up by one.
+  removed, the box's stock goes back up by one, and the character's pity
+  count and no-duplicates record for the box are put back as if the pull
+  never happened (odds.js undoPull).
 
   Constraints this holds: a row refunds at most once (the row is marked before
   any write that could fail, and refunds run one at a time), and the only item
@@ -10,7 +12,8 @@
   the log and the sheet agree, and the card stops linking a deleted item.
 */
 import { refund } from "./currency.js";
-import { getLog, updateLog, getBoxes, saveBox, enqueueWrite } from "./store.js";
+import { getLog, updateLog, getBoxes, saveBox, enqueueWrite, getActorState, setActorState } from "./store.js";
+import { undoPull } from "./odds.js";
 import { findPullCard, isRefundedCard, refundedCardContent } from "./chatcard.js";
 
 // The item this row granted, if the actor still has it. Matching on the
@@ -31,7 +34,13 @@ export function describeRefund(rowId) {
   if (row.refunded) return { status: "already", row, message: "That pull was already refunded." };
   const actor = game.actors.get(row.actorId);
   if (!actor) return { status: "no-actor", row, message: "That character is gone." };
-  return { status: "ready", row, actor, item: grantedItem(row, actor), box: getBoxes()[row.boxId] ?? null };
+  return { status: "ready", row, actor, item: grantedItem(row, actor), box: getBoxes()[row.boxId] ?? null, state: stateAfter(row) };
+}
+
+// The buyer's state for the row's box now, and with the row undone.
+function stateAfter(row) {
+  const before = getActorState(row.actorId, row.boxId);
+  return { before, after: undoPull(before, row, getLog()) };
 }
 
 // Refunds run strictly one after another, in the same queue as pulls, so two
@@ -66,8 +75,25 @@ async function doRefund(rowId) {
     await saveBox({ ...box, rules: { ...box.rules, stock } });
   }
 
+  // Read again here, inside the queue, after the row is marked: the shop's
+  // pills and pity line redraw from this write (redraw.js).
+  // A deleted box has no shop to correct. The coins and the item are back
+  // by now, so a failed write is reported for the GM to fix, not thrown:
+  // the card is still marked and the manager still posts the refund.
+  let state = null;
+  if (box) {
+    const next = stateAfter(row);
+    try {
+      await setActorState(row.actorId, row.boxId, next.after);
+      state = next;
+    } catch (err) {
+      console.error(`loot-crates | could not put back ${row.actorName}'s pity count and no-duplicates record for ${row.boxName}`, err);
+      globalThis.ui?.notifications?.error(`Loot Crates: ${row.name} was refunded, but ${row.actorName}'s pity count and no-duplicates record for ${row.boxName} weren't put back. Check the console.`);
+    }
+  }
+
   const card = await markPullCard({ ...row, refunded });
-  return { status: "refunded", row, purse, removedItem, stock, card };
+  return { status: "refunded", row, purse, removedItem, stock, state, card };
 }
 
 // Rewrites the card that announced this pull, once. The coins and the item
