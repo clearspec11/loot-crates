@@ -352,9 +352,9 @@ describe("the rail and the table's body", () => {
   ];
   it("places a chip per live stake on its spot, marks the viewer's and the fresh, and lights the winners", () => {
     const html = railHTML(GAME, rows, { fresh: ["t"], actorIds: ["tam"] });
-    expect(html.match(/class="lc-chip /g)).toHaveLength(3);
-    expect(html).toContain("lc-chip--new");
-    expect(html.match(/lc-chip--mine/g)).toHaveLength(1);
+    expect(html.match(/class="lc-token /g)).toHaveLength(3);
+    expect(html).toContain("lc-token--new");
+    expect(html.match(/lc-token--mine/g)).toHaveLength(1);
     expect(html).toContain('title="Bo Marrow: 10 gp on Black">B<');
     expect(html.match(/data-spot="/g)).toHaveLength(2 + 2 + 12 + 4);
     expect(html).not.toContain("lc-spot--won");

@@ -164,8 +164,8 @@ const readTable = page => page.evaluate(() => {
     title: win.querySelector(".window-title")?.textContent.trim() ?? null,
     state: win.querySelector(".lc-table__state")?.textContent.trim() ?? null,
     count: win.querySelector(".lc-table__count")?.textContent.trim() ?? null,
-    chips: win.querySelectorAll(".lc-rail .lc-chip").length,
-    mine: win.querySelectorAll(".lc-chip--mine").length,
+    chips: win.querySelectorAll(".lc-rail .lc-token").length,
+    mine: win.querySelectorAll(".lc-token--mine").length,
     listed: [...win.querySelectorAll(".lc-table__list li")].map(li => li.textContent),
     form: !!win.querySelector(".lc-table__form"),
     spin: win.querySelector(".lc-table__spin")?.textContent.trim() ?? null,
@@ -195,16 +195,16 @@ async function placeBet(page, { type, pick, stake }) {
     const stakeEl = form.querySelector(".lc-table__stake");
     stakeEl.value = String(stake);
     stakeEl.dispatchEvent(new Event("input", { bubbles: true }));
-    const chipsBefore = win.querySelectorAll(".lc-rail .lc-chip").length;
+    const chipsBefore = win.querySelectorAll(".lc-rail .lc-token").length;
     const btn = form.querySelector(".lc-table__bet");
     btn.focus();
     const t0 = performance.now();
     btn.click();
     const placing = await until(() => btn.textContent.trim() === "Placing…", 2000) ? "Placing…" : btn.textContent.trim();
-    const landed = await until(() => win.querySelectorAll(".lc-rail .lc-chip").length > chipsBefore, 15000);
+    const landed = await until(() => win.querySelectorAll(".lc-rail .lc-token").length > chipsBefore, 15000);
     const ms = Math.round(performance.now() - t0);
     await until(() => btn.textContent.trim() === "Place a bet", 5000);
-    return { placing, landed, ms, chips: win.querySelectorAll(".lc-rail .lc-chip").length, why: form.querySelector(".lc-table__why")?.textContent ?? "", focusOnButton: document.activeElement === btn, live: win.querySelector(".lc-table__live")?.textContent ?? "" };
+    return { placing, landed, ms, chips: win.querySelectorAll(".lc-rail .lc-token").length, why: form.querySelector(".lc-table__why")?.textContent ?? "", focusOnButton: document.activeElement === btn, live: win.querySelector(".lc-table__live")?.textContent ?? "" };
   }, { type, pick, stake });
 }
 
@@ -377,11 +377,11 @@ const freshRows = (gm, before) => gm.evaluate(async ({ base, before }) => {
     out.railAfterRefund = await pl.page.evaluate(async since => {
       const win = [...document.querySelectorAll(".application.lc-table")].at(-1);
       for (let i = 0; i < 150; i++) {
-        const chips = win?.querySelectorAll(".lc-rail .lc-chip").length ?? -1;
+        const chips = win?.querySelectorAll(".lc-rail .lc-token").length ?? -1;
         if (chips === 1) return { chips, ms: Date.now() - since };
         await new Promise(r => setTimeout(r, 20));
       }
-      return { chips: win?.querySelectorAll(".lc-rail .lc-chip").length ?? -1, ms: null };
+      return { chips: win?.querySelectorAll(".lc-rail .lc-token").length ?? -1, ms: null };
     }, out.refund.at);
     await pl.page.evaluate(async () => {
       for (const app of [...foundry.applications.instances.values()].filter(a => a.options?.classes?.includes("lc-table"))) await app.close();

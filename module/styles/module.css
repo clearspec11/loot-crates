@@ -702,21 +702,22 @@
 .loot-crates .lc-spot--colour.lc-wheel__pocket--1, .loot-crates .lc-spot--number.lc-wheel__pocket--1 { background: var(--lc-wheel-b); color: var(--lc-vault-ink); }
 .loot-crates .lc-spot--rarity::after, .loot-crates .lc-spot--number::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: var(--lc-rarity); }
 .loot-crates .lc-spot__chips { display: flex; flex-wrap: wrap; justify-content: center; min-height: 18px; padding-left: 6px; }
-.loot-crates .lc-chip {
+/* A bet's token: lc-token, not lc-chip, which is the pool filter's button. */
+.loot-crates .lc-token {
   width: 18px; height: 18px; margin-left: -6px; border-radius: 50%; display: inline-grid; place-items: center; box-sizing: border-box;
   font-family: var(--lc-label); font-size: 11px; font-weight: 700; line-height: 1; color: #2a1f12;
   background: radial-gradient(circle at 35% 30%, #f8e7b4, var(--lc-pin) 50%, #a08a4c 95%);
   box-shadow: 0 0 0 1px var(--lc-pin-edge), 0 2px 4px rgba(0, 0, 0, .6);
 }
 /* This viewer's own chips are ringed in the vault's ink, so a player finds theirs. */
-.loot-crates .lc-chip--mine { box-shadow: 0 0 0 1px var(--lc-pin-edge), 0 0 0 3px color-mix(in srgb, var(--lc-vault-ink) 80%, transparent), 0 2px 4px rgba(0, 0, 0, .6); }
+.loot-crates .lc-token--mine { box-shadow: 0 0 0 1px var(--lc-pin-edge), 0 0 0 3px color-mix(in srgb, var(--lc-vault-ink) 80%, transparent), 0 2px 4px rgba(0, 0, 0, .6); }
 /* A chip that just landed drops onto the spot: motion answering a bet. */
-.loot-crates .lc-chip--new { animation: lc-chip-land 320ms cubic-bezier(.16, 1, .3, 1) both; }
-@keyframes lc-chip-land { from { transform: translateY(-14px) scale(1.35); opacity: 0; } to { transform: none; opacity: 1; } }
+.loot-crates .lc-token--new { animation: lc-token-land 320ms cubic-bezier(.16, 1, .3, 1) both; }
+@keyframes lc-token-land { from { transform: translateY(-14px) scale(1.35); opacity: 0; } to { transform: none; opacity: 1; } }
 /* Landed: the winning spots lift ringed in the pin's gold, their chips lit,
    and the rest step back as the strip's other cards do. */
 .loot-crates .lc-spot--won { border-color: var(--lc-pin); box-shadow: inset 0 0 0 1px var(--lc-pin), 0 6px 12px rgba(0, 0, 0, .6); }
-.loot-crates .lc-spot--won .lc-chip { box-shadow: 0 0 0 1px var(--lc-pin-edge), 0 0 0 2px var(--lc-pin), 0 2px 6px rgba(0, 0, 0, .6); }
+.loot-crates .lc-spot--won .lc-token { box-shadow: 0 0 0 1px var(--lc-pin-edge), 0 0 0 2px var(--lc-pin), 0 2px 6px rgba(0, 0, 0, .6); }
 .loot-crates .lc-spot--out { opacity: .45; }
 /* The vault washes in the pocket's rarity once the ball is down. */
 .loot-crates .lc-vault:has(.lc-table__stage--landed)::after { opacity: calc(.12 + var(--lc-rank, 0) * .12); }
@@ -1014,7 +1015,7 @@
   .loot-crates .lc-dice__die, .loot-crates .lc-dice__total { will-change: auto; }
   .loot-crates .lc-deck__card { will-change: auto; }
   .loot-crates .lc-reveal__where { animation: none; }
-  .loot-crates .lc-chip--new { animation: none; }
+  .loot-crates .lc-token--new { animation: none; }
   .loot-crates .lc-spot { transition: none; }
   .loot-crates .lc-wheel__turn, .loot-crates .lc-wheel__orbit { will-change: auto; }
 }

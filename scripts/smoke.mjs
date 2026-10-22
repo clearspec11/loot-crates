@@ -598,9 +598,9 @@ async function tableProblems({ phase, outcome, gm }) {
   if (!want.test(stateEl?.textContent.trim() ?? "")) out.push(`the state reads "${stateEl?.textContent}"`);
   const count = document.querySelector(".lc-table__count")?.textContent.trim();
   if (count !== "5 bets from 3 characters") out.push(`the count reads "${count}"`);
-  const chips = document.querySelectorAll(".lc-rail .lc-chip");
+  const chips = document.querySelectorAll(".lc-rail .lc-token");
   if (chips.length !== 5) out.push(`${chips.length} chips on the rail`);
-  if (document.querySelectorAll(".lc-chip--mine").length !== (gm ? 0 : 2)) out.push("the viewer's own chips aren't ringed (or the GM's are)");
+  if (document.querySelectorAll(".lc-token--mine").length !== (gm ? 0 : 2)) out.push("the viewer's own chips aren't ringed (or the GM's are)");
   if (document.querySelectorAll(".lc-table__list li").length !== 5) out.push("the screen-reader list doesn't name every bet");
   if (document.querySelectorAll(".lc-wheel__rim").length !== 12 || document.querySelectorAll(".lc-wheel__n").length !== 12) out.push("the wheel doesn't show twelve pockets with their rims");
   for (const el of document.querySelectorAll(".lc-table__body *")) {
@@ -636,10 +636,10 @@ async function tableProblems({ phase, outcome, gm }) {
     pick.value = "rare";
     bet.click();
     await frames();
-    if (document.querySelectorAll(".lc-rail .lc-chip").length !== 6) out.push("a good bet didn't drop a chip");
-    if (document.querySelectorAll('.lc-spot[data-spot="rarity:rare"] .lc-chip').length !== 2) out.push("the new chip isn't on the Rare spot");
+    if (document.querySelectorAll(".lc-rail .lc-token").length !== 6) out.push("a good bet didn't drop a chip");
+    if (document.querySelectorAll('.lc-spot[data-spot="rarity:rare"] .lc-token').length !== 2) out.push("the new chip isn't on the Rare spot");
     if (why?.textContent) out.push(`a good bet still says "${why.textContent}"`);
-    if (!document.querySelector(".lc-chip--new")) out.push("the new chip isn't marked as just landed");
+    if (!document.querySelector(".lc-token--new")) out.push("the new chip isn't marked as just landed");
     if (!/Tam Thornwick bets 5 gp on Rare/.test(document.querySelector(".lc-table__live")?.textContent ?? "")) out.push("the new bet isn't said in the status line");
     return out;
   }

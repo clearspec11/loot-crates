@@ -583,7 +583,7 @@ export function railHTML(game, stakes = [], { esc = s => String(s ?? ""), outcom
   const pockets = pocketsOf(game);
   const pocket = outcome ? pockets[outcome.index] ?? null : null;
   const live = stakes.filter(r => isOpenStake(r) || r.status === "settled");
-  const chipsOn = key => live.filter(r => spotKey(normalizeBet(game, r.stake)) === key).map(r => `<span class="lc-chip lc-rarity-${esc(betSwatch(normalizeBet(game, r.stake)))}${fresh.includes(r.id) ? " lc-chip--new" : ""}${actorIds.includes(r.actorId) ? " lc-chip--mine" : ""}" title="${esc(r.actorName)}: ${esc(formatPrice(r.price))} on ${esc(r.name ?? "")}">${esc(initialOf(r.actorName))}</span>`).join("");
+  const chipsOn = key => live.filter(r => spotKey(normalizeBet(game, r.stake)) === key).map(r => `<span class="lc-token lc-rarity-${esc(betSwatch(normalizeBet(game, r.stake)))}${fresh.includes(r.id) ? " lc-token--new" : ""}${actorIds.includes(r.actorId) ? " lc-token--mine" : ""}" title="${esc(r.actorName)}: ${esc(formatPrice(r.price))} on ${esc(r.name ?? "")}">${esc(initialOf(r.actorName))}</span>`).join("");
   const spot = (bet, label, extra = "") => {
     const key = spotKey(bet);
     const won = pocket ? betWins(bet, pocket) : false;
