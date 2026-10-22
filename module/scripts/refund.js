@@ -25,10 +25,11 @@ import "./crate.js";
 import { findPullCard, isRefundedCard, refundedCardContent } from "./chatcard.js";
 
 // What a refund of this row moves, in copper: the stake back, the payout
-// taken back. Positive is paid to the character; a row from before payouts
-// has none.
+// taken back, and coins the game took beyond the stake (a negative payout,
+// the deck's bane) given back too. Positive is paid to the character; a row
+// from before payouts has none.
 export function refundCoins(row) {
-  return Math.round((Number(row?.price) || 0) * 100) - Math.max(0, Math.round(Number(row?.payoutCp) || 0));
+  return Math.round((Number(row?.price) || 0) * 100) - Math.round(Number(row?.payoutCp) || 0);
 }
 
 // How much of a row's winnings the character no longer has, in gp (0 when

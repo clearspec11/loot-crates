@@ -19,16 +19,26 @@
   Contract (every field but roll is optional; the crate shows each):
     id            the value stored on the record as `kind`
     noun          what a player buys, for messages: "The crate jammed."
+    priceOf(ctx)  the price of this play in gp, when it isn't the record's
+                  (the deck's draw price rises with each draw in a row);
+                  ctx: { game, actor, state, log, today, now }. The core
+                  checks the Buy's price against it, charges it, and writes
+                  it to the row and the reveal, so a refund gives back what
+                  was paid. A kind without one plays at game.price.
     roll(ctx)     GM side, before anything is charged, so a failed roll costs
                   nothing. ctx: { game, pools, actor, state, rng,
-                  resolveSource, onMissing, log, today }: `log` is the pull
-                  log as it stands and `today` the in-game day's key
-                  (clock.js; null without a clock), for a game that counts
-                  plays per day (the well's cap). Resolves to the outcome:
+                  resolveSource, onMissing, log, today, now, price }: `log`
+                  is the pull log as it stands, `today` the in-game day's
+                  key (clock.js; null without a clock), for a game that
+                  counts plays per day (the well's cap), `price` what this
+                  play costs. Resolves to the outcome:
                     result    what was won, { name, img, rarity?, ... }, or
                               null for nothing (a miss)
                     grant     Item data to create on the actor, or null
-                    payoutCp  coins paid out, in copper (none when absent)
+                    payoutCp  coins paid out, in copper (none when absent);
+                              negative for coins the game takes beyond the
+                              stake (the deck's bane), settled in the same
+                              move, so a kind never touches the purse
                     state     the buyer's state for this game after the play
                     pools     the pools it was finally rolled from
                   Anything else rides along into performPull's result and
@@ -49,7 +59,14 @@
                   onLand }) -> { play, skip, skipped, reducedMotion },
                   result(reveal, { esc, canSee }) -> html, sting(reveal),
                   notice(reveal) -> a quiet word shown to the buyer alone
-                  as the result lands (or null), replayable }. play mounts
+                  as the result lands (or null), again(reveal, ctx) -> the
+                  buyer's next play of the same game straight from the
+                  window (the deck's "Draw again for 15 gp"): { price,
+                  label, off } with `off` why it can't be played now or "",
+                  or null for none; ctx: { game (the record as it stands),
+                  log, pools, purse, now, open, gmOnline }. The core shows it to the buyer alone, sends
+                  the play as a pull at that price and closes the window
+                  once the next one has opened. replayable }. play mounts
                   the animation and calls onLand once when the result is
                   under the marker.
     chat          { card(reveal, { esc, itemLink }) -> html, or null for no

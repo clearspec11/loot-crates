@@ -43,6 +43,7 @@ colors:
   vault-ink: "#efe9df"
   vault-soft: "#cfc6b8"
   gold-rim: "#a8955f"
+  bane-slate: "#5b8a9a"
   rarity-common: "#9aa5b5"
   rarity-uncommon: "#4b8ff2"
   rarity-rare: "#9b59f0"
@@ -188,6 +189,7 @@ dnd5e's two sheet palettes (grey paper with maroon and gold; denim and slate wit
 ### Tertiary: the rarity ladder (user pin)
 - **Common** (`rarity-common`), **Uncommon** (`rarity-uncommon`), **Rare** (`rarity-rare`), **Very Rare** (`rarity-very-rare`), **Legendary** (`rarity-legendary`), **Artifact** (`rarity-artifact`). One rule per rarity class sets `--lc-rarity` and `--lc-rank` (0 to 5); everything reads them.
 - Two swatches that aren't a rarity, for the Wishing Well's outcomes, read through the same variable: **None** (`lc-rarity-none`, mute ink: a throw that gave nothing) and **Coin** (`lc-rarity-coin`, the gold rim: the coin back). They colour pills, ribbon segments and log dots only.
+- **Bane** (`bane-slate`, `lc-rarity-bane`): the one colour that means "you lost something", the deck's loss card. Cold slate, the same in both themes; not gold (treasure), not amber (a problem), not a rarity. On paper it is an edge, a diamond or a segment like the rest; in the vault it names the card.
 
 ### Neutral
 - **Paper Ground** (`paper-ground`) under dnd5e's two grey textures; **Denim Ground** (`denim-ground`) under Foundry's denim.
@@ -207,6 +209,8 @@ dnd5e's two sheet palettes (grey paper with maroon and gold; denim and slate wit
 **The Quiet Result Rule.** A game's result that isn't a prize (the well's "The coin sinks. Nothing." and "The coin comes back.") is set in the display face at 24px in vault-soft, never a rarity colour, and goes to the window's live region like every result.
 
 **The Warn Is Not Gold Rule.** Problems (missing, renamed, no rarity) are amber on a warm wash with a dashed border, never gold, so they never read as treasure.
+
+**The Bane Is Cold Rule.** A loss has one voice: the bane token, a dimmed vault and the one falling sound (`playBane`, two notes, the second lower and longer). Nothing else may use them, so a table that hears the notes or sees the slate knows coins left the purse. A loss is never amber (it is not a problem) and never gold.
 
 ## Typography
 
@@ -288,6 +292,9 @@ The vault holds the ribbon (max 520px, along its top edge), the strip and the re
 ### The Well (the second stage in the vault)
 The Wishing Well's reveal uses the vault at the strip's height (168px) with its own pieces, placed once in CSS and moved only by transform and opacity from one animation frame loop: a dark water basin (280 x 96px ellipse, a 1px vault-line inset, a 3px rim at 40% gold rim), three ripple rings (1px at 70% pin gold), a 22px gold coin, a glow (the rarity colour at 85%, fading out by 70%) and the find in the strip card's 70px art frame with the landed card's pin-gold ring. The coin arcs in from the top left, tumbling, meets the water at 0.7s (the plop), sinks as the ripples run; by 1.8s nothing is left but the last ring, faint, or by 2.2s the coin hangs over the water again, or by 2.6s the glow has lifted the find and the vault takes the rarity wash as a landed strip does. Reduced motion and a hidden page land in the final pose at once. Sounds: a plop at the splash, a single soft plink for nothing, two rising notes for the coin back, the rarity sting for a find.
 
+### The Deck (the third stage in the vault)
+The Deck of Many Things' reveal uses the vault at the strip's height (168px) for one card, 104 x 148px on a 720px perspective, its two faces placed once in CSS (`backface-visibility: hidden`; the front pre-turned 180 degrees) and moved by one `transform` from one animation frame loop: it lifts 14px over 300ms, holds face-down for 900ms under three soft ticks (900, 750 and 600 Hz, the strip's falling ticks), then turns once over 420ms with a 6% breath of scale at the half turn. The back is the vault card with a faint 45-degree gold hatch, an inset gold rule and the pin's diamond at its heart. The front is the strip card turned portrait: a 64px art frame ringed in pin gold, the GM's name for the card in the slab face, and its kind as an upper-case 11px band in the result's swatch (a rarity, the coin's gold rim, the bane's slate, mute ink). The quiet result line is the card's name; a bane's is set in the bane token, the one loss the Vault Speaks In Colour rule admits. A boon washes the vault in its rarity, a coins card in the gold rim at 14%; a bane dims it (a cold radial of 22% bane over black at 62%) rather than lighting it. Reduced motion and a hidden page land turned. Draw again, the buyer's next draw at the risen price, is a primary button beside Close with its reason as a 12px line before it when off.
+
 ### The Odds Ribbon (signature)
 A 10px bar of the crate's real drop chances: a gold-rim frame with 2px padding, a 35% black inset hairline, and 1px gaps between segments, each grown by its share and filled with its rarity (minimum 4px). Hidden from assistive tech; the odds pills carry the words.
 
@@ -300,6 +307,7 @@ A 10px bar of the crate's real drop chances: a gold-rim frame with 2px padding, 
 - **Do** show a crate's bet as the odds ribbon plus named odds pills wherever a crate is shown.
 - **Do** keep the vault dark (`vault`) in both themes and let the rarity wash, scaled by rank, carry the escalation.
 - **Do** put the cost on the primary action ("Open for 150 gp") and the reason for a disabled action on screen, beneath it.
+- **Do** keep the bane's token, dimmed vault and falling notes for a loss of coins and nothing else.
 
 ### Don't:
 - **Don't** colour text in a rarity colour on paper or slate; use edges, diamonds and ribbon segments.

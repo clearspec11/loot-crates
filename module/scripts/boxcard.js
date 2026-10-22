@@ -292,8 +292,11 @@ export function boxCard(box, pools, ctx) {
   game's own (the crate's crateReason, the well's); the shop-wide reason and
   "Opening…" are handled here for all of them, with the rules above (data-box,
   data-price, aria-disabled, aria-describedby, the screen-reader name).
+  `price` is what this Buy charges when it isn't the record's (the deck's
+  rising draw price): it goes on the Buy as data-price, which the pull
+  carries and the GM checks (pull.js expectedPrice).
 */
-export function cardShell(box, ctx, { rarityClass, art = "", middle = [], reason = "", label }) {
+export function cardShell(box, ctx, { rarityClass, art = "", middle = [], reason = "", label, price: cost = box.price }) {
   const esc = ctx.esc ?? (s => String(s ?? ""));
   const notice = shopNotice(ctx).text;
   const whyId = `lc-why-${box.id}`;
@@ -302,7 +305,7 @@ export function cardShell(box, ctx, { rarityClass, art = "", middle = [], reason
   const opening = ctx.busy && (ctx.busyBox == null || ctx.busyBox === box.id);
   const waiting = opening && WAITING[ctx.waiting];
   // The price this Buy says, which the shop sends with the pull (shop.js #buy).
-  const price = Number.isFinite(Number(box.price)) && box.price !== "" && box.price != null ? String(Number(box.price)) : "";
+  const price = Number.isFinite(Number(cost)) && cost !== "" && cost != null ? String(Number(cost)) : "";
   return `
       <div class="lc-box ${rarityClass}" data-box="${esc(box.id)}">
         <div class="lc-box__band"><h3 class="lc-box__name">${esc(box.name)}</h3></div>

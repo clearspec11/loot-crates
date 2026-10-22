@@ -370,7 +370,9 @@ async function doPull(msg, timer, sent, stopWatching) {
     // heldState). stateBefore defaults to the state as read, since the new
     // one is written just after this and would tell the result early.
     const ctx = { game: box, pools: out.pools, state, out };
-    const reveal = { ...out, type: "reveal", requestId: msg.requestId, userId: msg.userId, kind: out.kind, actorId: actor.id, actorName: actor.name, box: { id: box.id, name: box.name, price: box.price }, result: out.result, purse: out.purse, itemId: out.itemId, itemUuid, logId, stateBefore: { ...state }, ...(kind.revealExtra?.(ctx) ?? {}) };
+    // box.price is what this play cost (pull.js: the record's, or the
+    // kind's for this play), so the head and the row say what was paid.
+    const reveal = { ...out, type: "reveal", requestId: msg.requestId, userId: msg.userId, kind: out.kind, actorId: actor.id, actorName: actor.name, box: { id: box.id, name: box.name, price: out.price }, result: out.result, purse: out.purse, itemId: out.itemId, itemUuid, logId, stateBefore: { ...state }, ...(kind.revealExtra?.(ctx) ?? {}) };
     delete reveal.grant;
     delete reveal.state;
     delete reveal.pools;
@@ -384,8 +386,9 @@ async function doPull(msg, timer, sent, stopWatching) {
 
     // The row every kind writes, then the kind's own columns (the crate: the
     // item, its rarity and the pity bookkeeping a refund undoes). payoutCp
-    // is what the game paid back in copper; rows from before it count as 0.
-    const log = { id: logId, kind: out.kind, boxId: box.id, boxName: box.name, actorId: actor.id, actorName: actor.name, userId: msg.userId, itemId: out.itemId, price: box.price, payoutCp: out.payoutCp, ...(kind.logRow?.(ctx) ?? {}) };
+    // is what the game paid back in copper (negative: what it took beyond
+    // the stake); rows from before it count as 0.
+    const log = { id: logId, kind: out.kind, boxId: box.id, boxName: box.name, actorId: actor.id, actorName: actor.name, userId: msg.userId, itemId: out.itemId, price: out.price, payoutCp: out.payoutCp, ...(kind.logRow?.(ctx) ?? {}) };
     await recordPull({ msg, box, actor, out, log });
     timer.mark("record");
     return reveal;

@@ -18,6 +18,7 @@ import { kindFor } from "./kinds.js";
 import { sourceRaritiesOf } from "./crate.js";
 import "./well.js";
 import "./dicegame.js";
+import "./deck.js";
 import { settle, canAfford, formatPrice } from "./currency.js";
 
 export { PullError } from "./kinds.js";
@@ -47,27 +48,37 @@ async function resolveSource(uuid) {
   it stands) and `today` (the in-game day's key, store.js todayKey) reach
   the roll too, for a game that counts plays per day.
 
-  Returns { result, grant?, itemId, purse, payoutCp, state, pools, kind,
-  ...whatever the kind's roll added } (the crate: strip, sourceRarity,
-  rarityOverride). `result` is null when the game gave nothing (a miss).
+  The price is the record's, or the kind's for this play (kinds.js priceOf:
+  the deck's draw price rises with each draw in a row): the Buy's price is
+  checked against it, it is charged, and it comes back as `price` for the
+  row and the reveal. A kind's payoutCp may be negative (the deck's bane
+  takes coins): the stake and the loss leave the purse in the one settle(),
+  never two writes.
+
+  Returns { result, grant?, itemId, purse, payoutCp, price, state, pools,
+  kind, ...whatever the kind's roll added } (the crate: strip,
+  sourceRarity, rarityOverride). `result` is null when the game gave
+  nothing (a miss).
 */
 export async function performPull({ box, pools, actor, state = {}, rng = rollRng(), grant = true, onMissing = null, expectedPrice, log = [], today = null }) {
   if (!box) throw new PullError("That box no longer exists.");
   if (!actor) throw new PullError("No character to buy with.");
   if (box.rules?.stock != null && box.rules.stock <= 0) throw new PullError(`${box.name} is sold out.`);
-  if (expectedPrice != null && Number(expectedPrice) !== Number(box.price)) {
-    throw new PullError(`${box.name} now costs ${formatPrice(box.price)} (you pressed ${formatPrice(expectedPrice)}). Nothing was charged.`);
-  }
   const kind = kindFor(box);
+  const now = Date.now();
+  const price = Number(kind.priceOf?.({ game: box, actor, state, log, today, now }) ?? box.price);
+  if (expectedPrice != null && Number(expectedPrice) !== price) {
+    throw new PullError(`${box.name} now costs ${formatPrice(price)} (you pressed ${formatPrice(expectedPrice)}). Nothing was charged.`);
+  }
 
   // A copy: the live currency object is what actor.update rewrites, and the
   // grant-failure branch below needs the purse as it was before the charge.
   const purse = { ...(actor.system?.currency ?? {}) };
-  if (!canAfford(purse, box.price)) throw new PullError(`${actor.name} can't afford ${box.name}.`);
+  if (!canAfford(purse, price)) throw new PullError(`${actor.name} can't afford ${box.name}.`);
 
-  const { result = null, grant: data = null, payoutCp: payout, state: nextState, pools: rolledFrom, ...own } = await kind.roll({ game: box, pools, actor, state, rng, resolveSource, onMissing, log, today });
-  const payoutCp = Math.max(0, Math.round(Number(payout) || 0));
-  const nextPurse = settle(purse, payoutCp - Math.round(box.price * 100));
+  const { result = null, grant: data = null, payoutCp: payout, state: nextState, pools: rolledFrom, ...own } = await kind.roll({ game: box, pools, actor, state, rng, resolveSource, onMissing, log, today, now, price });
+  const payoutCp = Math.round(Number(payout) || 0);
+  const nextPurse = settle(purse, payoutCp - Math.round(price * 100));
   if (!nextPurse) throw new PullError(`${actor.name} can't afford ${box.name}.`);
 
   let created = null;
@@ -79,11 +90,11 @@ export async function performPull({ box, pools, actor, state = {}, rng = rollRng
       } catch (err) {
         // Charged but not granted: put the coins back before telling anyone.
         // A purchase either charges and grants, or does neither.
-        console.error(`loot-crates | granting ${result?.name ?? data.name} to ${actor.name} failed after charging ${box.price} gp; returning the coins`, err);
+        console.error(`loot-crates | granting ${result?.name ?? data.name} to ${actor.name} failed after charging ${price} gp; returning the coins`, err);
         try {
           await actor.update({ "system.currency": purse });
         } catch (restoreErr) {
-          console.error(`loot-crates | could not return ${box.price} gp to ${actor.name}; the GM must refund by hand`, restoreErr);
+          console.error(`loot-crates | could not return ${price} gp to ${actor.name}; the GM must refund by hand`, restoreErr);
           throw new PullError("The item couldn't be added and the coins couldn't be returned. Tell the GM.");
         }
         throw new PullError("The item couldn't be added; your coins were returned.");
@@ -97,6 +108,7 @@ export async function performPull({ box, pools, actor, state = {}, rng = rollRng
     purse: nextPurse,
     itemId: created?.id ?? null,
     payoutCp,
+    price,
     state: nextState,
     pools: rolledFrom ?? pools,
     kind: kind.id,

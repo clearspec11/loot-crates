@@ -32,10 +32,11 @@ import { shopOdds } from "./odds.js";
 import { requestPull } from "./socket.js";
 import { heldState, onRelease } from "./reveal.js";
 import { getKind, kindOf } from "./kinds.js";
-// The crate, the well and the dice register themselves when imported, so every record is found.
+// The crate, the well, the dice and the deck register themselves when imported, so every record is found.
 import "./crate.js";
 import "./well.js";
 import "./dicegame.js";
+import "./deck.js";
 
 const { ApplicationV2 } = foundry.applications.api;
 const esc = s => foundry.utils.escapeHTML(String(s ?? ""));

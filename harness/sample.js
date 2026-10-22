@@ -84,6 +84,25 @@ export const DICE = {
 // The faces each harness outcome shows: a win, a loss, a perfect roll.
 export const DICE_FACES = { win: [4, 6, 5], lose: [2, 3, 4], prize: [6, 6, 6] };
 
+// The Deck of Many Things (deck.js): 10 gp a draw, half again for each
+// draw in a row; an item card from Leigh's homebrew, a windfall, a ruin,
+// an omen the GM plays out (once per deck) and a blank.
+export const DECK = {
+  id: "deck", kind: "deck", name: "The Thornwick Deck", price: 10,
+  pools: [{ id: "homebrew", share: 1 }],
+  weights: { common: 0, uncommon: 60, rare: 30, veryRare: 0, legendary: 10 },
+  deck: { step: 1.5, shuffledAt: 0, cards: [
+    { id: "fortune", label: "Fortune", kind: "item", weight: 2 },
+    { id: "windfall", label: "Windfall", kind: "coins", weight: 2, gp: 50 },
+    { id: "ruin", label: "Ruin", kind: "loss", weight: 2, gp: 20 },
+    { id: "omen", label: "Omen", kind: "effect", weight: 1, once: true, text: "The next long rest is interrupted. The GM says by what." },
+    { id: "blank", label: "A blank card", kind: "blank", weight: 3 },
+  ] },
+  rules: {},
+};
+// Tam's draws at it in a row (the harness's now is Date.now()), newest first.
+export const deckDraws = (n, now = Date.now()) => Array.from({ length: n }, (_, i) => ({ id: `draw${i}`, kind: "deck", boxId: DECK.id, boxName: DECK.name, actorId: "tam", actorName: "Tam Thornwick", cardId: "blank", card: "A blank card", cardKind: "blank", at: now - 20000 * (i + 1), price: DECK.price, payoutCp: 0, name: "A blank card" }));
+
 export const BOXES = [
   BOX,
   { id: "common", name: "Pauper's Box", price: 25, pools: [{ id: "core", share: 1 }], weights: { common: 85, uncommon: 15, rare: 0, veryRare: 0, legendary: 0 }, rules: {} },
@@ -92,6 +111,7 @@ export const BOXES = [
   { id: "empty", name: "Collector's Crate", price: 60, pools: [{ id: "gone", share: 1 }], weights: {}, rules: {} },
   WELL,
   DICE,
+  DECK,
 ];
 
 // The pool editor's sample: the core pool, a 130-entry pool built from a
