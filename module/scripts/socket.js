@@ -346,7 +346,7 @@ async function recordPull({ msg, box, actor, out, log }) {
   const writes = [appendLog(log)];
   // A kind with no per-buyer state (nothing to count between plays) writes none.
   if (out.state != null) writes.unshift(setActorState(msg.actorId, msg.boxId, out.state));
-  if (box.rules?.stock != null) writes.push(saveBox({ ...box, rules: { ...box.rules, stock: box.rules.stock - 1 } }));
+  if (box.rules?.stock != null) writes.push(saveBox({ ...box, rules: { ...box.rules, stock: Math.max(0, box.rules.stock - 1) } }));
   const failed = (await Promise.allSettled(writes)).filter(r => r.status === "rejected");
   if (!failed.length) return;
   const got = out.result?.name ?? "nothing";
@@ -378,10 +378,12 @@ async function doPull(msg, timer, sent, stopWatching) {
         reportMissing([{ poolId: entry.poolId, poolName: getPools()[entry.poolId]?.name ?? entry.poolId, uuid: entry.uuid, name: entry.name }]);
       } catch (err) { console.error(`loot-crates | could not flag ${entry.uuid} as missing`, err); }
     };
-    // The log and the day reach the roll for a game that counts plays per
-    // day (the well's cap), read here inside the queue so two quick throws
-    // can't both pass.
-    const out = await performPull({ box, pools: getPools(), actor, state, onMissing, expectedPrice: msg.price, log: getLog(), today: todayKey() });
+    // The log and the day reach the guards and the roll for anything
+    // counted per character or per day (the limit per character, the
+    // well's cap), read here inside the queue so two quick buys can't both
+    // pass.
+    const today = todayKey();
+    const out = await performPull({ box, pools: getPools(), actor, state, onMissing, expectedPrice: msg.price, log: getLog(), today });
     const kind = getKind(out.kind);
     timer.mark("roll+grant");
     ackIfSlow(msg, timer, sent);
@@ -416,8 +418,10 @@ async function doPull(msg, timer, sent, stopWatching) {
     // The row every kind writes, then the kind's own columns (the crate: the
     // item, its rarity and the pity bookkeeping a refund undoes). payoutCp
     // is what the game paid back in copper (negative: what it took beyond
-    // the stake); rows from before it count as 0.
-    const log = { id: logId, kind: out.kind, boxId: box.id, boxName: box.name, actorId: actor.id, actorName: actor.name, userId: msg.userId, itemId: out.itemId, price: out.price, payoutCp: out.payoutCp, ...(kind.logRow?.(ctx) ?? {}) };
+    // the stake); rows from before it count as 0. `day` is the in-game day
+    // it was bought on, which a limit per character per day counts
+    // (limits.js); none in a world with no clock.
+    const log = { id: logId, kind: out.kind, boxId: box.id, boxName: box.name, actorId: actor.id, actorName: actor.name, userId: msg.userId, itemId: out.itemId, price: out.price, payoutCp: out.payoutCp, ...(today ? { day: today } : {}), ...(kind.logRow?.(ctx) ?? {}) };
     await recordPull({ msg, box, actor, out, log });
     timer.mark("record");
     return reveal;

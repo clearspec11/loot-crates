@@ -21,6 +21,7 @@ import "./dicegame.js";
 import "./deck.js";
 import "./roulette.js";
 import { settle, canAfford, formatPrice } from "./currency.js";
+import { limitState, limitRefusal } from "./limits.js";
 
 export { PullError } from "./kinds.js";
 export { sourceRaritiesOf };
@@ -76,7 +77,10 @@ export const PRICE_SKEW_MS = 5000;
 
 /*
   The guards every play passes before anything is charged, pull or stake:
-  the game exists, there is a character, it isn't sold out, the price is
+  the game exists, there is a character, it isn't sold out, this character
+  hasn't reached its limit (limits.js: counted from `log`, the unrefunded
+  rows as they stand in the queue, and for a limit per day `today`; a
+  table game has none), the price is
   the one on the button pressed (the kind's priceOf, or the record's; at
   a boundary of a clock-driven price, either side of it, PRICE_SKEW_MS),
   and the purse covers it. `bet` reaches priceOf for a table stake, whose
@@ -92,6 +96,8 @@ function guardPlay({ box, actor, state = {}, expectedPrice, log = [], today = nu
   if (!actor) throw new PullError("No character to buy with.");
   if (box.rules?.stock != null && box.rules.stock <= 0) throw new PullError(`${box.name} is sold out.`);
   const kind = kindFor(box);
+  const limit = limitState(box, { log, actorId: actor.id, today });
+  if (limit?.reached) throw new PullError(limitRefusal(box, limit, actor.name));
   const priceAt = t => Number(kind.priceOf?.({ game: box, actor, state, log, today, now: t, bet }) ?? box.price);
   let now = Date.now();
   let price = priceAt(now);

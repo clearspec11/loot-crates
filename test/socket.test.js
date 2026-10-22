@@ -18,6 +18,7 @@ const { storeRedraw, REDRAW_DELAY_MS } = await import("../module/scripts/redraw.
 const { refundPull } = await import("../module/scripts/refund.js");
 const { PullError } = await import("../module/scripts/pull.js");
 const { seededRng, oddsTable } = await import("../module/scripts/odds.js");
+const { restocked } = await import("../module/scripts/limits.js");
 const { showReveal } = await import("../module/scripts/reveal.js");
 const { postPullCard } = await import("../module/scripts/chat.js");
 
@@ -442,6 +443,60 @@ describe("the GM client", () => {
     expect(actor.items).toHaveLength(1);
     // The GM's own failure is thrown to its shop, never sent over the socket.
     expect(emitted.filter(m => m.type === "error")).toHaveLength(0);
+  });
+});
+
+describe("stock and the limit per character on the GM", () => {
+  it("refuses the second of two queued buys at the limit with the sentence, charging once", async () => {
+    const { game, actor, emitted, deliver } = makeWorld({ user: GM });
+    await seed(game, { perCharacter: { max: 1, per: "ever" } });
+    await Promise.all([
+      deliver({ type: "pull", requestId: "r1", boxId: "box", actorId: "actor1", userId: "p1" }),
+      deliver({ type: "pull", requestId: "r2", boxId: "box", actorId: "actor1", userId: "p1" }),
+    ]);
+    expect(emitted.filter(m => m.type === "reveal").map(m => m.requestId)).toEqual(["r1"]);
+    expect(emitted.filter(m => m.type === "error")).toEqual([{ type: "error", requestId: "r2", userId: "p1", message: "Test Crate: limit reached, 1 of 1 for Crate Tester. Nothing was charged." }]);
+    expect(actor.updates).toBe(1);
+    expect(actor.system.currency.gp).toBe(490);
+    expect(game.settings.get("loot-crates", "pullLog")).toHaveLength(1);
+  });
+
+  it("gives the purchase back on a refund, with nothing reset by hand", async () => {
+    const { game, actor, emitted, deliver } = makeWorld({ user: GM });
+    actor.items.get = () => null;
+    await seed(game, { perCharacter: { max: 1, per: "ever" } });
+    await deliver({ type: "pull", requestId: "r1", boxId: "box", actorId: "actor1", userId: "p1" });
+    await deliver({ type: "pull", requestId: "r2", boxId: "box", actorId: "actor1", userId: "p1" });
+    expect(emitted.filter(m => m.type === "error")).toHaveLength(1);
+    const rowId = game.settings.get("loot-crates", "pullLog")[0].id;
+    expect((await refundPull(rowId)).status).toBe("refunded");
+    await deliver({ type: "pull", requestId: "r3", boxId: "box", actorId: "actor1", userId: "p1" });
+    expect(emitted.filter(m => m.type === "reveal").map(m => m.requestId)).toEqual(["r1", "r3"]);
+  });
+
+  it("writes the in-game day on every row, and a limit per day opens again the next day", async () => {
+    const { game, emitted, deliver } = makeWorld({ user: GM });
+    game.time = { components: { year: 1, day: 5 } };
+    await seed(game, { perCharacter: { max: 1, per: "day" } });
+    await deliver({ type: "pull", requestId: "r1", boxId: "box", actorId: "actor1", userId: "p1" });
+    expect(game.settings.get("loot-crates", "pullLog")[0].day).toBe("y1d5");
+    await deliver({ type: "pull", requestId: "r2", boxId: "box", actorId: "actor1", userId: "p1" });
+    expect(emitted.find(m => m.type === "error")?.message).toBe("Test Crate: limit reached, 1 of 1 for Crate Tester until tomorrow. Nothing was charged.");
+    game.time = { components: { year: 1, day: 6 } };
+    await deliver({ type: "pull", requestId: "r3", boxId: "box", actorId: "actor1", userId: "p1" });
+    expect(emitted.filter(m => m.type === "reveal").map(m => m.requestId)).toEqual(["r1", "r3"]);
+  });
+
+  it("keeps the GM's number as a pull takes one and a refund puts it back, never past it", async () => {
+    const { game, actor, deliver } = makeWorld({ user: GM });
+    actor.items.get = () => null;
+    await seed(game, { stock: 3, stockMax: 3 });
+    await deliver({ type: "pull", requestId: "r1", boxId: "box", actorId: "actor1", userId: "p1" });
+    expect(game.settings.get("loot-crates", "boxes").box.rules).toMatchObject({ stock: 2, stockMax: 3 });
+    // The GM restocks before refunding: the refund can't push it to 4 of 3.
+    await updateBox("box", fresh => ({ ...fresh, rules: restocked(fresh.rules) }));
+    await refundPull(game.settings.get("loot-crates", "pullLog")[0].id);
+    expect(game.settings.get("loot-crates", "boxes").box.rules).toMatchObject({ stock: 3, stockMax: 3 });
   });
 });
 

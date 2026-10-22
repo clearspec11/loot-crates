@@ -29,6 +29,7 @@ import { getBoxes, getPools, getLog, getRounds, getActorState, isShopOpen, today
 import { formatGold } from "./currency.js";
 import { actorPicker, boxCard, buyReason, changedCharacterLine, crateReason, refusalLine, shopHTML, shopNotice, shopReason, patchShop, pickActor } from "./boxcard.js";
 import { shopOdds } from "./odds.js";
+import { limitState, limitRefusal, withLimit } from "./limits.js";
 import { requestPull } from "./socket.js";
 import { heldState, onRelease } from "./reveal.js";
 import { getKind, kindOf } from "./kinds.js";
@@ -54,7 +55,10 @@ const esc = s => foundry.utils.escapeHTML(String(s ?? ""));
 */
 const shopOf = game => getKind(kindOf(game))?.shop ?? {};
 const cardFor = (game, pools, ctx) => (shopOf(game).card ?? boxCard)(game, pools, ctx);
-const reasonFor = (game, pools, ctx) => (shopOf(game).reason ?? ((b, p, c) => buyReason(b, shopOdds(b, p, c.stateOf(b.id)), c)))(game, pools, ctx);
+// The game's own reason (the kind's, else the crate's), then the limit per
+// character over it (limits.js), as the card shows it (boxcard.js cardShell).
+const ownReason = (game, pools, ctx) => (shopOf(game).reason ?? ((b, p, c) => buyReason(b, shopOdds(b, p, c.stateOf(b.id)), c)))(game, pools, ctx);
+const reasonFor = (game, pools, ctx) => withLimit(game, ownReason(game, pools, ctx), ctx);
 
 // What a play costs this character now, as the GM will check it (pull.js):
 // the kind's price (the deck's risen draw), else the record's.
@@ -177,11 +181,14 @@ export class CrateShop extends ApplicationV2 {
     const reasonNow = box => {
       const now = this.#ctx();
       const own = shopOf(box).reason;
-      return own ? own(box, getPools(), now) : crateReason(box, shopOdds(box, getPools(), now.stateOf(boxId)), now);
+      return withLimit(box, own ? own(box, getPools(), now) : crateReason(box, shopOdds(box, getPools(), now.stateOf(boxId)), now), now);
     };
     const box = getBoxes()[boxId];
     const price = box ? priceNow(box, ctx) : undefined;
-    const text = refusalLine({ box, reason: box ? reasonNow(box) : "", shown, price, purse: ctx.purse, actorName: ctx.actorName });
+    // A limit reached since the card was drawn is said in the GM's own
+    // words (limits.js limitRefusal), whichever side caught it.
+    const limit = box && !ctx.held(boxId) ? limitState(box, ctx) : null;
+    const text = limit?.reached ? limitRefusal(box, limit, ctx.actorName) : refusalLine({ box, reason: box ? reasonNow(box) : "", shown, price, purse: ctx.purse, actorName: ctx.actorName });
     const holds = () => {
       const now = getBoxes()[boxId];
       if (!box) return !now;

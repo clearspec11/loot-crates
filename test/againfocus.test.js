@@ -13,7 +13,7 @@ import { createDocument } from "./minidom.js";
 
 vi.mock("../module/scripts/sound.js", () => ({ playTick: vi.fn(), playSlow: vi.fn(), playReveal: vi.fn() }));
 vi.mock("../module/scripts/socket.js", () => ({ requestPull: vi.fn() }));
-vi.mock("../module/scripts/store.js", () => ({ getBoxes: vi.fn(() => ({})), getPools: vi.fn(() => ({})), getLog: vi.fn(() => []), getRounds: vi.fn(() => ({})), isShopOpen: vi.fn(() => true) }));
+vi.mock("../module/scripts/store.js", () => ({ getBoxes: vi.fn(() => ({})), getPools: vi.fn(() => ({})), getLog: vi.fn(() => []), getRounds: vi.fn(() => ({})), todayKey: vi.fn(() => null), isShopOpen: vi.fn(() => true) }));
 
 // A window in the page: a section holding the content, removed on close
 // before _onClose runs, as ApplicationV2 does.

@@ -92,6 +92,7 @@ import { describeRefund, refundPull } from "./refund.js";
 import { postRefundCard } from "./chat.js";
 import { refundTime } from "./chatcard.js";
 import { changeCount } from "./redraw.js";
+import { limitsFieldset, limitsText, perCharacterFromForm, restocked, stockAfterRefund, stockField, stockFromForm, stockText } from "./limits.js";
 
 const { ApplicationV2, DialogV2 } = foundry.applications.api;
 const esc = s => foundry.utils.escapeHTML(String(s ?? ""));
@@ -570,13 +571,13 @@ export class CrateManager extends ApplicationV2 {
       <fieldset><legend>Rules</legend>
         <label class="lc-row">Pity: guarantee <select name="pityRarity"><option value="">off</option>${RARITIES.map(r => `<option value="${r}" ${box.rules?.pity?.minRarity === r ? "selected" : ""}>${RARITY_LABEL[r]} or better</option>`).join("")}</select> after <input name="pityAfter" type="number" min="1" step="1" value="${esc(box.rules?.pity?.after ?? 10)}"> pulls</label>
         <label class="lc-row"><input type="checkbox" name="noDuplicates" ${box.rules?.noDuplicates ? "checked" : ""}> No duplicates per character</label>
-        <label class="lc-row">Stock (blank for unlimited) <input name="stock" type="number" min="0" step="1" value="${box.rules?.stock ?? ""}"></label>
-      </fieldset>`, { onForm: form => liveOdds(form, box, poolIds), position: { width: 460 } });
+      </fieldset>
+      ${limitsFieldset(box, { hasClock: todayKey() != null, esc })}`, { onForm: form => { liveOdds(form, box, poolIds); wireRestock(form, box.id); }, position: { width: 460 } });
     if (!data) return;
     // Stock moves while the dialog is open (each pull takes one, a refund
-    // puts one back), so the form's stock only wins if the GM changed it.
-    const shownStock = box.rules?.stock ?? null;
-    const formStock = data.stock === "" || data.stock == null ? null : Math.max(0, Number(data.stock) || 0);
+    // puts one back, Restock fills it), so the form's number only changes
+    // it if the GM changed that number (limits.js stockFromForm).
+    const shownStock = stockField(box);
     const draft = draftBox(box, data, poolIds);
     const saved = await updateBox(box.id, fresh => {
       const live = getPools();
@@ -590,7 +591,8 @@ export class CrateManager extends ApplicationV2 {
           ...fresh.rules,
           pity: data.pityRarity ? { minRarity: data.pityRarity, after: Math.max(1, Number(data.pityAfter) || 1) } : null,
           noDuplicates: !!data.noDuplicates,
-          stock: formStock === shownStock ? (fresh.rules?.stock ?? null) : formStock,
+          ...stockFromForm(fresh.rules ?? {}, { shown: shownStock, value: data.stock }),
+          perCharacter: perCharacterFromForm(data),
         },
       };
     });
@@ -696,7 +698,8 @@ export class CrateManager extends ApplicationV2 {
       </fieldset>
       <fieldset class="lc-form__weights"><legend>The prize's rarity weights</legend>
         ${RARITIES.map(r => `<label class="lc-row">${RARITY_LABEL[r]} <input name="w.${r}" type="number" min="0" step="1" value="${esc(box.weights?.[r] ?? DEFAULT_WEIGHTS[r])}"><span class="lc-form__hint" data-held="${r}"></span></label>`).join("")}
-      </fieldset>`, {
+      </fieldset>
+      ${limitsFieldset(box, { stock: false, hasClock: todayKey() != null, esc })}`, {
       onForm: form => liveOdds(form, box, poolIds, (draft, live) => {
         const preview = dicePreview(draft, live);
         return { html: dicePreviewHTML(preview, esc), summary: diceSummary(preview), held: heldRarities(draft, live) };
@@ -713,7 +716,7 @@ export class CrateManager extends ApplicationV2 {
       pools: draft.pools.filter(ref => ref.id in getPools()),
       weights: draft.weights,
       dice: draft.dice,
-      rules: { ...fresh.rules, prize: draft.rules.prize },
+      rules: { ...fresh.rules, prize: draft.rules.prize, perCharacter: perCharacterFromForm(data) },
     }));
     if (!saved) ui.notifications.warn(`${box.name} was deleted while you were editing it.`);
     this.render();
@@ -752,7 +755,8 @@ export class CrateManager extends ApplicationV2 {
         <div class="lc-form__label" id="lc-odds-${esc(box.id)}">Chances a player sees</div>
         <div class="lc-form__preview"></div>
         <p class="lc-sr-only" role="status" aria-live="polite"></p>
-      </div>`, {
+      </div>
+      ${limitsFieldset(box, { stock: false, hasClock: todayKey() != null, esc })}`, {
       onForm: form => {
         const paint = liveOdds(form, box, poolIds, (draft, live) => {
           const preview = deckPreview(draft, live, getLog());
@@ -793,6 +797,7 @@ export class CrateManager extends ApplicationV2 {
       pools: draft.pools.filter(ref => ref.id in getPools()),
       weights: draft.weights,
       deck: { ...(fresh.deck ?? {}), step: draft.deck.step, cards: draft.deck.cards },
+      rules: { ...(fresh.rules ?? {}), perCharacter: perCharacterFromForm(data) },
     }));
     if (!saved) ui.notifications.warn(`${box.name} was deleted while you were editing it.`);
     this.render();
@@ -913,7 +918,8 @@ export class CrateManager extends ApplicationV2 {
     const itemLine = item
       ? ` and remove <strong>${esc(item.name)}</strong> from their inventory`
       : row.itemId ? ` (<strong>${esc(row.name)}</strong> is no longer in their inventory, so nothing is removed)` : "";
-    const stockLine = box?.rules?.stock != null ? ` ${esc(box.name)} goes back to ${box.rules.stock + 1} in stock.` : "";
+    const stockBack = row.roundId ? null : stockAfterRefund(box);
+    const stockLine = stockBack != null ? ` ${esc(box.name)} goes back to ${stockBack} in stock.` : "";
     // A throw that gave no item still counted toward the pity (row.before).
     const rules = box && (row.uuid || row.before) ? refundRulesLine({ actorName: actor.name, itemName: row.name, box, ...plan.state }) : "";
     const rulesLine = rules ? ` ${esc(rules)}` : "";
@@ -1085,7 +1091,10 @@ export class CrateManager extends ApplicationV2 {
     const wheel = b => kindOf(b) === "roulette";
     const tag = b => (well(b) ? ` <span class="lc-kind">Well</span>` : dice(b) ? ` <span class="lc-kind">Dice</span>` : deck(b) ? ` <span class="lc-kind">Deck</span>` : wheel(b) ? ` <span class="lc-kind">Wheel</span>` : "");
     const odds = b => (well(b) ? wellOddsHTML(wellOdds(b, pools)) || "<em>dry</em>" : dice(b) ? diceOddsHTML(diceOdds(b, pools)) || "<em>unbeatable</em>" : deck(b) ? deckOddsHTML(deckOdds(b, pools, log)) || "<em>empty</em>" : wheel(b) ? rouletteOddsHTML(betOdds(b), esc) || "<em>no pockets</em>" : oddsCell(shopOdds(b, pools).rows));
-    const rules = b => (well(b) ? esc(wellRulesText(b)) : dice(b) ? esc(diceRulesText(b)) : deck(b) ? esc(deckRulesText(b, log)) : wheel(b) ? esc(rouletteRulesText(b)) : [b.rules?.pity ? esc(`${RARITY_LABEL[b.rules.pity.minRarity] ?? b.rules.pity.minRarity} or better after ${b.rules.pity.after} pulls`) : "", b.rules?.noDuplicates ? "no dupes" : "", b.rules?.stock != null ? `${b.rules.stock} left` : ""].filter(Boolean).join(", "));
+    // Every pulled game's row ends with its stock and limit per character
+    // ("3 of 10 left, 1 per character", limits.js).
+    const own = b => (well(b) ? wellRulesText(b) : dice(b) ? diceRulesText(b) : deck(b) ? deckRulesText(b, log) : wheel(b) ? rouletteRulesText(b) : [b.rules?.pity ? `${RARITY_LABEL[b.rules.pity.minRarity] ?? b.rules.pity.minRarity} or better after ${b.rules.pity.after} pulls` : "", b.rules?.noDuplicates ? "no dupes" : ""].filter(Boolean).join(", "));
+    const rules = b => esc([own(b), wheel(b) ? "" : limitsText(b)].filter(Boolean).join(", "));
     // A wheel's row opens its round (or brings the open one forward).
     const extra = b => (deck(b) ? `<button type="button" data-action="reshuffle" data-box="${esc(b.id)}" aria-label="Reshuffle ${esc(b.name)}">Reshuffle</button> `
       : wheel(b) ? `<button type="button" data-action="openTable" data-box="${esc(b.id)}" aria-label="${liveRoundOf(rounds, b.id) ? "Go to the table" : "Open a round"} at ${esc(b.name)}">${liveRoundOf(rounds, b.id) ? "Go to the table" : "Open a round"}</button> ` : "");
@@ -1284,6 +1293,25 @@ function readForm(form) {
   for (const sel of form.querySelectorAll("select[multiple]")) out[sel.name] = [...sel.selectedOptions].map(o => o.value);
   for (const cb of form.querySelectorAll("input[type=checkbox]")) out[cb.name] = cb.checked;
   return out;
+}
+
+/*
+  The Limits group's Restock (limits.js limitsFieldset): fills the stock to
+  the GM's number at once, through the write queue like a pull, without
+  waiting for Save (which then keeps it: the number wasn't changed). The
+  line beside it says what the shelf holds now, as a status a screen
+  reader hears; the button stays focused, off once the shelf is full.
+*/
+function wireRestock(form, boxId) {
+  const btn = form.querySelector("[data-restock]");
+  const left = form.querySelector(".lc-limits__left");
+  if (!btn || !left) return;
+  btn.addEventListener("click", async () => {
+    if (btn.getAttribute("aria-disabled") === "true") return;
+    btn.setAttribute("aria-disabled", "true");
+    const saved = await updateBox(boxId, fresh => ({ ...fresh, rules: restocked(fresh.rules ?? {}) }));
+    left.textContent = saved ? `Restocked: ${stockText(saved)}` : "This box was deleted.";
+  });
 }
 
 // `onForm(form)` runs once, with the dialog's <form>, when it is first on screen.

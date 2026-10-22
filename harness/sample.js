@@ -68,6 +68,8 @@ export const WELL = {
   odds: { nothing: 90, coin: 8, item: 2 },
   rules: { cap: 3 },
 };
+// Tam's buys of the Pauper's Box (its limit per character is two), newest first.
+export const limitBuys = n => Array.from({ length: n }, (_, i) => ({ id: `buy${i}`, kind: "crate", boxId: "common", boxName: "Pauper's Box", actorId: "tam", actorName: "Tam Thornwick", day: "y1d1", at: Date.UTC(2026, 9, 20, 9, 30 - i), price: 25, payoutCp: 0, name: "Rope" }));
 // Tam's throws at it today (the harness's day is "y1d1"), newest first.
 export const wellThrows = n => Array.from({ length: n }, (_, i) => ({ id: `throw${i}`, kind: "well", outcome: "nothing", boxId: WELL.id, boxName: WELL.name, actorId: "tam", actorName: "Tam Thornwick", day: "y1d1", at: Date.UTC(2026, 9, 20, 10, 30 - i), price: WELL.price, payoutCp: 0, name: "Nothing" }));
 
@@ -142,8 +144,10 @@ export const wheelStakes = (now = Date.now(), n = WHEEL_BETS.length) => WHEEL_BE
 
 export const BOXES = [
   BOX,
-  { id: "common", name: "Pauper's Box", price: 25, pools: [{ id: "core", share: 1 }], weights: { common: 85, uncommon: 15, rare: 0, veryRare: 0, legendary: 0 }, rules: {} },
-  { id: "royal", name: "Royal Vault", price: 1200, pools: [{ id: "core", share: 1 }, { id: "homebrew", share: 1 }], weights: { common: 0, uncommon: 20, rare: 45, veryRare: 28, legendary: 7 }, rules: { stock: 3 } },
+  // Two to a character (limits.js): Tam has one (limitBuys), so the card says one more.
+  { id: "common", name: "Pauper's Box", price: 25, pools: [{ id: "core", share: 1 }], weights: { common: 85, uncommon: 15, rare: 0, veryRare: 0, legendary: 0 }, rules: { perCharacter: { max: 2, per: "ever" } } },
+  // Three left of the ten the GM stocked.
+  { id: "royal", name: "Royal Vault", price: 1200, pools: [{ id: "core", share: 1 }, { id: "homebrew", share: 1 }], weights: { common: 0, uncommon: 20, rare: 45, veryRare: 28, legendary: 7 }, rules: { stock: 3, stockMax: 10 } },
   // Its only pool is gone: the shop shows it empty with Buy off.
   { id: "empty", name: "Collector's Crate", price: 60, pools: [{ id: "gone", share: 1 }], weights: {}, rules: {} },
   WELL,

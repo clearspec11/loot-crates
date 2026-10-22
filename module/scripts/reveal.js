@@ -96,7 +96,8 @@ import { REFUNDED_CLASS } from "./chatcard.js";
 import { oddsRibbon } from "./boxcard.js";
 import { getKind, kindOf, DEFAULT_KIND } from "./kinds.js";
 import { CRATE } from "./crate.js";
-import { getBoxes, getPools, getLog, isShopOpen } from "./store.js";
+import { getBoxes, getPools, getLog, isShopOpen, todayKey } from "./store.js";
+import { withLimit } from "./limits.js";
 // socket.js imports this file for showReveal; the cycle is safe, since each
 // side reaches the other only inside a function.
 import { requestPull } from "./socket.js";
@@ -445,7 +446,12 @@ export class CrateReveal extends ApplicationV2 {
       if (!game) return null;
       const gmOnline = !!globalThis.game?.users?.activeGM;
       const purse = globalThis.game?.actors?.get?.(r.actorId)?.system?.currency ?? {};
-      return kind.again(r, { game, log: getLog(), pools: getPools(), purse, now: Date.now(), open: isShopOpen() && gmOnline, gmOnline }) ?? null;
+      const log = getLog();
+      const offer = kind.again(r, { game, log, pools: getPools(), purse, now: Date.now(), open: isShopOpen() && gmOnline, gmOnline }) ?? null;
+      // The limit per character is the core's (limits.js): once this
+      // play reached it, the next one is off with the card's reason.
+      const limit = offer && !offer.off ? withLimit(game, "", { log, actorId: r.actorId, actorName: r.actorName, today: todayKey() }) : "";
+      return limit ? { ...offer, off: limit } : offer;
     } catch (err) {
       console.error("loot-crates | the kind's next play couldn't be offered", err);
       return null;

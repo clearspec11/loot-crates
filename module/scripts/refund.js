@@ -20,6 +20,7 @@
 import { settle, toCopper, formatPrice } from "./currency.js";
 import { getLog, updateLog, getBoxes, saveBox, enqueueWrite, getActorState, setActorState } from "./store.js";
 import { getKind, kindOf } from "./kinds.js";
+import { stockAfterRefund } from "./limits.js";
 // The crate registers itself when imported, so a row or record with no kind is found.
 import "./crate.js";
 import { findPullCard, isRefundedCard, refundedCardContent } from "./chatcard.js";
@@ -121,8 +122,9 @@ async function doRefund(rowId) {
 
   // A table stake (round.js) never took stock, so it gives none back.
   let stock = null;
+  // One back, never past the GM's number (limits.js).
   if (box?.rules?.stock != null && !row.roundId) {
-    stock = box.rules.stock + 1;
+    stock = stockAfterRefund(box);
     await saveBox({ ...box, rules: { ...box.rules, stock } });
   }
 

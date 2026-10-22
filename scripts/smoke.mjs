@@ -57,6 +57,13 @@ const STATES = [
   ["well-missed", "state=well&outcome=nothing&buyer=1&duration=0"],
   ["well-coin", "state=well&outcome=coin&buyer=1&duration=0"],
   ["well-won", "state=well&outcome=item&buyer=1&duration=0&seed=3"],
+  // Tam has bought the Pauper's Box twice, its limit per character: its
+  // card reads "Limit reached: 2 of 2 for Tam Thornwick" with the Buy off
+  // (the plain shop shows "You can buy 1 more" and "3 of 10 left").
+  ["shop-limit", "state=shop&limit=reached"],
+  // The box editor's Limits group: the stock with what is left and
+  // Restock, then the limit per character, each with its help.
+  ["box-limits", "state=editor"],
   // Tam has thrown today's three coins: the well's Buy is off with the
   // "still until tomorrow" line under it.
   ["shop-well-capped", "state=shop&well=capped"],
@@ -699,6 +706,57 @@ async function tableProblems({ phase, outcome, gm }) {
 // keeps focus) points at visible reasons, a shop-wide
 // reason is said once (in the header's notice, never under a card), and the
 // shop has one live region, which keeps its node across a re-render.
+// The stock and the limit per character on the shop's cards (limits.js):
+// the Royal Vault reads "3 of 10 left"; the Pauper's Box says Tam can buy
+// one more, or once reached, says so as its reason with the Buy off.
+async function limitCardProblems({ reached, off }) {
+  const out = [];
+  const card = id => document.querySelector(`.lc-box[data-box="${id}"]`);
+  const stock = card("royal")?.querySelector(".lc-box__stock")?.textContent.trim();
+  if (stock !== "3 of 10 left") out.push(`Royal Vault's stock reads "${stock}"`);
+  const pauper = card("common");
+  const line = pauper?.querySelector(".lc-box__limit")?.textContent.trim() ?? "";
+  const why = pauper?.querySelector(".lc-box__why")?.textContent.trim() ?? "";
+  const buy = pauper?.querySelector(".lc-box__buy");
+  if (reached) {
+    if (why !== "Limit reached: 2 of 2 for Tam Thornwick") out.push(`Pauper's Box at its limit says "${why}"`);
+    if (line) out.push(`Pauper's Box at its limit still says "${line}"`);
+    if (buy?.getAttribute("aria-disabled") !== "true" || !(buy.getAttribute("aria-describedby") ?? "").includes("lc-why-common")) out.push("Pauper's Box's Buy isn't off with its reason at the limit");
+  } else {
+    if (line !== "You can buy 1 more") out.push(`Pauper's Box's limit line reads "${line}"`);
+    if (why) out.push(`Pauper's Box has a reason under the limit: "${why}"`);
+    if (!off && buy?.getAttribute("aria-disabled") === "true") out.push("Pauper's Box's Buy is off under its limit");
+  }
+  const small = [...document.querySelectorAll(".lc-box__limit")].filter(el => parseFloat(getComputedStyle(el).fontSize) < 11);
+  if (small.length) out.push("a limit line is under 11px");
+  return out;
+}
+
+// The box editor's Limits group: one group with the stock, what is left of
+// it beside Restock (a status, on), the limit per character with its
+// period, and plain help tied to the fields.
+async function limitsEditorProblems() {
+  const out = [];
+  const group = [...document.querySelectorAll(".lc-form fieldset")].find(f => f.querySelector("legend")?.textContent.trim() === "Limits");
+  if (!group) return ["no Limits group"];
+  if (group.querySelector('input[name="stock"]')?.value !== "10") out.push("the stock field doesn't show the GM's 10");
+  const left = group.querySelector('.lc-limits__left[role="status"]');
+  if (left?.textContent.trim() !== "3 of 10 left") out.push(`the stock line reads "${left?.textContent}"`);
+  const restock = group.querySelector("[data-restock]");
+  if (!restock || restock.disabled || restock.getAttribute("aria-disabled") === "true") out.push("Restock isn't on with 3 of 10 left");
+  if (group.querySelector('input[name="limitMax"]')?.value !== "1" || group.querySelector('select[name="limitPer"]')?.value !== "day") out.push("the limit per character isn't 1 a day");
+  for (const input of group.querySelectorAll("input[aria-describedby]")) {
+    const help = document.getElementById(input.getAttribute("aria-describedby"));
+    if (!help?.textContent.trim()) out.push(`${input.name}'s help is missing`);
+  }
+  const hints = [...group.querySelectorAll(".lc-form__hint")].filter(el => parseFloat(getComputedStyle(el).fontSize) < 11);
+  if (hints.length) out.push("a hint is under 11px");
+  const r = restock?.getBoundingClientRect();
+  const g = group.getBoundingClientRect();
+  if (r && (r.right > g.right + 1 || r.left < g.left - 1)) out.push("Restock spills out of the group");
+  return out;
+}
+
 async function shopProblems(mode) {
   const closed = mode === "closed";
   const out = [];
@@ -788,7 +846,7 @@ async function shopProblems(mode) {
   if (after !== notice) out.push("the notice node was replaced on re-render");
   if (!/^Waiting for the GM/.test(after?.textContent ?? "")) out.push(`waiting notice reads "${after?.textContent}"`);
   const pressed = document.querySelector('.lc-box__buy[data-box="common"]');
-  if (pressed?.getAttribute("aria-describedby") !== "lc-shop-notice") out.push("the waiting Buy doesn't point at the notice");
+  if (!(pressed?.getAttribute("aria-describedby") ?? "").split(" ").includes("lc-shop-notice")) out.push("the waiting Buy doesn't point at the notice");
   window.__lootCrates.renderShop();
   if (document.querySelector(".lc-shop__notice") !== notice || notice.textContent) out.push("the notice didn't clear in place");
   return out;
@@ -822,7 +880,7 @@ try {
       // Mid-roll: the dice are tumbling (reduced motion is off for this
       // state); two frames in, they have faces to show.
       if (name === "dice-rolling") await page.waitForFunction(() => [...document.querySelectorAll(".lc-dice__tray .lc-dice__face")].every(f => f.textContent.trim()), null, { timeout: 10000 });
-      if (name.startsWith("manager")) await page.waitForSelector("body[data-ready]", { timeout: 10000 });
+      if (name.startsWith("manager") || name === "box-limits") await page.waitForSelector("body[data-ready]", { timeout: 10000 });
       await page.waitForTimeout(500);
       const wide = await page.evaluate(() => document.scrollingElement.scrollWidth > document.scrollingElement.clientWidth + 1);
       if (name.startsWith("shop")) {
@@ -831,7 +889,9 @@ try {
         problems0.push(...await page.evaluate(diceCardProblems, { closed: name === "shop-closed", busy: name === "shop-busy" }));
         problems0.push(...await page.evaluate(deckCardProblems, { streak: name === "shop-deck-streak", closed: name === "shop-closed", busy: name === "shop-busy" }));
         problems0.push(...await page.evaluate(rouletteCardProblems, { noRound: name === "shop-no-round", closed: name === "shop-closed", busy: name === "shop-busy" }));
+        problems0.push(...await page.evaluate(limitCardProblems, { reached: name === "shop-limit", off: name === "shop-closed" || name === "shop-busy" }));
       }
+      else if (name === "box-limits") problems0.push(...await page.evaluate(limitsEditorProblems));
       else if (name.startsWith("table") || name.startsWith("roulette")) problems0.push(...await page.evaluate(tableProblems, { phase: { "table-betting": "betting", "table-waiting": "waiting", "table-closed": "closed", "roulette-spinning": "spinning", "roulette-won": "landed", "roulette-lost": "landed" }[name], outcome: name === "roulette-lost" ? "lose" : "win", gm: name === "table-waiting" }));
       else if (name.startsWith("dice")) problems0.push(...await page.evaluate(diceProblems, { "dice-rolling": "rolling", "dice-won": "win", "dice-lost": "lose" }[name]));
       else if (name.startsWith("deck")) problems0.push(...await page.evaluate(deckProblems, { "deck-held": "held", "deck-boon": "item", "deck-bane": "loss", "deck-effect": "effect" }[name]));

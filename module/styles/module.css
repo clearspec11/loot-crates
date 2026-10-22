@@ -305,6 +305,8 @@
 }
 .loot-crates .lc-box__pity--due { color: var(--lc-gold-ink); font-weight: 700; }
 .loot-crates .lc-box__stock { font-family: var(--lc-label); font-size: 12px; font-weight: 700; color: var(--lc-ink-mute); }
+/* How many more this character may buy (limits.js), quiet under the stock. */
+.loot-crates .lc-box__limit { font-size: 12px; line-height: 1.3; color: var(--lc-ink-mute); margin-top: -3px; }
 .loot-crates .lc-box__buy { width: 100%; margin-top: 2px; }
 /* Why a Buy is off, on screen rather than in a tooltip. */
 .loot-crates .lc-box__why { font-size: 12px; color: var(--lc-ink-mute); margin-top: -3px; }
@@ -930,6 +932,14 @@
   background: var(--lc-card); box-shadow: var(--lc-shadow);
 }
 .loot-crates .lc-form .lc-form__label { padding: 0; }
+/* The editor's Limits group (limits.js): the stock, what is left of it with
+   Restock beside it, then the limit per character, each with its help. */
+.loot-crates .lc-form .lc-limits { display: grid; gap: 6px; }
+.loot-crates .lc-form .lc-limits select { width: auto; min-width: 5.5em; }
+.loot-crates .lc-form .lc-limits__stock { flex-wrap: wrap; min-height: 30px; }
+.loot-crates .lc-form .lc-limits__left { font-family: var(--lc-label); font-size: 12px; font-weight: 700; color: var(--lc-ink-soft); font-variant-numeric: tabular-nums; }
+.loot-crates .lc-form .lc-limits__restock { flex: none; width: auto; padding: 0 12px; }
+.loot-crates .lc-form .lc-limits__restock i { margin-right: 4px; }
 .loot-crates .lc-preview { display: grid; gap: 8px; font-size: 13px; }
 .loot-crates .lc-preview p { margin: 0; }
 .loot-crates .lc-preview__lead { font-family: var(--lc-slab); font-size: 14px; }
