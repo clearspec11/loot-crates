@@ -13,6 +13,15 @@
   nothing said. Now one press shows the GM the thing they are making, and
   the shelf shows a player nothing until the GM is done.
 
+  A Copy on a game's row (boxestable.js) is a New that starts from that
+  game instead of the kind's defaults (copyOf below): the same editor on
+  an unsaved draft holding every setting of the source, under a new id
+  and name, with nothing of its history. Before this, a second crate with
+  the same pools, a pricier "Goblin Crate (Deluxe)" or a wheel for the
+  next tavern was built by hand from New: every pool ticked and shared
+  again, six weights, pity, stock, each card or pocket retyped (a wheel
+  starts at twelve), and that was the step a GM skipped.
+
   No Foundry globals: the manager passes the id (store.js newId).
 */
 import { DEFAULT_WEIGHTS, DEFAULT_PRICE_GP } from "./config.js";
@@ -22,6 +31,7 @@ import { DICE_DEFAULTS } from "./dicegame.js";
 import { DECK_DEFAULTS } from "./deck.js";
 import { ROULETTE_DEFAULTS } from "./roulette.js";
 import { formatPrice } from "./currency.js";
+import { restocked } from "./limits.js";
 
 const weights = () => ({ ...DEFAULT_WEIGHTS });
 
@@ -50,7 +60,11 @@ export const NEW_DEFAULTS = {
 // GM pressed is what they see. An existing record's editor says Edit.
 export const NEW_TITLE = { crate: "New box", well: "New well", dice: "New dice game", deck: "New deck", roulette: "New wheel" };
 export const EDIT_TITLE = { crate: "Edit box", well: "Edit well", dice: "Edit dice game", deck: "Edit deck", roulette: "Edit wheel" };
-export const editorTitle = (game, isNew) => (isNew ? NEW_TITLE : EDIT_TITLE)[kindOf(game)] ?? (isNew ? "New game" : "Edit game");
+export const COPY_TITLE = { crate: "Copy box", well: "Copy well", dice: "Copy dice game", deck: "Copy deck", roulette: "Copy wheel" };
+export function editorTitle(game, isNew, copy = false) {
+  const [titles, fallback] = copy ? [COPY_TITLE, "Copy game"] : isNew ? [NEW_TITLE, "New game"] : [EDIT_TITLE, "Edit game"];
+  return titles[kindOf(game)] ?? fallback;
+}
 
 // The unsaved record a New opens its editor on: the kind's defaults, any
 // fields given over them (a name, the pools), and the id it will be saved
@@ -66,6 +80,27 @@ export function newDraft(kind, { id, ...over } = {}) {
 // that draws only from it, so the first crate is one dialog from a pool
 // with items in it (price, then Add).
 export const crateFromPool = (pool, id) => newDraft("crate", { id, name: pool.name, pools: [{ id: pool.id, share: 1 }] });
+
+/*
+  The unsaved draft a Copy opens its editor on: every setting of the source
+  (its kind, price, pools and shares, weights, odds, pity, no duplicates,
+  the limit per character, the dice, the deck's step and cards, the
+  wheel's pockets, payouts and rules) as its own copy, so editing one
+  never changes the other, under `id` and named "<name> (copy)" for the
+  GM to rename. Nothing of the source's history comes along: the stock is
+  full again (what the GM set, limits.js restocked; a record with a count
+  alone keeps it), the deck's shuffle mark is `now` so no card counts as
+  drawn, and the log, each character's pity and collection and any live
+  round are keyed on the source's id, so the copy starts with none.
+*/
+export function copyOf(game, { id, now = 0 } = {}) {
+  const copy = structuredClone(game);
+  copy.id = id;
+  copy.name = `${game?.name || "Game"} (copy)`;
+  copy.rules = restocked(copy.rules ?? {});
+  if (copy.deck) copy.deck = { ...copy.deck, shuffledAt: now };
+  return copy;
+}
 
 // The New dialog's default button: it puts the game where players buy, or,
 // while the shop is closed, only on the GM's list.

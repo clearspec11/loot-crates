@@ -10,8 +10,10 @@
   the dragon's number, the payout and the prize. A deck's: the kinds of
   card still in it, its cards and how many are drawn, and Reshuffle beside
   Edit. A wheel's: its odds per bet type and "Open a round" or "Go to the
-  table" from the live rounds. Every pulled game's row ends with its stock
+  table" from the live rounds. Every pulled game's row shows its stock
   and limit per character ("3 of 10 left, 1 per character", limits.js).
+  Every row's last cell holds Edit, Copy (the same editor on an unsaved
+  copy of the game, newgame.js copyOf) and Delete.
   The row a New just added carries lc-row--new (an edge in the gold rule,
   as a dropped item's row carries its rarity) until the next New or the
   manager closes.
@@ -71,7 +73,7 @@ export function boxesTableHTML({ boxes, pools, log = [], rounds = {}, recent = n
           <td>${(b.pools ?? []).map(r => esc(pools[r.id]?.name ?? "missing")).join(", ") || "<em>none</em>"}</td>
           <td>${odds(b)}</td>
           <td>${rules(b)}</td>
-          <td>${extra(b)}<button type="button" data-action="editBox" data-box="${esc(b.id)}" aria-label="Edit ${esc(b.name)}" data-tooltip="Edit"><i class="fas fa-pen" inert></i></button> <button type="button" data-action="deleteBox" data-box="${esc(b.id)}" aria-label="Delete ${esc(b.name)}" data-tooltip="Delete"><i class="fas fa-trash" inert></i></button></td>
+          <td>${extra(b)}<button type="button" data-action="editBox" data-box="${esc(b.id)}" aria-label="Edit ${esc(b.name)}" data-tooltip="Edit"><i class="fas fa-pen" inert></i></button> <button type="button" data-action="copyBox" data-box="${esc(b.id)}" aria-label="Copy ${esc(b.name)}" data-tooltip="Copy"><i class="fas fa-copy" inert></i></button> <button type="button" data-action="deleteBox" data-box="${esc(b.id)}" aria-label="Delete ${esc(b.name)}" data-tooltip="Delete"><i class="fas fa-trash" inert></i></button></td>
         </tr>`).join("")}</tbody></table>`;
 }
 

@@ -4,7 +4,9 @@
   once from the form, and the GM is shown where it went: the Boxes tab, the
   new row marked and its Edit focused, the status line saying it is on the
   shelf. "New crate from this pool" on the Pools tab opens the same editor
-  on a crate named for the pool. Drives the real manager through its
+  on a crate named for the pool. Copy on a game's row opens the editor on
+  an unsaved copy of it (newgame.js copyOf), titled Copy, and Save adds it
+  with no history. Drives the real manager through its
   action handlers into a minimal DOM, with the real store writing to a
   stubbed world setting and DialogV2 stubbed to a form the test fills in.
 */
@@ -232,6 +234,133 @@ describe("New then Save", () => {
     await app._onClose({});
     await app.render();
     expect(app.element.querySelectorAll(".lc-table tr.lc-row--new")).toHaveLength(0);
+  });
+});
+
+describe("Copy", () => {
+  const SOURCE = { id: "b1", name: "Goblin Crate", price: 50, pools: [{ id: "p", share: 2 }], weights: { common: 10, uncommon: 5, rare: 2, veryRare: 1, legendary: 0, artifact: 0 }, rules: { pity: { minRarity: "rare", after: 6 }, noDuplicates: true, stock: 3, stockMax: 10, perCharacter: { max: 2, per: "ever" } } };
+  const history = async () => {
+    await store.appendLog({ id: "row1", boxId: "b1", boxName: "Goblin Crate", actorId: "A", actorName: "Tam", price: 50, itemId: "i1", at: 1000 });
+    await store.setActorState("A", "b1", { pity: 4, owned: ["Item.a"] });
+  };
+
+  it("is on every row, naming the game, beside Edit", async () => {
+    await store.saveBox(SOURCE);
+    await store.saveBox({ id: "w1", kind: "well", name: "Old Well", price: 0.1, pools: [], weights: {}, odds: { nothing: 90, coin: 8, item: 2 }, rules: { cap: 3 } });
+    const app = await manager();
+    for (const [id, name] of [["b1", "Goblin Crate"], ["w1", "Old Well"]]) {
+      const copy = app.element.querySelector(`.lc-table [data-action="copyBox"][data-box="${id}"]`);
+      expect(copy).not.toBeNull();
+      expect(copy.getAttribute("aria-label")).toBe(`Copy ${name}`);
+      expect(copy.getAttribute("data-tooltip")).toBe("Copy");
+      const cell = copy.closest("td");
+      const actions = [...cell.querySelectorAll("[data-action]")].map(b => b.getAttribute("data-action"));
+      expect(actions).toEqual(["editBox", "copyBox", "deleteBox"]);
+    }
+  });
+
+  it("opens the crate's editor on a copy, titled Copy box with the name focused, and Cancel writes nothing", async () => {
+    await store.saveBox(SOURCE);
+    await history();
+    const was = structuredClone(store.getBoxes());
+    sets = 0;
+    const app = await manager();
+    for (const end of ["cancel", "close"]) {
+      const pending = act(app, "copyBox", { dataset: { box: "b1" } });
+      await settle(2);
+      expect(dialog).not.toBeNull();
+      expect(dialog.title).toBe("Copy box");
+      expect(dialog.buttons.find(b => b.action === "ok").label).toBe("Add to shelf");
+      expect(field("name").value).toBe("Goblin Crate (copy)");
+      expect(field("name").hasAttribute("autofocus")).toBe(true);
+      expect(field("price").value).toBe("50");
+      expect(field("pool.p").checked).toBe(true);
+      expect(field("share.p").value).toBe("2");
+      expect(field("w.common").value).toBe("10");
+      expect(field("pityRarity").value).toBe("rare");
+      expect(field("pityAfter").value).toBe("6");
+      expect(field("noDuplicates").checked).toBe(true);
+      // The copy's stock is full again: the GM's number, as a New's would open.
+      expect(field("stock").value).toBe("10");
+      expect(field("limitMax").value).toBe("2");
+      // A draft has no record to restock.
+      expect(dialog.form.querySelector("[data-restock]")).toBeNull();
+      expect(store.getBoxes()).toEqual(was);
+      expect(sets).toBe(0);
+      dialog[end]();
+      await pending;
+      await settle();
+    }
+    expect(store.getBoxes()).toEqual(was);
+    expect(sets).toBe(0);
+    expect(store.createBox).not.toHaveBeenCalled();
+    expect(store.updateBox).not.toHaveBeenCalled();
+    expect(app.element.querySelectorAll(".lc-table tbody tr")).toHaveLength(1);
+  });
+
+  it("Save adds one box with the source's settings and no history, focused and announced like a New", async () => {
+    await store.saveBox(SOURCE);
+    await history();
+    const was = structuredClone(store.getBoxes().b1);
+    sets = 0;
+    const app = await manager();
+    const pending = act(app, "copyBox", { dataset: { box: "b1" } });
+    await settle(2);
+    field("name").value = "Goblin Crate (Deluxe)";
+    field("price").value = "120";
+    dialog.save();
+    await pending;
+    await settle();
+    expect(store.createBox).toHaveBeenCalledTimes(1);
+    expect(store.updateBox).not.toHaveBeenCalled();
+    expect(sets).toBe(1);
+    const boxes = Object.values(store.getBoxes());
+    expect(boxes).toHaveLength(2);
+    const copy = boxes.find(b => b.id !== "b1");
+    expect(copy).toMatchObject({ name: "Goblin Crate (Deluxe)", price: 120, pools: [{ id: "p", share: 2 }], weights: SOURCE.weights, rules: { pity: { minRarity: "rare", after: 6 }, noDuplicates: true, stock: 10, stockMax: 10, perCharacter: { max: 2, per: "ever" } } });
+    expect(copy.kind).toBeUndefined();
+    expect(store.getBoxes().b1).toEqual(was);
+    // Its log and every character's pity and collection are empty; the source keeps its own.
+    expect(store.getLog().filter(r => r.boxId === copy.id)).toEqual([]);
+    expect(store.getActorState("A", copy.id)).toEqual({});
+    expect(store.getActorState("A", "b1")).toEqual({ pity: 4, owned: ["Item.a"] });
+    expect(app.tab).toBe("boxes");
+    const edit = app.element.querySelector(`[data-action="editBox"][data-box="${copy.id}"]`);
+    expect(focused()).toBe(edit);
+    expect(edit.closest("tr").classList.contains("lc-row--new")).toBe(true);
+    expect(status(app).textContent).toBe("Goblin Crate (Deluxe) is on the shelf at 120 gp.");
+    expect(notifications.warn).not.toHaveBeenCalled();
+  });
+
+  it("copies a deck with its cards, the shuffle mark fresh so nothing counts as drawn", async () => {
+    const cards = [{ id: "a", label: "Sun", kind: "item", weight: 2, once: true, gp: 0, text: "" }, { id: "b", label: "Ruin", kind: "loss", weight: 1, once: false, gp: 25, text: "" }, { id: "c", label: "Fates", kind: "effect", weight: 1, once: true, gp: 0, text: "Undo one thing." }];
+    await store.saveBox({ id: "k1", kind: "deck", name: "Thornwick Deck", price: 10, pools: [{ id: "p", share: 1 }], weights: { common: 0, uncommon: 2, rare: 1, veryRare: 0, legendary: 0, artifact: 0 }, deck: { step: 1.5, shuffledAt: 1000, cards }, rules: {} });
+    await store.appendLog({ id: "row1", kind: "deck", boxId: "k1", boxName: "Thornwick Deck", actorId: "A", actorName: "Tam", price: 10, cardId: "a", at: 2000 });
+    const before = Date.now();
+    const app = await manager();
+    const pending = act(app, "copyBox", { dataset: { box: "k1" } });
+    await settle(2);
+    expect(dialog.title).toBe("Copy deck");
+    expect(field("name").value).toBe("Thornwick Deck (copy)");
+    expect(dialog.form.querySelectorAll(".lc-card-row")).toHaveLength(3);
+    dialog.save();
+    await pending;
+    await settle();
+    const copy = Object.values(store.getBoxes()).find(b => b.id !== "k1");
+    expect(copy).toMatchObject({ kind: "deck", name: "Thornwick Deck (copy)", price: 10, deck: { step: 1.5, cards } });
+    expect(copy.deck.shuffledAt).toBeGreaterThanOrEqual(before);
+    const { drawnIds } = await import("../module/scripts/deck.js");
+    expect(drawnIds(store.getBoxes().k1, store.getLog())).toEqual(new Set(["a"]));
+    expect(drawnIds(copy, store.getLog())).toEqual(new Set());
+    expect(store.getBoxes().k1.deck.shuffledAt).toBe(1000);
+    expect(status(app).textContent).toBe("Thornwick Deck (copy) is on the shelf at 10 gp.");
+  });
+
+  it("does nothing for a game that is gone", async () => {
+    const app = await manager();
+    await act(app, "copyBox", { dataset: { box: "nope" } });
+    expect(dialog).toBeNull();
+    expect(store.getBoxes()).toEqual({});
   });
 });
 

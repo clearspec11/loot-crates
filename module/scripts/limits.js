@@ -168,10 +168,12 @@ export const limitsText = game => [stockText(game), perCharacterText(game)].filt
   Restock (`stock: true`, the crate), then the limit per character, each
   with its help in plain words. Restock is shown when the GM has a number
   to fill to, aria-disabled (never disabled, so it keeps focus) while the
-  shelf is full; the manager wires it (data-restock). `hasClock` false
-  warns that a limit per day won't apply. `esc` escapes text and values.
+  shelf is full; the manager wires it (data-restock). A `draft` (a New,
+  or a copy of a game) has no record to fill, so it gets no Restock.
+  `hasClock` false warns that a limit per day won't apply. `esc` escapes
+  text and values.
 */
-export function limitsFieldset(game, { stock = true, hasClock = true, esc = s => String(s ?? "") } = {}) {
+export function limitsFieldset(game, { stock = true, draft = false, hasClock = true, esc = s => String(s ?? "") } = {}) {
   const pc = game?.rules?.perCharacter ?? {};
   const max = whole(pc.max);
   const per = pc.per === "day" ? "day" : "ever";
@@ -182,7 +184,7 @@ export function limitsFieldset(game, { stock = true, hasClock = true, esc = s =>
         <label class="lc-row">Stock <input name="stock" type="number" min="0" step="1" value="${esc(stockField(game) ?? "")}" aria-describedby="${id}-stock"></label>
         <div class="lc-row lc-limits__stock">
           <span class="lc-limits__left" role="status">${esc(s ? stockText(game) : "Unlimited")}</span>
-          ${s?.max != null ? `<button type="button" class="lc-limits__restock" data-restock${full ? ` aria-disabled="true"` : ""}><i class="fas fa-rotate-left" inert></i> Restock</button>` : ""}
+          ${s?.max != null && !draft ? `<button type="button" class="lc-limits__restock" data-restock${full ? ` aria-disabled="true"` : ""}><i class="fas fa-rotate-left" inert></i> Restock</button>` : ""}
         </div>
         <p class="lc-form__hint" id="${id}-stock">How many there are in all; blank for unlimited. Each sale takes one, a refund puts one back, and Restock fills it to this number again.</p>` : "";
   const warn = !hasClock ? `<p class="lc-form__hint${per === "day" && max ? " lc-form__hint--warn" : ""}">No calendar: a limit per day will not apply.</p>` : "";

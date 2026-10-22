@@ -148,6 +148,17 @@ function boxesProblems(narrow) {
   const er = edit?.getBoundingClientRect();
   if (tab && er && (er.top < tab.top - 1 || er.bottom > tab.bottom + 1)) out.push("the new row is out of view");
   if (!document.querySelector('[data-action="openTable"]') || !document.querySelector('[data-action="reshuffle"]')) out.push("the wheel's Open a round or the deck's Reshuffle is missing");
+  // Every row has a visible Copy naming its game, between Edit and Delete.
+  for (const r of rows) {
+    const name = r.children[0].firstChild?.textContent.trim();
+    const copy = r.querySelector('[data-action="copyBox"]');
+    if (!copy) { out.push(`${name} has no Copy`); continue; }
+    if (copy.getAttribute("aria-label") !== `Copy ${name}`) out.push(`${name}'s Copy is labelled "${copy.getAttribute("aria-label")}"`);
+    if (copy.getBoundingClientRect().width < 20 || copy.getBoundingClientRect().height < 20) out.push(`${name}'s Copy is not visible`);
+    if ((copy.querySelector("i")?.getBoundingClientRect().width ?? 0) < 10) out.push(`${name}'s Copy has no icon`);
+    const order = [...r.lastElementChild.querySelectorAll("[data-action]")].map(b => b.dataset.action).slice(-3).join("|");
+    if (order !== "editBox|copyBox|deleteBox") out.push(`${name}'s row actions end ${order}`);
+  }
   return out;
 }
 

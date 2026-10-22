@@ -229,6 +229,11 @@ describe("the editor's Limits group", () => {
 
   it("Restock is off when the shelf is full, and absent without the GM's number", () => {
     expect(limitsFieldset({ id: "b", rules: { stock: 10, stockMax: 10 } })).toContain(`data-restock aria-disabled="true"`);
+    // A draft (a New, a copy) has no record to fill: the count, no Restock.
+    const draft = limitsFieldset({ id: "b", rules: { stock: 10, stockMax: 10 } }, { draft: true });
+    expect(draft).not.toContain("data-restock");
+    expect(draft).toContain(">10 of 10 left</span>");
+    expect(draft).toContain('name="stock" type="number" min="0" step="1" value="10"');
     const old = limitsFieldset({ id: "b", rules: { stock: 3 } });
     expect(old).not.toContain("data-restock");
     expect(old).toContain(">3 left</span>");

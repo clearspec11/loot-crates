@@ -69,6 +69,9 @@
   tab's status line where the game went ("Gilded Crate is on the shelf
   at 250 gp.", or that the shop is closed). A pool's bar has "New crate
   from this pool", a crate named for the pool that draws from it alone.
+  Copy on a game's row opens the same editor on an unsaved copy of that
+  game (newgame.js copyOf): every setting, none of its history, named
+  "<name> (copy)" for the GM to rename and reprice.
   The Pull log folds a character's
   misses at a well for one day into one line ("5 throws, nothing") whose
   Refund gives the newest throw back, and "Hide misses" leaves only the
@@ -83,7 +86,7 @@ import { WELL_DEFAULTS, stakeCoins, stakeGp, draftWell, wellPreview, wellPreview
 import { DICE_DEFAULTS, FORMULAS, draftDice, dicePreview, dicePreviewHTML, diceSummary } from "./dicegame.js";
 import { CARD_KINDS, CARD_KIND_LABEL, CARD_KIND_HINT, cardsOf, stepOf, deckOdds, draftDeck, deckPreview, deckPreviewHTML, deckSummary } from "./deck.js";
 import { ROULETTE_DEFAULTS, BET_TYPES, BET_TYPE_LABEL, pocketsOf, coloursOf, draftRoulette, roulettePreview, roulettePreviewHTML, rouletteSummary, payoutOf, maxStakeOf, maxBetsOf, windowMsOf, itemOnRarity } from "./roulette.js";
-import { newDraft, crateFromPool, editorTitle, addLabel, addedNotice } from "./newgame.js";
+import { newDraft, crateFromPool, copyOf, editorTitle, addLabel, addedNotice } from "./newgame.js";
 import { boxesTabHTML } from "./boxestable.js";
 // The table window (tablewindow.js), loaded when a wheel's round is opened
 // from here: it is Foundry's, and the editors' tests run this file without it.
@@ -116,7 +119,7 @@ export class CrateManager extends ApplicationV2 {
       addPool: CrateManager.#addPool, editPool: CrateManager.#editPool, deletePool: CrateManager.#deletePool,
       bulkAdd: CrateManager.#bulkAdd, setUnsetRarity: CrateManager.#setUnsetRarity, removeEntry: CrateManager.#removeEntry, updateEntry: CrateManager.#updateEntry, relinkEntry: CrateManager.#relinkEntry,
       addBox: CrateManager.#addBox, addWell: CrateManager.#addWell, addDice: CrateManager.#addDice, addDeck: CrateManager.#addDeck, addWheel: CrateManager.#addWheel, crateFromPool: CrateManager.#crateFromPool,
-      editBox: CrateManager.#editBox, deleteBox: CrateManager.#deleteBox, reshuffle: CrateManager.#reshuffle, openTable: CrateManager.#openTable,
+      editBox: CrateManager.#editBox, copyBox: CrateManager.#copyBox, deleteBox: CrateManager.#deleteBox, reshuffle: CrateManager.#reshuffle, openTable: CrateManager.#openTable,
       refund: CrateManager.#refund, toggleShop: CrateManager.#toggleShop, toggleMisses: CrateManager.#toggleMisses,
       filterChip: CrateManager.#filterChip, showMore: CrateManager.#showMore,
     },
@@ -578,13 +581,23 @@ export class CrateManager extends ApplicationV2 {
     return this.#openEditor(box);
   }
 
+  // Copy on a row: the kind's editor on an unsaved copy of the game
+  // (newgame.js copyOf), titled "Copy box" with the name focused for the
+  // GM to rename; Add to shelf creates it as any New does, and Cancel
+  // writes nothing.
+  static #copyBox(_e, t) {
+    const box = getBoxes()[t.dataset.box];
+    if (!box) return this.render();
+    return this.#openEditor(copyOf(box, { id: newId(), now: Date.now() }), { isNew: true, copy: true });
+  }
+
   // The crate's editor; on a new draft nothing is written until Save.
   static async #editCrate(box, opts) {
     const { isNew } = opts;
     const pools = Object.values(getPools());
     const poolIds = pools.map(p => p.id);
     const shares = Object.fromEntries((box.pools ?? []).map(p => [p.id, p.share ?? 1]));
-    const data = await promptForm(editorTitle(box, isNew), `
+    const data = await promptForm(editorTitle(box, isNew, opts.copy), `
       <label>Name <input name="name" value="${esc(box.name)}"${autofocus("name", opts)}></label>
       <label>Price (gp) <input name="price" type="number" min="0" step="1" value="${esc(box.price)}"${autofocus("price", opts)}></label>
       <fieldset><legend>Pools and their share of pulls</legend>
@@ -602,7 +615,7 @@ export class CrateManager extends ApplicationV2 {
         <label class="lc-row">Pity: guarantee <select name="pityRarity"><option value="">off</option>${RARITIES.map(r => `<option value="${r}" ${box.rules?.pity?.minRarity === r ? "selected" : ""}>${RARITY_LABEL[r]} or better</option>`).join("")}</select> after <input name="pityAfter" type="number" min="1" step="1" value="${esc(box.rules?.pity?.after ?? 10)}"> pulls</label>
         <label class="lc-row"><input type="checkbox" name="noDuplicates" ${box.rules?.noDuplicates ? "checked" : ""}> No duplicates per character</label>
       </fieldset>
-      ${limitsFieldset(box, { hasClock: todayKey() != null, esc })}`, {
+      ${limitsFieldset(box, { draft: isNew, hasClock: todayKey() != null, esc })}`, {
       // Restock writes to the stored record; a draft has none to fill.
       onForm: form => { liveOdds(form, box, poolIds); if (!isNew) wireRestock(form, box.id); },
       position: { width: 460 },
@@ -647,7 +660,7 @@ export class CrateManager extends ApplicationV2 {
     const shares = Object.fromEntries((box.pools ?? []).map(p => [p.id, p.share ?? 1]));
     const stake = stakeCoins(box.price);
     const odds = { ...WELL_DEFAULTS.odds, ...(box.odds ?? {}) };
-    const data = await promptForm(editorTitle(box, isNew), `
+    const data = await promptForm(editorTitle(box, isNew, opts.copy), `
       <label>Name <input name="name" value="${esc(box.name)}"${autofocus("name", opts)}></label>
       <label class="lc-row lc-form__stake">Stake <input name="stake" type="number" min="0" step="1" value="${esc(stake.amount)}"> <select name="coin" aria-label="Coin">${["cp", "sp", "gp"].map(c => `<option value="${c}"${c === stake.coin ? " selected" : ""}>${c}</option>`).join("")}</select></label>
       <fieldset><legend>Outcomes, by weight</legend>
@@ -711,7 +724,7 @@ export class CrateManager extends ApplicationV2 {
     const shares = Object.fromEntries((box.pools ?? []).map(p => [p.id, p.share ?? 1]));
     const stake = stakeCoins(box.price);
     const dice = { ...DICE_DEFAULTS, ...(box.dice ?? {}) };
-    const data = await promptForm(editorTitle(box, isNew), `
+    const data = await promptForm(editorTitle(box, isNew, opts.copy), `
       <label>Name <input name="name" value="${esc(box.name)}"${autofocus("name", opts)}></label>
       <label class="lc-row lc-form__stake">Stake <input name="stake" type="number" min="0" step="1" value="${esc(stake.amount)}"> <select name="coin" aria-label="Coin">${["cp", "sp", "gp"].map(c => `<option value="${c}"${c === stake.coin ? " selected" : ""}>${c}</option>`).join("")}</select></label>
       <fieldset><legend>Beat the dragon</legend>
@@ -733,7 +746,7 @@ export class CrateManager extends ApplicationV2 {
       <fieldset class="lc-form__weights"><legend>The prize's rarity weights</legend>
         ${RARITIES.map(r => `<label class="lc-row">${RARITY_LABEL[r]} <input name="w.${r}" type="number" min="0" step="1" value="${esc(box.weights?.[r] ?? DEFAULT_WEIGHTS[r])}"><span class="lc-form__hint" data-held="${r}"></span></label>`).join("")}
       </fieldset>
-      ${limitsFieldset(box, { stock: false, hasClock: todayKey() != null, esc })}`, {
+      ${limitsFieldset(box, { stock: false, draft: isNew, hasClock: todayKey() != null, esc })}`, {
       onForm: form => liveOdds(form, box, poolIds, (draft, live) => {
         const preview = dicePreview(draft, live);
         return { html: dicePreviewHTML(preview, esc), summary: diceSummary(preview), held: heldRarities(draft, live) };
@@ -768,7 +781,7 @@ export class CrateManager extends ApplicationV2 {
     const pools = Object.values(getPools());
     const poolIds = pools.map(p => p.id);
     const shares = Object.fromEntries((box.pools ?? []).map(p => [p.id, p.share ?? 1]));
-    const data = await promptForm(editorTitle(box, isNew), `
+    const data = await promptForm(editorTitle(box, isNew, opts.copy), `
       <label>Name <input name="name" value="${esc(box.name)}"${autofocus("name", opts)}></label>
       <label>First draw (gp) <input name="price" type="number" min="0" step="1" value="${esc(box.price)}"></label>
       <label class="lc-row">Each draw in a row costs <input name="step" type="number" min="1" step="0.1" value="${esc(stepOf(box))}"> times the last</label>
@@ -790,7 +803,7 @@ export class CrateManager extends ApplicationV2 {
         <div class="lc-form__preview"></div>
         <p class="lc-sr-only" role="status" aria-live="polite"></p>
       </div>
-      ${limitsFieldset(box, { stock: false, hasClock: todayKey() != null, esc })}`, {
+      ${limitsFieldset(box, { stock: false, draft: isNew, hasClock: todayKey() != null, esc })}`, {
       onForm: form => {
         const paint = liveOdds(form, box, poolIds, (draft, live) => {
           const preview = deckPreview(draft, live, getLog());
@@ -851,7 +864,7 @@ export class CrateManager extends ApplicationV2 {
     const poolIds = pools.map(p => p.id);
     const ticked = new Set((box.pools ?? []).map(p => p.id));
     const colours = coloursOf(box);
-    const data = await promptForm(editorTitle(box, isNew), `
+    const data = await promptForm(editorTitle(box, isNew, opts.copy), `
       <label>Name <input name="name" value="${esc(box.name)}"${autofocus("name", opts)}></label>
       <fieldset><legend>Bets</legend>
         <label class="lc-row">From <input name="price" type="number" min="0" step="1" value="${esc(box.price)}"> to <input name="maxStake" type="number" min="0" step="1" value="${esc(maxStakeOf(box) ?? "")}" placeholder="any"> gp a bet</label>
