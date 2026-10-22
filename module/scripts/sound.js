@@ -135,6 +135,17 @@ export function playCoinBack() {
 }
 
 /*
+  The wheel's ball dropping into its pocket (roulette.js): one short, soft
+  sine knock, lower and shorter than the well's plop (which is two notes
+  and means water), so the drop reads as the ball meeting wood.
+*/
+export function playDrop() {
+  const ctx = channel();
+  if (!ctx) return;
+  blip(ctx, 180, 0.08, { type: "sine", gain: 0.07 });
+}
+
+/*
   The deck's bane (deck.js): the one sound in the module that falls. Two
   notes a fifth apart, the second lower and longer, soft, so a card that
   takes coins is heard as a loss where every other sting rises with what

@@ -75,6 +75,11 @@ import { kindOf } from "./kinds.js";
 import { WELL_DEFAULTS, wellOdds, wellOddsHTML, wellRulesText, stakeCoins, stakeGp, draftWell, wellPreview, wellPreviewHTML, wellSummary, collapseMisses, throwsText, noClockNote } from "./well.js";
 import { DICE_DEFAULTS, FORMULAS, diceOdds, diceOddsHTML, diceRulesText, draftDice, dicePreview, dicePreviewHTML, diceSummary } from "./dicegame.js";
 import { DECK_DEFAULTS, CARD_KINDS, CARD_KIND_LABEL, CARD_KIND_HINT, cardsOf, stepOf, deckOdds, deckOddsHTML, deckRulesText, draftDeck, deckPreview, deckPreviewHTML, deckSummary } from "./deck.js";
+import { ROULETTE_DEFAULTS, BET_TYPES, BET_TYPE_LABEL, pocketsOf, coloursOf, betOdds, rouletteOddsHTML, rouletteRulesText, draftRoulette, roulettePreview, roulettePreviewHTML, rouletteSummary, payoutOf, maxStakeOf, maxBetsOf, windowMsOf, itemOnRarity } from "./roulette.js";
+import { liveRoundOf } from "./round.js";
+// The table window (tablewindow.js), loaded when a wheel's round is opened
+// from here: it is Foundry's, and the editors' tests run this file without it.
+const openTableFor = boxId => import("./tablewindow.js").then(m => m.openTableFor(boxId));
 
 // A box's odds in the Boxes table: its ribbon over its named pills.
 const oddsCell = rows => rows.length ? `${oddsRibbon(rows)}<div class="lc-odds">${oddsPills(rows)}</div>` : "<em>empty</em>";
@@ -104,7 +109,7 @@ export class CrateManager extends ApplicationV2 {
       switchTab: CrateManager.#switchTab,
       addPool: CrateManager.#addPool, editPool: CrateManager.#editPool, deletePool: CrateManager.#deletePool,
       bulkAdd: CrateManager.#bulkAdd, setUnsetRarity: CrateManager.#setUnsetRarity, removeEntry: CrateManager.#removeEntry, updateEntry: CrateManager.#updateEntry, relinkEntry: CrateManager.#relinkEntry,
-      addBox: CrateManager.#addBox, addWell: CrateManager.#addWell, addDice: CrateManager.#addDice, addDeck: CrateManager.#addDeck, editBox: CrateManager.#editBox, deleteBox: CrateManager.#deleteBox, reshuffle: CrateManager.#reshuffle,
+      addBox: CrateManager.#addBox, addWell: CrateManager.#addWell, addDice: CrateManager.#addDice, addDeck: CrateManager.#addDeck, addWheel: CrateManager.#addWheel, editBox: CrateManager.#editBox, deleteBox: CrateManager.#deleteBox, reshuffle: CrateManager.#reshuffle, openTable: CrateManager.#openTable,
       refund: CrateManager.#refund, toggleShop: CrateManager.#toggleShop, toggleMisses: CrateManager.#toggleMisses,
       filterChip: CrateManager.#filterChip, showMore: CrateManager.#showMore,
     },
@@ -510,6 +515,21 @@ export class CrateManager extends ApplicationV2 {
     this.render();
   }
 
+  // A wheel: twelve pockets in two colours and four rarity bands, 5 gp to
+  // 50 gp a bet, three bets a character, a 45-second betting window.
+  static async #addWheel() {
+    const d = ROULETTE_DEFAULTS;
+    await createBox({ kind: "roulette", name: "New wheel", price: d.price, pools: [], weights: { ...DEFAULT_WEIGHTS }, roulette: { colours: [...d.colours], pockets: d.pockets.map(p => ({ ...p })), payouts: { ...d.payouts }, itemOnRarity: d.itemOnRarity, maxStake: d.maxStake, maxBets: d.maxBets, windowSec: d.windowSec }, rules: {} });
+    this.render();
+  }
+
+  // The table's round from the Boxes tab: opened (or brought forward) as
+  // the shop card does it (tablewindow.js).
+  static async #openTable(_e, t) {
+    try { await openTableFor(t.dataset.box); } catch (err) { ui.notifications.warn(err.message); }
+    this.render();
+  }
+
   // Every once card drawn goes back in: the mark the drawn count is read
   // from (deck.js drawnIds) moves to now. The log keeps its rows.
   static async #reshuffle(_e, t) {
@@ -529,6 +549,7 @@ export class CrateManager extends ApplicationV2 {
     if (kindOf(box) === "well") return CrateManager.#editWell.call(this, box);
     if (kindOf(box) === "dice") return CrateManager.#editDice.call(this, box);
     if (kindOf(box) === "deck") return CrateManager.#editDeck.call(this, box);
+    if (kindOf(box) === "roulette") return CrateManager.#editWheel.call(this, box);
     const pools = Object.values(getPools());
     const poolIds = pools.map(p => p.id);
     const shares = Object.fromEntries((box.pools ?? []).map(p => [p.id, p.share ?? 1]));
@@ -777,6 +798,92 @@ export class CrateManager extends ApplicationV2 {
     this.render();
   }
 
+  /*
+    The wheel's editor (roulette.js): the least and most a bet can be, the
+    bets a character gets a round and the betting window; the two colours'
+    names; the pockets as rows (their number is their place on the wheel,
+    each in one colour and one rarity) with Add pocket and a remove on
+    each; what each bet type pays; the item on a rarity band and the pools
+    it draws from; the shop's own odds as a live preview. Nothing is
+    written until Save.
+  */
+  static async #editWheel(box) {
+    const pools = Object.values(getPools());
+    const poolIds = pools.map(p => p.id);
+    const ticked = new Set((box.pools ?? []).map(p => p.id));
+    const colours = coloursOf(box);
+    const data = await promptForm("Edit wheel", `
+      <label>Name <input name="name" value="${esc(box.name)}"></label>
+      <fieldset><legend>Bets</legend>
+        <label class="lc-row">From <input name="price" type="number" min="0" step="1" value="${esc(box.price)}"> to <input name="maxStake" type="number" min="0" step="1" value="${esc(maxStakeOf(box) ?? "")}" placeholder="any"> gp a bet</label>
+        <label class="lc-row">Each character may place <input name="maxBets" type="number" min="0" step="1" value="${esc(maxBetsOf(box))}"> bets a round (0 for no limit)</label>
+        <label class="lc-row">Bets stay open for <input name="windowSec" type="number" min="0" step="5" value="${esc(windowMsOf(box) / 1000)}"> seconds (0: until you press Spin)</label>
+      </fieldset>
+      <fieldset class="lc-pockets"><legend>Pockets</legend>
+        <div class="lc-row lc-pockets__colours"><label>First colour <input name="colourA" class="lc-pockets__colour" data-colour="0" value="${esc(colours[0])}"></label><label>Second colour <input name="colourB" class="lc-pockets__colour" data-colour="1" value="${esc(colours[1])}"></label></div>
+        <div class="lc-pockets__rows">${pocketsOf(box).map(p => pocketRow(p, colours)).join("")}</div>
+        <div class="lc-cards__foot"><button type="button" class="lc-pockets__add"><i class="fas fa-plus"></i> Add pocket</button></div>
+        <p class="lc-form__hint">A pocket's number is its place on the wheel. The rim of each pocket shows its rarity.</p>
+      </fieldset>
+      <fieldset><legend>What a winning bet pays, times the stake</legend>
+        ${BET_TYPES.map(t => `<label class="lc-row">${esc(BET_TYPE_LABEL[t])} <input name="pay.${t}" type="number" min="0" step="0.5" value="${esc(payoutOf(box, t))}">×</label>`).join("")}
+      </fieldset>
+      <fieldset><legend>Item on a rarity</legend>
+        <label class="lc-row"><input type="checkbox" name="itemOnRarity" ${itemOnRarity(box) ? "checked" : ""}> A winning bet on a rarity band also draws an item of that rarity from the pools below</label>
+        ${pools.map(p => `<label class="lc-row"><input type="checkbox" name="pool.${esc(p.id)}" ${ticked.has(p.id) ? "checked" : ""}> ${esc(p.name)}</label>`).join("") || "<p>No pools yet.</p>"}
+      </fieldset>
+      <div class="lc-form__odds" role="group" aria-labelledby="lc-odds-${esc(box.id)}">
+        <div class="lc-form__label" id="lc-odds-${esc(box.id)}">Chances a player sees</div>
+        <div class="lc-form__preview"></div>
+        <p class="lc-sr-only" role="status" aria-live="polite"></p>
+      </div>`, {
+      onForm: form => {
+        const paint = liveOdds(form, box, poolIds, (draft, live) => {
+          const preview = roulettePreview(draft, live);
+          return { html: roulettePreviewHTML(preview, esc), summary: rouletteSummary(preview), held: new Set() };
+        }, draftRoulette);
+        const rows = form.querySelector(".lc-pockets__rows");
+        const names = () => [0, 1].map(i => form.querySelector(`.lc-pockets__colour[data-colour="${i}"]`)?.value.trim() || ROULETTE_DEFAULTS.colours[i]);
+        const renumber = () => { [...rows.children].forEach((row, i) => { row.querySelector(".lc-pocket-row__n").textContent = String(i + 1); }); };
+        form.querySelector(".lc-pockets__add")?.addEventListener("click", () => {
+          const n = rows.childElementCount;
+          rows.insertAdjacentHTML("beforeend", pocketRow({ n: n + 1, colour: n % 2, rarity: "common" }, names()));
+          rows.lastElementChild.querySelector("select").focus();
+          paint();
+        });
+        form.addEventListener("click", e => {
+          const btn = e.target.closest?.(".lc-pocket-row__remove");
+          if (!btn) return;
+          const row = btn.closest(".lc-pocket-row");
+          const next = row.nextElementSibling ?? row.previousElementSibling;
+          row.remove();
+          renumber();
+          (next?.querySelector("select") ?? form.querySelector(".lc-pockets__add"))?.focus();
+          paint();
+        });
+        // The colour selects follow the names as they are typed.
+        form.addEventListener("input", e => {
+          if (!e.target.matches?.(".lc-pockets__colour")) return;
+          const [a, b] = names();
+          for (const opt of form.querySelectorAll(".lc-pocket-row__colour option")) opt.textContent = opt.value === "1" ? b : a;
+        });
+      },
+      position: { width: 520 },
+    });
+    if (!data) return;
+    const draft = draftRoulette(box, data, poolIds);
+    const saved = await updateBox(box.id, fresh => ({
+      ...fresh,
+      kind: "roulette",
+      name: data.name || fresh.name,
+      price: draft.price,
+      pools: draft.pools.filter(ref => ref.id in getPools()),
+      roulette: draft.roulette,
+    }));
+    if (!saved) ui.notifications.warn(`${box.name} was deleted while you were editing it.`);
+    this.render();
+  }
+
   static async #deleteBox(_e, t) {
     const box = getBoxes()[t.dataset.box];
     if (await DialogV2.confirm({ window: { title: "Delete box" }, content: `<p>Delete <strong>${esc(box.name)}</strong>?</p>` })) {
@@ -971,15 +1078,19 @@ export class CrateManager extends ApplicationV2 {
     // A deck's row: the kinds of card still in it, its cards and how many
     // are drawn, and Reshuffle beside Edit.
     const log = getLog();
+    const rounds = getRounds();
     const well = b => kindOf(b) === "well";
     const dice = b => kindOf(b) === "dice";
     const deck = b => kindOf(b) === "deck";
-    const tag = b => (well(b) ? ` <span class="lc-kind">Well</span>` : dice(b) ? ` <span class="lc-kind">Dice</span>` : deck(b) ? ` <span class="lc-kind">Deck</span>` : "");
-    const odds = b => (well(b) ? wellOddsHTML(wellOdds(b, pools)) || "<em>dry</em>" : dice(b) ? diceOddsHTML(diceOdds(b, pools)) || "<em>unbeatable</em>" : deck(b) ? deckOddsHTML(deckOdds(b, pools, log)) || "<em>empty</em>" : oddsCell(shopOdds(b, pools).rows));
-    const rules = b => (well(b) ? esc(wellRulesText(b)) : dice(b) ? esc(diceRulesText(b)) : deck(b) ? esc(deckRulesText(b, log)) : [b.rules?.pity ? esc(`${RARITY_LABEL[b.rules.pity.minRarity] ?? b.rules.pity.minRarity} or better after ${b.rules.pity.after} pulls`) : "", b.rules?.noDuplicates ? "no dupes" : "", b.rules?.stock != null ? `${b.rules.stock} left` : ""].filter(Boolean).join(", "));
-    const extra = b => (deck(b) ? `<button type="button" data-action="reshuffle" data-box="${esc(b.id)}" aria-label="Reshuffle ${esc(b.name)}">Reshuffle</button> ` : "");
+    const wheel = b => kindOf(b) === "roulette";
+    const tag = b => (well(b) ? ` <span class="lc-kind">Well</span>` : dice(b) ? ` <span class="lc-kind">Dice</span>` : deck(b) ? ` <span class="lc-kind">Deck</span>` : wheel(b) ? ` <span class="lc-kind">Wheel</span>` : "");
+    const odds = b => (well(b) ? wellOddsHTML(wellOdds(b, pools)) || "<em>dry</em>" : dice(b) ? diceOddsHTML(diceOdds(b, pools)) || "<em>unbeatable</em>" : deck(b) ? deckOddsHTML(deckOdds(b, pools, log)) || "<em>empty</em>" : wheel(b) ? rouletteOddsHTML(betOdds(b), esc) || "<em>no pockets</em>" : oddsCell(shopOdds(b, pools).rows));
+    const rules = b => (well(b) ? esc(wellRulesText(b)) : dice(b) ? esc(diceRulesText(b)) : deck(b) ? esc(deckRulesText(b, log)) : wheel(b) ? esc(rouletteRulesText(b)) : [b.rules?.pity ? esc(`${RARITY_LABEL[b.rules.pity.minRarity] ?? b.rules.pity.minRarity} or better after ${b.rules.pity.after} pulls`) : "", b.rules?.noDuplicates ? "no dupes" : "", b.rules?.stock != null ? `${b.rules.stock} left` : ""].filter(Boolean).join(", "));
+    // A wheel's row opens its round (or brings the open one forward).
+    const extra = b => (deck(b) ? `<button type="button" data-action="reshuffle" data-box="${esc(b.id)}" aria-label="Reshuffle ${esc(b.name)}">Reshuffle</button> `
+      : wheel(b) ? `<button type="button" data-action="openTable" data-box="${esc(b.id)}" aria-label="${liveRoundOf(rounds, b.id) ? "Go to the table" : "Open a round"} at ${esc(b.name)}">${liveRoundOf(rounds, b.id) ? "Go to the table" : "Open a round"}</button> ` : "");
     return `
-      <div class="lc-toolbar"><button type="button" data-action="addBox"><i class="fas fa-plus"></i> New box</button><button type="button" data-action="addWell"><i class="fas fa-plus"></i> New well</button><button type="button" data-action="addDice"><i class="fas fa-plus"></i> New dice game</button><button type="button" data-action="addDeck"><i class="fas fa-plus"></i> New deck</button></div>
+      <div class="lc-toolbar"><button type="button" data-action="addBox"><i class="fas fa-plus"></i> New box</button><button type="button" data-action="addWell"><i class="fas fa-plus"></i> New well</button><button type="button" data-action="addDice"><i class="fas fa-plus"></i> New dice game</button><button type="button" data-action="addDeck"><i class="fas fa-plus"></i> New deck</button><button type="button" data-action="addWheel"><i class="fas fa-plus"></i> New wheel</button></div>
       ${boxes.length ? `<table class="lc-table"><thead><tr><th>Box</th><th>Price</th><th>Pools</th><th>Odds</th><th>Rules</th><th></th></tr></thead><tbody>
         ${boxes.map(b => `<tr>
           <td>${esc(b.name)}${tag(b)}</td><td>${esc(formatPrice(b.price))}</td>
@@ -1006,7 +1117,7 @@ export class CrateManager extends ApplicationV2 {
     const status = (id, at) => `<span class="lc-log__status" tabindex="-1" data-row="${esc(id)}">refunded ${esc(refundTime(at))}</span>`;
     const row = r => `<tr class="${r.refunded ? "lc-row--refunded" : r.lateCancel ? "lc-row--late" : ""}">
         <td>${new Date(r.at).toLocaleString()}</td><td>${esc(r.actorName)}</td><td>${esc(r.boxName)} (${esc(formatPrice(r.price))})</td>
-        <td class="lc-rarity-${esc(r.rarity ?? r.swatch ?? (r.win ? "coin" : "none"))}"><span class="lc-dot"></span>${r.refunded ? `<s>${esc(r.name)}</s>` : esc(r.name)}${r.pity ? " · pity" : ""}${logRarityNote(r)}${logPayoutNote(r)}${logStakeNote(r)}${logLateNote(r)}</td>
+        <td class="lc-rarity-${esc(r.rarity ?? r.swatch ?? r.stake?.swatch ?? (r.win ? "coin" : "none"))}"><span class="lc-dot"></span>${r.refunded ? `<s>${esc(r.name)}</s>` : esc(r.name)}${r.pity ? " · pity" : ""}${logRarityNote(r)}${logPayoutNote(r)}${logStakeNote(r)}${logLateNote(r)}</td>
         <td>${r.refunded ? status(r.id, r.refunded) : `<button type="button" data-action="refund" data-row="${esc(r.id)}">Refund</button>`}</td>
       </tr>`;
     const group = g => {
@@ -1144,6 +1255,20 @@ function cardRow(c) {
       <label class="lc-card-row__once"><input type="checkbox" name="c.${id}.once"${c.once ? " checked" : ""} aria-label="Once per deck"></label>
       <button type="button" class="lc-card-row__remove" aria-label="Remove ${esc(c.label || "this card")}" data-tooltip="Remove"><i class="fas fa-xmark" inert></i></button>
       <input class="lc-card-row__text" name="c.${id}.text" value="${esc(c.text ?? "")}" placeholder="What happens (posted to chat for you to play out)" aria-label="Effect text">
+    </div>`;
+}
+
+// One pocket of the wheel editor (roulette.js draftRoulette reads these
+// names): its place on the wheel, its colour (named as the GM names them)
+// and its rarity.
+function pocketRow(p, colours) {
+  const id = esc(foundry.utils.randomID(8));
+  return `<div class="lc-pocket-row lc-rarity-${esc(p.rarity)}" data-pocket="${id}">
+      <input type="hidden" name="pockets" value="${id}">
+      <span class="lc-pocket-row__n">${esc(p.n)}</span>
+      <select class="lc-pocket-row__colour" name="p.${id}.colour" aria-label="Colour of pocket ${esc(p.n)}">${[0, 1].map(c => `<option value="${c}"${c === p.colour ? " selected" : ""}>${esc(colours[c])}</option>`).join("")}</select>
+      <select class="lc-pocket-row__rarity" name="p.${id}.rarity" aria-label="Rarity of pocket ${esc(p.n)}">${RARITIES.map(r => `<option value="${r}"${r === p.rarity ? " selected" : ""}>${RARITY_LABEL[r]}</option>`).join("")}</select>
+      <button type="button" class="lc-pocket-row__remove" aria-label="Remove pocket ${esc(p.n)}" data-tooltip="Remove"><i class="fas fa-xmark" inert></i></button>
     </div>`;
 }
 

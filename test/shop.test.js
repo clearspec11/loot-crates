@@ -14,7 +14,7 @@ let shopOpen = true;
 let states = {};
 // How many times a render read the pull log (a deep clone of the whole setting).
 let logReads = 0;
-vi.mock("../module/scripts/store.js", () => ({ getBoxes: () => boxes, getPools: () => POOLS, getLog: () => { logReads++; return []; }, todayKey: () => null, isShopOpen: () => shopOpen, getActorState: (a, b) => states[`${a}.${b}`] ?? {} }));
+vi.mock("../module/scripts/store.js", () => ({ getBoxes: () => boxes, getPools: () => POOLS, getLog: () => { logReads++; return []; }, getRounds: () => ({}), todayKey: () => null, isShopOpen: () => shopOpen, getActorState: (a, b) => states[`${a}.${b}`] ?? {} }));
 const requestPull = vi.fn(async () => ({}));
 vi.mock("../module/scripts/socket.js", () => ({ requestPull: (...args) => requestPull(...args) }));
 

@@ -25,18 +25,23 @@
   before the redraw showed it. That line stays while it still holds and
   clears on the next Buy that goes out.
 */
-import { getBoxes, getPools, getLog, getActorState, isShopOpen, todayKey } from "./store.js";
+import { getBoxes, getPools, getLog, getRounds, getActorState, isShopOpen, todayKey } from "./store.js";
 import { formatGold } from "./currency.js";
 import { actorPicker, boxCard, buyReason, changedCharacterLine, crateReason, refusalLine, shopHTML, shopNotice, shopReason, patchShop, pickActor } from "./boxcard.js";
 import { shopOdds } from "./odds.js";
 import { requestPull } from "./socket.js";
 import { heldState, onRelease } from "./reveal.js";
 import { getKind, kindOf } from "./kinds.js";
-// The crate, the well, the dice and the deck register themselves when imported, so every record is found.
+// A table game's Buy opens the table (tablewindow.js), loaded when it is
+// first pressed: that window imports this file for the characters a player
+// may bet with, and the kinds' tests run the shop without it.
+const openTableFor = boxId => import("./tablewindow.js").then(m => m.openTableFor(boxId));
+// The crate, the well, the dice, the deck and the wheel register themselves when imported, so every record is found.
 import "./crate.js";
 import "./well.js";
 import "./dicegame.js";
 import "./deck.js";
+import "./roulette.js";
 
 const { ApplicationV2 } = foundry.applications.api;
 const esc = s => foundry.utils.escapeHTML(String(s ?? ""));
@@ -114,6 +119,12 @@ export class CrateShop extends ApplicationV2 {
       // An aria-disabled Buy already shows its reason; one that looked live
       // was drawn before the change, so say what changed.
       if (target.getAttribute?.("aria-disabled") !== "true") this.#refuse(boxId, target.dataset.price, ctx);
+      return;
+    }
+    // A table game isn't bought here: its Buy opens the table (the GM's
+    // opens the round first), where the bets are placed.
+    if (getKind(kindOf(box))?.table) {
+      try { await openTableFor(boxId); } catch (err) { ui.notifications.warn(err.message); }
       return;
     }
     this.busy = true;
@@ -214,11 +225,13 @@ export class CrateShop extends ApplicationV2 {
   #ctx() {
     const actor = this.actor;
     const gm = !!game.users.activeGM;
-    let log;
+    let log, rounds;
     return {
       purse: actor?.system?.currency ?? {}, open: isShopOpen() && gm, gmOnline: gm, hasActor: !!actor,
       actorId: actor?.id ?? null, actorName: actor?.name ?? "", stateOf: boxId => (actor ? heldState(actor.id, boxId) ?? getActorState(actor.id, boxId) : {}),
       today: todayKey(), get log() { return (log ??= getLog()); },
+      // A table game's card says what its round is doing (roulette.js).
+      get rounds() { return (rounds ??= getRounds()); }, isGM: !!game.user.isGM, now: Date.now(),
       held: boxId => !!(actor && heldState(actor.id, boxId)),
       busy: this.busy, busyBox: this.busyBox, waiting: this.waiting, art: `<i class="fas fa-box-open"></i>`, esc,
     };

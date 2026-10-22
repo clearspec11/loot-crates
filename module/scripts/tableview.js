@@ -1,0 +1,102 @@
+/*
+  The shared table window's words and markup, with no Foundry in them, so
+  the window (tablewindow.js), the harness and Vitest draw one thing. Any
+  table kind (kinds.js `table: true`) plugs its pieces in through
+  kind.tableView: the title, the bet fields and how to read them, the stage
+  (the wheel) and the rail (the chips), the result and the sting.
+
+  The window is one room for the whole table: the head names the game, how
+  many bets are down and what the round is doing (a clock, "Bets are open
+  until the GM spins", "Bets are closed", "The wheel is turning"); the vault
+  holds the kind's stage with every character's chips placed as bets
+  arrive; the result lands in the vault's live region. Under the vault a
+  player's bet form (the character, the kind's fields, one button that says
+  what it does) and, for the GM, Spin. The one close button reads Skip
+  while the stage plays, as the reveal's does.
+
+  Screen readers hear the table in words: the chips are decorative, so a
+  visually hidden list names every bet, and a status line says each new one
+  as it lands and the round's state as it changes.
+*/
+import { formatPrice } from "./currency.js";
+import { isOpenStake, stakeReason, roundState, ROUND_WORDS } from "./round.js";
+
+// "Orla Vane bets 5 gp on Red", for the status line and the list.
+export function stakeSentence(row, verb = "bets") {
+  return `${row.actorName} ${verb} ${formatPrice(row.price)} on ${row.name ?? row.stake?.label ?? "the table"}`;
+}
+
+// "3 bets from 2 characters", "1 bet", "No bets yet".
+export function countText(stakes = []) {
+  const live = stakes.filter(r => isOpenStake(r) || r.status === "settled");
+  if (!live.length) return "No bets yet";
+  const who = new Set(live.map(r => r.actorId)).size;
+  const bets = `${live.length} bet${live.length === 1 ? "" : "s"}`;
+  return who > 1 ? `${bets} from ${who} characters` : bets;
+}
+
+/*
+  Which controls the viewer gets: the bet form while the round takes bets
+  and they have a character to bet with; Spin for the GM until the round
+  resolves. `phase` is "betting" | "waiting" (closed, not spun) | "spinning"
+  | "landed" | "void".
+*/
+export function phaseOf(round, { reveal = null, landed = false, now = Date.now() } = {}) {
+  if (landed) return "landed";
+  if (reveal) return "spinning";
+  if (!round || round.voided) return "void";
+  if (round.status === "resolved") return "spinning";
+  return stakeReason(round, now) ? "waiting" : "betting";
+}
+
+// The head's state words: the round's (round.js roundState, in the kind's
+// own words, tableView.words), or while the stage plays, that.
+export function stateText(round, phase, { now = Date.now(), kind = null } = {}) {
+  const words = kind?.tableView?.words ?? {};
+  if (phase === "spinning") return roundState(round, { held: true, words });
+  if (phase === "landed") return { key: "landed", text: "Settled" };
+  if (phase === "void") return { key: "void", text: "The round was called off; every stake came back" };
+  if (phase === "waiting") return { key: "closed", text: words.waiting ?? ROUND_WORDS.waiting };
+  return roundState(round, { now, words });
+}
+
+/*
+  The window's body. `viewer`: { isGM, actors: [{ id, name }] (the
+  characters this user may bet with), actorIds }. `values` are the form's
+  last values, kept across a redraw. `esc` escapes for the page.
+*/
+export function tableBodyHTML({ kind, game, round, stakes = [], viewer = {}, phase = "betting", now = Date.now(), esc = s => String(s ?? ""), values = {} }) {
+  const view = kind.tableView;
+  const state = stateText(round, phase, { now, kind });
+  const actors = viewer.actors ?? [];
+  const canBet = phase === "betting" && actors.length > 0;
+  const who = actors.length > 1
+    ? `<label class="lc-table__field"><span class="lc-label">Character</span><select name="actorId" class="lc-table__actor">${actors.map(a => `<option value="${esc(a.id)}"${a.id === (values.actorId ?? actors[0].id) ? " selected" : ""}>${esc(a.name)}</option>`).join("")}</select></label>`
+    : actors.length ? `<input type="hidden" name="actorId" value="${esc(actors[0].id)}">` : "";
+  const form = canBet ? `
+      <form class="lc-table__form" autocomplete="off" novalidate>
+        ${who}
+        ${view.fields(game, { esc, values })}
+        <button type="submit" class="lc-table__bet" data-action="placeBet">Place a bet</button>
+        <span class="lc-table__why" role="status"></span>
+      </form>` : "";
+  const spin = viewer.isGM && (phase === "betting" || phase === "waiting") ? `<button type="button" class="lc-table__spin" data-action="spin">Spin</button>` : "";
+  const closeLabel = phase === "spinning" ? "Skip" : "Close";
+  return `
+      <div class="lc-table__head lc-reveal__head">
+        <strong class="lc-reveal__crate">${esc(game?.name ?? "")}</strong>
+        <span class="lc-table__count">${esc(countText(stakes))}</span>
+        <span class="lc-table__state" role="status" data-state="${esc(state.key)}"${state.closesAt ? ` data-lc-countdown="${esc(state.closesAt)}"` : ""}>${esc(state.text)}</span>
+      </div>
+      <div class="lc-vault lc-rarity-none">
+        <div class="lc-table__host"></div>
+        <div class="lc-reveal__result lc-table__result" aria-live="polite"></div>
+      </div>
+      <p class="lc-table__live lc-sr-only" role="status"></p>
+      <ul class="lc-table__list lc-sr-only" aria-label="Bets on the table">${stakes.filter(r => isOpenStake(r) || r.status === "settled").map(r => `<li>${esc(stakeSentence(r, view.verb))}</li>`).join("")}</ul>
+      ${form}
+      <div class="lc-reveal__actions">
+        ${spin}
+        <button type="button" class="lc-reveal__close" data-action="${phase === "spinning" ? "skip" : "dismiss"}">${closeLabel}</button>
+      </div>`;
+}

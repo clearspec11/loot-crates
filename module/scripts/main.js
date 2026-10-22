@@ -18,13 +18,16 @@ import { storeRedraw } from "./redraw.js";
 import { performPull } from "./pull.js";
 import { showReveal, showReplay, sealChatCard, watchAgain, preSealItem, setTableWindow } from "./reveal.js";
 import { openRound, closeRound, resolveRound, recoverRounds, onTable } from "./table.js";
+// The shared table window registers itself with the round's messages and
+// the core's hold when imported.
+import { openTable, openTableFor, refreshTables } from "./tablewindow.js";
 import { draw, oddsTable, seededRng } from "./odds.js";
 import { buildStrip } from "./strip.js";
 
 Hooks.once("init", () => {
   registerSettings();
   // Open windows follow the world settings as any client writes them.
-  setStoreListener(storeRedraw({ refreshShop, refreshManager }));
+  setStoreListener(storeRedraw({ refreshShop, refreshManager, refreshTables }));
   registerIndexFields();
   game.settings.registerMenu(MODULE_ID, "manager", {
     name: "Pools, boxes and pulls",
@@ -40,7 +43,7 @@ Hooks.once("ready", () => {
   registerSocket();
   const mod = game.modules.get(MODULE_ID);
   // registerKind adds a game of chance that runs on the crate's core (kinds.js).
-  if (mod) mod.api = { openShop, openManager, requestPull, performPull, showReveal, showReplay, draw, oddsTable, buildStrip, seededRng, getPools, getBoxes, getLog, savePool, saveBox, entriesFromCompendium, entryFromItem, registerKind, getKind, kindOf, openRound, closeRound, resolveRound, requestStake, onTable, setTableWindow, getRounds };
+  if (mod) mod.api = { openShop, openManager, requestPull, performPull, showReveal, showReplay, draw, oddsTable, buildStrip, seededRng, getPools, getBoxes, getLog, savePool, saveBox, entriesFromCompendium, entryFromItem, registerKind, getKind, kindOf, openRound, closeRound, resolveRound, requestStake, onTable, setTableWindow, getRounds, openTable, openTableFor };
   // Flag dead pool entries once at load, so the shop's odds are honest before
   // anyone buys; each pull sweeps its own box again (socket.js).
   // A table round's open stakes don't outlive their window across a reload

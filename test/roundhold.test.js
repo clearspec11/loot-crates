@@ -8,7 +8,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createDocument } from "./minidom.js";
 
 vi.mock("../module/scripts/sound.js", () => ({ playTick: vi.fn(), playSlow: vi.fn(), playReveal: vi.fn() }));
-vi.mock("../module/scripts/store.js", () => ({ getBoxes: () => ({}), getPools: () => ({}), getLog: () => [], todayKey: () => null, isShopOpen: () => true, getActorState: () => ({}) }));
+vi.mock("../module/scripts/store.js", () => ({ getBoxes: () => ({}), getPools: () => ({}), getLog: () => [], getRounds: () => ({}), todayKey: () => null, isShopOpen: () => true, getActorState: () => ({}) }));
 vi.mock("../module/scripts/socket.js", () => ({ requestPull: vi.fn(async () => ({})) }));
 
 class FakeApp {}

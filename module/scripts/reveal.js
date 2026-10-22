@@ -681,6 +681,11 @@ export function showRound(reveal) {
     spinning.set(id, spin);
     landed.then(() => { if (spinning.get(id) === spin) spinning.delete(id); });
     hold({ requestId: `round.${id}`, actorId: null, box: { id: reveal.boxId ?? reveal.box?.id ?? null }, itemId: null, stateBefore: null }, landed);
+    // An item a stake won at the spin (the wheel's rarity band) is on the
+    // sheet already: hidden there, as a crate's is, until this client lands.
+    for (const s of reveal.stakes ?? []) {
+      if (s?.itemId) hold({ requestId: `round.${id}.${s.logId}`, actorId: s.actorId ?? null, box: { id: reveal.boxId ?? null }, itemId: s.itemId, stateBefore: null }, landed);
+    }
   }
   const instant = !tableWindow || globalThis.document?.visibilityState === "hidden" || prefersReducedMotion();
   if (instant) {

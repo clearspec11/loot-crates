@@ -19,6 +19,7 @@ import { sourceRaritiesOf } from "./crate.js";
 import "./well.js";
 import "./dicegame.js";
 import "./deck.js";
+import "./roulette.js";
 import { settle, canAfford, formatPrice } from "./currency.js";
 
 export { PullError } from "./kinds.js";
@@ -30,7 +31,9 @@ export function rollRng() {
   return typeof r === "function" ? r : Math.random;
 }
 
-async function resolveSource(uuid) {
+// A pool entry's source (fromUuid in a world), null when it is gone. The
+// table's resolve (table.js) hands it to a kind that draws items there.
+export async function resolveSource(uuid) {
   try { return await fromUuid(uuid); } catch { return null; }
 }
 

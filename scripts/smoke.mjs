@@ -80,6 +80,20 @@ const STATES = [
   // Tam drew from the deck a moment ago: its card prices the next draw at
   // 15 gp and says why.
   ["shop-deck-streak", "state=shop&streak=1"],
+  // The Wheel of Fate has no round open: its card says so, "Place a bet" off.
+  ["shop-no-round", "state=shop&round=none"],
+  // The shared table window (tableview.js) on the wheel (roulette.js):
+  // three characters' chips on the rail with the clock and Tam's bet form
+  // (a bad stake refused on the line, a bet placed drops a chip); bets
+  // closed as the GM sees it, with Spin; bets closed as a player sees it;
+  // the ball mid-spin (the button reads Skip, no result, reduced motion
+  // off); landed on 7 where Tam's two bets win, and on 8 where they lose.
+  ["table-betting", "state=table&phase=betting"],
+  ["table-waiting", "state=table&phase=waiting&gm=1"],
+  ["table-closed", "state=table&phase=closed"],
+  ["roulette-spinning", "state=table&phase=spinning&duration=100000"],
+  ["roulette-won", "state=table&phase=landed&outcome=win&duration=0"],
+  ["roulette-lost", "state=table&phase=landed&outcome=lose&duration=0"],
   ["manager", "state=manager"],
   // A manager window sized 480 px wide, on any screen: its rows follow the
   // window (a container query), so names wrap in full rather than cut off.
@@ -525,6 +539,159 @@ function wellCardProblems({ capped, closed }) {
   return out;
 }
 
+// The wheel's card in the shop: the rarity bands as pills (no 0%) and a
+// ribbon, the three plain bets in words with what they pay, the stake
+// bounds, what the round is doing (a clock that ticks, or that no round is
+// open with "Place a bet" off for that reason), and "Place a bet" on the Buy.
+function rouletteCardProblems({ noRound, closed, busy }) {
+  const out = [];
+  const card = document.querySelector('.lc-box[data-box="wheel"]');
+  if (!card) return ["no wheel card in the shop"];
+  const buy = card.querySelector(".lc-box__buy");
+  const pills = [...card.querySelectorAll(".lc-odd")].map(p => p.textContent.trim()).join(", ");
+  if (pills !== "Common 42%, Uncommon 33%, Rare 17%, Legendary 8%") out.push(`wheel pills: ${pills}`);
+  if (card.querySelectorAll(".lc-ribbon__seg").length !== 4) out.push("the wheel's ribbon doesn't show its four bands");
+  const rule = card.querySelector(".lc-box__rule")?.innerText.replace(/\s+/g, " ").trim() ?? "";
+  if (!/Evocation red or Abjuration black 1 in 2, pays 2×/.test(rule) || !/One number 1 in 12, pays 12×/.test(rule) || !/A rarity pays 3×/.test(rule)) out.push(`the bet lines read "${rule}"`);
+  if (card.querySelector(".lc-box__stock")?.textContent.trim() !== "Stake 5 gp to 50 gp, 3 bets a round") out.push(`the bounds read "${card.querySelector(".lc-box__stock")?.textContent}"`);
+  const round = card.querySelector(".lc-box__round");
+  if (!buy.textContent.includes("Place a bet")) out.push(`wheel Buy reads "${buy.textContent.trim()}"`);
+  if (buy.dataset.price !== "5") out.push(`the wheel's data-price is ${buy.dataset.price}`);
+  if (noRound) {
+    if (round?.textContent.trim() !== "No round open yet") out.push(`with no round the card says "${round?.textContent}"`);
+    if (buy.getAttribute("aria-disabled") !== "true") out.push("Place a bet is on with no round open");
+    if (card.querySelector(".lc-box__why")?.textContent.trim() !== "No round open yet") out.push(`the no-round reason reads "${card.querySelector(".lc-box__why")?.textContent}"`);
+  } else {
+    if (!/^Bets close in \d:\d\d$/.test(round?.textContent.trim() ?? "")) out.push(`the round line reads "${round?.textContent}"`);
+    if (!round?.dataset.lcCountdown) out.push("the clock line carries no data-lc-countdown");
+    if (!closed && !busy && buy.getAttribute("aria-disabled") === "true") out.push(`Place a bet is off for "${card.querySelector(".lc-box__why")?.textContent}"`);
+  }
+  for (const el of [card.querySelector(".lc-box__rule"), round].filter(Boolean)) if (parseFloat(getComputedStyle(el).fontSize) < 11) out.push(`${el.className} is under 11px`);
+  return out;
+}
+
+/*
+  The shared table window, read from the DOM. Every phase: the head names
+  the game and the bets, the state line is a live region reading the
+  phase's words, five chips sit on the rail (Tam's two ringed as the
+  viewer's), the stakes are listed for a screen reader, nothing leaves the
+  window. Betting: the form offers the bet types and picks, the stake
+  within 5 to 50, "Place a bet" on; changing the type repopulates the pick;
+  a stake under the floor is refused on the line; a good bet drops a sixth
+  chip. Waiting (the GM): no form, Spin. Closed (a player): no form, no
+  Spin. Spinning: the stage is spinning, the ball shows, the disc has
+  turned, no result, the button reads Skip. Landed: the stage names the
+  pocket, the disc rests with that pocket under the pin, the verdict and
+  each character's net sit in the live region, the winning spots are lit
+  and the rest step back, the vault is in the pocket's rarity, Close is
+  focused.
+*/
+async function tableProblems({ phase, outcome, gm }) {
+  const out = [];
+  const frames = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const shown = el => !!el && !el.hidden && el.getBoundingClientRect().height > 0;
+  const head = document.querySelector(".lc-table__head")?.innerText.replace(/\s+/g, " ") ?? "";
+  if (!/Wheel of Fate/.test(head)) out.push(`head reads "${head}"`);
+  const stateEl = document.querySelector(".lc-table__state");
+  if (!stateEl?.closest("[role=status]")) out.push("the round's state is not a live region");
+  const want = { betting: /^Bets close in \d:\d\d$/, waiting: /^Bets are closed: waiting for the GM to spin$/, closed: /^Bets are closed: waiting for the GM to spin$/, spinning: /^The wheel is turning$/, landed: /^Settled$/ }[phase];
+  if (!want.test(stateEl?.textContent.trim() ?? "")) out.push(`the state reads "${stateEl?.textContent}"`);
+  const count = document.querySelector(".lc-table__count")?.textContent.trim();
+  if (count !== "5 bets from 3 characters") out.push(`the count reads "${count}"`);
+  const chips = document.querySelectorAll(".lc-rail .lc-chip");
+  if (chips.length !== 5) out.push(`${chips.length} chips on the rail`);
+  if (document.querySelectorAll(".lc-chip--mine").length !== (gm ? 0 : 2)) out.push("the viewer's own chips aren't ringed (or the GM's are)");
+  if (document.querySelectorAll(".lc-table__list li").length !== 5) out.push("the screen-reader list doesn't name every bet");
+  if (document.querySelectorAll(".lc-wheel__rim").length !== 12 || document.querySelectorAll(".lc-wheel__n").length !== 12) out.push("the wheel doesn't show twelve pockets with their rims");
+  for (const el of document.querySelectorAll(".lc-table__body *")) {
+    const r = el.getBoundingClientRect();
+    if (r.right > document.documentElement.clientWidth + 1) { out.push(`the table overflows: ${el.className}`); break; }
+  }
+  for (const el of document.querySelectorAll(".lc-spot__label, .lc-table__state, .lc-table__count")) if (parseFloat(getComputedStyle(el).fontSize) < 11) { out.push(`${el.className} is under 11px`); break; }
+  const form = document.querySelector(".lc-table__form");
+  const spin = document.querySelector(".lc-table__spin");
+  const btn = document.querySelector(".lc-reveal__close");
+  const stage = document.querySelector(".lc-table__stage");
+  if (phase === "betting") {
+    if (!form) return [...out, "no bet form while betting"];
+    const type = form.querySelector(".lc-table__type"), pick = form.querySelector(".lc-table__pick"), stake = form.querySelector(".lc-table__stake"), bet = form.querySelector(".lc-table__bet");
+    if ([...type.options].map(o => o.value).join() !== "colour,parity,number,rarity") out.push(`bet types: ${[...type.options].map(o => o.textContent).join("; ")}`);
+    if (stake.min !== "5" || stake.max !== "50" || stake.value !== "5") out.push(`stake field ${stake.min}-${stake.max}, at ${stake.value}`);
+    if (bet.textContent.trim() !== "Place a bet" || bet.getAttribute("aria-disabled") === "true") out.push(`the button reads "${bet.textContent.trim()}"`);
+    if (btn?.textContent !== "Close") out.push(`the close button reads "${btn?.textContent}" while betting`);
+    type.value = "number";
+    type.dispatchEvent(new Event("change", { bubbles: true }));
+    if (pick.options.length !== 12 || !/^1, 1 in 12$/.test(pick.options[0].textContent)) out.push(`a number bet offers ${pick.options.length} picks ("${pick.options[0]?.textContent}")`);
+    type.value = "rarity";
+    type.dispatchEvent(new Event("change", { bubbles: true }));
+    if ([...pick.options].map(o => o.textContent).join("; ") !== "Common, 42%; Uncommon, 33%; Rare, 17%; Legendary, 8%") out.push(`a rarity bet offers "${[...pick.options].map(o => o.textContent).join("; ")}"`);
+    stake.value = "1";
+    bet.focus();
+    bet.click();
+    await frames();
+    const why = form.querySelector(".lc-table__why");
+    if (why?.textContent !== "Stake at least 5 gp." || !shown(why)) out.push(`a 1 gp stake is refused with "${why?.textContent}"`);
+    if (document.activeElement !== bet) out.push("focus left Place a bet on a refusal");
+    stake.value = "5";
+    pick.value = "rare";
+    bet.click();
+    await frames();
+    if (document.querySelectorAll(".lc-rail .lc-chip").length !== 6) out.push("a good bet didn't drop a chip");
+    if (document.querySelectorAll('.lc-spot[data-spot="rarity:rare"] .lc-chip').length !== 2) out.push("the new chip isn't on the Rare spot");
+    if (why?.textContent) out.push(`a good bet still says "${why.textContent}"`);
+    if (!document.querySelector(".lc-chip--new")) out.push("the new chip isn't marked as just landed");
+    if (!/Tam Thornwick bets 5 gp on Rare/.test(document.querySelector(".lc-table__live")?.textContent ?? "")) out.push("the new bet isn't said in the status line");
+    return out;
+  }
+  if (phase === "waiting") {
+    if (form) out.push("a bet form while bets are closed");
+    if (!shown(spin) || spin.textContent.trim() !== "Spin") out.push("the GM has no Spin");
+    if (parseFloat(getComputedStyle(spin).fontSize) < 11) out.push("Spin is under 11px");
+    return out;
+  }
+  if (phase === "closed") {
+    if (form) out.push("a bet form while bets are closed");
+    if (spin) out.push("a player sees Spin");
+    return out;
+  }
+  if (phase === "spinning") {
+    if (!stage?.classList.contains("lc-table__stage--spinning")) out.push("the stage isn't spinning");
+    if (stage?.classList.contains("lc-table__stage--landed")) out.push("the stage landed before the screenshot");
+    if (parseFloat(getComputedStyle(document.querySelector(".lc-wheel__ball")).opacity) < 0.9) out.push("the ball doesn't show mid-spin");
+    if (getComputedStyle(document.querySelector(".lc-wheel__turn")).transform === "none") out.push("the disc hasn't turned");
+    if (document.querySelector(".lc-table__result")?.innerHTML.trim()) out.push("the result shows mid-spin");
+    if (btn?.textContent !== "Skip") out.push(`mid-spin button reads "${btn?.textContent}"`);
+    if (form || spin) out.push("controls shown mid-spin");
+    return out;
+  }
+  // Landed.
+  const n = outcome === "win" ? 7 : 8;
+  if (!stage?.classList.contains("lc-table__stage--landed")) out.push("the stage never landed");
+  if (stage?.dataset.pocket !== String(n)) out.push(`the stage says pocket ${stage?.dataset.pocket}`);
+  // The disc rests with the pocket's centre under the pin at the top.
+  const m = new DOMMatrix(getComputedStyle(document.querySelector(".lc-wheel__turn")).transform);
+  const turned = ((Math.atan2(m.b, m.a) * 180 / Math.PI) + 360) % 360;
+  const rest = (((n - 0.5) * 30 + turned) % 360 + 360) % 360;
+  if (Math.min(rest, 360 - rest) > 1) out.push(`pocket ${n} rests ${rest.toFixed(1)} degrees off the pin`);
+  const result = document.querySelector(".lc-table__result");
+  const text = result?.innerText.replace(/\s+/g, " ").trim() ?? "";
+  const verdict = outcome === "win" ? "The ball lands on 7, evocation red, Uncommon." : "The ball lands on 8, abjuration black, Common.";
+  if (!text.startsWith(verdict)) out.push(`the verdict reads "${text}"`);
+  if (!result?.closest("[aria-live]")) out.push("the verdict is not in a live region");
+  const nets = outcome === "win" ? ["Tam Thornwick wins 75 gp on 7, Evocation red", "Orla Vane loses 10 gp", "Bo Marrow loses 10 gp"] : ["Bo Marrow wins 10 gp on Abjuration black", "Orla Vane breaks even on Even", "Tam Thornwick loses 25 gp"];
+  for (const line of nets) if (!text.includes(line)) out.push(`the nets don't say "${line}"`);
+  const won = [...document.querySelectorAll(".lc-spot--won")].map(s => s.dataset.spot).sort().join();
+  const wantWon = outcome === "win" ? "colour:0,number:7,parity:odd,rarity:uncommon" : "colour:1,number:8,parity:even,rarity:common";
+  if (won !== wantWon) out.push(`the lit spots are ${won}`);
+  if (![...document.querySelectorAll(".lc-spot:not(.lc-spot--won)")].every(s => s.classList.contains("lc-spot--out"))) out.push("a losing spot didn't step back");
+  if (!document.querySelector(".lc-vault")?.classList.contains(outcome === "win" ? "lc-rarity-uncommon" : "lc-rarity-common")) out.push("the vault isn't in the pocket's rarity");
+  if (btn?.textContent !== "Close" || document.activeElement !== btn) out.push("landed table has no focused Close");
+  if (form || spin) out.push("controls shown after the landing");
+  const quiet = document.querySelector(".lc-table__verdict");
+  if (quiet && parseFloat(getComputedStyle(quiet).fontSize) < 11) out.push("the verdict is under 11px");
+  return out;
+}
+
 // The shop's honesty rules, read from the DOM: no "0%" anywhere, every pill
 // names its rarity, every unbuyable Buy (aria-disabled, never disabled, so it
 // keeps focus) points at visible reasons, a shop-wide
@@ -643,7 +810,10 @@ try {
       // back to system fonts and plain grounds; that isn't a failure.
       page.on("console", m => { if (m.type() === "error" && !m.text().startsWith("Failed to load resource")) errors.push(m.text()); });
       await page.goto(`http://localhost:${PORT}/harness/?${query}`, { waitUntil: "networkidle" });
-      if (name.startsWith("landed") || name === "replay" || name.startsWith("well") || (name.startsWith("dice") && name !== "dice-rolling") || (name.startsWith("deck") && name !== "deck-held")) await page.waitForSelector("body[data-landed]", { timeout: 10000 });
+      if (name.startsWith("landed") || name === "replay" || name.startsWith("well") || (name.startsWith("dice") && name !== "dice-rolling") || (name.startsWith("deck") && name !== "deck-held") || (name.startsWith("roulette") && name !== "roulette-spinning")) await page.waitForSelector("body[data-landed]", { timeout: 10000 });
+      if (name.startsWith("table")) await page.waitForSelector("body[data-ready]", { timeout: 10000 });
+      // Mid-spin: the disc has turned (reduced motion is off for this state).
+      if (name === "roulette-spinning") await page.waitForFunction(() => getComputedStyle(document.querySelector(".lc-wheel__turn")).transform !== "none", null, { timeout: 10000 });
       // Mid-hold: the card is posed face-down (reduced motion is off for
       // this state); a frame in, it has lifted.
       if (name === "deck-held") await page.waitForFunction(() => getComputedStyle(document.querySelector(".lc-deck__card")).transform !== "none", null, { timeout: 10000 });
@@ -658,7 +828,9 @@ try {
         problems0.push(...await page.evaluate(wellCardProblems, { capped: name === "shop-well-capped", closed: name === "shop-closed" }));
         problems0.push(...await page.evaluate(diceCardProblems, { closed: name === "shop-closed", busy: name === "shop-busy" }));
         problems0.push(...await page.evaluate(deckCardProblems, { streak: name === "shop-deck-streak", closed: name === "shop-closed", busy: name === "shop-busy" }));
+        problems0.push(...await page.evaluate(rouletteCardProblems, { noRound: name === "shop-no-round", closed: name === "shop-closed", busy: name === "shop-busy" }));
       }
+      else if (name.startsWith("table") || name.startsWith("roulette")) problems0.push(...await page.evaluate(tableProblems, { phase: { "table-betting": "betting", "table-waiting": "waiting", "table-closed": "closed", "roulette-spinning": "spinning", "roulette-won": "landed", "roulette-lost": "landed" }[name], outcome: name === "roulette-lost" ? "lose" : "win", gm: name === "table-waiting" }));
       else if (name.startsWith("dice")) problems0.push(...await page.evaluate(diceProblems, { "dice-rolling": "rolling", "dice-won": "win", "dice-lost": "lose" }[name]));
       else if (name.startsWith("deck")) problems0.push(...await page.evaluate(deckProblems, { "deck-held": "held", "deck-boon": "item", "deck-bane": "loss", "deck-effect": "effect" }[name]));
       else if (name === "manager-dropped") problems0.push(...await page.evaluate(droppedProblems));

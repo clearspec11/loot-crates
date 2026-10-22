@@ -23,6 +23,9 @@
     by the round as soon as the row is marked.
   - A round resolves at most once: "resolved" is written before any coin
     moves, and a resolve that finds it so does nothing.
+  What a round is doing, in words (roundState, clockText), is here too, so
+  a table game's shop card and the shared table window say one thing; a
+  kind puts it in its own voice (kinds.js tableView.words).
 */
 
 // How long an "until the GM spins" round may sit before a GM's load
@@ -101,9 +104,13 @@ export function nextStaleAt(rounds = {}) {
   is closed and the GM told) or "owner" (the staking user no longer owns
   the character, or is gone: the stake goes back to the character, not
   paid). `settle(row)` is the kind's payoff for a stake that passed: {
-  payoutCp, name? }. A payout is coins back to the character, never below
-  0: the stake was already taken, so a table game can't take more.
-  Returns [{ row, action: "settle" | "refund" | "void", reason?, payoutCp, name? }].
+  payoutCp, name?, result?, grant? }. A payout is coins back to the
+  character, never below 0: the stake was already taken, so a table game
+  can't take more. `grant` is Item data the core puts on the character's
+  sheet at the resolve (the wheel's item on a rarity band), with `result`
+  naming it ({ name, uuid, rarity }) so the row carries what the refund
+  needs. Returns [{ row, action: "settle" | "refund" | "void", reason?,
+  payoutCp, name?, result?, grant? }].
 */
 export function planResolve(rows, { check, settle }) {
   return rows.map(row => {
@@ -112,7 +119,7 @@ export function planResolve(rows, { check, settle }) {
     if (guard !== "ok") return { row, action: "refund", reason: guard || "owner", payoutCp: 0 };
     const out = settle(row) ?? {};
     const payoutCp = Math.max(0, Math.round(Number(out.payoutCp) || 0));
-    return { row, action: "settle", payoutCp, name: out.name ?? null, result: out.result ?? null };
+    return { row, action: "settle", payoutCp, name: out.name ?? null, result: out.result ?? null, grant: out.grant ?? null };
   });
 }
 
@@ -136,9 +143,14 @@ export function coinsByActor(lines) {
   return by;
 }
 
-// The log row patch for each plan line.
+// The log row patch for each plan line. A settled stake that won an item
+// carries it as a crate's row does (itemId, uuid, rarity), so the one
+// Refund finds and removes it.
 export function rowPatch(line, now = Date.now()) {
-  if (line.action === "settle") return { status: "settled", payoutCp: line.payoutCp, settledAt: now, ...(line.name ? { name: line.name } : {}) };
+  if (line.action === "settle") {
+    const item = line.itemId ? { itemId: line.itemId, uuid: line.result?.uuid ?? null, rarity: line.result?.rarity ?? null } : {};
+    return { status: "settled", payoutCp: line.payoutCp, settledAt: now, ...(line.name ? { name: line.name } : {}), ...item };
+  }
   return { status: "refunded", payoutCp: 0, refunded: now, refundReason: line.reason };
 }
 
@@ -199,5 +211,39 @@ const STAKE_REASON = {
 };
 export function stakeNote(row) {
   if (!row?.roundId) return "";
-  return rowStatus(row) === "open" ? "Open: waiting on the spin." : STAKE_REASON[row.refundReason] ?? "";
+  const status = rowStatus(row);
+  if (status === "open") return "Open: waiting on the spin.";
+  if (status === "settled") return Math.round(Number(row.payoutCp) || 0) > 0 ? "" : "Lost at the spin.";
+  return STAKE_REASON[row.refundReason] ?? "";
+}
+
+// "0:42" from a time left in ms.
+export function clockText(ms) {
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
+/*
+  What a round is doing, in words, for a table game's shop card and the
+  shared table window's head: { key: "none" | "open" | "clock" | "closed" |
+  "spinning", text, closesAt }. "clock" counts down (the card's one ticking
+  line, data-lc-countdown). A kind says it in its own words through
+  `words` (the wheel's "The wheel is turning"; tableView.words, kinds.js);
+  these are the plain ones.
+*/
+export const ROUND_WORDS = {
+  none: "No round open yet",
+  closed: "Bets are closed",
+  waiting: "Bets are closed: waiting for the GM",
+  clock: left => `Bets close in ${clockText(left)}`,
+  open: "Bets are open until the GM calls it",
+  held: "The table is settling",
+};
+export function roundState(round, { now = Date.now(), held = false, words = {} } = {}) {
+  const w = { ...ROUND_WORDS, ...words };
+  if (held) return { key: "spinning", text: w.held };
+  if (!round || round.status === STATUS.RESOLVED) return { key: "none", text: w.none };
+  if (stakeReason(round, now)) return { key: "closed", text: w.closed };
+  if (round.closesAt != null) return { key: "clock", text: w.clock(round.closesAt - now), closesAt: round.closesAt };
+  return { key: "open", text: w.open };
 }

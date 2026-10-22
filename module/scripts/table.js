@@ -33,10 +33,10 @@
   onTable(fn) hears each of them on this client (B2's window).
 */
 import { SOCKET } from "./config.js";
-import { getBoxes, getLog, getRounds, saveRound, saveRounds, updateLogRows, enqueueWrite, newId } from "./store.js";
+import { getBoxes, getPools, getLog, getRounds, saveRound, saveRounds, updateLogRows, enqueueWrite, newId } from "./store.js";
 import { getKind, kindFor, PullError } from "./kinds.js";
 import { settle } from "./currency.js";
-import { rollRng } from "./pull.js";
+import { rollRng, resolveSource } from "./pull.js";
 import { newRound, liveRoundOf, openStakesOf, staleStakes, staleAt, planResolve, coinsByActor, rowPatch, STATUS } from "./round.js";
 // reveal.js imports socket.js, which imports this file; each side reaches
 // the other only inside a function.
@@ -112,12 +112,27 @@ function guardAtResolve(row) {
 }
 
 /*
-  The coins of a set of plan lines (round.js): marks every row in one log
-  write, then pays each character once through settle(). Returns the names
-  of characters whose purse couldn't be written (reported to the GM).
+  The coins of a set of plan lines (round.js): grants any item a settled
+  stake won (so its id is on the row), marks every row in one log write,
+  then pays each character once through settle(). A grant that fails
+  leaves the stake paid in coins, reported to the GM. Returns the names of
+  characters whose purse couldn't be written (reported to the GM).
 */
 export async function closeStakes(lines, now = Date.now()) {
   if (!lines.length) return [];
+  for (const l of lines) {
+    if (l.action !== "settle" || !l.grant) continue;
+    const actor = game.actors.get(l.row.actorId);
+    try {
+      const [created] = actor ? await actor.createEmbeddedDocuments("Item", [l.grant]) : [];
+      l.itemId = created?.id ?? null;
+    } catch (err) {
+      console.error(`loot-crates | granting ${l.result?.name ?? "the item"} to ${l.row.actorName} at the spin failed; the stake is paid in coins only`, err);
+      globalThis.ui?.notifications?.error(`Loot Crates: ${l.row.actorName} won ${l.result?.name ?? "an item"} at ${l.row.boxName}, but it couldn't be added to their sheet. Check the console.`);
+      l.itemId = null;
+    }
+    if (!l.itemId) { l.result = null; l.grant = null; }
+  }
   await updateLogRows(lines.map(l => [l.row.id, rowPatch(l, now)]));
   const unpaid = [];
   for (const [actorId, cp] of coinsByActor(lines)) {
@@ -167,12 +182,15 @@ async function doResolve(roundId, rng) {
 
   // The outcome is decided here, once, before anything is written or shown.
   // A game deleted since the round opened can't roll: its stakes go back.
+  // The kind's `grants` (Item data by row id, for stakes that won an item)
+  // reach settle() and the sheet, never the broadcast.
   let outcome = null;
+  let grants = {};
   let extra = {};
-  if (kind) ({ outcome = null, ...extra } = (await kind.roll({ game: box, round, stakes: rows, rng, log, now })) ?? {});
+  if (kind) ({ outcome = null, grants = {}, ...extra } = (await kind.roll({ game: box, round, stakes: rows, rng, log, now, pools: getPools(), resolveSource })) ?? {});
   const plan = planResolve(rows, {
     check: row => { const g = guardAtResolve(row); return g === "ok" && !kind ? "game" : g; },
-    settle: row => kind.settle?.({ game: box, round, outcome, row, stake: row.stake }) ?? { payoutCp: 0 },
+    settle: row => kind.settle?.({ game: box, round, outcome, row, stake: row.stake, grants: grants ?? {} }) ?? { payoutCp: 0 },
   });
 
   const resolved = await saveRound({ ...round, status: STATUS.RESOLVED, closedAt: round.closedAt ?? now, resolvedAt: now, outcome });
@@ -183,7 +201,7 @@ async function doResolve(roundId, rng) {
     ...extra,
     type: "round", event: "resolve", roundId, boxId: round.boxId, kind: round.kind,
     box: { id: round.boxId, name: boxName }, outcome,
-    stakes: plan.map(l => ({ logId: l.row.id, actorId: l.row.actorId, actorName: l.row.actorName, userId: l.row.userId, price: l.row.price, stake: l.row.stake ?? null, action: l.action, reason: l.reason ?? null, payoutCp: l.payoutCp, name: l.name ?? null, result: l.result ?? null })),
+    stakes: plan.map(l => ({ logId: l.row.id, actorId: l.row.actorId, actorName: l.row.actorName, userId: l.row.userId, price: l.row.price, stake: l.row.stake ?? null, action: l.action, reason: l.reason ?? null, payoutCp: l.payoutCp, name: l.name ?? null, result: l.result ?? null, itemId: l.itemId ?? null })),
   };
   announce(reveal);
   // The round's one chat card, tied to the round (its seal is the round's hold).

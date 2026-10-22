@@ -41,6 +41,11 @@
      loss card, deck.js). Cold slate, the same in both themes: not gold (that
      is treasure), not amber (that is a problem), not a rarity. */
   --lc-bane: #5b8a9a;
+  /* The wheel's two pocket tones (roulette.js), fixed like the vault they
+     sit in: the card band's maroon and a warm near-black. The GM names
+     them; the rim of each pocket carries its rarity. */
+  --lc-wheel-a: #7a1d2e;
+  --lc-wheel-b: #2b2227;
 
   --lc-radius: 4px;
   --lc-shadow: 0 0 6px rgba(0, 0, 0, .45);
@@ -167,17 +172,17 @@
 /* A Buy that is off says so with aria-disabled (it keeps focus; boxcard.js),
    and looks exactly like a disabled button. */
 :where(.loot-crates .window-content) button:is(:disabled, [aria-disabled="true"]) { cursor: not-allowed; color: var(--lc-ink-mute); border-style: dashed; }
-.loot-crates .lc-box__buy, .loot-crates .lc-reveal__close, .loot-crates .lc-reveal__again {
+.loot-crates .lc-box__buy, .loot-crates .lc-reveal__close, .loot-crates .lc-reveal__again, .loot-crates .lc-table__bet, .loot-crates .lc-table__spin {
   position: relative; background: var(--lc-btn); color: var(--lc-btn-ink); border: none;
   font-weight: 700; box-shadow: var(--lc-shadow); min-height: 36px; padding: 0 16px;
 }
-.loot-crates .lc-box__buy::after, .loot-crates .lc-reveal__close::after, .loot-crates .lc-reveal__again::after {
+.loot-crates .lc-box__buy::after, .loot-crates .lc-reveal__close::after, .loot-crates .lc-reveal__again::after, .loot-crates .lc-table__bet::after, .loot-crates .lc-table__spin::after {
   content: ""; position: absolute; inset: 3px; border: 1px solid var(--lc-btn-rule); border-radius: 3px; pointer-events: none;
 }
-.loot-crates .lc-box__buy:not([aria-disabled="true"]):hover, .loot-crates .lc-reveal__close:not(:disabled):hover, .loot-crates .lc-reveal__again:not([aria-disabled="true"]):hover { color: var(--lc-pin); }
-.loot-crates .lc-box__buy:not([aria-disabled="true"]):hover::after, .loot-crates .lc-reveal__close:not(:disabled):hover::after, .loot-crates .lc-reveal__again:not([aria-disabled="true"]):hover::after { border-color: var(--lc-btn-ink); }
-.loot-crates .lc-box__buy[aria-disabled="true"], .loot-crates .lc-reveal__again[aria-disabled="true"] { background: var(--lc-row-alt); color: var(--lc-ink-mute); box-shadow: none; }
-.loot-crates .lc-box__buy[aria-disabled="true"]::after, .loot-crates .lc-reveal__again[aria-disabled="true"]::after { border: 1px dashed var(--lc-rule-soft); }
+.loot-crates .lc-box__buy:not([aria-disabled="true"]):hover, .loot-crates .lc-reveal__close:not(:disabled):hover, .loot-crates .lc-reveal__again:not([aria-disabled="true"]):hover, .loot-crates .lc-table__bet:not([aria-disabled="true"]):hover, .loot-crates .lc-table__spin:not([aria-disabled="true"]):hover { color: var(--lc-pin); }
+.loot-crates .lc-box__buy:not([aria-disabled="true"]):hover::after, .loot-crates .lc-reveal__close:not(:disabled):hover::after, .loot-crates .lc-reveal__again:not([aria-disabled="true"]):hover::after, .loot-crates .lc-table__bet:not([aria-disabled="true"]):hover::after, .loot-crates .lc-table__spin:not([aria-disabled="true"]):hover::after { border-color: var(--lc-btn-ink); }
+.loot-crates .lc-box__buy[aria-disabled="true"], .loot-crates .lc-reveal__again[aria-disabled="true"], .loot-crates .lc-table__bet[aria-disabled="true"], .loot-crates .lc-table__spin[aria-disabled="true"] { background: var(--lc-row-alt); color: var(--lc-ink-mute); box-shadow: none; }
+.loot-crates .lc-box__buy[aria-disabled="true"]::after, .loot-crates .lc-reveal__again[aria-disabled="true"]::after, .loot-crates .lc-table__bet[aria-disabled="true"]::after, .loot-crates .lc-table__spin[aria-disabled="true"]::after { border: 1px dashed var(--lc-rule-soft); }
 
 :where(.loot-crates .window-content) :is(input, select) {
   font-family: var(--lc-body); font-size: 13px; min-height: 30px; padding: 0 8px; box-sizing: border-box;
@@ -631,6 +636,126 @@
 }
 .loot-crates .lc-form .lc-cards { container: lc-rows / inline-size; }
 
+/* ---------- The table and the wheel (tablewindow.js, roulette.js) ---------- */
+
+/* The shared table window: the head names the game, the bets down and
+   what the round is doing; the vault holds the kind's stage (the wheel
+   beside the rail of bet spots and chips) and the result; under it a
+   player's bet form and the GM's Spin, then the one close button. */
+.loot-crates .lc-table__body { display: grid; gap: 10px; }
+.loot-crates .lc-table__head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; }
+.loot-crates .lc-table__count { color: var(--lc-ink-mute); }
+/* The round's state, in the data voice; a clock counts in tabular figures. */
+.loot-crates .lc-table__state { margin-left: auto; font-family: var(--lc-label); font-size: 12px; font-weight: 700; letter-spacing: .03em; color: var(--lc-gold-ink); font-variant-numeric: tabular-nums; }
+.loot-crates .lc-table__state[data-state="closed"], .loot-crates .lc-table__state[data-state="void"], .loot-crates .lc-table__state[data-state="landed"] { color: var(--lc-ink-mute); }
+/* The stage: the wheel beside the rail, the rail running under it in a
+   narrow window. */
+.loot-crates .lc-table__stage { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 16px 22px; }
+.loot-crates .lc-table__stage--landed .lc-wheel__ball, .loot-crates .lc-table__stage--spinning .lc-wheel__ball { opacity: 1; }
+
+/* The wheel, top down: a gold-rimmed disc of pocket wedges in the two
+   tones, each pocket's rim arc in its rarity (the odds ribbon bent round),
+   the pin's diamond at the top as the marker, and the ball, a gold coin on
+   its own orbit. roulette.js writes the disc's and the orbit's rotation,
+   and the ball's radius, from one animation frame loop; nothing else moves. */
+.loot-crates .lc-wheel { position: relative; width: 200px; height: 200px; flex: none; margin-top: 6px; }
+.loot-crates .lc-wheel__turn { position: absolute; inset: 0; }
+.loot-crates .lc-table__stage--spinning .lc-wheel__turn, .loot-crates .lc-table__stage--spinning .lc-wheel__orbit { will-change: transform; }
+.loot-crates .lc-wheel__disc { display: block; width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 8px 14px rgba(0, 0, 0, .6)); }
+.loot-crates .lc-wheel__ground { fill: var(--lc-vault-card); stroke: var(--lc-gold-rim); stroke-width: 1.5; }
+.loot-crates .lc-wheel__pocket { stroke: var(--lc-vault); stroke-width: .8; }
+.loot-crates .lc-wheel__pocket--0 { fill: var(--lc-wheel-a); }
+.loot-crates .lc-wheel__pocket--1 { fill: var(--lc-wheel-b); }
+.loot-crates .lc-wheel__rim { fill: var(--lc-rarity, var(--lc-vault-line)); }
+.loot-crates .lc-wheel__n { fill: var(--lc-vault-ink); font-family: var(--lc-display); font-size: 15px; font-weight: 700; pointer-events: none; }
+.loot-crates .lc-wheel__hub { fill: var(--lc-vault); stroke: color-mix(in srgb, var(--lc-pin) 55%, transparent); stroke-width: 1; }
+.loot-crates .lc-wheel__pip { fill: var(--lc-pin); stroke: var(--lc-pin-edge); stroke-width: 1; }
+.loot-crates .lc-wheel__orbit { position: absolute; left: 50%; top: 50%; width: 0; height: 0; }
+.loot-crates .lc-wheel__ball {
+  position: absolute; left: -7px; top: -7px; width: 14px; height: 14px; border-radius: 50%; opacity: 0;
+  background: radial-gradient(circle at 35% 30%, #f8e7b4, var(--lc-pin) 45%, #8a7340 92%);
+  box-shadow: 0 0 0 1px var(--lc-pin-edge), 0 2px 5px rgba(0, 0, 0, .6);
+}
+.loot-crates .lc-wheel__pin {
+  position: absolute; left: 50%; top: -6px; width: 10px; height: 10px; margin-left: -5px; box-sizing: border-box;
+  background: var(--lc-pin); border: 1px solid var(--lc-pin-edge); transform: rotate(45deg);
+}
+
+/* The rail: the bet spots in the strip card's language (vault-card ground,
+   vault-line rule), colours and numbers in their pocket tone, a rarity
+   band's bar along its foot as a strip card's. Chips are gold coins with
+   the character's initial, stacked where they fall. */
+.loot-crates .lc-rail { flex: 1 1 300px; min-width: 0; max-width: 460px; display: grid; gap: 6px; }
+.loot-crates .lc-rail__row { display: grid; gap: 4px; }
+.loot-crates .lc-rail__row--outside { grid-template-columns: repeat(4, 1fr); }
+.loot-crates .lc-rail__row--numbers { grid-template-columns: repeat(6, 1fr); }
+.loot-crates .lc-rail__row--bands { grid-template-columns: repeat(auto-fit, minmax(64px, 1fr)); }
+.loot-crates .lc-spot {
+  position: relative; min-height: 46px; display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding: 4px 4px 8px; box-sizing: border-box; overflow: hidden;
+  background: var(--lc-vault-card); border: 1px solid var(--lc-vault-line); border-radius: var(--lc-radius); color: var(--lc-vault-soft);
+  transition: opacity 300ms ease, box-shadow 460ms ease, border-color 460ms ease;
+}
+.loot-crates .lc-spot__label { font-family: var(--lc-label); font-size: 11px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.loot-crates .lc-spot--number .lc-spot__label { font-family: var(--lc-display); font-size: 17px; line-height: 1; letter-spacing: 0; text-transform: none; color: var(--lc-vault-ink); }
+.loot-crates .lc-spot--colour.lc-wheel__pocket--0, .loot-crates .lc-spot--number.lc-wheel__pocket--0 { background: color-mix(in srgb, var(--lc-wheel-a) 72%, var(--lc-vault-card)); color: var(--lc-vault-ink); }
+.loot-crates .lc-spot--colour.lc-wheel__pocket--1, .loot-crates .lc-spot--number.lc-wheel__pocket--1 { background: var(--lc-wheel-b); color: var(--lc-vault-ink); }
+.loot-crates .lc-spot--rarity::after, .loot-crates .lc-spot--number::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: var(--lc-rarity); }
+.loot-crates .lc-spot__chips { display: flex; flex-wrap: wrap; justify-content: center; min-height: 18px; padding-left: 6px; }
+.loot-crates .lc-chip {
+  width: 18px; height: 18px; margin-left: -6px; border-radius: 50%; display: inline-grid; place-items: center; box-sizing: border-box;
+  font-family: var(--lc-label); font-size: 11px; font-weight: 700; line-height: 1; color: #2a1f12;
+  background: radial-gradient(circle at 35% 30%, #f8e7b4, var(--lc-pin) 50%, #a08a4c 95%);
+  box-shadow: 0 0 0 1px var(--lc-pin-edge), 0 2px 4px rgba(0, 0, 0, .6);
+}
+/* This viewer's own chips are ringed in the vault's ink, so a player finds theirs. */
+.loot-crates .lc-chip--mine { box-shadow: 0 0 0 1px var(--lc-pin-edge), 0 0 0 3px color-mix(in srgb, var(--lc-vault-ink) 80%, transparent), 0 2px 4px rgba(0, 0, 0, .6); }
+/* A chip that just landed drops onto the spot: motion answering a bet. */
+.loot-crates .lc-chip--new { animation: lc-chip-land 320ms cubic-bezier(.16, 1, .3, 1) both; }
+@keyframes lc-chip-land { from { transform: translateY(-14px) scale(1.35); opacity: 0; } to { transform: none; opacity: 1; } }
+/* Landed: the winning spots lift ringed in the pin's gold, their chips lit,
+   and the rest step back as the strip's other cards do. */
+.loot-crates .lc-spot--won { border-color: var(--lc-pin); box-shadow: inset 0 0 0 1px var(--lc-pin), 0 6px 12px rgba(0, 0, 0, .6); }
+.loot-crates .lc-spot--won .lc-chip { box-shadow: 0 0 0 1px var(--lc-pin-edge), 0 0 0 2px var(--lc-pin), 0 2px 6px rgba(0, 0, 0, .6); }
+.loot-crates .lc-spot--out { opacity: .45; }
+/* The vault washes in the pocket's rarity once the ball is down. */
+.loot-crates .lc-vault:has(.lc-table__stage--landed)::after { opacity: calc(.12 + var(--lc-rank, 0) * .12); }
+.loot-crates .lc-table__verdict { color: var(--lc-rarity, var(--lc-vault-soft)); }
+.loot-crates .lc-vault.lc-rarity-none .lc-table__verdict { color: var(--lc-vault-soft); }
+
+/* The bet form: the character, the kind's fields and one button, in a row
+   that wraps; a refused bet says why on the line under it. */
+.loot-crates .lc-table__form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 12px; margin: 0; }
+.loot-crates .lc-table__field { display: grid; gap: 3px; margin: 0; }
+.loot-crates .lc-table__field--stake input { width: 6.5em; }
+.loot-crates .lc-table__why { flex: 1 0 100%; font-size: 12px; font-weight: 700; color: var(--lc-warn); }
+.loot-crates .lc-table__why:empty { display: none; }
+.loot-crates .lc-reveal__actions .lc-table__spin { margin-right: auto; }
+
+/* The wheel's card in the shop: its drawn wheel where a crate shows its
+   peek, the bets' lines, and what the round is doing (the clock ticks). */
+.loot-crates .lc-wheel__icon { display: block; }
+.loot-crates .lc-box__round { font-family: var(--lc-label); font-size: 12px; font-weight: 700; letter-spacing: .03em; color: var(--lc-gold-ink); font-variant-numeric: tabular-nums; }
+.loot-crates .lc-box__round[data-round="none"], .loot-crates .lc-box__round[data-round="closed"] { color: var(--lc-ink-mute); }
+
+/* The chat card's mark for the round: the pocket's number in its tone. */
+.loot-crates .lc-chat__pocket {
+  display: grid; place-items: center; width: 42px; height: 42px; flex: none; box-sizing: border-box; border-radius: 50%;
+  font-family: var(--lc-display); font-size: 20px; font-weight: 700; color: var(--lc-vault-ink);
+  border: 2px solid var(--lc-gold-rim); box-shadow: inset 0 0 0 3px var(--lc-rarity);
+}
+.loot-crates .lc-chat__pocket.lc-wheel__pocket--0 { background: var(--lc-wheel-a); }
+.loot-crates .lc-chat__pocket.lc-wheel__pocket--1 { background: var(--lc-wheel-b); }
+
+/* The wheel editor's pockets: one row each (its number, its colour, its
+   rarity, remove), the row edged in its rarity as a pool entry is. */
+.loot-crates .lc-form .lc-pockets__colours { display: flex; gap: 10px; flex-wrap: wrap; }
+.loot-crates .lc-form .lc-pockets__colours label { flex: 1 1 10em; }
+.loot-crates .lc-form .lc-pockets__rows { display: grid; gap: 4px; margin-top: 8px; }
+.loot-crates .lc-form .lc-pocket-row { display: grid; grid-template-columns: 2.4em 1fr 1fr 30px; gap: 6px; align-items: center; padding: 2px 0 2px 8px; box-shadow: inset 3px 0 0 var(--lc-rarity, var(--lc-ink-mute)); }
+.loot-crates .lc-form .lc-pocket-row__n { font-family: var(--lc-slab); font-weight: 700; font-variant-numeric: tabular-nums; }
+.loot-crates .lc-form .lc-pocket-row .lc-pocket-row__remove { min-width: 30px; padding: 0; }
+
 /* ---------- Manager ---------- */
 
 .loot-crates .lc-manager__body { display: grid; grid-template-rows: auto 1fr; gap: 12px; height: 100%; }
@@ -865,6 +990,9 @@
   .loot-crates .lc-shop__field--purse { margin-left: 0; text-align: left; }
   .loot-crates .lc-shop__purse { justify-content: flex-start; }
   .loot-crates .lc-reveal__name { font-size: 28px; }
+  .loot-crates .lc-rail__row--numbers { grid-template-columns: repeat(4, 1fr); }
+  .loot-crates .lc-rail__row--outside { grid-template-columns: repeat(2, 1fr); }
+  .loot-crates .lc-table__state { margin-left: 0; flex: 1 0 100%; }
 }
 
 /* A pool's rows, and the add-items preview's, follow their list's own
@@ -886,4 +1014,7 @@
   .loot-crates .lc-dice__die, .loot-crates .lc-dice__total { will-change: auto; }
   .loot-crates .lc-deck__card { will-change: auto; }
   .loot-crates .lc-reveal__where { animation: none; }
+  .loot-crates .lc-chip--new { animation: none; }
+  .loot-crates .lc-spot { transition: none; }
+  .loot-crates .lc-wheel__turn, .loot-crates .lc-wheel__orbit { will-change: auto; }
 }

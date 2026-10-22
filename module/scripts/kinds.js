@@ -98,13 +98,33 @@
                   (the Auction's one open stake per lot). Throws a PullError
                   for a bet the round can't take.
     roll(ctx)     GM side at the resolve, once per round: { game, round,
-                  stakes (the open rows), rng, log, now } -> { outcome,
-                  ...whatever the reveal broadcast carries besides }.
+                  stakes (the open rows), rng, log, now, pools,
+                  resolveSource } -> { outcome, grants?, ...whatever the
+                  reveal broadcast carries besides }. `grants` (Item data
+                  by row id, with its `result`) is for stakes that won an
+                  item: the core grants them at the resolve and never
+                  broadcasts them.
     settle(ctx)   per open stake that passed the resolve's guards: { game,
-                  round, outcome, row, stake } -> { payoutCp, name?,
-                  result? }: the coins the character gets back in copper
-                  (the stake was taken already, so 0 is a loss and a 1:1
-                  win on 10 gp is 2000), and what the row is called after.
+                  round, outcome, row, stake, grants } -> { payoutCp,
+                  name?, result?, grant? }: the coins the character gets
+                  back in copper (the stake was taken already, so 0 is a
+                  loss and a 1:1 win on 10 gp is 2000), what the row is
+                  called after, and the item it won, if any.
+    tableView     the shared table window's pieces (tableview.js,
+                  tablewindow.js): { title(game), verb ("bets"), words
+                  (what the round is doing, in this game's voice, over
+                  round.js ROUND_WORDS: { open, closed, waiting, clock(left),
+                  held, none }), fields(game, { esc, values }) -> the bet
+                  form's fields,
+                  pickOptions(game, type, picked, esc), readBet(game,
+                  values) -> { bet, price } or a PullError, mount(host, {
+                  pockets, esc }) -> { rail(html), spin({ index, onTick,
+                  onDrop, onLand, duration, reducedMotion }) -> the play
+                  controller }, rail(game, stakes, { esc, outcome, fresh,
+                  actorIds }) -> html, pockets(game), pocketsIn(reveal),
+                  outcomeIndex(reveal), result(reveal, { esc }) -> html,
+                  sting(reveal, { actorIds }), sounds: { tick(progress),
+                  drop() }, windowMs(game), rarityOf(reveal) }.
   The window that plays a round plugs into reveal.js setTableWindow.
 */
 
