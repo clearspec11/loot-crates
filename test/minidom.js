@@ -49,6 +49,8 @@ class Element extends Node {
     this.nodeName = tag.toUpperCase();
     this.attrs = new Map();
     this._value = null;
+    // Inline styles as a plain bag (well.js sets transform and opacity).
+    this.style = {};
     const el = this;
     this.dataset = new Proxy({}, {
       get: (_t, k) => el.getAttribute(`data-${String(k).replace(/[A-Z]/g, c => `-${c.toLowerCase()}`)}`) ?? undefined,

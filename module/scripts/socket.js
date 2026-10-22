@@ -41,7 +41,12 @@
   every later buyer behind each spin until their 30 s timeout fired while the
   GM still charged them.
 
-  Before each roll the GM sweeps the box's pools for entries whose source is
+  Every kind of game (kinds.js) comes through here the same way: the guards,
+  the queue, the charge and payout (pull.js), the reveal broadcast and the
+  log row are one copy; the kind adds its own fields to the reveal and the
+  row (the crate: its odds, its item's rarity and pity bookkeeping).
+
+  Before each roll the GM sweeps the game's pools for entries whose source is
   gone and flags them (store.js refreshMissing), so a dead item is taken out of
   the roll, the odds and the strip instead of failing after the buyer clicked.
   It reads only indexes already in memory (a few ms), never fetching one, so
@@ -63,10 +68,10 @@
 */
 import { SOCKET } from "./config.js";
 import { performPull, PullError } from "./pull.js";
-import { getBoxes, getPools, getActorState, setActorState, appendLog, updateLog, newId, isShopOpen, saveBox, enqueueWrite, refreshMissing, markMissing, reportMissing } from "./store.js";
+import { getKind, kindOf } from "./kinds.js";
+import { getBoxes, getPools, getLog, getActorState, setActorState, appendLog, updateLog, newId, isShopOpen, saveBox, enqueueWrite, refreshMissing, markMissing, reportMissing, todayKey } from "./store.js";
 import { showReveal } from "./reveal.js";
 import { postPullCard } from "./chat.js";
-import { shopOdds, resetsPity } from "./odds.js";
 
 export const GM_TIMEOUT_MS = 30000;
 // After this long without a reveal, the buyer's shop says it is waiting on
@@ -117,7 +122,7 @@ function lateCancel(sale) {
   sale.late = true;
   const { requestId, userId, buyerName, actorName, boxName, itemName, logId } = sale;
   console.warn(`loot-crates | ${buyerName} called off ${requestId} after ${actorName} was charged for ${boxName}; the sale stands`);
-  globalThis.ui?.notifications?.warn(`Loot Crates: ${buyerName} gave up waiting on ${boxName}, but ${actorName} had already been charged and got ${itemName}. To undo it, use Refund on the marked row in the Pull log.`);
+  globalThis.ui?.notifications?.warn(`Loot Crates: ${buyerName} gave up waiting on ${boxName}, but ${actorName} had already been charged and got ${itemName ?? "nothing"}. To undo it, use Refund on the marked row in the Pull log.`);
   game.socket.emit(SOCKET, { type: "late", requestId, userId, boxName, itemName, actorName });
   return enqueueWrite(() => updateLog(logId, { lateCancel: Date.now() }))
     .catch(err => console.error(`loot-crates | couldn't mark ${requestId}'s log row as called off`, err));
@@ -126,7 +131,7 @@ function lateCancel(sale) {
 // The buyer's side of lateCancel: their shop said the purchase was called
 // off, so say plainly that it went through.
 function openedAfterAll(msg) {
-  globalThis.ui?.notifications?.info(`Your ${msg.boxName} opened after all: ${msg.actorName} got ${msg.itemName}. Ask the GM if you'd like it refunded.`);
+  globalThis.ui?.notifications?.info(`Your ${msg.boxName} opened after all: ${msg.actorName} got ${msg.itemName ?? "nothing"}. Ask the GM if you'd like it refunded.`);
 }
 const uid = () => foundry.utils.randomID(12);
 
@@ -237,14 +242,14 @@ function watchForSlow(msg, timer, sent) {
 // The GM hears about a slow pull once per session, with its time, in a toast
 // that goes away by itself: it is advice, not an error to dismiss.
 let warnedSlow = false;
-function warnIfSlow(ms, { hidden, buyer }) {
+function warnIfSlow(ms, { hidden, buyer, noun = "crate" }) {
   if (ms <= SLOW_PULL_MS) return;
   const secs = (ms / 1000).toFixed(1);
   const why = hidden ? " while this Foundry tab was in the background. Browsers slow background tabs; keep this tab visible while players shop" : "";
-  console.warn(`loot-crates | ${buyer}'s crate took ${secs} s to open on this client${hidden ? " (tab in the background)" : ""}`);
+  console.warn(`loot-crates | ${buyer}'s ${noun} took ${secs} s to open on this client${hidden ? " (tab in the background)" : ""}`);
   if (warnedSlow) return;
   warnedSlow = true;
-  globalThis.ui?.notifications?.warn(`Loot Crates: ${buyer}'s crate took ${secs} s to open${why}.`);
+  globalThis.ui?.notifications?.warn(`Loot Crates: ${buyer}'s ${noun} took ${secs} s to open${why}.`);
 }
 
 // For tests: a new session.
@@ -306,15 +311,15 @@ async function sweepBox(box) {
   reported, not thrown back at the buyer as a failed purchase.
 */
 async function recordPull({ msg, box, actor, out, log }) {
-  const writes = [
-    setActorState(msg.actorId, msg.boxId, out.state),
-    appendLog(log),
-  ];
+  const writes = [appendLog(log)];
+  // A kind with no per-buyer state (nothing to count between plays) writes none.
+  if (out.state != null) writes.unshift(setActorState(msg.actorId, msg.boxId, out.state));
   if (box.rules?.stock != null) writes.push(saveBox({ ...box, rules: { ...box.rules, stock: box.rules.stock - 1 } }));
   const failed = (await Promise.allSettled(writes)).filter(r => r.status === "rejected");
   if (!failed.length) return;
-  for (const f of failed) console.error(`loot-crates | recording ${actor.name}'s pull of ${log.name} from ${box.name} failed`, f.reason);
-  globalThis.ui?.notifications?.error(`Loot Crates: ${actor.name} got ${log.name} from ${box.name}, but the pull log, stock or pity count wasn't saved. Check the console.`);
+  const got = out.result?.name ?? "nothing";
+  for (const f of failed) console.error(`loot-crates | recording ${actor.name}'s pull of ${got} from ${box.name} failed`, f.reason);
+  globalThis.ui?.notifications?.error(`Loot Crates: ${actor.name} got ${got} from ${box.name}, but the pull log, stock or pity count wasn't saved. Check the console.`);
 }
 
 async function doPull(msg, timer, sent, stopWatching) {
@@ -324,10 +329,11 @@ async function doPull(msg, timer, sent, stopWatching) {
     if (msg.userId === game.user.id) return;
     game.socket.emit(SOCKET, { ...payload, requestId: msg.requestId });
   };
+  let box;
   try {
     if (wasCancelled(msg)) return null;
     if (!isShopOpen()) throw new PullError("The GM has closed the shop.");
-    const box = getBoxes()[msg.boxId];
+    box = getBoxes()[msg.boxId];
     const actor = game.actors.get(msg.actorId);
     const buyer = game.users.get(msg.userId);
     if (!actor || !buyer || !actor.testUserPermission(buyer, "OWNER")) throw new PullError("You don't own that character.");
@@ -343,7 +349,11 @@ async function doPull(msg, timer, sent, stopWatching) {
         reportMissing([{ poolId: entry.poolId, poolName: getPools()[entry.poolId]?.name ?? entry.poolId, uuid: entry.uuid, name: entry.name }]);
       } catch (err) { console.error(`loot-crates | could not flag ${entry.uuid} as missing`, err); }
     };
-    const out = await performPull({ box, pools: getPools(), actor, state, onMissing, expectedPrice: msg.price });
+    // The log and the day reach the roll for a game that counts plays per
+    // day (the well's cap), read here inside the queue so two quick throws
+    // can't both pass.
+    const out = await performPull({ box, pools: getPools(), actor, state, onMissing, expectedPrice: msg.price, log: getLog(), today: todayKey() });
+    const kind = getKind(out.kind);
     timer.mark("roll+grant");
     ackIfSlow(msg, timer, sent);
 
@@ -353,32 +363,34 @@ async function doPull(msg, timer, sent, stopWatching) {
     const itemUuid = out.itemId ? `Actor.${actor.id}.Item.${out.itemId}` : null;
     const logId = newId();
     // Charged now: a cancel from here on is too late to drop the pull.
-    rememberCharge(msg.requestId, { requestId: msg.requestId, userId: msg.userId, buyerName: buyer.name, actorName: actor.name, boxName: box.name, itemName: out.result.name, logId });
-    // The odds are the ones this roll was made at: the buyer's state before
-    // it, and the pools performPull drew from, so an entry that went missing
-    // mid-pull isn't counted even if marking it in the setting failed.
-    // stateBefore is the buyer's pity and owned record before this pull: a
-    // client whose spin is still playing shows the shop from it until the
-    // spin lands (reveal.js heldState), since the new state is written
-    // just after this and would tell the result early.
-    const reveal = { type: "reveal", requestId: msg.requestId, userId: msg.userId, actorId: actor.id, actorName: actor.name, box: { id: box.id, name: box.name, price: box.price }, odds: shopOdds(box, out.pools, state).rows.map(({ rarity, chance, label }) => ({ rarity, chance, label })), result: out.result, strip: out.strip, purse: out.purse, itemId: out.itemId, itemUuid, logId, stateBefore: { sinceRare: state.sinceRare ?? 0, owned: [...(state.owned ?? [])], pulls: state.pulls ?? 0 } };
+    rememberCharge(msg.requestId, { requestId: msg.requestId, userId: msg.userId, buyerName: buyer.name, actorName: actor.name, boxName: box.name, itemName: out.result?.name ?? "nothing", logId });
+    // What every reveal carries, then what this kind adds (the crate: the
+    // odds this roll was made at and the buyer's state before it, which a
+    // client whose spin is still playing holds its shop at; reveal.js
+    // heldState). stateBefore defaults to the state as read, since the new
+    // one is written just after this and would tell the result early.
+    const ctx = { game: box, pools: out.pools, state, out };
+    const reveal = { ...out, type: "reveal", requestId: msg.requestId, userId: msg.userId, kind: out.kind, actorId: actor.id, actorName: actor.name, box: { id: box.id, name: box.name, price: box.price }, result: out.result, purse: out.purse, itemId: out.itemId, itemUuid, logId, stateBefore: { ...state }, ...(kind.revealExtra?.(ctx) ?? {}) };
+    delete reveal.grant;
+    delete reveal.state;
+    delete reveal.pools;
     stopWatching();
     game.socket.emit(SOCKET, reveal);
     timer.mark("broadcast");
     // A cancel that came in while the coins were being taken.
     if (msg.userId !== game.user.id && cancelled.delete(msg.requestId)) lateCancel(charged.get(msg.requestId));
-    warnIfSlow(timer.elapsed(), { hidden: hiddenAtStart || gmTabHidden(), buyer: actor.name });
+    warnIfSlow(timer.elapsed(), { hidden: hiddenAtStart || gmTabHidden(), buyer: actor.name, noun: kind.noun });
     showAndPost(reveal);
 
-    const log = { id: logId, boxId: box.id, boxName: box.name, actorId: actor.id, actorName: actor.name, userId: msg.userId, itemId: out.itemId, name: out.result.name, uuid: out.result.uuid, rarity: out.result.rarity, price: box.price, pity: out.result.pity, before: { sinceRare: state.sinceRare ?? 0, hadItem: (state.owned ?? []).includes(out.result.uuid) }, resetPity: resetsPity(box, out.result.rarity) };
-    // Provenance for a GM-set rarity: the source's own, only when it differs.
-    const src = out.sourceRarity ?? [];
-    if (out.rarityOverride && !(src.length === 1 && src[0] === out.result.rarity)) log.sourceRarity = src;
+    // The row every kind writes, then the kind's own columns (the crate: the
+    // item, its rarity and the pity bookkeeping a refund undoes). payoutCp
+    // is what the game paid back in copper; rows from before it count as 0.
+    const log = { id: logId, kind: out.kind, boxId: box.id, boxName: box.name, actorId: actor.id, actorName: actor.name, userId: msg.userId, itemId: out.itemId, price: box.price, payoutCp: out.payoutCp, ...(kind.logRow?.(ctx) ?? {}) };
     await recordPull({ msg, box, actor, out, log });
     timer.mark("record");
     return reveal;
   } catch (err) {
-    const message = err instanceof PullError ? err.message : "The crate jammed. Check the GM's console.";
+    const message = err instanceof PullError ? err.message : `The ${getKind(kindOf(box))?.noun ?? "crate"} jammed. Check the GM's console.`;
     if (!(err instanceof PullError)) console.error(`loot-crates | pull failed`, err);
     reply({ type: "error", userId: msg.userId, message });
     if (msg.userId === game.user.id) throw err instanceof PullError ? err : new PullError(message);

@@ -51,6 +51,22 @@ const STATES = [
   // "Watch again" from the chat card: the replay window, titled as a replay,
   // shows the item and no gold or Open item; the card shows the button.
   ["replay", "state=replay&seed=7"],
+  // The Wishing Well's three results (well.js), landed, as the buyer sees
+  // them: a quiet line for nothing and for the coin back, the item block
+  // for a find, each in the window's live region; no Watch again.
+  ["well-missed", "state=well&outcome=nothing&buyer=1&duration=0"],
+  ["well-coin", "state=well&outcome=coin&buyer=1&duration=0"],
+  ["well-won", "state=well&outcome=item&buyer=1&duration=0&seed=3"],
+  // Tam has thrown today's three coins: the well's Buy is off with the
+  // "still until tomorrow" line under it.
+  ["shop-well-capped", "state=shop&well=capped"],
+  // Dragon's Teeth (dicegame.js): the dice still tumbling (the button reads
+  // Skip, no total, no result yet), then landed on a win and on a loss as
+  // the buyer sees them: the verdict in the live region, the faces, the
+  // coins and the purse; no Watch again.
+  ["dice-rolling", "state=dice&outcome=win&buyer=1&phase=rolling&duration=100000"],
+  ["dice-won", "state=dice&outcome=win&buyer=1&duration=0"],
+  ["dice-lost", "state=dice&outcome=lose&buyer=1&duration=0"],
   ["manager", "state=manager"],
   // A manager window sized 480 px wide, on any screen: its rows follow the
   // window (a container query), so names wrap in full rather than cut off.
@@ -232,6 +248,160 @@ function replayProblems() {
   return out;
 }
 
+/*
+  The Wishing Well's reveal, read from the DOM: the result text is the
+  outcome's (and sits in a live region, so a screen reader hears it land),
+  the buyer sees the gold left, Close is focused, there is no Watch again,
+  the stage names the outcome and shows what it should (the coin back over
+  the water, the find surfaced), and nothing leaves the window.
+*/
+function wellProblems(outcome) {
+  const out = [];
+  const shown = el => !!el && !el.hidden && el.getBoundingClientRect().height > 0;
+  const result = document.querySelector(".lc-reveal__result");
+  const text = result?.innerText ?? "";
+  const want = { nothing: "The coin sinks. Nothing.", coin: "The coin comes back." }[outcome];
+  if (want && !text.includes(want)) out.push(`result reads "${text}"`);
+  if (!result?.closest("[aria-live]")) out.push("the result is not in a live region");
+  if (!/\d [gsc]p left/.test(text)) out.push("the buyer can't see the gold left");
+  if (!/\d of \d throws today/.test(text)) out.push("the buyer isn't told today's count");
+  if (outcome === "item") {
+    if (!document.querySelector(".lc-reveal__name")?.textContent) out.push("no item name in the result");
+    if (!/Added to .+'s inventory/.test(text)) out.push("a find doesn't say where it went");
+  } else if (/inventory/.test(text)) out.push("a quiet throw mentions the inventory");
+  const stage = document.querySelector(".lc-well");
+  if (!stage?.classList.contains("lc-well--landed")) out.push("the well never landed");
+  if (stage?.dataset.outcome !== outcome) out.push(`the stage says "${stage?.dataset.outcome}"`);
+  const coin = document.querySelector(".lc-well__coin");
+  const coinShown = !!coin && parseFloat(getComputedStyle(coin).opacity) > 0.5;
+  if ((outcome === "coin") !== coinShown) out.push(outcome === "coin" ? "the coin didn't come back" : "the coin is still showing");
+  const prize = document.querySelector(".lc-well__prize");
+  if (outcome === "item" && !(prize && parseFloat(getComputedStyle(prize).opacity) > 0.9 && prize.querySelector("img"))) out.push("the find didn't surface");
+  const close = document.querySelector(".lc-reveal__close");
+  if (close?.textContent !== "Close" || close.disabled || document.activeElement !== close) out.push("landed well has no focused Close");
+  if (shown(document.querySelector(".lc-reveal__watch"))) out.push("Watch again on a well");
+  if ((outcome === "item") !== shown(document.querySelector(".lc-reveal__open"))) out.push(outcome === "item" ? "no Open item for a find" : "Open item for a throw with no item");
+  const quiet = document.querySelector(".lc-reveal__quiet");
+  if (quiet && parseFloat(getComputedStyle(quiet).fontSize) < 11) out.push("the quiet line is under 11px");
+  const head = document.querySelector(".lc-reveal__head")?.innerText.replace(/\s+/g, " ") ?? "";
+  if (!/throws a coin into Wishing Well 1 sp/.test(head)) out.push(`head reads "${head}"`);
+  for (const el of document.querySelectorAll(".lc-reveal__body *")) {
+    const r = el.getBoundingClientRect();
+    if (r.right > document.documentElement.clientWidth + 1) { out.push(`well overflows: ${el.className}`); break; }
+  }
+  return out;
+}
+
+/*
+  Dragon's Teeth's reveal, read from the DOM. Landed: the verdict names the
+  total and the dragon's number and sits in a live region, the faces shown
+  are the sample's (4, 6, 5 or 2, 3, 4), the total under them is their
+  sum, the buyer sees the coins and the purse, Close is focused, there is
+  no Watch again and no Open item, the stage names the outcome. Rolling:
+  the button reads Skip, the result is empty, no total shows, the faces
+  tumble (none is blank), the dragon's number is on the stage.
+*/
+function diceProblems(outcome) {
+  const out = [];
+  const shown = el => !!el && !el.hidden && el.getBoundingClientRect().height > 0;
+  const stage = document.querySelector(".lc-dice");
+  if (!stage) return ["no dice stage"];
+  const faces = [...document.querySelectorAll(".lc-dice__tray .lc-dice__face")].map(f => f.textContent.trim());
+  const dragon = document.querySelector(".lc-dice__dragon")?.textContent.replace(/\s+/g, " ").trim() ?? "";
+  if (dragon !== "The dragon's 12") out.push(`the dragon line reads "${dragon}"`);
+  const total = document.querySelector(".lc-dice__total");
+  const head = document.querySelector(".lc-reveal__head")?.innerText.replace(/\s+/g, " ") ?? "";
+  if (!/rolls 3d6 to beat the dragon's 12 at Dragon's Teeth 10 gp/.test(head)) out.push(`head reads "${head}"`);
+  for (const el of document.querySelectorAll(".lc-reveal__body *")) {
+    const r = el.getBoundingClientRect();
+    if (r.right > document.documentElement.clientWidth + 1) { out.push(`dice overflow: ${el.className}`); break; }
+  }
+  const btn = document.querySelector(".lc-reveal__close");
+  if (outcome === "rolling") {
+    if (stage.classList.contains("lc-dice--landed")) out.push("the dice landed before the screenshot");
+    if (btn?.textContent !== "Skip") out.push(`mid-roll button reads "${btn?.textContent}"`);
+    if (document.querySelector(".lc-reveal__result")?.innerHTML.trim()) out.push("the result shows mid-roll");
+    if (total?.textContent.trim() || parseFloat(getComputedStyle(total).opacity) > 0.05) out.push("the total shows mid-roll");
+    if (faces.length !== 3 || faces.some(f => !/^[1-6]$/.test(f))) out.push(`tumbling faces: ${faces.join(",")}`);
+    if (faces.join(",") === "4,6,5") out.push("the tumbling dice already show the result");
+    return out;
+  }
+  const want = { win: ["4", "6", "5"], lose: ["2", "3", "4"] }[outcome];
+  if (faces.join(",") !== want.join(",")) out.push(`landed faces: ${faces.join(",")}`);
+  const sum = String(want.reduce((n, f) => n + Number(f), 0));
+  if (total?.textContent.trim() !== sum || parseFloat(getComputedStyle(total).opacity) < 0.95) out.push(`total reads "${total?.textContent}"`);
+  if (!stage.classList.contains("lc-dice--landed")) out.push("the dice never landed");
+  if (stage.dataset.outcome !== outcome) out.push(`the stage says "${stage.dataset.outcome}"`);
+  if (document.querySelectorAll(".lc-dice__die--set").length !== 3) out.push("not every die settled");
+  const result = document.querySelector(".lc-reveal__result");
+  const text = result?.innerText.replace(/\s+/g, " ") ?? "";
+  const verdict = outcome === "win" ? "15 beats the dragon's 12" : "9 doesn't beat the dragon's 12";
+  if (!text.includes(verdict)) out.push(`result reads "${text}"`);
+  if (!result?.closest("[aria-live]")) out.push("the result is not in a live region");
+  if (!text.includes(`Rolled ${want.join(", ")} on 3d6`)) out.push("the result doesn't name the faces");
+  if (!text.includes(outcome === "win" ? "Won 30 gp" : "Lost 10 gp")) out.push("the result doesn't say what the coins did");
+  if (!/\d [gsc]p in the purse/.test(text)) out.push("the buyer can't see the purse");
+  if (/inventory/.test(text)) out.push("a coin result mentions the inventory");
+  const verdictEl = document.querySelector(".lc-dice__verdict");
+  if (verdictEl && parseFloat(getComputedStyle(verdictEl).fontSize) < 11) out.push("the verdict is under 11px");
+  if (btn?.textContent !== "Close" || btn.disabled || document.activeElement !== btn) out.push("landed dice have no focused Close");
+  if (shown(document.querySelector(".lc-reveal__watch"))) out.push("Watch again on the dice");
+  if (shown(document.querySelector(".lc-reveal__open"))) out.push("Open item for a coin result");
+  return out;
+}
+
+// The dice card in the shop: the rule in words, Win and Lose as pills (no
+// 0%), a ribbon, the payout line, the prize line in its rarity, and "Bet
+// 10 gp" on the Buy, which is on in an open shop with no pull out.
+function diceCardProblems({ closed, busy }) {
+  const out = [];
+  const card = document.querySelector('.lc-box[data-box="dice"]');
+  if (!card) return ["no dice card in the shop"];
+  const buy = card.querySelector(".lc-box__buy");
+  const pills = [...card.querySelectorAll(".lc-odd")].map(p => p.textContent.trim()).join(", ");
+  if (pills !== "Win 26%, Lose 74%") out.push(`dice pills: ${pills}`);
+  if (card.querySelectorAll(".lc-ribbon__seg").length !== 2) out.push("the dice ribbon doesn't show win and lose");
+  const rule = card.querySelector(".lc-box__rule")?.textContent.trim();
+  if (rule !== "Roll 3d6 over the dragon's 12") out.push(`dice rule reads "${rule}"`);
+  if (card.querySelector(".lc-box__stock")?.textContent.trim() !== "Pays 3× the stake: 30 gp") out.push(`dice payout reads "${card.querySelector(".lc-box__stock")?.textContent}"`);
+  const prize = card.querySelector(".lc-box__prize");
+  if (prize?.textContent.trim() !== "A perfect 18 also wins an item") out.push(`dice prize reads "${prize?.textContent}"`);
+  if (prize && !prize.classList.contains("lc-rarity-legendary")) out.push("the prize line isn't in its best rarity");
+  if (!buy.textContent.includes("Bet 10 gp")) out.push(`dice Buy reads "${buy.textContent.trim()}"`);
+  if (!closed && !busy && buy.getAttribute("aria-disabled") === "true") out.push(`the dice Buy is off for "${card.querySelector(".lc-box__why")?.textContent}"`);
+  for (const el of [rule, prize].map((_, i) => card.querySelectorAll(".lc-box__rule, .lc-box__prize")[i]).filter(Boolean)) {
+    if (parseFloat(getComputedStyle(el).fontSize) < 11) out.push(`${el.className} is under 11px`);
+  }
+  return out;
+}
+
+// The well's card in the shop: the three outcomes named as pills (no 0%, no
+// rarity colour on paper beyond the diamond), a ribbon, "Throw 1 sp" on the
+// Buy, today's count under it, and at the cap the Buy off with the "still
+// until tomorrow" line as its visible reason.
+function wellCardProblems({ capped, closed }) {
+  const out = [];
+  const card = document.querySelector('.lc-box[data-box="well"]');
+  if (!card) return ["no well card in the shop"];
+  const buy = card.querySelector(".lc-box__buy");
+  const pills = [...card.querySelectorAll(".lc-odd")].map(p => p.textContent.trim()).join(", ");
+  if (pills !== "Nothing 90%, Coin back 8%, Item 2%") out.push(`well pills: ${pills}`);
+  if (card.querySelectorAll(".lc-ribbon__seg").length !== 3) out.push("the well's ribbon doesn't show its three outcomes");
+  const why = card.querySelector(".lc-box__why")?.textContent.trim() ?? "";
+  const count = card.querySelector(".lc-box__stock")?.textContent.trim() ?? "";
+  if (!buy.textContent.includes("Throw 1 sp")) out.push(`well Buy reads "${buy.textContent.trim()}"`);
+  if (capped) {
+    if (buy.getAttribute("aria-disabled") !== "true") out.push("the capped well's Buy is on");
+    if (why !== "The well is still until tomorrow (3 of 3 today)") out.push(`the capped well says "${why}"`);
+    if (count) out.push(`the capped well still counts: "${count}"`);
+    if (parseFloat(getComputedStyle(card.querySelector(".lc-box__why")).fontSize) < 11) out.push("the still line is under 11px");
+  } else {
+    if (count !== "1 of 3 throws today") out.push(`the well's count reads "${count}"`);
+    if (!closed && why) out.push(`the well is off for "${why}"`);
+  }
+  return out;
+}
+
 // The shop's honesty rules, read from the DOM: no "0%" anywhere, every pill
 // names its rarity, every unbuyable Buy (aria-disabled, never disabled, so it
 // keeps focus) points at visible reasons, a shop-wide
@@ -350,14 +520,23 @@ try {
       // back to system fonts and plain grounds; that isn't a failure.
       page.on("console", m => { if (m.type() === "error" && !m.text().startsWith("Failed to load resource")) errors.push(m.text()); });
       await page.goto(`http://localhost:${PORT}/harness/?${query}`, { waitUntil: "networkidle" });
-      if (name.startsWith("landed") || name === "replay") await page.waitForSelector("body[data-landed]", { timeout: 10000 });
+      if (name.startsWith("landed") || name === "replay" || name.startsWith("well") || (name.startsWith("dice") && name !== "dice-rolling")) await page.waitForSelector("body[data-landed]", { timeout: 10000 });
+      // Mid-roll: the dice are tumbling (reduced motion is off for this
+      // state); two frames in, they have faces to show.
+      if (name === "dice-rolling") await page.waitForFunction(() => [...document.querySelectorAll(".lc-dice__tray .lc-dice__face")].every(f => f.textContent.trim()), null, { timeout: 10000 });
       if (name.startsWith("manager")) await page.waitForSelector("body[data-ready]", { timeout: 10000 });
       await page.waitForTimeout(500);
       const wide = await page.evaluate(() => document.scrollingElement.scrollWidth > document.scrollingElement.clientWidth + 1);
-      if (name.startsWith("shop")) problems0.push(...await page.evaluate(shopProblems, name.slice(5)));
+      if (name.startsWith("shop")) {
+        problems0.push(...await page.evaluate(shopProblems, name.slice(5)));
+        problems0.push(...await page.evaluate(wellCardProblems, { capped: name === "shop-well-capped", closed: name === "shop-closed" }));
+        problems0.push(...await page.evaluate(diceCardProblems, { closed: name === "shop-closed", busy: name === "shop-busy" }));
+      }
+      else if (name.startsWith("dice")) problems0.push(...await page.evaluate(diceProblems, { "dice-rolling": "rolling", "dice-won": "win", "dice-lost": "lose" }[name]));
       else if (name === "manager-dropped") problems0.push(...await page.evaluate(droppedProblems));
       else if (name.startsWith("manager")) problems0.push(...await page.evaluate(managerProblems, name === "manager-narrow"));
       else if (name === "replay") problems0.push(...await page.evaluate(replayProblems));
+      else if (name.startsWith("well")) problems0.push(...await page.evaluate(wellProblems, { "well-missed": "nothing", "well-coin": "coin", "well-won": "item" }[name]));
       else problems0.push(...await page.evaluate(revealProblems, name === "landed-buyer" || name === "landed-missed"));
       if (name === "landed-missed") problems0.push(...await page.evaluate(missedProblems));
       if (name === "shop-short") {

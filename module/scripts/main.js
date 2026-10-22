@@ -11,6 +11,7 @@
 import { MODULE_ID } from "./config.js";
 import { registerSettings, setStoreListener, registerIndexFields, getPools, getBoxes, getLog, savePool, saveBox, entriesFromCompendium, entryFromItem, sweepAllPools } from "./store.js";
 import { registerSocket, requestPull, isActiveGM } from "./socket.js";
+import { registerKind, getKind, kindOf } from "./kinds.js";
 import { openShop, refreshShop, registerShopHooks } from "./shop.js";
 import { openManager, refreshManager, CrateManager } from "./manager.js";
 import { storeRedraw } from "./redraw.js";
@@ -37,7 +38,8 @@ Hooks.once("init", () => {
 Hooks.once("ready", () => {
   registerSocket();
   const mod = game.modules.get(MODULE_ID);
-  if (mod) mod.api = { openShop, openManager, requestPull, performPull, showReveal, showReplay, draw, oddsTable, buildStrip, seededRng, getPools, getBoxes, getLog, savePool, saveBox, entriesFromCompendium, entryFromItem };
+  // registerKind adds a game of chance that runs on the crate's core (kinds.js).
+  if (mod) mod.api = { openShop, openManager, requestPull, performPull, showReveal, showReplay, draw, oddsTable, buildStrip, seededRng, getPools, getBoxes, getLog, savePool, saveBox, entriesFromCompendium, entryFromItem, registerKind, getKind, kindOf };
   // Flag dead pool entries once at load, so the shop's odds are honest before
   // anyone buys; each pull sweeps its own box again (socket.js).
   if (isActiveGM()) sweepAllPools();

@@ -12,7 +12,7 @@ const boxes = Object.fromEntries(BOXES.map(b => [b.id, b]));
 let shopOpen = true;
 // The pity and ownership state per "actorId.boxId", as the world setting holds it.
 let states = {};
-vi.mock("../module/scripts/store.js", () => ({ getBoxes: () => boxes, getPools: () => POOLS, isShopOpen: () => shopOpen, getActorState: (a, b) => states[`${a}.${b}`] ?? {} }));
+vi.mock("../module/scripts/store.js", () => ({ getBoxes: () => boxes, getPools: () => POOLS, getLog: () => [], todayKey: () => null, isShopOpen: () => shopOpen, getActorState: (a, b) => states[`${a}.${b}`] ?? {} }));
 const requestPull = vi.fn(async () => ({}));
 vi.mock("../module/scripts/socket.js", () => ({ requestPull: (...args) => requestPull(...args) }));
 

@@ -58,12 +58,40 @@ export const BOX = {
   rules: { pity: { after: 8, minRarity: "rare" }, noDuplicates: false, stock: null },
 };
 
+// The Wishing Well (well.js): a silver a throw, almost always nothing, a
+// coin back now and then, rarely something from Leigh's homebrew; three
+// throws a day for each character.
+export const WELL = {
+  id: "well", kind: "well", name: "Wishing Well", price: 0.1,
+  pools: [{ id: "homebrew", share: 1 }],
+  weights: { common: 0, uncommon: 60, rare: 30, veryRare: 0, legendary: 10 },
+  odds: { nothing: 90, coin: 8, item: 2 },
+  rules: { cap: 3 },
+};
+// Tam's throws at it today (the harness's day is "y1d1"), newest first.
+export const wellThrows = n => Array.from({ length: n }, (_, i) => ({ id: `throw${i}`, kind: "well", outcome: "nothing", boxId: WELL.id, boxName: WELL.name, actorId: "tam", actorName: "Tam Thornwick", day: "y1d1", at: Date.UTC(2026, 9, 20, 10, 30 - i), price: WELL.price, payoutCp: 0, name: "Nothing" }));
+
+// Dragon's Teeth (dicegame.js): 10 gp to roll 3d6 over the dragon's 12,
+// paying three times the stake; a perfect 18 also wins something from
+// Leigh's homebrew.
+export const DICE = {
+  id: "dice", kind: "dice", name: "Dragon's Teeth", price: 10,
+  pools: [{ id: "homebrew", share: 1 }],
+  weights: { common: 0, uncommon: 60, rare: 30, veryRare: 0, legendary: 10 },
+  dice: { formula: "3d6", target: 12, multiplier: 3 },
+  rules: { prize: true },
+};
+// The faces each harness outcome shows: a win, a loss, a perfect roll.
+export const DICE_FACES = { win: [4, 6, 5], lose: [2, 3, 4], prize: [6, 6, 6] };
+
 export const BOXES = [
   BOX,
   { id: "common", name: "Pauper's Box", price: 25, pools: [{ id: "core", share: 1 }], weights: { common: 85, uncommon: 15, rare: 0, veryRare: 0, legendary: 0 }, rules: {} },
   { id: "royal", name: "Royal Vault", price: 1200, pools: [{ id: "core", share: 1 }, { id: "homebrew", share: 1 }], weights: { common: 0, uncommon: 20, rare: 45, veryRare: 28, legendary: 7 }, rules: { stock: 3 } },
   // Its only pool is gone: the shop shows it empty with Buy off.
   { id: "empty", name: "Collector's Crate", price: 60, pools: [{ id: "gone", share: 1 }], weights: {}, rules: {} },
+  WELL,
+  DICE,
 ];
 
 // The pool editor's sample: the core pool, a 130-entry pool built from a

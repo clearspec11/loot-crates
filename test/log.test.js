@@ -66,3 +66,52 @@ describe("a row its buyer called off after the charge", () => {
     expect(html).not.toContain("Called off by the buyer");
   });
 });
+
+/*
+  A well's misses (well.js) fold into one line per character and day with a
+  Refund that gives the newest throw back; "Hide misses" leaves the rest.
+*/
+describe("a well's throws that gave nothing", () => {
+  const miss = (id, at, over = {}) => ({ id, at, kind: "well", outcome: "nothing", boxId: "well", boxName: "Wishing Well", actorId: "a1", actorName: "Brinn", day: "y1d7", price: 0.1, name: "Nothing", ...over });
+
+  it("fold into one row naming the count, whose Refund one gives back the newest throw", () => {
+    log = [miss("n1", 30), miss("n2", 20), row({ id: "c1", at: 10 }), miss("n3", 5, { day: "y1d6" })];
+    const html = new CrateManager()._log();
+    expect(html).toContain('class="lc-row--group"');
+    expect(html).toContain("2 throws, nothing");
+    expect(html).toContain("1 throw, nothing");
+    expect(html).toContain('data-action="refund" data-row="n1" aria-label="Refund one of 2 throws">Refund one</button>');
+    expect(html).toContain('data-action="refund" data-row="n3" aria-label="Refund the throw">Refund</button>');
+    expect(html).not.toContain('data-row="n2"');
+    expect(html).toContain("Rope");
+    expect(html).toContain("Wishing Well (1 sp)");
+    expect(html).toContain('data-action="toggleMisses" aria-pressed="false">Hide misses</button>');
+    expect(html).toContain("3 throws that gave nothing, folded by day");
+    expect((html.match(/<tr /g) ?? []).length).toBe(3);
+  });
+
+  it("a refunded group reads as withdrawn, and Hide misses leaves only the pulls that gave something", () => {
+    log = [miss("n1", 30, { refunded: 40 }), miss("n2", 20), row({ id: "c1", at: 10 })];
+    const app = new CrateManager();
+    let html = app._log();
+    expect(html).toContain('class="lc-row--group lc-row--refunded"');
+    expect(html).toContain("<s>1 throw, nothing</s>");
+    expect(html).toContain('data-row="n1">refunded');
+    app.hideMisses = true;
+    html = app._log();
+    expect(html).not.toContain("throw, nothing");
+    expect(html).toContain("Rope");
+    expect(html).toContain('aria-pressed="true">Show misses</button>');
+    expect(html).toContain("2 throws that gave nothing hidden");
+    log = [miss("n2", 20)];
+    expect(app._log()).toContain("Only misses so far; show them with the button above.");
+  });
+
+  it("leaves a crate's log exactly as it was: no toolbar, no groups", () => {
+    log = [row({ id: "r1" }), row({ id: "r2", refunded: 5 })];
+    const html = new CrateManager()._log();
+    expect(html).not.toContain("toggleMisses");
+    expect(html).not.toContain("lc-row--group");
+    expect(html.startsWith("<table")).toBe(true);
+  });
+});

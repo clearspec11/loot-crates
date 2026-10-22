@@ -187,6 +187,7 @@ dnd5e's two sheet palettes (grey paper with maroon and gold; denim and slate wit
 
 ### Tertiary: the rarity ladder (user pin)
 - **Common** (`rarity-common`), **Uncommon** (`rarity-uncommon`), **Rare** (`rarity-rare`), **Very Rare** (`rarity-very-rare`), **Legendary** (`rarity-legendary`), **Artifact** (`rarity-artifact`). One rule per rarity class sets `--lc-rarity` and `--lc-rank` (0 to 5); everything reads them.
+- Two swatches that aren't a rarity, for the Wishing Well's outcomes, read through the same variable: **None** (`lc-rarity-none`, mute ink: a throw that gave nothing) and **Coin** (`lc-rarity-coin`, the gold rim: the coin back). They colour pills, ribbon segments and log dots only.
 
 ### Neutral
 - **Paper Ground** (`paper-ground`) under dnd5e's two grey textures; **Denim Ground** (`denim-ground`) under Foundry's denim.
@@ -201,7 +202,9 @@ dnd5e's two sheet palettes (grey paper with maroon and gold; denim and slate wit
 ### Named Rules
 **The Edges-On-Paper Rule.** On paper and slate, rarity colour appears only as an edge, a diamond or a ribbon segment: the peek and chat portraits' 3px underline, the 6 to 7px rotated-square diamond on pills, chips, rows and the log, and the ribbon's segments. Rarity text on paper is ink, never the rarity colour.
 
-**The Vault Speaks In Colour Rule.** Rarity-coloured text lives only inside the always-dark vault: the result name in its rarity, the strip card's foot bar, the landed card's ring and tint, and the vault's wash.
+**The Vault Speaks In Colour Rule.** Rarity-coloured text lives only inside the always-dark vault: the result name in its rarity, the strip card's foot bar, the landed card's ring and tint, the well's glow and the vault's wash.
+
+**The Quiet Result Rule.** A game's result that isn't a prize (the well's "The coin sinks. Nothing." and "The coin comes back.") is set in the display face at 24px in vault-soft, never a rarity colour, and goes to the window's live region like every result.
 
 **The Warn Is Not Gold Rule.** Problems (missing, renamed, no rarity) are amber on a warm wash with a dashed border, never gold, so they never read as treasure.
 
@@ -281,6 +284,9 @@ The vault holds the ribbon (max 520px, along its top edge), the strip and the re
 **Spin motion.** One requestAnimationFrame loop drives one translateX over the default 6.2s. For the first 86% of the time the strip runs to the target plus an overshoot (spin.js `spinDistance`): a short linear run-up (7% of that run), a constant-speed cruise (45%, about 39% of the whole spin) where the cards blur past and the tick rattles at its fastest, then a cubic ease-out that starts at the cruise speed and stops dead at the overshoot point. The speed never jumps between phases. The last 14% is an ease-in-out settle back. probe-spin checks the cruise: the marker's speed holds within 10% for at least 30% of the frames before the peak. On a near-miss the overshoot crosses half the result card and the gap and goes a quarter card into the teased card, which is one droppable rank up, then clicks back. Otherwise the overshoot stays inside the result card (18% of a card). Reduced motion skips straight to the landed state and drops the card, wash and line transitions.
 
 **Spin sound.** Every sound marks something the eye sees in the same frame. A tick per card that crosses the marker, falling from 900 Hz to 600 Hz with progress. The braking sweep is cued by the frame where the ease-out begins (spin.js `onPhase("brake")`, 2.77 s into the default spin), not by a timer: a sawtooth falling from 260 Hz to 90 Hz through a closing lowpass, fading out over exactly the time left until the settle. On a near-miss the teased card gets two quick rising notes above every tick, and the click back onto the result is one low, soft triangle note, so the pull forward and the drop back sound different. Then the rarity sting. A spin skipped, hidden or closed before the brake, or in reduced motion, plays no sweep; one that lands early mid-brake cuts the sweep in 40 ms, so it never winds on under the sting. A sound that fails never stops the strip.
+
+### The Well (the second stage in the vault)
+The Wishing Well's reveal uses the vault at the strip's height (168px) with its own pieces, placed once in CSS and moved only by transform and opacity from one animation frame loop: a dark water basin (280 x 96px ellipse, a 1px vault-line inset, a 3px rim at 40% gold rim), three ripple rings (1px at 70% pin gold), a 22px gold coin, a glow (the rarity colour at 85%, fading out by 70%) and the find in the strip card's 70px art frame with the landed card's pin-gold ring. The coin arcs in from the top left, tumbling, meets the water at 0.7s (the plop), sinks as the ripples run; by 1.8s nothing is left but the last ring, faint, or by 2.2s the coin hangs over the water again, or by 2.6s the glow has lifted the find and the vault takes the rarity wash as a landed strip does. Reduced motion and a hidden page land in the final pose at once. Sounds: a plop at the splash, a single soft plink for nothing, two rising notes for the coin back, the rarity sting for a find.
 
 ### The Odds Ribbon (signature)
 A 10px bar of the crate's real drop chances: a gold-rim frame with 2px padding, a 35% black inset hairline, and 1px gaps between segments, each grown by its share and filled with its rarity (minimum 4px). Hidden from assistive tech; the odds pills carry the words.

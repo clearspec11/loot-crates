@@ -14,7 +14,8 @@
 */
 import { SETTINGS } from "./config.js";
 
-export const SHOP_KEYS = [SETTINGS.BOXES, SETTINGS.POOLS, SETTINGS.STATE, SETTINGS.SHOP_OPEN];
+// The log too: a well's card counts today's throws from it (well.js).
+export const SHOP_KEYS = [SETTINGS.BOXES, SETTINGS.POOLS, SETTINGS.STATE, SETTINGS.SHOP_OPEN, SETTINGS.LOG];
 export const REDRAW_DELAY_MS = 100;
 
 /*

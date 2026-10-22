@@ -28,8 +28,22 @@
   ?dropped=1 (manager: the GM had the 200-entry pool filtered to Rare, then
   dropped its last item, a Very rare one, on it: the pool opens, the chip
   clears, the row is pinned at the top and focused, and the status line says so)
+  ?well=capped (shop: Tam has thrown 3 of 3 coins into the Wishing Well
+  today, so its card reads "The well is still until tomorrow (3 of 3 today)"
+  with its Buy off; without it Tam has thrown once: "1 of 3 throws today")
+  "well" is the Wishing Well's reveal (well.js): ?outcome=nothing | coin |
+  item (nothing by default), played at full length unless ?duration is
+  given (0 lands at once, for screenshots); buyer=1 as for landed.
+  "dice" is Dragon's Teeth's reveal (dicegame.js): ?outcome=win | lose |
+  prize (win by default; the faces are sample.js DICE_FACES), played at
+  full length unless ?duration is given (0 lands at once); ?phase=rolling
+  keeps the dice tumbling (reduced motion off) for a mid-roll screenshot,
+  with the button reading Skip; buyer=1 as for landed.
 */
-import { POOLS, BOX, BOXES, MANAGER_POOLS, MANAGER_SOURCES, MANAGER_BOXES } from "./sample.js";
+import { POOLS, BOX, BOXES, WELL, DICE, DICE_FACES, wellThrows, MANAGER_POOLS, MANAGER_SOURCES, MANAGER_BOXES } from "./sample.js";
+import { getKind, kindOf } from "../module/scripts/kinds.js";
+import { mountWell } from "../module/scripts/well.js";
+import { mountDice, resolve, rollData, parseFormula } from "../module/scripts/dicegame.js";
 import { poolRows, sortRows, defaultView, poolSummary, poolBody, pinRecent, dropNotice, poolUsers } from "../module/scripts/poolview.js";
 import { draw, seededRng } from "../module/scripts/odds.js";
 import { buildStrip } from "../module/scripts/strip.js";
@@ -57,7 +71,7 @@ const theme = q.get("theme") === "light" ? "light" : "dark";
 document.body.classList.replace("theme-dark", `theme-${theme}`);
 
 // The window the module would open for this state: its class and title.
-const WINDOWS = { shop: ["lc-shop", "Crate Shop"], manager: ["lc-manager", "Loot Crates"] };
+const WINDOWS = { shop: ["lc-shop", "Crate Shop"], manager: ["lc-manager", "Loot Crates"], well: ["lc-reveal", "A coin in the well"], dice: ["lc-reveal", "Dragon's Teeth"] };
 const [appClass, appTitle] = WINDOWS[state] ?? ["lc-reveal", "Opening a crate"];
 document.getElementById("app").classList.add(appClass);
 if (Number(q.get("width")) > 0) Object.assign(document.getElementById("app").style, { width: `${Number(q.get("width"))}px`, maxWidth: "100%" });
@@ -69,14 +83,14 @@ document.getElementById("title").textContent = appTitle;
 const CRATE_ICON = `<svg class="lc-box__icon" viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M3 8.5 12 4l9 4.5v8L12 21l-9-4.5z"/><path d="M3 8.5 12 13l9-4.5M12 13v8"/></svg>`;
 
 const nav = document.getElementById("nav");
-for (const [label, query] of [["shop", "state=shop"], ["spin", "state=spin"], ["landed", "state=landed"], ["landed, buyer", "state=landed&buyer=1"], ["missed", "state=landed&buyer=1&watched=0"], ["replay", "state=replay"], ["manager", "state=manager"]]) {
+for (const [label, query] of [["shop", "state=shop"], ["spin", "state=spin"], ["landed", "state=landed"], ["landed, buyer", "state=landed&buyer=1"], ["missed", "state=landed&buyer=1&watched=0"], ["replay", "state=replay"], ["well", "state=well&buyer=1"], ["well, coin", "state=well&outcome=coin&buyer=1"], ["well, item", "state=well&outcome=item&buyer=1"], ["dice", "state=dice&buyer=1"], ["dice, lost", "state=dice&outcome=lose&buyer=1"], ["dice, prize", "state=dice&outcome=prize&buyer=1"], ["manager", "state=manager"]]) {
   const a = document.createElement("a");
   a.href = `?${query}&seed=${seed}&theme=${theme}`;
   a.textContent = label;
   if (query === `state=${state}${buyer ? "&buyer=1" : ""}${unwatched ? "&watched=0" : ""}`) a.classList.add("active");
   nav.append(a);
 }
-if (state !== "shop" && state !== "manager") {
+if (state !== "shop" && state !== "manager" && state !== "well" && state !== "dice") {
   const again = document.createElement("a");
   again.href = `?state=spin&seed=${seed + 1}${q.has("box") ? `&box=${q.get("box")}` : ""}${buyer ? "&buyer=1" : ""}&theme=${theme}`;
   again.textContent = "open another";
@@ -97,10 +111,14 @@ const stage = document.getElementById("stage");
 // across renders by patchShop), the cards pointing at it. window.__lootCrates
 // .renderShop(extra) re-renders with extra ctx, as the shop does on each
 // change, so the smoke can check the notice node survives.
+// A game's card is its kind's (the well's), else the crate's, as shop.js picks it.
+const cardFor = (box, pools, ctx) => (getKind(kindOf(box))?.shop?.card ?? boxCard)(box, pools, ctx);
 function renderShop(extra = {}) {
   const ctx = {
-    purse, hasActor: true, actorName: "Tam Thornwick", open: !closed, gmOnline: closed !== "1", art: CRATE_ICON,
+    purse, hasActor: true, actorId: "tam", actorName: "Tam Thornwick", open: !closed, gmOnline: closed !== "1", art: CRATE_ICON,
     stateOf: id => (pityDue && id === BOX.id ? { sinceRare: BOX.rules.pity.after } : {}),
+    // The in-game day and the log the well counts today's throws from.
+    today: "y1d1", log: wellThrows(q.get("well") === "capped" ? WELL.rules.cap : 1),
     ...(waiting ? { busy: true, busyBox: BOXES[0].id, waiting } : {}), ...extra,
   };
   const fresh = document.createElement("div");
@@ -109,7 +127,7 @@ function renderShop(extra = {}) {
   fresh.innerHTML = shopHTML({
     fields: `${actorPicker({ actors: characters, actorId: "tam", busy: !!ctx.busy })}
         <div class="lc-shop__field lc-shop__field--purse"><span class="lc-label">Purse</span><span class="lc-shop__purse">${formatGold(purse)}</span></div>`,
-    cards: BOXES.map(b => boxCard(b, POOLS, ctx)).join(""),
+    cards: BOXES.map(b => cardFor(b, POOLS, ctx)).join(""),
     notice,
   });
   patchShop(stage, fresh, notice);
@@ -277,6 +295,115 @@ function renderManager() {
   document.body.dataset.ready = "1";
 }
 
+/*
+  The Wishing Well's reveal as reveal.js opens it, with the well kind's own
+  head, play, result and buttons (no Watch again). The outcome is picked by
+  the query, the item by the seed.
+*/
+async function renderWell() {
+  const outcome = ["nothing", "coin", "item"].includes(q.get("outcome")) ? q.get("outcome") : "nothing";
+  const kind = getKind("well").reveal;
+  const esc = s => String(s ?? "");
+  const drawn = outcome === "item" ? draw({ box: WELL, pools: POOLS, rng: seededRng(seed), state: {} }) : null;
+  const reveal = {
+    kind: "well", outcome, actorName: "Tam Thornwick", userId: "buyer",
+    box: { id: WELL.id, name: WELL.name, price: WELL.price },
+    result: outcome === "item" ? { uuid: drawn.entry.uuid, name: drawn.entry.name, img: drawn.entry.img, rarity: drawn.rarity, pity: false } : outcome === "coin" ? { name: "Coin back", outcome: "coin" } : null,
+    itemUuid: outcome === "item" ? "Actor.sample.Item.sample" : null,
+    purse: outcome === "coin" ? purse : charge(purse, WELL.price) ?? {},
+    payoutCp: outcome === "coin" ? Math.round(WELL.price * 100) : 0,
+    thrown: 2, cap: WELL.rules.cap,
+  };
+  const rarity = reveal.result?.rarity ?? "none";
+  stage.innerHTML = `
+    <div class="lc-reveal__body">
+      <div class="lc-reveal__head">${kind.head(reveal, { esc })}</div>
+      <div class="lc-vault lc-rarity-${rarity}">
+        <div class="lc-reveal__spin"></div>
+        <div class="lc-reveal__result lc-rarity-${rarity}" aria-live="polite"></div>
+      </div>
+      ${revealActionsHTML()}
+    </div>`;
+  const out = stage.querySelector(".lc-reveal__result");
+  const btn = stage.querySelector(".lc-reveal__close");
+  const open = stage.querySelector(".lc-reveal__open");
+  let landed = false;
+  const ctrl = mountWell(stage.querySelector(".lc-reveal__spin"), {
+    outcome, img: outcome === "item" ? reveal.result.img : "", rarity, duration,
+    onLand: () => {
+      landed = true;
+      out.innerHTML = kind.result(reveal, { esc, canSee: buyer });
+      open.hidden = !(buyer && outcome === "item");
+      btn.dataset.action = "dismiss";
+      btn.textContent = "Close";
+      btn.focus({ preventScroll: true });
+    },
+  });
+  btn.addEventListener("click", () => { if (landed) location.search = `?state=shop&seed=${seed}&theme=${theme}`; else ctrl.skip(); });
+  await ctrl.play();
+  document.body.dataset.landed = "1";
+  window.__lootCrates = { reveal };
+}
+
+/*
+  Dragon's Teeth's reveal as reveal.js opens it, with the dice kind's own
+  head, play, result and buttons (no Watch again). The outcome picks the
+  faces (sample.js DICE_FACES); the roll data is the shape Foundry's
+  Roll.toJSON gives, so the window reads it as a client would.
+*/
+async function renderDice() {
+  const outcome = ["win", "lose", "prize"].includes(q.get("outcome")) ? q.get("outcome") : "win";
+  const rolling = q.get("phase") === "rolling";
+  const kind = getKind("dice").reveal;
+  const esc = s => String(s ?? "");
+  const faces = DICE_FACES[outcome];
+  const { number, sides } = parseFormula(DICE.dice.formula);
+  const out = resolve(faces, { target: DICE.dice.target, multiplier: DICE.dice.multiplier, stakeCp: DICE.price * 100, sides });
+  const drawn = outcome === "prize" ? draw({ box: DICE, pools: POOLS, rng: seededRng(seed), state: {} }) : null;
+  const reveal = {
+    kind: "dice", actorName: "Tam Thornwick", userId: "buyer",
+    box: { id: DICE.id, name: DICE.name, price: DICE.price },
+    faces, roll: rollData(DICE.dice.formula, { number, sides, faces }), total: out.total, target: DICE.dice.target, formula: DICE.dice.formula, multiplier: DICE.dice.multiplier,
+    win: out.win, perfect: out.perfect, payoutCp: out.payoutCp, prize: !!drawn,
+    result: drawn ? { uuid: drawn.entry.uuid, name: drawn.entry.name, img: drawn.entry.img, rarity: drawn.rarity, pity: false } : out.win ? { name: "win", outcome: "win" } : null,
+    itemUuid: drawn ? "Actor.sample.Item.sample" : null,
+    purse: charge(purse, DICE.price) ?? {},
+  };
+  if (out.win) reveal.purse = charge({ ...purse, gp: purse.gp + out.payoutCp / 100 }, DICE.price) ?? reveal.purse;
+  const rarity = drawn ? drawn.rarity : out.win ? "coin" : "none";
+  stage.innerHTML = `
+    <div class="lc-reveal__body">
+      <div class="lc-reveal__head">${kind.head(reveal, { esc })}</div>
+      <div class="lc-vault lc-rarity-${rarity}">
+        <div class="lc-reveal__spin"></div>
+        <div class="lc-reveal__result lc-rarity-${rarity}" aria-live="polite"></div>
+      </div>
+      ${revealActionsHTML()}
+    </div>`;
+  const outEl = stage.querySelector(".lc-reveal__result");
+  const btn = stage.querySelector(".lc-reveal__close");
+  const open = stage.querySelector(".lc-reveal__open");
+  let landed = false;
+  const ctrl = mountDice(stage.querySelector(".lc-reveal__spin"), {
+    faces, sides, target: DICE.dice.target, outcome: out.win ? "win" : "lose", rarity, duration, rng: seededRng(seed),
+    reducedMotion: rolling ? false : undefined,
+    onLand: () => {
+      landed = true;
+      outEl.innerHTML = kind.result(reveal, { esc, canSee: buyer });
+      open.hidden = !(buyer && drawn);
+      btn.dataset.action = "dismiss";
+      btn.textContent = "Close";
+      btn.focus({ preventScroll: true });
+    },
+  });
+  btn.addEventListener("click", () => { if (landed) location.search = `?state=shop&seed=${seed}&theme=${theme}`; else ctrl.skip(); });
+  window.__lootCrates = { reveal, faces };
+  await ctrl.play();
+  document.body.dataset.landed = "1";
+}
+
 if (state === "shop") renderShop();
 else if (state === "manager") renderManager();
+else if (state === "well") renderWell();
+else if (state === "dice") renderDice();
 else renderSpin();

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { toCopper, canAfford, charge, formatPrice, refund, isWholeCoins, consolidate } from "../module/scripts/currency.js";
+import { toCopper, canAfford, charge, formatPrice, refund, isWholeCoins, consolidate, settle } from "../module/scripts/currency.js";
 
 describe("currency", () => {
   it("values a purse in copper", () => {
@@ -107,5 +107,25 @@ describe("currency", () => {
         expect(back.cp).toBeLessThan(10);
       }
     }
+  });
+
+  it("settle() moves copper both ways: a charge, a payout, both at once, and null when the winnings are spent", () => {
+    const purse = { pp: 0, gp: 1, ep: 0, sp: 0, cp: 0 };
+    expect(settle(purse, -5)).toEqual(charge(purse, 0.05));
+    expect(settle(purse, -5)).toEqual({ pp: 0, gp: 0, ep: 0, sp: 9, cp: 5 });
+    expect(settle(purse, 300)).toEqual(refund(purse, 3));
+    expect(settle(purse, 300 - 5)).toEqual({ pp: 0, gp: 3, ep: 0, sp: 9, cp: 5 });
+    expect(settle(purse, 0)).toEqual(purse);
+    expect(settle({ gp: 2.5, cp: 3 }, 0)).toEqual({ pp: 0, gp: 2, ep: 0, sp: 0, cp: 3 });
+    expect(settle({ cp: 50 }, -295)).toBeNull();
+    expect(settle(purse, -100)).toEqual({ pp: 0, gp: 0, ep: 0, sp: 0, cp: 0 });
+    expect(settle(purse, -101)).toBeNull();
+  });
+
+  it("a crate's charge and refund are settle() with the price in copper", () => {
+    const purse = { pp: 1, gp: 12, ep: 1, sp: 3, cp: 7 };
+    expect(settle(purse, -1735)).toEqual(charge(purse, 17.35));
+    expect(settle(charge(purse, 17.35), 1735)).toEqual(refund(charge(purse, 17.35), 17.35));
+    expect(toCopper(settle(settle(purse, -1735), 1735))).toBe(toCopper(purse));
   });
 });
