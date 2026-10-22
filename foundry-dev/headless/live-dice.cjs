@@ -278,7 +278,9 @@ async function refundFromLog(gm, { rowId, press }) {
       const renders = [];
       Hooks.on("renderChatMessageHTML", (m, html) => {
         if (!m.flags?.["loot-crates"]?.logId) return;
-        renders.push({ ms: performance.now(), sealed: !!html.querySelector(".lc-chat--sealed"), verdictShown: !!html.querySelector(".lc-chat__name") && html.querySelector(".lc-chat__item")?.getClientRects().length > 0 });
+        // `hidden`: the whole message hidden while sealed (reveal.js: the
+        // dice post a card only for a win, so the card's arrival would tell).
+        renders.push({ ms: performance.now(), sealed: !!html.querySelector(".lc-chat--sealed"), hidden: html.style?.display === "none", verdictShown: !!html.querySelector(".lc-chat__name") && html.querySelector(".lc-chat__item")?.getClientRects().length > 0 });
       });
       const seen = new Set(document.querySelectorAll(".lc-reveal"));
       buy.focus();
@@ -287,15 +289,26 @@ async function refundFromLog(gm, { rowId, press }) {
       // Every frame until the landing: the chat log must show no verdict
       // and no total of this pull. Only messages that arrive after the
       // click count: an earlier run's (refunded) dice card is in the log.
-      let leakFrames = 0, frames = 0, done = false;
-      const leakAt = [];
+      let leakFrames = 0, shownFrames = 0, frames = 0, done = false, landedFrameMs = null;
+      const leakAt = [], shownAt = [];
       const known = new Set([...document.querySelectorAll("#chat [data-message-id]")].map(el => el.dataset.messageId));
-      const chatLeak = () => [...document.querySelectorAll("#chat [data-message-id]")].filter(m => !known.has(m.dataset.messageId))
+      const newMessages = () => [...document.querySelectorAll("#chat [data-message-id]")].filter(m => !known.has(m.dataset.messageId));
+      const chatLeak = () => newMessages()
         .some(m => [...m.querySelectorAll(".lc-chat .lc-chat__item")].some(el => el.getClientRects().length > 0 && /beats the dragon|doesn't beat|ties the dragon/.test(el.textContent)));
+      // The pull's card showing at all (sealed or not): a card posted only
+      // for a win tells the result by turning up, so the whole message must
+      // stay hidden until the landing.
+      const cardShown = () => newMessages().some(m => m.querySelector(".lc-chat") && m.getClientRects().length > 0);
       const frame = () => {
         if (done) return;
+        // The landing as the frame loop sees it: a frame at or after it is
+        // no leak (the 50 ms poll below would see the landing late and
+        // count such a frame as before it).
+        const r = [...document.querySelectorAll(".lc-reveal")].find(el => !seen.has(el));
+        if (r?.querySelector(".lc-dice--landed")) { landedFrameMs ??= Math.round(performance.now() - t0); return; }
         frames++;
         if (chatLeak()) { leakFrames++; if (leakAt.length < 5) leakAt.push(Math.round(performance.now() - t0)); }
+        if (cardShown()) { shownFrames++; if (shownAt.length < 5) shownAt.push(Math.round(performance.now() - t0)); }
         requestAnimationFrame(frame);
       };
       requestAnimationFrame(frame);
@@ -313,7 +326,7 @@ async function refundFromLog(gm, { rowId, press }) {
       await new Promise(r => setTimeout(r, 1200));
       const result = rv?.querySelector(".lc-reveal__result");
       const reveal = {
-        ms: { reveal: revealMs, landed: landedMs },
+        ms: { reveal: revealMs, landed: landedFrameMs ?? landedMs },
         faces: [...(rv?.querySelectorAll(".lc-dice__tray .lc-dice__face") ?? [])].map(f => f.textContent.trim()),
         total: rv?.querySelector(".lc-dice__total")?.textContent.trim() ?? "",
         outcome: rv?.querySelector(".lc-dice")?.dataset.outcome ?? null,
@@ -331,7 +344,7 @@ async function refundFromLog(gm, { rowId, press }) {
       const row = getLog().filter(r => r.boxId === gameId).sort((a, b) => b.at - a.at)[0] ?? null;
       return {
         start, buyLabels: labels, purseBefore, purseAfter: foundry.utils.deepClone(actor.system.currency), reveal,
-        frames, leakFrames, leakAt, chatCards: cards.map(c => ({ ...c, ms: Math.round(c.at - t0) })), chatRenders: renders.map(r => ({ ms: Math.round(r.ms - t0), sealed: r.sealed, verdictShown: r.verdictShown })), chatAfter,
+        frames, leakFrames, leakAt, shownFrames, shownAt, chatCards: cards.map(c => ({ ...c, ms: Math.round(c.at - t0) })), chatRenders: renders.map(r => ({ ms: Math.round(r.ms - t0), sealed: r.sealed, hidden: r.hidden, verdictShown: r.verdictShown })), chatAfter,
         focusAfterClose, cardAfter: read(), row: row && { id: row.id, win: row.win, faces: row.faces, total: row.total, target: row.target, price: row.price, payoutCp: row.payoutCp, name: row.name, itemId: row.itemId },
         toasts: globalThis.__lcToasts ?? null,
       };
@@ -408,6 +421,7 @@ async function refundFromLog(gm, { rowId, press }) {
       resultWords: new RegExp(`^${row.win ? `${row.total} beats the dragon's 3` : `${row.total} (doesn't beat|ties) the dragon's 3.*`} Rolled ${faces.join(", ")} on 3d6 · ${row.win ? "Won 30 gp" : "Lost 10 gp"} · .* in the purse$`).test(r.result ?? ""),
       headWords: /rolls 3d6 to beat the dragon's 3 at Live dice 10 gp/.test(r.head ?? ""),
       noLeakBeforeLanding: b.leakFrames === 0 && b.frames > 0 && b.chatRenders.filter(x => x.ms < r.ms.landed).every(x => x.sealed) && b.chatAfter.sealedNow === 0,
+      cardHiddenBeforeLanding: b.shownFrames === 0 && b.chatRenders.filter(x => x.ms < r.ms.landed).every(x => x.hidden) && (!row.win || b.chatRenders.length > 0),
       noRollInChat: (row.win ? out.gmSide.card != null && out.gmSide.card.rolls === 0 && !out.gmSide.card.hasRollHtml && out.gmSide.card.faces.join() === faces.join() : out.gmSide.card == null) && b.chatCards.every(c => c.rolls === 0),
       purseMovedByPayoutLessStake: purseDelta === net && out.gmSide.purseCp === before.purseCp + net && out.gmSide.items === before.items,
       watcherLandedAtOnce: !watcher || (out.watcherReveal?.landed && out.watcherReveal.button === "Close" && !out.watcherReveal.watchAgain),
