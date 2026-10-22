@@ -78,7 +78,8 @@ import { DECK_DEFAULTS, CARD_KINDS, CARD_KIND_LABEL, CARD_KIND_HINT, cardsOf, st
 
 // A box's odds in the Boxes table: its ribbon over its named pills.
 const oddsCell = rows => rows.length ? `${oddsRibbon(rows)}<div class="lc-odds">${oddsPills(rows)}</div>` : "<em>empty</em>";
-import { getPools, getBoxes, getLog, todayKey, createPool, updatePool, removePool, createBox, updateBox, removeBox, entryFromItem, entriesFromDrop, addEntries, packHasLoot, LOOT_TYPES, isLootType, isShopOpen, setShopOpen, checkSources, sweepPools, removeEntry, patchEntry } from "./store.js";
+import { groupRounds, roundLine, stakeNote } from "./round.js";
+import { getRounds, getPools, getBoxes, getLog, todayKey, createPool, updatePool, removePool, createBox, updateBox, removeBox, entryFromItem, entriesFromDrop, addEntries, packHasLoot, LOOT_TYPES, isLootType, isShopOpen, setShopOpen, checkSources, sweepPools, removeEntry, patchEntry } from "./store.js";
 import { shopOdds, normalizeRarity, flattenPool, withSources, entryWeight, curateEntries } from "./odds.js";
 import { PAGE_ROWS, FALLBACK_IMG, defaultView, poolRows, sortRows, filterRows, pageRows, nextRows, poolCount, poolSummary, poolBody, chipsHTML, unsetButton, footHTML, entryRow, entryParts, pinRecent, dropNotice, poolUsers, usersText, deleteImpact, removeImpact, deletePoolText, removeEntryText } from "./poolview.js";
 import { formatPrice } from "./currency.js";
@@ -999,13 +1000,13 @@ export class CrateManager extends ApplicationV2 {
   _log() {
     const log = getLog();
     if (!log.length) return `<p class="lc-empty">No pulls yet.</p>`;
-    const items = collapseMisses(log);
+    const items = groupRounds(collapseMisses(log), getRounds());
     const misses = items.filter(x => x.group).reduce((n, g) => n + g.rows.length, 0);
     const shown = this.hideMisses ? items.filter(x => !x.group) : items;
     const status = (id, at) => `<span class="lc-log__status" tabindex="-1" data-row="${esc(id)}">refunded ${esc(refundTime(at))}</span>`;
     const row = r => `<tr class="${r.refunded ? "lc-row--refunded" : r.lateCancel ? "lc-row--late" : ""}">
         <td>${new Date(r.at).toLocaleString()}</td><td>${esc(r.actorName)}</td><td>${esc(r.boxName)} (${esc(formatPrice(r.price))})</td>
-        <td class="lc-rarity-${esc(r.rarity ?? r.swatch ?? (r.win ? "coin" : "none"))}"><span class="lc-dot"></span>${r.refunded ? `<s>${esc(r.name)}</s>` : esc(r.name)}${r.pity ? " · pity" : ""}${logRarityNote(r)}${logPayoutNote(r)}${logLateNote(r)}</td>
+        <td class="lc-rarity-${esc(r.rarity ?? r.swatch ?? (r.win ? "coin" : "none"))}"><span class="lc-dot"></span>${r.refunded ? `<s>${esc(r.name)}</s>` : esc(r.name)}${r.pity ? " · pity" : ""}${logRarityNote(r)}${logPayoutNote(r)}${logStakeNote(r)}${logLateNote(r)}</td>
         <td>${r.refunded ? status(r.id, r.refunded) : `<button type="button" data-action="refund" data-row="${esc(r.id)}">Refund</button>`}</td>
       </tr>`;
     const group = g => {
@@ -1017,9 +1018,14 @@ export class CrateManager extends ApplicationV2 {
         <td>${g.refunded ? status(newest.id, newest.refunded) : `<button type="button" data-action="refund" data-row="${esc(newest.id)}" aria-label="${n === 1 ? "Refund the throw" : `Refund one of ${n} throws`}">${n === 1 ? "Refund" : "Refund one"}</button>`}</td>
       </tr>`;
     };
+    // A table round: its header where its newest stake was, its stakes under it.
+    const round = g => `<tr class="lc-row--group">
+        <td>${new Date(g.at).toLocaleString()}</td><td>Round</td><td>${esc(g.boxName)} (${esc(formatPrice(g.staked))} staked)</td>
+        <td class="lc-rarity-none"><span class="lc-dot"></span>${esc(roundLine(g))}</td><td></td>
+      </tr>${g.rows.map(row).join("")}`;
     const toolbar = misses ? `<div class="lc-toolbar"><button type="button" data-action="toggleMisses" aria-pressed="${this.hideMisses}">${this.hideMisses ? "Show misses" : "Hide misses"}</button><span class="lc-pool__hint">${this.hideMisses ? `${misses} throw${misses === 1 ? "" : "s"} that gave nothing hidden` : `${misses} throw${misses === 1 ? "" : "s"} that gave nothing, folded by day`}</span></div>` : "";
     return `${toolbar}${shown.length ? `<table class="lc-table"><thead><tr><th>When</th><th>Who</th><th>Box</th><th>Got</th><th></th></tr></thead><tbody>
-      ${shown.map(x => (x.group ? group(x) : row(x.row))).join("")}</tbody></table>` : `<p class="lc-empty">Only misses so far; show them with the button above.</p>`}`;
+      ${shown.map(x => (x.round ? round(x) : x.group ? group(x) : row(x.row))).join("")}</tbody></table>` : `<p class="lc-empty">Only misses so far; show them with the button above.</p>`}`;
   }
 
   #searchTimer = null;
@@ -1093,6 +1099,12 @@ export function logPayoutNote(row) {
   const card = row?.cardKind && row.cardKind !== "item" ? `${CARD_KIND_LABEL[row.cardKind] ?? row.cardKind} card` : "";
   const won = cp > 0 ? `won ${formatPrice(cp / 100)}` : cp < 0 ? `took ${formatPrice(-cp / 100)}` : "";
   const text = [faces, card, won].filter(Boolean).join(" · ");
+  return text ? `<small class="lc-log__rarity">${esc(text)}</small>` : "";
+}
+
+// A table stake still waiting on its spin, or one turned back (round.js stakeNote).
+export function logStakeNote(row) {
+  const text = stakeNote(row);
   return text ? `<small class="lc-log__rarity">${esc(text)}</small>` : "";
 }
 
@@ -1230,7 +1242,7 @@ function heldRarities(draft, pools) {
 */
 export function managerShows(tab, key) {
   if (key === SETTINGS.SHOP_OPEN) return true;
-  if (key === SETTINGS.LOG) return tab === "log";
+  if (key === SETTINGS.LOG || key === SETTINGS.ROUNDS) return tab === "log";
   if (key === SETTINGS.BOXES || key === SETTINGS.POOLS) return tab === "boxes";
   return false;
 }

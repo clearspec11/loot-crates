@@ -82,6 +82,30 @@
     shop          { card(game, pools, ctx) -> html, reason(game, pools,
                   ctx) -> why it can't be bought or "" }; a kind without
                   these gets the crate's card and rules.
+
+  A table game (Roulette; the Auction to come) is played in rounds the
+  whole table stakes on, one resolve settling every stake (round.js,
+  table.js). It is a kind with `table: true`; it is staked, never pulled,
+  and the money, the hold and the log are still the core's:
+    table         true
+    priceOf(ctx)  as above, with ctx.bet: what this stake costs (the amount
+                  the player chose); the core checks, charges and logs it.
+    stake(ctx)    GM side at charge time, optional: { game, actor, bet,
+                  round, stakes (the round's live log rows), log, price } ->
+                  what the open row keeps of the bet ({ label?, ... }; the
+                  row is named by `label`), plus `outbid`: ids of open rows
+                  this stake displaces, refunded in the same queued task
+                  (the Auction's one open stake per lot). Throws a PullError
+                  for a bet the round can't take.
+    roll(ctx)     GM side at the resolve, once per round: { game, round,
+                  stakes (the open rows), rng, log, now } -> { outcome,
+                  ...whatever the reveal broadcast carries besides }.
+    settle(ctx)   per open stake that passed the resolve's guards: { game,
+                  round, outcome, row, stake } -> { payoutCp, name?,
+                  result? }: the coins the character gets back in copper
+                  (the stake was taken already, so 0 is a loss and a 1:1
+                  win on 10 gp is 2000), and what the row is called after.
+  The window that plays a round plugs into reveal.js setTableWindow.
 */
 
 // The error a player is shown, as one plain sentence. Here so a kind can

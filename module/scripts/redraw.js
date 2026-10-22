@@ -15,7 +15,8 @@
 import { SETTINGS } from "./config.js";
 
 // The log too: a well's card counts today's throws from it (well.js).
-export const SHOP_KEYS = [SETTINGS.BOXES, SETTINGS.POOLS, SETTINGS.STATE, SETTINGS.SHOP_OPEN, SETTINGS.LOG];
+// The rounds: a table game's card says whether bets are open.
+export const SHOP_KEYS = [SETTINGS.BOXES, SETTINGS.POOLS, SETTINGS.STATE, SETTINGS.SHOP_OPEN, SETTINGS.LOG, SETTINGS.ROUNDS];
 export const REDRAW_DELAY_MS = 100;
 
 /*

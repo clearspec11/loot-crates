@@ -655,3 +655,46 @@ export async function showReveal(reveal) {
   }
   return app;
 }
+
+/*
+  The table round's reveal (table.js): one broadcast at the resolve carries
+  every stake's outcome, and this is its one hold for the whole table. The
+  round's chat card (flags.logId is the round's id) stays sealed, and the
+  shop is told to redraw (onRelease), when this client lands. The window
+  that plays the round is a table kind's, plugged in with setTableWindow:
+  it is called with (reveal, { land }) and calls land() once the result is
+  showing (or it is closed). With no window, under reduced motion, or on a
+  hidden page, the round lands at once. Display only: nothing is written.
+  Returns { landed, instant }.
+*/
+let tableWindow = null;
+export function setTableWindow(fn) { tableWindow = typeof fn === "function" ? fn : null; }
+
+const prefersReducedMotion = () => !!globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+
+export function showRound(reveal) {
+  let release;
+  const landed = new Promise(resolve => { release = resolve; });
+  const id = reveal?.roundId;
+  if (id) {
+    const spin = { landed, hide: !!getKind(kindOf(reveal))?.chat?.conditional };
+    spinning.set(id, spin);
+    landed.then(() => { if (spinning.get(id) === spin) spinning.delete(id); });
+    hold({ requestId: `round.${id}`, actorId: null, box: { id: reveal.boxId ?? reveal.box?.id ?? null }, itemId: null, stateBefore: null }, landed);
+  }
+  const instant = !tableWindow || globalThis.document?.visibilityState === "hidden" || prefersReducedMotion();
+  if (instant) {
+    release();
+    return { landed, instant: true };
+  }
+  try {
+    Promise.resolve(tableWindow(reveal, { land: release })).catch(err => {
+      console.error("loot-crates | the table window failed", err);
+      release();
+    });
+  } catch (err) {
+    console.error("loot-crates | the table window failed", err);
+    release();
+  }
+  return { landed, instant: false };
+}

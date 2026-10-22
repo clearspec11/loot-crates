@@ -20,6 +20,13 @@
                                                            GM -> the buyer, when
                                                            the cancel came after
                                                            the charge
+    { type: "stake", requestId, boxId, roundId, actorId, userId, price, bet }
+                                                           player -> GM: a stake on
+                                                           a table round (table.js);
+                                                           answered with "staked"
+                                                           (to all) or "error"
+    { type: "staked", ... } and { type: "round", ... }     GM -> everyone; table.js
+                                                           hears them (onTable)
 
   A buyer who gave up waiting (GM_TIMEOUT_MS) calls the purchase off, and the
   GM drops a request that is cancelled before it charges: otherwise a GM
@@ -67,9 +74,12 @@
   when its reveal goes out more than SLOW_PULL_MS after the request arrived.
 */
 import { SOCKET } from "./config.js";
-import { performPull, PullError } from "./pull.js";
+import { performPull, performStake, PullError } from "./pull.js";
 import { getKind, kindOf, gotText } from "./kinds.js";
-import { getBoxes, getPools, getLog, getActorState, setActorState, appendLog, updateLog, newId, isShopOpen, saveBox, enqueueWrite, refreshMissing, markMissing, reportMissing, todayKey } from "./store.js";
+import { getBoxes, getPools, getLog, getActorState, setActorState, appendLog, updateLog, newId, isShopOpen, saveBox, enqueueWrite, refreshMissing, markMissing, reportMissing, todayKey, getRounds } from "./store.js";
+import { formatPrice } from "./currency.js";
+import { stakeReason, stakesOf } from "./round.js";
+import { heard as tableHeard, closeStakes } from "./table.js";
 import { showReveal } from "./reveal.js";
 import { postPullCard } from "./chat.js";
 
@@ -155,6 +165,12 @@ function settle(requestId, answer) {
 export function registerSocket() {
   game.socket.on(SOCKET, msg => {
     if (msg.type === "pull" && isActiveGM()) return handlePull(msg);
+    if (msg.type === "stake" && isActiveGM()) return handleStake(msg);
+    if (msg.type === "staked") {
+      if (msg.userId === game.user.id) settle(msg.requestId, p => p.resolve(msg));
+      return tableHeard(msg);
+    }
+    if (msg.type === "round") return tableHeard(msg);
     if (msg.type === "cancel" && isActiveGM()) return cancelPull(msg);
     if (msg.type === "ack" && msg.userId === game.user.id) return heardFromGM(msg);
     if (msg.type === "late" && msg.userId === game.user.id) return openedAfterAll(msg);
@@ -177,7 +193,22 @@ export function requestPull({ boxId, actorId, price }, { onWait = null } = {}) {
   if (!game.users.activeGM) return Promise.reject(new PullError("The shop is closed until a GM is online."));
   const msg = { type: "pull", requestId: uid(), boxId, actorId, userId: game.user.id };
   if (price != null) msg.price = price;
-  if (isActiveGM()) return handlePull(msg);
+  return send(msg, handlePull, onWait);
+}
+
+// A stake on a table round (table.js), the same way: resolves on the GM's
+// "staked" broadcast, rejects on its error or after GM_TIMEOUT_MS (and the
+// GM drops a stake called off before it charges). `bet` is the kind's (a
+// colour, a number, a bid); `price` what the player chose to stake.
+export function requestStake({ boxId, roundId, actorId, price, bet = null }, { onWait = null } = {}) {
+  if (!game.users.activeGM) return Promise.reject(new PullError("The shop is closed until a GM is online."));
+  const msg = { type: "stake", requestId: uid(), boxId, roundId, actorId, userId: game.user.id, bet };
+  if (price != null) msg.price = price;
+  return send(msg, handleStake, onWait);
+}
+
+function send(msg, handle, onWait) {
+  if (isActiveGM()) return handle(msg);
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => settle(msg.requestId, p => {
       game.socket.emit(SOCKET, { type: "cancel", requestId: msg.requestId, userId: msg.userId });
@@ -333,11 +364,8 @@ async function doPull(msg, timer, sent, stopWatching) {
   let box;
   try {
     if (wasCancelled(msg)) return null;
-    if (!isShopOpen()) throw new PullError("The GM has closed the shop.");
+    const { actor, buyer } = guardBuyer(msg);
     box = getBoxes()[msg.boxId];
-    const actor = game.actors.get(msg.actorId);
-    const buyer = game.users.get(msg.userId);
-    if (!actor || !buyer || !actor.testUserPermission(buyer, "OWNER")) throw new PullError("You don't own that character.");
 
     if (box) await sweepBox(box);
     timer.mark("sweep");
@@ -394,10 +422,92 @@ async function doPull(msg, timer, sent, stopWatching) {
     timer.mark("record");
     return reveal;
   } catch (err) {
-    const message = err instanceof PullError ? err.message : `The ${getKind(kindOf(box))?.noun ?? "crate"} jammed. Check the GM's console.`;
-    if (!(err instanceof PullError)) console.error(`loot-crates | pull failed`, err);
-    reply({ type: "error", userId: msg.userId, message });
-    if (msg.userId === game.user.id) throw err instanceof PullError ? err : new PullError(message);
+    failPlay(msg, box, err, reply);
+  } finally {
+    timer.done();
+  }
+}
+
+// The shop is open and the buyer owns the character, checked on the GM
+// inside the queue for every play (a pull or a stake).
+function guardBuyer(msg) {
+  if (!isShopOpen()) throw new PullError("The GM has closed the shop.");
+  const actor = game.actors.get(msg.actorId);
+  const buyer = game.users.get(msg.userId);
+  if (!actor || !buyer || !actor.testUserPermission(buyer, "OWNER")) throw new PullError("You don't own that character.");
+  return { actor, buyer };
+}
+
+// A play that failed: the buyer is told in a plain sentence (a PullError's
+// own, or that the game jammed), and the GM's own play throws it back.
+function failPlay(msg, box, err, reply) {
+  const message = err instanceof PullError ? err.message : `The ${getKind(kindOf(box))?.noun ?? "crate"} jammed. Check the GM's console.`;
+  if (!(err instanceof PullError)) console.error(`loot-crates | ${msg.type} failed`, err);
+  reply({ type: "error", userId: msg.userId, message });
+  if (msg.userId === game.user.id) throw err instanceof PullError ? err : new PullError(message);
+}
+
+function handleStake(msg) {
+  const timer = stepTimer(`stake ${msg.requestId}`);
+  const sent = { ack: false };
+  const stop = watchForSlow(msg, timer, sent);
+  return enqueueWrite(() => doStake(msg, timer, sent, stop)).finally(stop);
+}
+
+/*
+  A stake, on the GM inside the write queue: the buyer's guards, the round's
+  (open, this game's, before its clock runs out), then the money path
+  (pull.js performStake: the price, the purse, the kind's check of the bet,
+  the charge through settle()), and the open log row in the same task, so
+  the coins are never without a row. A row that can't be written puts the
+  coins back. Stakes the kind says this one displaces (an outbid) are
+  refunded in the same task. Then everyone hears it ("staked").
+*/
+async function doStake(msg, timer, sent, stopWatching) {
+  timer.mark("queue");
+  const reply = payload => {
+    if (msg.userId === game.user.id) return;
+    game.socket.emit(SOCKET, { ...payload, requestId: msg.requestId });
+  };
+  let box;
+  try {
+    if (wasCancelled(msg)) return null;
+    const { actor, buyer } = guardBuyer(msg);
+    box = getBoxes()[msg.boxId];
+    const round = getRounds()[msg.roundId] ?? null;
+    if (round && round.boxId !== msg.boxId) throw new PullError("That round is at another table.");
+    const why = stakeReason(round);
+    if (why) throw new PullError(why);
+    const log = getLog();
+    const stakes = stakesOf(log, round.id);
+    const out = await performStake({ box, actor, round, bet: msg.bet ?? null, stakes, expectedPrice: msg.price, log, today: todayKey() });
+    timer.mark("charge");
+
+    const logId = newId();
+    const row = { id: logId, kind: out.kind, boxId: box.id, boxName: box.name, actorId: actor.id, actorName: actor.name, userId: msg.userId, itemId: null, price: out.price, payoutCp: 0, status: "open", roundId: round.id, stake: out.stake, name: out.stake.label ?? "Stake" };
+    try {
+      await appendLog(row);
+    } catch (err) {
+      console.error(`loot-crates | recording ${actor.name}'s stake at ${box.name} failed; returning the coins`, err);
+      try { await actor.update({ "system.currency": out.before }); } catch (restoreErr) {
+        console.error(`loot-crates | could not return ${out.price} gp to ${actor.name}; the GM must refund by hand`, restoreErr);
+        throw new PullError("The stake couldn't be recorded and the coins couldn't be returned. Tell the GM.");
+      }
+      throw new PullError("The stake couldn't be recorded; your coins were returned.");
+    }
+    rememberCharge(msg.requestId, { requestId: msg.requestId, userId: msg.userId, buyerName: buyer.name, actorName: actor.name, boxName: box.name, got: `staked ${formatPrice(out.price)}`, logId });
+    const displaced = stakes.filter(r => out.outbid.includes(r.id) && r.status === "open");
+    if (displaced.length) await closeStakes(displaced.map(r => ({ row: r, action: game.actors.get(r.actorId) ? "refund" : "void", reason: "outbid", payoutCp: 0 })));
+
+    stopWatching();
+    const staked = { type: "staked", requestId: msg.requestId, userId: msg.userId, roundId: round.id, boxId: box.id, logId, actorId: actor.id, actorName: actor.name, price: out.price, stake: out.stake, purse: out.purse, outbid: displaced.map(r => r.id) };
+    game.socket.emit(SOCKET, staked);
+    timer.mark("broadcast");
+    if (msg.userId !== game.user.id && cancelled.delete(msg.requestId)) lateCancel(charged.get(msg.requestId));
+    tableHeard(staked);
+    return staked;
+  } catch (err) {
+    failPlay(msg, box, err, reply);
   } finally {
     timer.done();
   }
