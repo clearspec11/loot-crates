@@ -56,6 +56,15 @@
   button goes, focus passing to Close if it was on it. Never offered under
   reduced motion (nothing would move) or after a spin that played out here.
 
+  Draw again (a kind's reveal.again, kinds.js; the deck's "Draw again for
+  15 gp"): the buyer's next play of the same game, from the window, at the
+  price the kind names from the log as it stands. It is a pull like any
+  other (socket.js requestPull, so the GM's price check, queue and guards
+  apply); the button reads "Drawing…" while it is out, and this window
+  closes once the next one has opened. Shown to the buyer alone, never on
+  a replay; when it can't be played (the deck spent, the shop shut, the
+  purse short) the button is off with the reason as a visible line.
+
   The sheet and the shop keep the secret too, as the chat card does. The GM
   creates the item before it broadcasts the reveal, and writes the buyer's
   pity and owned record just after, so an open character sheet listed the
@@ -82,6 +91,10 @@ import { REFUNDED_CLASS } from "./chatcard.js";
 import { oddsRibbon } from "./boxcard.js";
 import { getKind, kindOf, DEFAULT_KIND } from "./kinds.js";
 import { CRATE } from "./crate.js";
+import { getBoxes, getPools, getLog, isShopOpen } from "./store.js";
+// socket.js imports this file for showReveal; the cycle is safe, since each
+// side reaches the other only inside a function.
+import { requestPull } from "./socket.js";
 // The dice game's 3D dice bridge (Dice So Nice), set wherever reveals show.
 import "./dicereveal.js";
 
@@ -281,7 +294,7 @@ export class CrateReveal extends ApplicationV2 {
     classes: ["loot-crates", "lc-reveal"],
     window: { title: "Opening a crate", resizable: false },
     position: { width: 720, height: "auto" },
-    actions: { dismiss: CrateReveal.#dismiss, skip: CrateReveal.#skip, openItem: CrateReveal.#openItem, watchAgain: CrateReveal.#watchAgain },
+    actions: { dismiss: CrateReveal.#dismiss, skip: CrateReveal.#skip, openItem: CrateReveal.#openItem, watchAgain: CrateReveal.#watchAgain, drawAgain: CrateReveal.#drawAgain },
   };
 
   #resolveLanded;
@@ -354,6 +367,69 @@ export class CrateReveal extends ApplicationV2 {
     button.dataset.action = "skip";
     this.element.querySelector(".lc-reveal__result").hidden = true;
     this.#mount({ replay: true });
+  }
+
+  // The buyer's next play of the same game, from this window: a pull at the
+  // price the kind names now (not at landing: the price can have fallen
+  // since, and the GM would refuse the stale one), then this window goes
+  // once the next has opened. A refusal is said and the button comes back.
+  #drawing = false;
+  static async #drawAgain(_event, button) {
+    if (this.#drawing || this.#closed || button.getAttribute("aria-disabled") === "true") return;
+    const again = this.#againOffer();
+    if (!again) return;
+    this.#showAgain(again);
+    if (again.off) return;
+    this.#drawing = true;
+    button.textContent = "Drawing…";
+    button.setAttribute("aria-disabled", "true");
+    try {
+      await requestPull({ boxId: this.reveal.box.id, actorId: this.reveal.actorId, price: again.price });
+      this.close();
+    } catch (err) {
+      globalThis.ui?.notifications?.warn(err.message);
+      this.#drawing = false;
+      if (!this.#closed) this.#showAgain(this.#againOffer());
+    }
+  }
+
+  // What the kind offers the buyer as a next play, or null: not to the
+  // table, not on a replay, and not when the game is gone from the shelf.
+  #againOffer() {
+    const r = this.reveal;
+    const kind = this.#kind;
+    if (!kind.again || r.replay || !r.userId || r.userId !== globalThis.game?.user?.id) return null;
+    try {
+      const game = getBoxes()[r.box?.id] ?? null;
+      if (!game) return null;
+      const gmOnline = !!globalThis.game?.users?.activeGM;
+      const purse = globalThis.game?.actors?.get?.(r.actorId)?.system?.currency ?? {};
+      return kind.again(r, { game, log: getLog(), pools: getPools(), purse, now: Date.now(), open: isShopOpen() && gmOnline, gmOnline }) ?? null;
+    } catch (err) {
+      console.error("loot-crates | the kind's next play couldn't be offered", err);
+      return null;
+    }
+  }
+
+  // The again button and its reason line, from an offer (or none).
+  #showAgain(again) {
+    const root = this.element;
+    const btn = root?.querySelector(".lc-reveal__again");
+    const why = root?.querySelector(".lc-reveal__why");
+    if (!btn || !why) return;
+    btn.hidden = !again;
+    why.hidden = !again?.off;
+    if (!again) return;
+    btn.textContent = again.label;
+    why.textContent = again.off ?? "";
+    why.id = `lc-reveal-why-${this.reveal.requestId ?? "x"}`;
+    if (again.off) {
+      btn.setAttribute("aria-disabled", "true");
+      btn.setAttribute("aria-describedby", why.id);
+    } else {
+      btn.removeAttribute("aria-disabled");
+      btn.removeAttribute("aria-describedby");
+    }
   }
 
   static async #openItem(_event, button) {
@@ -461,6 +537,7 @@ export class CrateReveal extends ApplicationV2 {
     root.querySelector(".lc-reveal__result").innerHTML = this.#kind.result?.(r, { esc, canSee: this.canSee }) ?? "";
     root.querySelector(".lc-reveal__open").hidden = !this.#itemStillThere();
     root.querySelector(".lc-reveal__watch").hidden = this.#watched || spin.reducedMotion || !this.#kind.replayable;
+    this.#showAgain(this.#againOffer());
     btn.dataset.action = "dismiss";
     btn.textContent = "Close";
     if (focusIsFree(root, r, this.returnTo)) btn.focus({ preventScroll: true });

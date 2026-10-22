@@ -102,12 +102,13 @@ describe("a replay's result block", () => {
 });
 
 describe("the reveal's buttons", () => {
-  it("are Open item, Watch again, then Skip (later Close); the first two start hidden", () => {
+  it("are Draw again, Open item, Watch again, then Skip (later Close); the first three start hidden, with the reason line before them", () => {
     const html = revealActionsHTML();
     const buttons = [...html.matchAll(/<button ([^>]*)>([^<]*)</g)].map(([, attrs, text]) => ({ attrs, text }));
-    expect(buttons.map(b => b.text)).toEqual(["Open item", "Watch again", "Skip"]);
-    expect(buttons.map(b => b.attrs.match(/data-action="(\w+)"/)[1])).toEqual(["openItem", "watchAgain", "skip"]);
-    expect(buttons.map(b => / hidden$/.test(b.attrs))).toEqual([true, true, false]);
+    expect(buttons.map(b => b.text)).toEqual(["Draw again", "Open item", "Watch again", "Skip"]);
+    expect(buttons.map(b => b.attrs.match(/data-action="(\w+)"/)[1])).toEqual(["drawAgain", "openItem", "watchAgain", "skip"]);
+    expect(buttons.map(b => / hidden$/.test(b.attrs))).toEqual([true, true, true, false]);
+    expect(html.indexOf('class="lc-reveal__why" hidden')).toBeLessThan(html.indexOf("lc-reveal__again"));
     expect(buttons.every(b => /type="button"/.test(b.attrs))).toBe(true);
   });
 });

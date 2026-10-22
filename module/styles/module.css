@@ -37,6 +37,10 @@
   --lc-pin-edge: #5c4a2a;
   /* The ribbon's rim and the vault's frame are gold in both themes. */
   --lc-gold-rim: #a8955f;
+  /* The bane: the one colour that means "you lost something" (the deck's
+     loss card, deck.js). Cold slate, the same in both themes: not gold (that
+     is treasure), not amber (that is a problem), not a rarity. */
+  --lc-bane: #5b8a9a;
 
   --lc-radius: 4px;
   --lc-shadow: 0 0 6px rgba(0, 0, 0, .45);
@@ -132,6 +136,8 @@
    and log dots need no rule of their own. */
 .loot-crates .lc-rarity-none, .loot-crates.lc-rarity-none { --lc-rarity: var(--lc-ink-mute); --lc-rank: 0; }
 .loot-crates .lc-rarity-coin, .loot-crates.lc-rarity-coin { --lc-rarity: var(--lc-gold-rim); --lc-rank: 0; }
+/* The third: the deck's bane (deck.js), read the same way. */
+.loot-crates .lc-rarity-bane, .loot-crates.lc-rarity-bane { --lc-rarity: var(--lc-bane); --lc-rank: 0; }
 
 /* ---------- The window ---------- */
 
@@ -161,17 +167,17 @@
 /* A Buy that is off says so with aria-disabled (it keeps focus; boxcard.js),
    and looks exactly like a disabled button. */
 :where(.loot-crates .window-content) button:is(:disabled, [aria-disabled="true"]) { cursor: not-allowed; color: var(--lc-ink-mute); border-style: dashed; }
-.loot-crates .lc-box__buy, .loot-crates .lc-reveal__close {
+.loot-crates .lc-box__buy, .loot-crates .lc-reveal__close, .loot-crates .lc-reveal__again {
   position: relative; background: var(--lc-btn); color: var(--lc-btn-ink); border: none;
   font-weight: 700; box-shadow: var(--lc-shadow); min-height: 36px; padding: 0 16px;
 }
-.loot-crates .lc-box__buy::after, .loot-crates .lc-reveal__close::after {
+.loot-crates .lc-box__buy::after, .loot-crates .lc-reveal__close::after, .loot-crates .lc-reveal__again::after {
   content: ""; position: absolute; inset: 3px; border: 1px solid var(--lc-btn-rule); border-radius: 3px; pointer-events: none;
 }
-.loot-crates .lc-box__buy:not([aria-disabled="true"]):hover, .loot-crates .lc-reveal__close:not(:disabled):hover { color: var(--lc-pin); }
-.loot-crates .lc-box__buy:not([aria-disabled="true"]):hover::after, .loot-crates .lc-reveal__close:not(:disabled):hover::after { border-color: var(--lc-btn-ink); }
-.loot-crates .lc-box__buy[aria-disabled="true"] { background: var(--lc-row-alt); color: var(--lc-ink-mute); box-shadow: none; }
-.loot-crates .lc-box__buy[aria-disabled="true"]::after { border: 1px dashed var(--lc-rule-soft); }
+.loot-crates .lc-box__buy:not([aria-disabled="true"]):hover, .loot-crates .lc-reveal__close:not(:disabled):hover, .loot-crates .lc-reveal__again:not([aria-disabled="true"]):hover { color: var(--lc-pin); }
+.loot-crates .lc-box__buy:not([aria-disabled="true"]):hover::after, .loot-crates .lc-reveal__close:not(:disabled):hover::after, .loot-crates .lc-reveal__again:not([aria-disabled="true"]):hover::after { border-color: var(--lc-btn-ink); }
+.loot-crates .lc-box__buy[aria-disabled="true"], .loot-crates .lc-reveal__again[aria-disabled="true"] { background: var(--lc-row-alt); color: var(--lc-ink-mute); box-shadow: none; }
+.loot-crates .lc-box__buy[aria-disabled="true"]::after, .loot-crates .lc-reveal__again[aria-disabled="true"]::after { border: 1px dashed var(--lc-rule-soft); }
 
 :where(.loot-crates .window-content) :is(input, select) {
   font-family: var(--lc-body); font-size: 13px; min-height: 30px; padding: 0 8px; box-sizing: border-box;
@@ -417,13 +423,21 @@
 .loot-crates .lc-reveal__where { margin-top: 8px; font-size: 13px; color: var(--lc-vault-soft); animation: lc-reveal-after 260ms ease 460ms both; }
 .loot-crates .lc-reveal__gold { white-space: nowrap; color: var(--lc-pin); }
 @keyframes lc-reveal-after { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
-/* The Wishing Well's quiet result: nothing, or the coin back, in the display
-   face at a smaller size than a find's name, in vault-soft rather than a
+/* The quiet result: the well's nothing or coin back, the dice's verdict, the
+   deck's card name. A sentence, so the slab face (Modesto Condensed is an
+   upper-case face, kept for names that matter, DESIGN.md Labels Not
+   Kickers), smaller than a find's name, in vault-soft rather than a
    rarity's colour: it is a result, not a prize. */
-.loot-crates .lc-reveal__quiet { font-family: var(--lc-display); font-size: 24px; font-weight: 700; line-height: 1.05; color: var(--lc-vault-soft); text-wrap: balance; }
-.loot-crates .lc-reveal__actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.loot-crates .lc-reveal__quiet { font-family: var(--lc-slab); font-size: 18px; font-weight: 700; line-height: 1.25; color: var(--lc-vault-soft); text-wrap: balance; }
+.loot-crates .lc-reveal__actions { display: flex; justify-content: flex-end; align-items: center; flex-wrap: wrap; gap: 8px; }
 .loot-crates .lc-reveal__actions button { flex: 0 0 auto; min-width: 104px; min-height: 36px; }
 .loot-crates .lc-reveal__actions button[hidden] { display: none; }
+/* Why Draw again is off (the deck spent, the purse short): the reason on
+   screen before the button, as a Buy's is under its card. */
+.loot-crates .lc-reveal__why { font-size: 12px; color: var(--lc-ink-mute); margin-right: auto; }
+.loot-crates .lc-reveal__why[hidden] { display: none; }
+/* "· 2nd in a row" after the price in the head. */
+.loot-crates .lc-reveal__streak { color: var(--lc-ink-mute); white-space: nowrap; }
 
 /* ---------- The well (well.js) ---------- */
 
@@ -485,9 +499,13 @@
   box-shadow: 0 6px 12px rgba(0, 0, 0, .55); color: var(--lc-vault-ink);
 }
 .loot-crates .lc-dice__face { font-family: var(--lc-display); font-size: 32px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
-/* A settled die takes the outcome's colour on its foot; a loss stays in the
-   vault's own line, since nothing was won. */
-.loot-crates .lc-dice__die--set { border-bottom-color: var(--lc-rarity); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--lc-pin) 45%, transparent), 0 6px 12px rgba(0, 0, 0, .55); }
+/* A settled die rings itself in the pin's gold, the same for a win and a
+   loss. Its foot takes the outcome's colour only once the stage has told
+   the total (lc-dice--told, dicegame.js), never as the first die lands,
+   or the table reads the win 440 ms early; a loss stays in the vault's
+   own line, since nothing was won. */
+.loot-crates .lc-dice__die--set { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--lc-pin) 45%, transparent), 0 6px 12px rgba(0, 0, 0, .55); }
+.loot-crates .lc-dice--told .lc-dice__die--set { border-bottom-color: var(--lc-rarity); }
 .loot-crates .lc-dice[data-outcome="lose"] .lc-dice__die--set { border-bottom-color: var(--lc-vault-line); }
 .loot-crates .lc-dice__total { font-family: var(--lc-display); font-size: 28px; font-weight: 700; line-height: 1; color: var(--lc-rarity, var(--lc-vault-ink)); opacity: 0; min-height: 28px; }
 .loot-crates .lc-dice[data-outcome="lose"] .lc-dice__total { color: var(--lc-vault-soft); }
@@ -495,8 +513,8 @@
 /* While Dice So Nice rolls the real dice over the canvas, the stage waits
    with blank faces: the dice in the window land with the 3D ones. */
 .loot-crates .lc-dice--three .lc-dice__face { visibility: hidden; }
-/* The verdict is the result, in the display face; a win reads in the
-   vault's gold rather than a rarity, a loss in vault-soft. */
+/* The verdict is the result, in the quiet line's slab face; a win reads in
+   the vault's gold rather than a rarity, a loss in vault-soft. */
 .loot-crates .lc-dice__verdict { color: var(--lc-rarity, var(--lc-vault-soft)); }
 .loot-crates .lc-vault.lc-rarity-none .lc-dice__verdict { color: var(--lc-vault-soft); }
 /* A win floods the vault with the rim's gold, a prize with its rarity. */
@@ -521,6 +539,97 @@
   content: ""; width: 5px; height: 5px; flex: none; background: var(--lc-rarity); transform: rotate(45deg);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--lc-ink) 25%, transparent);
 }
+
+/* ---------- The deck (deck.js) ---------- */
+
+/* The stage in the vault, the strip's height: one card, back up, on a
+   little perspective. deck.js moves the card with one transform (lift,
+   then the turn) in one animation frame loop; the two faces are placed
+   here, and backface-visibility hides whichever is turned away. The front
+   is the strip card's language turned portrait: a gold-ruled frame, the
+   art, the GM's name for the card, what it does, and its foot in the
+   result's swatch (a rarity, the coin's gold, the bane's slate, mute). */
+.loot-crates .lc-deck { position: relative; width: 100%; height: 168px; overflow: hidden; }
+.loot-crates .lc-deck__stage { position: absolute; inset: 0; display: grid; place-items: center; perspective: 720px; }
+.loot-crates .lc-deck__card { position: relative; width: 104px; height: 148px; transform-style: preserve-3d; }
+.loot-crates .lc-deck:not(.lc-deck--landed) .lc-deck__card { will-change: transform; }
+.loot-crates .lc-deck__face {
+  position: absolute; inset: 0; box-sizing: border-box; border-radius: 6px; backface-visibility: hidden; -webkit-backface-visibility: hidden;
+  background: var(--lc-vault-card); border: 1px solid var(--lc-vault-line); box-shadow: 0 8px 16px rgba(0, 0, 0, .6);
+}
+/* The back: a gold-ruled plate with the pin's diamond at its heart. */
+.loot-crates .lc-deck__face--back {
+  background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--lc-pin) 7%, transparent) 0 2px, transparent 2px 9px), var(--lc-vault-card);
+}
+.loot-crates .lc-deck__face--back::before {
+  content: ""; position: absolute; inset: 7px; border: 1px solid color-mix(in srgb, var(--lc-pin) 55%, transparent); border-radius: 3px;
+}
+.loot-crates .lc-deck__face--back::after {
+  content: ""; position: absolute; left: 50%; top: 50%; width: 16px; height: 16px; margin: -8px 0 0 -8px;
+  background: var(--lc-pin); border: 1px solid var(--lc-pin-edge); transform: rotate(45deg); box-sizing: border-box;
+}
+.loot-crates .lc-deck__face--front {
+  transform: rotateY(180deg); display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 5px; padding: 10px 8px 0; overflow: hidden;
+  color: var(--lc-vault-soft); border-color: var(--lc-rarity, var(--lc-vault-line)); box-shadow: inset 0 0 0 1px var(--lc-rarity, var(--lc-vault-line)), 0 8px 16px rgba(0, 0, 0, .6);
+  background: color-mix(in srgb, var(--lc-rarity, var(--lc-vault-card)) 10%, var(--lc-vault-card));
+}
+.loot-crates .lc-deck__art {
+  width: 64px; height: 64px; display: grid; place-items: center; box-sizing: border-box; border-radius: 4px;
+  border: 1px solid var(--lc-pin); background: color-mix(in srgb, var(--lc-rarity, var(--lc-vault)) 16%, var(--lc-vault));
+  box-shadow: 0 0 0 2px var(--lc-vault-card), 0 0 0 3px color-mix(in srgb, var(--lc-pin) 60%, transparent);
+}
+.loot-crates .lc-deck__art img { width: 58px; height: 58px; object-fit: contain; border: 0; }
+/* A card with no art shows its swatch as the pin's diamond does. */
+.loot-crates .lc-deck__glyph { width: 18px; height: 18px; background: var(--lc-rarity, var(--lc-vault-soft)); transform: rotate(45deg); box-shadow: 0 0 0 1px color-mix(in srgb, #000 40%, transparent); }
+.loot-crates .lc-deck__label { width: 100%; font-family: var(--lc-slab); font-size: 12px; font-weight: 700; line-height: 1.2; text-align: center; color: var(--lc-vault-ink); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; min-height: 1.2em; }
+.loot-crates .lc-deck__kind { width: calc(100% + 16px); margin: 0 -8px; padding: 3px 0 4px; font-family: var(--lc-label); font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; text-align: center; color: var(--lc-vault); background: var(--lc-rarity, var(--lc-vault-soft)); }
+.loot-crates .lc-deck[data-tone="effect"] .lc-deck__kind, .loot-crates .lc-deck[data-tone="blank"] .lc-deck__kind { color: var(--lc-vault-ink); }
+/* The result: the card's name as the quiet line; a bane's in the slate, the
+   one place rarity-coloured text's rule admits a loss. An effect's text in
+   the body face under it, for the GM to play out. */
+.loot-crates .lc-deck__bane { color: var(--lc-bane); }
+.loot-crates .lc-deck__text { margin-top: 6px; font-size: 13px; line-height: 1.4; color: var(--lc-vault-ink); max-width: 520px; margin-inline: auto; text-wrap: pretty; }
+/* The vault's wash: a boon in its rarity, a coin in the rim's gold, as a
+   landed strip's; a bane dims the vault instead, cold, lit from nowhere. */
+.loot-crates .lc-vault:has(.lc-deck--landed[data-tone="boon"])::after { opacity: calc(.12 + var(--lc-rank, 0) * .12); }
+.loot-crates .lc-vault:has(.lc-deck--landed[data-tone="coin"])::after { background: radial-gradient(60% 90% at 50% 38%, color-mix(in srgb, var(--lc-gold-rim) 55%, transparent), transparent 70%); opacity: .14; }
+.loot-crates .lc-vault:has(.lc-deck--landed[data-tone="bane"])::after {
+  background: radial-gradient(70% 100% at 50% 40%, color-mix(in srgb, var(--lc-bane) 22%, #000), #000 80%); opacity: .62;
+  transition-delay: 0ms;
+}
+/* The deck's card in the shop: its own drawn cards where a crate shows its peek. */
+.loot-crates .lc-deck__icon { display: block; }
+/* The chat card's mark for a card that is no item: a small card back. */
+.loot-crates .lc-deck__mark {
+  display: block; width: 32px; height: 42px; flex: none; box-sizing: border-box; border-radius: 4px; margin: 0 5px;
+  background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--lc-gold-rim) 25%, transparent) 0 1px, transparent 1px 5px), var(--lc-field);
+  border: 1px solid var(--lc-rule); border-bottom: 3px solid var(--lc-rarity);
+}
+.loot-crates .lc-chat__text { margin-top: 4px; font-size: 12px; line-height: 1.4; color: var(--lc-ink-soft); }
+
+/* The deck editor's cards: one row each, the fields in one line (name,
+   what it does, gold, weight, once, remove), the effect's text on a line
+   of its own under them. What the card does decides which fields show. */
+.loot-crates .lc-form .lc-cards__head, .loot-crates .lc-form .lc-card-row {
+  display: grid; grid-template-columns: minmax(7em, 1.6fr) minmax(9em, 1.4fr) 5.2em 4.4em 2.6em 30px; gap: 6px; align-items: center;
+}
+.loot-crates .lc-form .lc-cards__head { padding: 0 0 2px; font-family: var(--lc-label); font-size: 11px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; color: var(--lc-gold-ink); }
+.loot-crates .lc-form .lc-cards__head span:nth-child(5) { text-align: center; }
+.loot-crates .lc-form .lc-cards__rows { display: grid; gap: 6px; }
+.loot-crates .lc-form .lc-card-row { padding: 4px 0; border-top: 1px solid var(--lc-rule-soft); }
+.loot-crates .lc-form .lc-card-row input[type=number] { width: 100%; }
+.loot-crates .lc-form .lc-card-row .lc-card-row__once { display: flex; justify-content: center; margin: 0; }
+.loot-crates .lc-form .lc-card-row .lc-card-row__remove { min-width: 30px; padding: 0; }
+.loot-crates .lc-form .lc-card-row .lc-card-row__text { grid-column: 1 / -1; }
+.loot-crates .lc-form .lc-card-row:not([data-kind="coins"], [data-kind="loss"]) .lc-card-row__gp { visibility: hidden; }
+.loot-crates .lc-form .lc-card-row:not([data-kind="effect"]) .lc-card-row__text { display: none; }
+.loot-crates .lc-form .lc-cards__foot { margin-top: 6px; }
+@container lc-rows (max-width: 520px) {
+  .loot-crates .lc-form .lc-cards__head { display: none; }
+  .loot-crates .lc-form .lc-card-row { grid-template-columns: 1fr 1fr; }
+  .loot-crates .lc-form .lc-card-row .lc-card-row__label, .loot-crates .lc-form .lc-card-row .lc-card-row__kind { grid-column: 1 / -1; }
+}
+.loot-crates .lc-form .lc-cards { container: lc-rows / inline-size; }
 
 /* ---------- Manager ---------- */
 
@@ -775,5 +884,6 @@
   .loot-crates .lc-card, .loot-crates .lc-vault::after, .loot-crates .lc-pool__details > summary::before { transition: none; }
   .loot-crates .lc-well__stage > * { will-change: auto; }
   .loot-crates .lc-dice__die, .loot-crates .lc-dice__total { will-change: auto; }
+  .loot-crates .lc-deck__card { will-change: auto; }
   .loot-crates .lc-reveal__where { animation: none; }
 }

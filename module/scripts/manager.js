@@ -56,9 +56,13 @@
 
   The Boxes tab holds every game the shop sells: a crate, a Wishing Well
   (well.js) with its own editor (the stake in cp, sp or gp, the three
-  outcomes' weights, the cap per in-game day), or a Dragon's Teeth dice
+  outcomes' weights, the cap per in-game day), a Dragon's Teeth dice
   game (dicegame.js: the stake, 2d6 or 3d6 over the dragon's number, the
-  multiplier, the perfect-roll prize). The Pull log folds a character's
+  multiplier, the perfect-roll prize), or a Deck of Many Things (deck.js:
+  the first draw's price, how much each draw in a row multiplies it, and
+  the cards as rows the GM writes: a name, what it does, its weight, once
+  per deck, its gold or its text; Reshuffle puts every drawn card back).
+  The Pull log folds a character's
   misses at a well for one day into one line ("5 throws, nothing") whose
   Refund gives the newest throw back, and "Hide misses" leaves only the
   throws that gave something; a row that paid coins out says what it paid,
@@ -68,12 +72,13 @@
 import { RARITIES, RARITY_LABEL, DEFAULT_WEIGHTS, DEFAULT_PRICE_GP, SETTINGS } from "./config.js";
 import { oddsPills, oddsRibbon, draftBox, boxPreview, boxPreviewHTML, oddsSummary, quietAnnouncer, refundRulesLine } from "./boxcard.js";
 import { kindOf } from "./kinds.js";
-import { WELL_DEFAULTS, wellOdds, wellOddsHTML, wellRulesText, stakeCoins, stakeGp, draftWell, wellPreview, wellPreviewHTML, wellSummary, collapseMisses, throwsText } from "./well.js";
+import { WELL_DEFAULTS, wellOdds, wellOddsHTML, wellRulesText, stakeCoins, stakeGp, draftWell, wellPreview, wellPreviewHTML, wellSummary, collapseMisses, throwsText, noClockNote } from "./well.js";
 import { DICE_DEFAULTS, FORMULAS, diceOdds, diceOddsHTML, diceRulesText, draftDice, dicePreview, dicePreviewHTML, diceSummary } from "./dicegame.js";
+import { DECK_DEFAULTS, CARD_KINDS, CARD_KIND_LABEL, CARD_KIND_HINT, cardsOf, stepOf, deckOdds, deckOddsHTML, deckRulesText, draftDeck, deckPreview, deckPreviewHTML, deckSummary } from "./deck.js";
 
 // A box's odds in the Boxes table: its ribbon over its named pills.
 const oddsCell = rows => rows.length ? `${oddsRibbon(rows)}<div class="lc-odds">${oddsPills(rows)}</div>` : "<em>empty</em>";
-import { getPools, getBoxes, getLog, createPool, updatePool, removePool, createBox, updateBox, removeBox, entryFromItem, entriesFromDrop, addEntries, packHasLoot, LOOT_TYPES, isLootType, isShopOpen, setShopOpen, checkSources, sweepPools, removeEntry, patchEntry } from "./store.js";
+import { getPools, getBoxes, getLog, todayKey, createPool, updatePool, removePool, createBox, updateBox, removeBox, entryFromItem, entriesFromDrop, addEntries, packHasLoot, LOOT_TYPES, isLootType, isShopOpen, setShopOpen, checkSources, sweepPools, removeEntry, patchEntry } from "./store.js";
 import { shopOdds, normalizeRarity, flattenPool, withSources, entryWeight, curateEntries } from "./odds.js";
 import { PAGE_ROWS, FALLBACK_IMG, defaultView, poolRows, sortRows, filterRows, pageRows, nextRows, poolCount, poolSummary, poolBody, chipsHTML, unsetButton, footHTML, entryRow, entryParts, pinRecent, dropNotice, poolUsers, usersText, deleteImpact, removeImpact, deletePoolText, removeEntryText } from "./poolview.js";
 import { formatPrice } from "./currency.js";
@@ -98,7 +103,7 @@ export class CrateManager extends ApplicationV2 {
       switchTab: CrateManager.#switchTab,
       addPool: CrateManager.#addPool, editPool: CrateManager.#editPool, deletePool: CrateManager.#deletePool,
       bulkAdd: CrateManager.#bulkAdd, setUnsetRarity: CrateManager.#setUnsetRarity, removeEntry: CrateManager.#removeEntry, updateEntry: CrateManager.#updateEntry, relinkEntry: CrateManager.#relinkEntry,
-      addBox: CrateManager.#addBox, addWell: CrateManager.#addWell, addDice: CrateManager.#addDice, editBox: CrateManager.#editBox, deleteBox: CrateManager.#deleteBox,
+      addBox: CrateManager.#addBox, addWell: CrateManager.#addWell, addDice: CrateManager.#addDice, addDeck: CrateManager.#addDeck, editBox: CrateManager.#editBox, deleteBox: CrateManager.#deleteBox, reshuffle: CrateManager.#reshuffle,
       refund: CrateManager.#refund, toggleShop: CrateManager.#toggleShop, toggleMisses: CrateManager.#toggleMisses,
       filterChip: CrateManager.#filterChip, showMore: CrateManager.#showMore,
     },
@@ -497,11 +502,32 @@ export class CrateManager extends ApplicationV2 {
     this.render();
   }
 
+  // A deck: 10 gp a draw, half again for each draw in a row, five
+  // placeholder cards for the GM to rename (nothing published ships).
+  static async #addDeck() {
+    await createBox({ kind: "deck", name: "New deck", price: DECK_DEFAULTS.price, weights: { ...DEFAULT_WEIGHTS }, deck: { step: DECK_DEFAULTS.step, shuffledAt: 0, cards: DECK_DEFAULTS.cards.map(c => ({ ...c })) }, rules: {} });
+    this.render();
+  }
+
+  // Every once card drawn goes back in: the mark the drawn count is read
+  // from (deck.js drawnIds) moves to now. The log keeps its rows.
+  static async #reshuffle(_e, t) {
+    const box = getBoxes()[t.dataset.box];
+    if (!box) return this.render();
+    const drawn = deckOdds(box, getPools(), getLog()).drawn;
+    const ok = await DialogV2.confirm({ window: { title: "Reshuffle" }, content: `<p>Reshuffle <strong>${esc(box.name)}</strong>? ${drawn ? `${drawn} drawn card${drawn === 1 ? " goes" : "s go"} back into the deck.` : "No card is drawn; every card is already in the deck."}</p>` });
+    if (!ok) return t.focus?.();
+    const saved = await updateBox(box.id, fresh => ({ ...fresh, deck: { ...(fresh.deck ?? {}), shuffledAt: Date.now() } }));
+    if (saved) ui.notifications.info(`${box.name} reshuffled: every card is back in the deck.`);
+    this.render();
+  }
+
   static async #editBox(_e, t) {
     const box = getBoxes()[t.dataset.box];
     if (!box) return this.render();
     if (kindOf(box) === "well") return CrateManager.#editWell.call(this, box);
     if (kindOf(box) === "dice") return CrateManager.#editDice.call(this, box);
+    if (kindOf(box) === "deck") return CrateManager.#editDeck.call(this, box);
     const pools = Object.values(getPools());
     const poolIds = pools.map(p => p.id);
     const shares = Object.fromEntries((box.pools ?? []).map(p => [p.id, p.share ?? 1]));
@@ -582,6 +608,7 @@ export class CrateManager extends ApplicationV2 {
       </div>
       <fieldset><legend>Rules</legend>
         <label class="lc-row">Each character may throw <input name="cap" type="number" min="0" step="1" value="${box.rules?.cap ?? ""}"> times a day (blank for no limit; the day is the world's calendar)</label>
+        ${noClockNote({ hasClock: todayKey() != null, cap: box.rules?.cap })}
         <label class="lc-row">Pity: guarantee <select name="pityRarity"><option value="">off</option>${RARITIES.map(r => `<option value="${r}" ${box.rules?.pity?.minRarity === r ? "selected" : ""}>${RARITY_LABEL[r]} or better</option>`).join("")}</select> after <input name="pityAfter" type="number" min="1" step="1" value="${esc(box.rules?.pity?.after ?? 10)}"> throws</label>
         <label class="lc-row"><input type="checkbox" name="noDuplicates" ${box.rules?.noDuplicates ? "checked" : ""}> No duplicates per character</label>
       </fieldset>`, {
@@ -665,6 +692,85 @@ export class CrateManager extends ApplicationV2 {
       weights: draft.weights,
       dice: draft.dice,
       rules: { ...fresh.rules, prize: draft.rules.prize },
+    }));
+    if (!saved) ui.notifications.warn(`${box.name} was deleted while you were editing it.`);
+    this.render();
+  }
+
+  /*
+    The deck's editor: the first draw's price, the step each draw in a row
+    multiplies it by, then the cards as rows (name, what it does, weight,
+    once, the gold for coins and loss, the text for an effect) with Add card
+    and a remove on each, the pools and rarity weights the item cards draw
+    on, and the shop's own pills as a live preview with the cards left.
+    Nothing is written until Save.
+  */
+  static async #editDeck(box) {
+    const pools = Object.values(getPools());
+    const poolIds = pools.map(p => p.id);
+    const shares = Object.fromEntries((box.pools ?? []).map(p => [p.id, p.share ?? 1]));
+    const data = await promptForm("Edit deck", `
+      <label>Name <input name="name" value="${esc(box.name)}"></label>
+      <label>First draw (gp) <input name="price" type="number" min="0" step="1" value="${esc(box.price)}"></label>
+      <label class="lc-row">Each draw in a row costs <input name="step" type="number" min="1" step="0.1" value="${esc(stepOf(box))}"> times the last</label>
+      <p class="lc-form__hint">A draw within two minutes of the last counts as in a row; the price comes back down after that, and a refund takes a step back.</p>
+      <fieldset class="lc-cards"><legend>Cards</legend>
+        <div class="lc-cards__head" aria-hidden="true"><span>Card</span><span>Does</span><span>Gold</span><span>Weight</span><span>Once</span><span></span></div>
+        <div class="lc-cards__rows">${cardsOf(box).map(c => cardRow(c)).join("")}</div>
+        <div class="lc-cards__foot"><button type="button" class="lc-cards__add"><i class="fas fa-plus"></i> Add card</button></div>
+        <p class="lc-form__hint">A card marked once leaves the deck when drawn, until you reshuffle. Gold is what a coins card pays or a loss card takes; an effect card's text is posted to chat for you to play out. Weight 0 never draws.</p>
+      </fieldset>
+      <fieldset><legend>Pools the item cards draw from, and their share</legend>
+        ${pools.map(p => `<label class="lc-row"><input type="checkbox" name="pool.${esc(p.id)}" ${p.id in shares ? "checked" : ""}> ${esc(p.name)} <input name="share.${esc(p.id)}" type="number" min="0" step="1" value="${esc(shares[p.id] ?? 1)}" title="Share"></label>`).join("") || "<p>No pools yet.</p>"}
+      </fieldset>
+      <fieldset class="lc-form__weights"><legend>The item's rarity weights</legend>
+        ${RARITIES.map(r => `<label class="lc-row">${RARITY_LABEL[r]} <input name="w.${r}" type="number" min="0" step="1" value="${esc(box.weights?.[r] ?? DEFAULT_WEIGHTS[r])}"><span class="lc-form__hint" data-held="${r}"></span></label>`).join("")}
+      </fieldset>
+      <div class="lc-form__odds" role="group" aria-labelledby="lc-odds-${esc(box.id)}">
+        <div class="lc-form__label" id="lc-odds-${esc(box.id)}">Chances a player sees</div>
+        <div class="lc-form__preview"></div>
+        <p class="lc-sr-only" role="status" aria-live="polite"></p>
+      </div>`, {
+      onForm: form => {
+        const paint = liveOdds(form, box, poolIds, (draft, live) => {
+          const preview = deckPreview(draft, live, getLog());
+          return { html: deckPreviewHTML(preview, esc), summary: deckSummary(preview), held: heldRarities(draft, live) };
+        }, draftDeck);
+        const rows = form.querySelector(".lc-cards__rows");
+        // Add card: a blank row at the foot, its name focused. Remove: the
+        // row goes and focus moves to the next row's name, else Add card.
+        form.querySelector(".lc-cards__add")?.addEventListener("click", () => {
+          rows.insertAdjacentHTML("beforeend", cardRow({ id: foundry.utils.randomID(8), label: "", kind: "blank", weight: 1, once: false, gp: 0, text: "" }));
+          rows.lastElementChild.querySelector(".lc-card-row__label").focus();
+          paint();
+        });
+        form.addEventListener("click", e => {
+          const btn = e.target.closest?.(".lc-card-row__remove");
+          if (!btn) return;
+          const row = btn.closest(".lc-card-row");
+          const next = row.nextElementSibling ?? row.previousElementSibling;
+          row.remove();
+          (next?.querySelector(".lc-card-row__label") ?? form.querySelector(".lc-cards__add"))?.focus();
+          paint();
+        });
+        // What the card does decides which fields it shows (module.css).
+        form.addEventListener("change", e => {
+          const sel = e.target.closest?.(".lc-card-row__kind");
+          if (sel) sel.closest(".lc-card-row").dataset.kind = sel.value;
+        });
+      },
+      position: { width: 560 },
+    });
+    if (!data) return;
+    const draft = draftDeck(box, data, poolIds);
+    const saved = await updateBox(box.id, fresh => ({
+      ...fresh,
+      kind: "deck",
+      name: data.name || fresh.name,
+      price: draft.price,
+      pools: draft.pools.filter(ref => ref.id in getPools()),
+      weights: draft.weights,
+      deck: { ...(fresh.deck ?? {}), step: draft.deck.step, cards: draft.deck.cards },
     }));
     if (!saved) ui.notifications.warn(`${box.name} was deleted while you were editing it.`);
     this.render();
@@ -861,20 +967,25 @@ export class CrateManager extends ApplicationV2 {
     // A well's row: its name tagged, its three outcomes as the shop shows
     // them, its cap and pity in throws. A dice game's: win and lose, the
     // dragon's number, the payout and the prize.
+    // A deck's row: the kinds of card still in it, its cards and how many
+    // are drawn, and Reshuffle beside Edit.
+    const log = getLog();
     const well = b => kindOf(b) === "well";
     const dice = b => kindOf(b) === "dice";
-    const tag = b => (well(b) ? ` <span class="lc-kind">Well</span>` : dice(b) ? ` <span class="lc-kind">Dice</span>` : "");
-    const odds = b => (well(b) ? wellOddsHTML(wellOdds(b, pools)) || "<em>dry</em>" : dice(b) ? diceOddsHTML(diceOdds(b, pools)) || "<em>unbeatable</em>" : oddsCell(shopOdds(b, pools).rows));
-    const rules = b => (well(b) ? esc(wellRulesText(b)) : dice(b) ? esc(diceRulesText(b)) : [b.rules?.pity ? esc(`${RARITY_LABEL[b.rules.pity.minRarity] ?? b.rules.pity.minRarity} or better after ${b.rules.pity.after} pulls`) : "", b.rules?.noDuplicates ? "no dupes" : "", b.rules?.stock != null ? `${b.rules.stock} left` : ""].filter(Boolean).join(", "));
+    const deck = b => kindOf(b) === "deck";
+    const tag = b => (well(b) ? ` <span class="lc-kind">Well</span>` : dice(b) ? ` <span class="lc-kind">Dice</span>` : deck(b) ? ` <span class="lc-kind">Deck</span>` : "");
+    const odds = b => (well(b) ? wellOddsHTML(wellOdds(b, pools)) || "<em>dry</em>" : dice(b) ? diceOddsHTML(diceOdds(b, pools)) || "<em>unbeatable</em>" : deck(b) ? deckOddsHTML(deckOdds(b, pools, log)) || "<em>empty</em>" : oddsCell(shopOdds(b, pools).rows));
+    const rules = b => (well(b) ? esc(wellRulesText(b)) : dice(b) ? esc(diceRulesText(b)) : deck(b) ? esc(deckRulesText(b, log)) : [b.rules?.pity ? esc(`${RARITY_LABEL[b.rules.pity.minRarity] ?? b.rules.pity.minRarity} or better after ${b.rules.pity.after} pulls`) : "", b.rules?.noDuplicates ? "no dupes" : "", b.rules?.stock != null ? `${b.rules.stock} left` : ""].filter(Boolean).join(", "));
+    const extra = b => (deck(b) ? `<button type="button" data-action="reshuffle" data-box="${esc(b.id)}" aria-label="Reshuffle ${esc(b.name)}">Reshuffle</button> ` : "");
     return `
-      <div class="lc-toolbar"><button type="button" data-action="addBox"><i class="fas fa-plus"></i> New box</button><button type="button" data-action="addWell"><i class="fas fa-plus"></i> New well</button><button type="button" data-action="addDice"><i class="fas fa-plus"></i> New dice game</button></div>
+      <div class="lc-toolbar"><button type="button" data-action="addBox"><i class="fas fa-plus"></i> New box</button><button type="button" data-action="addWell"><i class="fas fa-plus"></i> New well</button><button type="button" data-action="addDice"><i class="fas fa-plus"></i> New dice game</button><button type="button" data-action="addDeck"><i class="fas fa-plus"></i> New deck</button></div>
       ${boxes.length ? `<table class="lc-table"><thead><tr><th>Box</th><th>Price</th><th>Pools</th><th>Odds</th><th>Rules</th><th></th></tr></thead><tbody>
         ${boxes.map(b => `<tr>
           <td>${esc(b.name)}${tag(b)}</td><td>${esc(formatPrice(b.price))}</td>
           <td>${(b.pools ?? []).map(r => esc(pools[r.id]?.name ?? "missing")).join(", ") || "<em>none</em>"}</td>
           <td>${odds(b)}</td>
           <td>${rules(b)}</td>
-          <td><button type="button" data-action="editBox" data-box="${esc(b.id)}" aria-label="Edit ${esc(b.name)}" data-tooltip="Edit"><i class="fas fa-pen" inert></i></button> <button type="button" data-action="deleteBox" data-box="${esc(b.id)}" aria-label="Delete ${esc(b.name)}" data-tooltip="Delete"><i class="fas fa-trash" inert></i></button></td>
+          <td>${extra(b)}<button type="button" data-action="editBox" data-box="${esc(b.id)}" aria-label="Edit ${esc(b.name)}" data-tooltip="Edit"><i class="fas fa-pen" inert></i></button> <button type="button" data-action="deleteBox" data-box="${esc(b.id)}" aria-label="Delete ${esc(b.name)}" data-tooltip="Delete"><i class="fas fa-trash" inert></i></button></td>
         </tr>`).join("")}</tbody></table>` : `<p class="lc-empty">No boxes. A box prices a pull from one or more pools.</p>`}`;
   }
 
@@ -894,7 +1005,7 @@ export class CrateManager extends ApplicationV2 {
     const status = (id, at) => `<span class="lc-log__status" tabindex="-1" data-row="${esc(id)}">refunded ${esc(refundTime(at))}</span>`;
     const row = r => `<tr class="${r.refunded ? "lc-row--refunded" : r.lateCancel ? "lc-row--late" : ""}">
         <td>${new Date(r.at).toLocaleString()}</td><td>${esc(r.actorName)}</td><td>${esc(r.boxName)} (${esc(formatPrice(r.price))})</td>
-        <td class="lc-rarity-${esc(r.rarity ?? (r.win ? "coin" : "none"))}"><span class="lc-dot"></span>${r.refunded ? `<s>${esc(r.name)}</s>` : esc(r.name)}${r.pity ? " · pity" : ""}${logRarityNote(r)}${logPayoutNote(r)}${logLateNote(r)}</td>
+        <td class="lc-rarity-${esc(r.rarity ?? r.swatch ?? (r.win ? "coin" : "none"))}"><span class="lc-dot"></span>${r.refunded ? `<s>${esc(r.name)}</s>` : esc(r.name)}${r.pity ? " · pity" : ""}${logRarityNote(r)}${logPayoutNote(r)}${logLateNote(r)}</td>
         <td>${r.refunded ? status(r.id, r.refunded) : `<button type="button" data-action="refund" data-row="${esc(r.id)}">Refund</button>`}</td>
       </tr>`;
     const group = g => {
@@ -972,13 +1083,16 @@ export function logRarityNote(row) {
 }
 
 // "Rolled 4, 6, 5 · won 30 gp" under a row of a game that paid coins out
-// (the dice): what a refund takes back is on the row, not only in the
-// confirm. A row from before payouts (payoutCp 0 or absent) says nothing.
+// (the dice), or "took 20 gp" under one that took coins beyond the stake
+// (the deck's bane): what a refund gives or takes back is on the row, not
+// only in the confirm. A row from before payouts (payoutCp 0 or absent)
+// says nothing; a deck's row names its card's kind.
 export function logPayoutNote(row) {
-  const cp = Math.max(0, Math.round(Number(row?.payoutCp) || 0));
+  const cp = Math.round(Number(row?.payoutCp) || 0);
   const faces = Array.isArray(row?.faces) && row.faces.length ? `Rolled ${row.faces.join(", ")}` : "";
-  const won = cp > 0 ? `won ${formatPrice(cp / 100)}` : "";
-  const text = [faces, won].filter(Boolean).join(" · ");
+  const card = row?.cardKind && row.cardKind !== "item" ? `${CARD_KIND_LABEL[row.cardKind] ?? row.cardKind} card` : "";
+  const won = cp > 0 ? `won ${formatPrice(cp / 100)}` : cp < 0 ? `took ${formatPrice(-cp / 100)}` : "";
+  const text = [faces, card, won].filter(Boolean).join(" · ");
   return text ? `<small class="lc-log__rarity">${esc(text)}</small>` : "";
 }
 
@@ -1004,6 +1118,22 @@ function describeSkipped({ duplicates = 0, notLoot = {}, notItems = 0 } = {}) {
 }
 
 const htmlNode = html => { const t = document.createElement("template"); t.innerHTML = html.trim(); return t.content.firstElementChild; };
+
+// One card of the deck editor (deck.js draftDeck reads these names): the
+// row's data-kind decides which of the gold and text fields show.
+function cardRow(c) {
+  const id = esc(c.id);
+  return `<div class="lc-card-row" data-card="${id}" data-kind="${esc(c.kind)}">
+      <input type="hidden" name="cards" value="${id}">
+      <input class="lc-card-row__label" name="c.${id}.label" value="${esc(c.label)}" placeholder="Card name" aria-label="Card name">
+      <select class="lc-card-row__kind" name="c.${id}.kind" aria-label="What the card does">${CARD_KINDS.map(k => `<option value="${k}"${k === c.kind ? " selected" : ""}>${esc(CARD_KIND_HINT[k])}</option>`).join("")}</select>
+      <input class="lc-card-row__gp" name="c.${id}.gp" type="number" min="0" step="1" value="${esc(c.gp ?? 0)}" aria-label="Gold pieces" placeholder="gp">
+      <input class="lc-card-row__weight" name="c.${id}.weight" type="number" min="0" step="1" value="${esc(c.weight ?? 1)}" aria-label="Weight">
+      <label class="lc-card-row__once"><input type="checkbox" name="c.${id}.once"${c.once ? " checked" : ""} aria-label="Once per deck"></label>
+      <button type="button" class="lc-card-row__remove" aria-label="Remove ${esc(c.label || "this card")}" data-tooltip="Remove"><i class="fas fa-xmark" inert></i></button>
+      <input class="lc-card-row__text" name="c.${id}.text" value="${esc(c.text ?? "")}" placeholder="What happens (posted to chat for you to play out)" aria-label="Effect text">
+    </div>`;
+}
 
 // A small form in a DialogV2; resolves to the form's values or null.
 // A form's values as the editors read them: each named field's value (a list
@@ -1069,6 +1199,8 @@ function liveOdds(form, box, poolIds, previewOf = cratePreview, draftOf = draftB
   form.addEventListener("input", paint);
   form.addEventListener("change", paint);
   paint();
+  // For an editor whose rows come and go (the deck's cards), which fire no input.
+  return paint;
 }
 
 // The crate editor's preview: the shop's ribbon and pills, one line for a

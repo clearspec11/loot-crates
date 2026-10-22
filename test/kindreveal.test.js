@@ -48,7 +48,7 @@ const { registerKind, _resetKinds } = await import("../module/scripts/kinds.js")
 let controllers;
 const sting = vi.fn();
 const WELL = {
-  id: "well",
+  id: "stub",
   async roll() { return { result: null }; },
   reveal: {
     title: "A coin in the well",
@@ -91,7 +91,7 @@ beforeEach(() => {
 });
 afterEach(() => { _resetHolds(); _resetKinds(["crate"]); vi.unstubAllGlobals(); });
 
-const reveal = extra => ({ kind: "well", requestId: "w1", userId: "p1", actorId: "a1", actorName: "Tam", box: { id: "well", name: "Wishing Well", price: 0.05 }, result: null, itemId: null, itemUuid: null, logId: "L9", purse: {}, stateBefore: { throws: 2 }, ...extra });
+const reveal = extra => ({ kind: "stub", requestId: "w1", userId: "p1", actorId: "a1", actorName: "Tam", box: { id: "well", name: "Wishing Well", price: 0.05 }, result: null, itemId: null, itemUuid: null, logId: "L9", purse: {}, stateBefore: { throws: 2 }, ...extra });
 
 describe("a second kind's reveal", () => {
   it("plays the kind's animation in the vault and holds the shop's state and the chat card until it lands", async () => {

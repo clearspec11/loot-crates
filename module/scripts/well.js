@@ -60,6 +60,15 @@ export function throwsToday(log, { boxId, actorId, day }) {
 
 export const stillLine = (thrown, cap) => `The well is still until tomorrow (${thrown} of ${cap} today)`;
 
+// The editor's one-line note when the world has no clock (store.js todayKey
+// null): the cap is keyed on the in-game day, so without one it never
+// applies, and the GM should hear that where they set it. A warning when a
+// cap is set and so silently off; a hint otherwise; nothing with a clock.
+export function noClockNote({ hasClock, cap } = {}) {
+  if (hasClock) return "";
+  return `<p class="lc-form__hint${capOf({ rules: { cap } }) ? " lc-form__hint--warn" : ""}">No calendar: the daily cap will not apply.</p>`;
+}
+
 /*
   The odds one throw is made at, for one buyer: { rows: [{ key, name,
   chance, label }], item, dry, due }. The item outcome is only as likely as
@@ -422,6 +431,8 @@ export const WELL = registerKind({
   noun: "well",
   roll,
   logRow,
+  // The late-cancel line (socket.js): the coin back isn't a thing one "got".
+  gotText: out => (out.outcome === "coin" ? "got the coin back" : `got ${out.result?.name || "nothing"}`),
   undo: undoPull,
   reveal: {
     title: "A coin in the well",

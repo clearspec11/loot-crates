@@ -39,11 +39,21 @@
   full length unless ?duration is given (0 lands at once); ?phase=rolling
   keeps the dice tumbling (reduced motion off) for a mid-roll screenshot,
   with the button reading Skip; buyer=1 as for landed.
+  "deck" is the Deck of Many Things' reveal (deck.js): ?outcome=item | coins
+  | loss | effect | blank (coins by default), played at full length unless
+  ?duration is given (0 lands at once); ?phase=held freezes the card
+  face-down mid-hold (reduced motion off) for a screenshot, with the button
+  reading Skip; ?streak=2 makes it the third draw in a row (the head says
+  so, and Draw again names the risen price); buyer=1 as for landed, and
+  also shows Draw again, as the buyer alone sees it.
+  ?streak=1 (shop: Tam drew from the deck a moment ago, so its card prices
+  the next draw at 15 gp and says so)
 */
-import { POOLS, BOX, BOXES, WELL, DICE, DICE_FACES, wellThrows, MANAGER_POOLS, MANAGER_SOURCES, MANAGER_BOXES } from "./sample.js";
+import { POOLS, BOX, BOXES, WELL, DICE, DICE_FACES, DECK, deckDraws, wellThrows, MANAGER_POOLS, MANAGER_SOURCES, MANAGER_BOXES } from "./sample.js";
 import { getKind, kindOf } from "../module/scripts/kinds.js";
 import { mountWell } from "../module/scripts/well.js";
 import { mountDice, resolve, rollData, parseFormula } from "../module/scripts/dicegame.js";
+import { mountDeck, TONE_OF, CARD_KIND_LABEL, priceAt, deckPlan } from "../module/scripts/deck.js";
 import { poolRows, sortRows, defaultView, poolSummary, poolBody, pinRecent, dropNotice, poolUsers } from "../module/scripts/poolview.js";
 import { draw, seededRng } from "../module/scripts/odds.js";
 import { buildStrip } from "../module/scripts/strip.js";
@@ -71,7 +81,7 @@ const theme = q.get("theme") === "light" ? "light" : "dark";
 document.body.classList.replace("theme-dark", `theme-${theme}`);
 
 // The window the module would open for this state: its class and title.
-const WINDOWS = { shop: ["lc-shop", "Crate Shop"], manager: ["lc-manager", "Loot Crates"], well: ["lc-reveal", "A coin in the well"], dice: ["lc-reveal", "Dragon's Teeth"] };
+const WINDOWS = { shop: ["lc-shop", "Crate Shop"], manager: ["lc-manager", "Loot Crates"], well: ["lc-reveal", "A coin in the well"], dice: ["lc-reveal", "Dragon's Teeth"], deck: ["lc-reveal", "A card from the deck"] };
 const [appClass, appTitle] = WINDOWS[state] ?? ["lc-reveal", "Opening a crate"];
 document.getElementById("app").classList.add(appClass);
 if (Number(q.get("width")) > 0) Object.assign(document.getElementById("app").style, { width: `${Number(q.get("width"))}px`, maxWidth: "100%" });
@@ -83,14 +93,14 @@ document.getElementById("title").textContent = appTitle;
 const CRATE_ICON = `<svg class="lc-box__icon" viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M3 8.5 12 4l9 4.5v8L12 21l-9-4.5z"/><path d="M3 8.5 12 13l9-4.5M12 13v8"/></svg>`;
 
 const nav = document.getElementById("nav");
-for (const [label, query] of [["shop", "state=shop"], ["spin", "state=spin"], ["landed", "state=landed"], ["landed, buyer", "state=landed&buyer=1"], ["missed", "state=landed&buyer=1&watched=0"], ["replay", "state=replay"], ["well", "state=well&buyer=1"], ["well, coin", "state=well&outcome=coin&buyer=1"], ["well, item", "state=well&outcome=item&buyer=1"], ["dice", "state=dice&buyer=1"], ["dice, lost", "state=dice&outcome=lose&buyer=1"], ["dice, prize", "state=dice&outcome=prize&buyer=1"], ["manager", "state=manager"]]) {
+for (const [label, query] of [["shop", "state=shop"], ["spin", "state=spin"], ["landed", "state=landed"], ["landed, buyer", "state=landed&buyer=1"], ["missed", "state=landed&buyer=1&watched=0"], ["replay", "state=replay"], ["well", "state=well&buyer=1"], ["well, coin", "state=well&outcome=coin&buyer=1"], ["well, item", "state=well&outcome=item&buyer=1"], ["dice", "state=dice&buyer=1"], ["dice, lost", "state=dice&outcome=lose&buyer=1"], ["dice, prize", "state=dice&outcome=prize&buyer=1"], ["deck", "state=deck&buyer=1"], ["deck, item", "state=deck&outcome=item&buyer=1"], ["deck, bane", "state=deck&outcome=loss&buyer=1"], ["deck, effect", "state=deck&outcome=effect&buyer=1"], ["manager", "state=manager"]]) {
   const a = document.createElement("a");
   a.href = `?${query}&seed=${seed}&theme=${theme}`;
   a.textContent = label;
   if (query === `state=${state}${buyer ? "&buyer=1" : ""}${unwatched ? "&watched=0" : ""}`) a.classList.add("active");
   nav.append(a);
 }
-if (state !== "shop" && state !== "manager" && state !== "well" && state !== "dice") {
+if (state !== "shop" && state !== "manager" && state !== "well" && state !== "dice" && state !== "deck") {
   const again = document.createElement("a");
   again.href = `?state=spin&seed=${seed + 1}${q.has("box") ? `&box=${q.get("box")}` : ""}${buyer ? "&buyer=1" : ""}&theme=${theme}`;
   again.textContent = "open another";
@@ -117,8 +127,9 @@ function renderShop(extra = {}) {
   const ctx = {
     purse, hasActor: true, actorId: "tam", actorName: "Tam Thornwick", open: !closed, gmOnline: closed !== "1", art: CRATE_ICON,
     stateOf: id => (pityDue && id === BOX.id ? { sinceRare: BOX.rules.pity.after } : {}),
-    // The in-game day and the log the well counts today's throws from.
-    today: "y1d1", log: wellThrows(q.get("well") === "capped" ? WELL.rules.cap : 1),
+    // The in-game day and the log the well counts today's throws from, and
+    // the deck its draws in a row.
+    today: "y1d1", log: [...deckDraws(Number(q.get("streak")) || 0), ...wellThrows(q.get("well") === "capped" ? WELL.rules.cap : 1)],
     ...(waiting ? { busy: true, busyBox: BOXES[0].id, waiting } : {}), ...extra,
   };
   const fresh = document.createElement("div");
@@ -402,8 +413,76 @@ async function renderDice() {
   document.body.dataset.landed = "1";
 }
 
+/*
+  The Deck of Many Things' reveal as reveal.js opens it, with the deck kind's
+  own head, play, result, Draw again and buttons (no Watch again). The
+  outcome picks the card (sample.js DECK), the item by the seed; the streak
+  makes it a draw in a row, which the head says and the next price follows.
+*/
+async function renderDeck() {
+  const outcome = ["item", "coins", "loss", "effect", "blank"].includes(q.get("outcome")) ? q.get("outcome") : "coins";
+  const held = q.get("phase") === "held";
+  const streak = Math.max(0, Number(q.get("streak")) || 0) + 1;
+  const kind = getKind("deck").reveal;
+  const esc = s => String(s ?? "");
+  const card = DECK.deck.cards.find(c => c.kind === outcome);
+  const drawn = outcome === "item" ? draw({ box: DECK, pools: POOLS, rng: seededRng(seed), state: {} }) : null;
+  const price = priceAt(DECK, streak - 1);
+  const plan = deckPlan(DECK, POOLS, []);
+  const lossCp = outcome === "loss" ? card.gp * 100 : 0;
+  const payoutCp = outcome === "coins" ? card.gp * 100 : -lossCp;
+  const reveal = {
+    kind: "deck", actorId: "tam", actorName: "Tam Thornwick", userId: "buyer",
+    box: { id: DECK.id, name: DECK.name, price },
+    card: { id: card.id, label: card.label, kind: card.kind, once: !!card.once }, tone: TONE_OF[outcome],
+    cardsLeft: plan.left - (card.once ? 1 : 0), size: plan.size, streak, nextPrice: priceAt(DECK, streak),
+    result: drawn ? { uuid: drawn.entry.uuid, name: drawn.entry.name, img: drawn.entry.img, rarity: drawn.rarity, pity: false } : { name: card.label, outcome },
+    itemUuid: drawn ? "Actor.sample.Item.sample" : null,
+    payoutCp, lossCp, takenCp: lossCp, text: card.text ?? "",
+    purse: charge(purse, price) ?? {},
+  };
+  if (payoutCp) reveal.purse = charge({ ...purse, gp: purse.gp + payoutCp / 100 }, price) ?? reveal.purse;
+  const rarity = drawn ? drawn.rarity : outcome === "coins" ? "coin" : outcome === "loss" ? "bane" : "none";
+  stage.innerHTML = `
+    <div class="lc-reveal__body">
+      <div class="lc-reveal__head">${kind.head(reveal, { esc })}</div>
+      <div class="lc-vault lc-rarity-${drawn ? drawn.rarity : "none"}">
+        <div class="lc-reveal__spin"></div>
+        <div class="lc-reveal__result lc-rarity-${drawn ? drawn.rarity : "none"}" aria-live="polite"></div>
+      </div>
+      ${revealActionsHTML()}
+    </div>`;
+  const outEl = stage.querySelector(".lc-reveal__result");
+  const btn = stage.querySelector(".lc-reveal__close");
+  const open = stage.querySelector(".lc-reveal__open");
+  const again = stage.querySelector(".lc-reveal__again");
+  let landed = false;
+  const ctrl = mountDeck(stage.querySelector(".lc-reveal__spin"), {
+    tone: reveal.tone, swatch: rarity, label: card.label, kindLabel: drawn ? RARITY_LABEL[drawn.rarity] : CARD_KIND_LABEL[outcome], img: drawn ? drawn.entry.img : "",
+    duration, reducedMotion: held ? false : undefined, freezeAt: held ? 300 + 450 : null,
+    onLand: () => {
+      landed = true;
+      outEl.innerHTML = kind.result(reveal, { esc, canSee: buyer });
+      open.hidden = !(buyer && drawn);
+      // Draw again, as the core offers it to the buyer: the next draw's price from the record.
+      const offer = buyer ? kind.again(reveal, { game: DECK, log: deckDraws(streak), pools: POOLS, purse: reveal.purse, now: Date.now() }) : null;
+      again.hidden = !offer;
+      if (offer) again.textContent = offer.label;
+      btn.dataset.action = "dismiss";
+      btn.textContent = "Close";
+      btn.focus({ preventScroll: true });
+    },
+  });
+  btn.addEventListener("click", () => { if (landed) location.search = `?state=shop&seed=${seed}&theme=${theme}`; else ctrl.skip(); });
+  again.addEventListener("click", () => { location.search = `?state=deck&seed=${seed + 1}&buyer=1&streak=${streak}&theme=${theme}`; });
+  window.__lootCrates = { reveal };
+  await ctrl.play();
+  document.body.dataset.landed = "1";
+}
+
 if (state === "shop") renderShop();
 else if (state === "manager") renderManager();
 else if (state === "well") renderWell();
 else if (state === "dice") renderDice();
+else if (state === "deck") renderDeck();
 else renderSpin();

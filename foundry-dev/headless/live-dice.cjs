@@ -24,7 +24,10 @@
 //      Every animation frame from the click to the landing (.lc-dice--
 //      landed) is watched for the verdict or the total showing anywhere in
 //      the chat log (a leak; must be 0 frames), and every rendering of the
-//      pull's chat card is noted with whether it was sealed. The reveal's
+//      pull's chat card is noted with whether it was sealed. The dice
+//      themselves are watched too: a settled die's foot must keep the
+//      vault's line until the stage tells the total (lc-dice--told; 0
+//      frames otherwise), and take the win's colour from then. The reveal's
 //      faces, total, result (in a live region), focus (on Close) and
 //      Watch again (none) are read; the GM's reveal (and the watcher's,
 //      landed at once in its hidden tab) must show the same faces. The
@@ -291,6 +294,21 @@ async function refundFromLog(gm, { rowId, press }) {
       // click count: an earlier run's (refunded) dice card is in the log.
       let leakFrames = 0, shownFrames = 0, frames = 0, done = false, landedFrameMs = null;
       const leakAt = [], shownAt = [];
+      // The dice's feet: the vault's own line, read off a die before any has
+      // settled; a settled die must keep it until the stage is told the
+      // total, or the first die to land reads the win 440 ms early.
+      let footTellFrames = 0, lineColor = null, feetAtTotal = null;
+      const footTellAt = [];
+      const watchFeet = r => {
+        const stage = r?.querySelector(".lc-dice");
+        if (!stage) return;
+        const dice = [...stage.querySelectorAll(".lc-dice__die")];
+        const loose = dice.find(d => !d.classList.contains("lc-dice__die--set"));
+        if (loose) lineColor ??= getComputedStyle(loose).borderBottomColor;
+        const feet = dice.filter(d => d.classList.contains("lc-dice__die--set")).map(d => getComputedStyle(d).borderBottomColor);
+        if (stage.classList.contains("lc-dice--told")) feetAtTotal ??= { lineColor, feet, ms: Math.round(performance.now() - t0) };
+        else if (lineColor && feet.some(c => c !== lineColor)) { footTellFrames++; if (footTellAt.length < 5) footTellAt.push(Math.round(performance.now() - t0)); }
+      };
       const known = new Set([...document.querySelectorAll("#chat [data-message-id]")].map(el => el.dataset.messageId));
       const newMessages = () => [...document.querySelectorAll("#chat [data-message-id]")].filter(m => !known.has(m.dataset.messageId));
       const chatLeak = () => newMessages()
@@ -305,6 +323,7 @@ async function refundFromLog(gm, { rowId, press }) {
         // no leak (the 50 ms poll below would see the landing late and
         // count such a frame as before it).
         const r = [...document.querySelectorAll(".lc-reveal")].find(el => !seen.has(el));
+        watchFeet(r);
         if (r?.querySelector(".lc-dice--landed")) { landedFrameMs ??= Math.round(performance.now() - t0); return; }
         frames++;
         if (chatLeak()) { leakFrames++; if (leakAt.length < 5) leakAt.push(Math.round(performance.now() - t0)); }
@@ -344,7 +363,7 @@ async function refundFromLog(gm, { rowId, press }) {
       const row = getLog().filter(r => r.boxId === gameId).sort((a, b) => b.at - a.at)[0] ?? null;
       return {
         start, buyLabels: labels, purseBefore, purseAfter: foundry.utils.deepClone(actor.system.currency), reveal,
-        frames, leakFrames, leakAt, shownFrames, shownAt, chatCards: cards.map(c => ({ ...c, ms: Math.round(c.at - t0) })), chatRenders: renders.map(r => ({ ms: Math.round(r.ms - t0), sealed: r.sealed, hidden: r.hidden, verdictShown: r.verdictShown })), chatAfter,
+        frames, leakFrames, leakAt, shownFrames, shownAt, footTellFrames, footTellAt, feetAtTotal, chatCards: cards.map(c => ({ ...c, ms: Math.round(c.at - t0) })), chatRenders: renders.map(r => ({ ms: Math.round(r.ms - t0), sealed: r.sealed, hidden: r.hidden, verdictShown: r.verdictShown })), chatAfter,
         focusAfterClose, cardAfter: read(), row: row && { id: row.id, win: row.win, faces: row.faces, total: row.total, target: row.target, price: row.price, payoutCp: row.payoutCp, name: row.name, itemId: row.itemId },
         toasts: globalThis.__lcToasts ?? null,
       };
@@ -421,6 +440,7 @@ async function refundFromLog(gm, { rowId, press }) {
       resultWords: new RegExp(`^${row.win ? `${row.total} beats the dragon's 3` : `${row.total} (doesn't beat|ties) the dragon's 3.*`} Rolled ${faces.join(", ")} on 3d6 · ${row.win ? "Won 30 gp" : "Lost 10 gp"} · .* in the purse$`).test(r.result ?? ""),
       headWords: /rolls 3d6 to beat the dragon's 3 at Live dice 10 gp/.test(r.head ?? ""),
       noLeakBeforeLanding: b.leakFrames === 0 && b.frames > 0 && b.chatRenders.filter(x => x.ms < r.ms.landed).every(x => x.sealed) && b.chatAfter.sealedNow === 0,
+      feetWaitForTotal: b.footTellFrames === 0 && b.feetAtTotal?.lineColor != null && b.feetAtTotal.feet.length === 3 && b.feetAtTotal.feet.every(c => (row.win ? c !== b.feetAtTotal.lineColor : c === b.feetAtTotal.lineColor)),
       cardHiddenBeforeLanding: b.shownFrames === 0 && b.chatRenders.filter(x => x.ms < r.ms.landed).every(x => x.hidden) && (!row.win || b.chatRenders.length > 0),
       noRollInChat: (row.win ? out.gmSide.card != null && out.gmSide.card.rolls === 0 && !out.gmSide.card.hasRollHtml && out.gmSide.card.faces.join() === faces.join() : out.gmSide.card == null) && b.chatCards.every(c => c.rolls === 0),
       purseMovedByPayoutLessStake: purseDelta === net && out.gmSide.purseCp === before.purseCp + net && out.gmSide.items === before.items,

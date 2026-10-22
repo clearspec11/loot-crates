@@ -67,6 +67,19 @@ const STATES = [
   ["dice-rolling", "state=dice&outcome=win&buyer=1&phase=rolling&duration=100000"],
   ["dice-won", "state=dice&outcome=win&buyer=1&duration=0"],
   ["dice-lost", "state=dice&outcome=lose&buyer=1&duration=0"],
+  // The Deck of Many Things (deck.js): the card held face-down mid-hold
+  // (the button reads Skip, nothing of the face shows), then landed on an
+  // item (a boon), a loss (the bane: cold slate, a dimmed vault, no gold
+  // and no amber) and an effect (the GM's text), as the buyer sees them
+  // with Draw again beside Close; the loss is the third draw in a row, so
+  // the head says so and Draw again names the risen price.
+  ["deck-held", "state=deck&outcome=coins&buyer=1&phase=held"],
+  ["deck-boon", "state=deck&outcome=item&buyer=1&duration=0&seed=3"],
+  ["deck-bane", "state=deck&outcome=loss&buyer=1&duration=0&streak=2"],
+  ["deck-effect", "state=deck&outcome=effect&buyer=1&duration=0"],
+  // Tam drew from the deck a moment ago: its card prices the next draw at
+  // 15 gp and says why.
+  ["shop-deck-streak", "state=shop&streak=1"],
   ["manager", "state=manager"],
   // A manager window sized 480 px wide, on any screen: its rows follow the
   // window (a container query), so names wrap in full rather than cut off.
@@ -350,6 +363,116 @@ function diceProblems(outcome) {
   return out;
 }
 
+/*
+  The Deck of Many Things' reveal, read from the DOM. Held: the card is up
+  and face-down (its back faces the viewer, the front's label is not
+  visible), the button reads Skip, the result is empty. Landed: the card
+  has turned (its front shows the card's name), the stage names the tone,
+  the result is in a live region and says the card's name, what it did, the
+  gold left and the cards left; Draw again is shown to the buyer with the
+  next price; no Watch again. A bane's name is set in the bane token, which
+  is neither the gold rim, the pin gold, the warn amber nor a rarity; the
+  vault is dimmed, not washed.
+*/
+function deckProblems(outcome) {
+  const out = [];
+  const shown = el => !!el && !el.hidden && el.getBoundingClientRect().height > 0;
+  const stage = document.querySelector(".lc-deck");
+  if (!stage) return ["no deck stage"];
+  const card = stage.querySelector(".lc-deck__card");
+  const front = stage.querySelector(".lc-deck__face--front");
+  const label = stage.querySelector(".lc-deck__label");
+  const btn = document.querySelector(".lc-reveal__close");
+  const head = document.querySelector(".lc-reveal__head")?.innerText.replace(/\s+/g, " ") ?? "";
+  if (!/draws from The Thornwick Deck \d+ gp/.test(head)) out.push(`head reads "${head}"`);
+  for (const el of document.querySelectorAll(".lc-reveal__body *")) {
+    const r = el.getBoundingClientRect();
+    if (r.right > document.documentElement.clientWidth + 1) { out.push(`deck overflows: ${el.className}`); break; }
+  }
+  // Which face is toward the viewer: the card's rotateY, read from its matrix.
+  const turned = () => { const m = new DOMMatrix(getComputedStyle(card).transform); return m.m11 < 0; };
+  if (outcome === "held") {
+    if (stage.classList.contains("lc-deck--landed")) out.push("the card landed before the screenshot");
+    if (btn?.textContent !== "Skip") out.push(`mid-hold button reads "${btn?.textContent}"`);
+    if (document.querySelector(".lc-reveal__result")?.innerHTML.trim()) out.push("the result shows mid-hold");
+    if (turned()) out.push("the card is already turned mid-hold");
+    if (getComputedStyle(card).transform === "none" || new DOMMatrix(getComputedStyle(card).transform).m42 > -10) out.push("the card hasn't lifted");
+    if (!label?.textContent) out.push("the front has no label");
+    if (shown(document.querySelector(".lc-reveal__again"))) out.push("Draw again before the card turned");
+    return out;
+  }
+  if (!stage.classList.contains("lc-deck--landed")) out.push("the deck never landed");
+  if (!turned()) out.push("the card hasn't turned");
+  const want = { item: "boon", loss: "bane", effect: "effect", coins: "coin", blank: "blank" }[outcome];
+  if (stage.dataset.tone !== want) out.push(`the stage says "${stage.dataset.tone}"`);
+  const result = document.querySelector(".lc-reveal__result");
+  const text = result?.innerText.replace(/\s+/g, " ") ?? "";
+  if (!result?.closest("[aria-live]")) out.push("the result is not in a live region");
+  if (!/\d of \d cards left/.test(text)) out.push("the result doesn't count the cards left");
+  if (!/\d [gsc]p left/.test(text)) out.push("the buyer can't see the gold left");
+  if (outcome === "item") {
+    if (!document.querySelector(".lc-reveal__name")?.textContent) out.push("no item name in the result");
+    if (!/Added to .+'s inventory/.test(text)) out.push("a boon doesn't say where it went");
+    if (label?.textContent !== "Fortune") out.push(`the card reads "${label?.textContent}"`);
+  } else {
+    if (/inventory/.test(text)) out.push("a card with no item mentions the inventory");
+    if (!shown(document.querySelector(".lc-reveal__quiet"))) out.push("no quiet line for the card");
+  }
+  if (outcome === "loss") {
+    if (!text.includes("Ruin") || !text.includes("The card takes 20 gp")) out.push(`bane result reads "${text}"`);
+    if (!/3rd in a row/.test(head)) out.push(`the third draw's head reads "${head}"`);
+    const quiet = document.querySelector(".lc-reveal__quiet");
+    const colour = getComputedStyle(quiet).color;
+    const vault = document.querySelector(".lc-vault");
+    const tokens = Object.fromEntries(["--lc-bane", "--lc-gold-rim", "--lc-pin", "--lc-warn", "--lc-common", "--lc-uncommon", "--lc-rare", "--lc-veryRare", "--lc-legendary", "--lc-artifact"].map(k => [k, getComputedStyle(vault).getPropertyValue(k).trim()]));
+    const rgb = hex => { const n = parseInt(hex.slice(1), 16); return `rgb(${n >> 16}, ${(n >> 8) & 255}, ${n & 255})`; };
+    if (colour !== rgb(tokens["--lc-bane"])) out.push(`the bane's name is ${colour}, not the bane token ${tokens["--lc-bane"]}`);
+    for (const [k, v] of Object.entries(tokens)) if (k !== "--lc-bane" && v && rgb(v) === colour) out.push(`the bane reads in ${k}`);
+    if (getComputedStyle(front).borderTopColor !== rgb(tokens["--lc-bane"])) out.push("the turned card isn't edged in the bane token");
+    const again = document.querySelector(".lc-reveal__again");
+    if (again?.textContent !== "Draw again for 33 gp 7 sp 5 cp") out.push(`the third draw's Draw again reads "${again?.textContent}"`);
+  }
+  if (outcome === "effect") {
+    if (!document.querySelector(".lc-deck__text")?.textContent.includes("long rest")) out.push("the effect's text isn't shown");
+    if (!text.includes("The GM plays it out")) out.push(`effect result reads "${text}"`);
+  }
+  if (btn?.textContent !== "Close" || btn.disabled || document.activeElement !== btn) out.push("landed deck has no focused Close");
+  if (shown(document.querySelector(".lc-reveal__watch"))) out.push("Watch again on the deck");
+  if ((outcome === "item") !== shown(document.querySelector(".lc-reveal__open"))) out.push(outcome === "item" ? "no Open item for a boon" : "Open item for a card with no item");
+  const again = document.querySelector(".lc-reveal__again");
+  if (!shown(again) || !/^Draw again for \d+ gp/.test(again.textContent)) out.push(`Draw again reads "${again?.textContent}"`);
+  if (parseFloat(getComputedStyle(again).fontSize) < 11) out.push("Draw again is under 11px");
+  const kindEl = stage.querySelector(".lc-deck__kind");
+  if (parseFloat(getComputedStyle(kindEl).fontSize) < 11) out.push("the card's kind line is under 11px");
+  return out;
+}
+
+// The deck's card in the shop: the kinds of card as pills (no 0%), a
+// ribbon, the cards left, "Draw for 10 gp" on the Buy, and after a draw in
+// a row the risen price with the line that says so.
+function deckCardProblems({ streak, closed, busy }) {
+  const out = [];
+  const card = document.querySelector('.lc-box[data-box="deck"]');
+  if (!card) return ["no deck card in the shop"];
+  const buy = card.querySelector(".lc-box__buy");
+  const pills = [...card.querySelectorAll(".lc-odd")].map(p => p.textContent.trim()).join(", ");
+  if (pills !== "Item 20%, Coins 20%, Loss 20%, Effect 10%, Blank 30%") out.push(`deck pills: ${pills}`);
+  if (card.querySelectorAll(".lc-ribbon__seg").length !== 5) out.push("the deck's ribbon doesn't show its five kinds");
+  if (card.querySelector(".lc-box__stock")?.textContent.trim() !== "5 of 5 cards left") out.push(`cards left reads "${card.querySelector(".lc-box__stock")?.textContent}"`);
+  const rule = card.querySelector(".lc-box__rule")?.textContent.trim() ?? "";
+  if (streak) {
+    if (!buy.textContent.includes("Draw for 15 gp")) out.push(`the second draw's Buy reads "${buy.textContent.trim()}"`);
+    if (buy.dataset.price !== "15") out.push(`the second draw's data-price is ${buy.dataset.price}`);
+    if (rule !== "2nd draw in a row: 15 gp (back to 10 gp after two minutes)") out.push(`the streak line reads "${rule}"`);
+    if (parseFloat(getComputedStyle(card.querySelector(".lc-box__rule")).fontSize) < 11) out.push("the streak line is under 11px");
+  } else {
+    if (!buy.textContent.includes("Draw for 10 gp")) out.push(`deck Buy reads "${buy.textContent.trim()}"`);
+    if (rule) out.push(`a first draw has a streak line: "${rule}"`);
+  }
+  if (!closed && !busy && buy.getAttribute("aria-disabled") === "true") out.push(`the deck Buy is off for "${card.querySelector(".lc-box__why")?.textContent}"`);
+  return out;
+}
+
 // The dice card in the shop: the rule in words, Win and Lose as pills (no
 // 0%), a ribbon, the payout line, the prize line in its rarity, and "Bet
 // 10 gp" on the Buy, which is on in an open shop with no pull out.
@@ -520,7 +643,10 @@ try {
       // back to system fonts and plain grounds; that isn't a failure.
       page.on("console", m => { if (m.type() === "error" && !m.text().startsWith("Failed to load resource")) errors.push(m.text()); });
       await page.goto(`http://localhost:${PORT}/harness/?${query}`, { waitUntil: "networkidle" });
-      if (name.startsWith("landed") || name === "replay" || name.startsWith("well") || (name.startsWith("dice") && name !== "dice-rolling")) await page.waitForSelector("body[data-landed]", { timeout: 10000 });
+      if (name.startsWith("landed") || name === "replay" || name.startsWith("well") || (name.startsWith("dice") && name !== "dice-rolling") || (name.startsWith("deck") && name !== "deck-held")) await page.waitForSelector("body[data-landed]", { timeout: 10000 });
+      // Mid-hold: the card is posed face-down (reduced motion is off for
+      // this state); a frame in, it has lifted.
+      if (name === "deck-held") await page.waitForFunction(() => getComputedStyle(document.querySelector(".lc-deck__card")).transform !== "none", null, { timeout: 10000 });
       // Mid-roll: the dice are tumbling (reduced motion is off for this
       // state); two frames in, they have faces to show.
       if (name === "dice-rolling") await page.waitForFunction(() => [...document.querySelectorAll(".lc-dice__tray .lc-dice__face")].every(f => f.textContent.trim()), null, { timeout: 10000 });
@@ -531,8 +657,10 @@ try {
         problems0.push(...await page.evaluate(shopProblems, name.slice(5)));
         problems0.push(...await page.evaluate(wellCardProblems, { capped: name === "shop-well-capped", closed: name === "shop-closed" }));
         problems0.push(...await page.evaluate(diceCardProblems, { closed: name === "shop-closed", busy: name === "shop-busy" }));
+        problems0.push(...await page.evaluate(deckCardProblems, { streak: name === "shop-deck-streak", closed: name === "shop-closed", busy: name === "shop-busy" }));
       }
       else if (name.startsWith("dice")) problems0.push(...await page.evaluate(diceProblems, { "dice-rolling": "rolling", "dice-won": "win", "dice-lost": "lose" }[name]));
+      else if (name.startsWith("deck")) problems0.push(...await page.evaluate(deckProblems, { "deck-held": "held", "deck-boon": "item", "deck-bane": "loss", "deck-effect": "effect" }[name]));
       else if (name === "manager-dropped") problems0.push(...await page.evaluate(droppedProblems));
       else if (name.startsWith("manager")) problems0.push(...await page.evaluate(managerProblems, name === "manager-narrow"));
       else if (name === "replay") problems0.push(...await page.evaluate(replayProblems));

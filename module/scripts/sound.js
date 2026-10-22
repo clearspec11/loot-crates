@@ -133,3 +133,17 @@ export function playCoinBack() {
   if (!ctx) return;
   [660, 990].forEach((hz, i) => blip(ctx, hz, 0.12, { type: "triangle", gain: 0.06, at: i * 0.09 }));
 }
+
+/*
+  The deck's bane (deck.js): the one sound in the module that falls. Two
+  notes a fifth apart, the second lower and longer, soft, so a card that
+  takes coins is heard as a loss where every other sting rises with what
+  was won. Nothing else uses it.
+*/
+export const BANE_HZ = [294, 196];
+export function playBane() {
+  const ctx = channel();
+  if (!ctx) return;
+  blip(ctx, BANE_HZ[0], 0.22, { type: "triangle", gain: 0.07 });
+  blip(ctx, BANE_HZ[1], 0.4, { type: "triangle", gain: 0.06, at: 0.18 });
+}

@@ -125,14 +125,18 @@ export const replayTitle = reveal => `Replay: ${reveal.actorName} opens ${reveal
 export const replayWindowId = key => `loot-crates-reveal-replay-${key}`;
 
 /*
-  The reveal's buttons, in reading order. Open item (the buyer and GMs, once
-  landed). Watch again (once landed, only on a client that didn't see the
-  spin play out: it landed hidden or was skipped; it reads Skip while its
-  replay plays). Then the one button that reads Skip and becomes Close.
-  Watch again sits beside Close, not in the vault: it is an action on the
-  window, like Close, and needs no new pattern.
+  The reveal's buttons, in reading order. Draw again (the buyer alone, once
+  landed, for a kind whose next play starts from the window: the deck's
+  "Draw again for 15 gp"; its reason when off is the line before it). Open
+  item (the buyer and GMs, once landed). Watch again (once landed, only on
+  a client that didn't see the spin play out: it landed hidden or was
+  skipped; it reads Skip while its replay plays). Then the one button that
+  reads Skip and becomes Close. They sit beside Close, not in the vault:
+  actions on the window, like Close, needing no new pattern.
 */
 export const revealActionsHTML = () => `<div class="lc-reveal__actions">
+        <span class="lc-reveal__why" hidden></span>
+        <button type="button" class="lc-reveal__again" data-action="drawAgain" hidden>Draw again</button>
         <button type="button" class="lc-reveal__open" data-action="openItem" hidden>Open item</button>
         <button type="button" class="lc-reveal__watch" data-action="watchAgain" hidden>Watch again</button>
         <button type="button" class="lc-reveal__close" data-action="skip">Skip</button>

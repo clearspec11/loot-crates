@@ -1,6 +1,6 @@
 /*
   A second kind of game runs on the crate's core without a copy of the
-  money, log, refund or chat code. "well" stands in for a wishing well: a
+  money, log, refund or chat code. "stub" stands in for a wishing well: a
   copper stake, a miss that gives nothing, a win that pays coins out and
   grants no item. "flip" is the least a kind can be: a roll and nothing else.
   Real pull.js, socket.js, refund.js, chat.js and store.js on a fake world;
@@ -11,7 +11,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("../module/scripts/reveal.js", () => ({ showReveal: vi.fn(async () => ({ landed: Promise.resolve() })), heldState: () => null, onRelease: () => () => {} }));
 
-const { registerKind, getKind, kindOf, kindIds, kindFor, PullError, _resetKinds } = await import("../module/scripts/kinds.js");
+const { registerKind, getKind, kindOf, kindIds, kindFor, gotText, PullError, _resetKinds } = await import("../module/scripts/kinds.js");
 const { performPull } = await import("../module/scripts/pull.js");
 const { registerSocket } = await import("../module/scripts/socket.js");
 const { registerSettings, appendLog, getLog, getActorState } = await import("../module/scripts/store.js");
@@ -24,7 +24,7 @@ const tick = () => new Promise(r => setTimeout(r, 0));
 
 // The well: 5 cp a throw; rng under 0.5 wins 3 gp (300 cp) and no item.
 const WELL = {
-  id: "well",
+  id: "stub",
   noun: "well",
   async roll({ state = {}, rng }) {
     const win = rng() < 0.5;
@@ -39,7 +39,7 @@ const FLIP = { id: "flip", async roll() { return { result: null }; } };
 
 const GM = { id: "gm", name: "Gamemaster" };
 const PLAYER = { id: "p1", name: "Player" };
-const GAME = { id: "well", kind: "well", name: "Wishing Well", price: 0.05, pools: [], weights: {}, rules: {} };
+const GAME = { id: "well", kind: "stub", name: "Wishing Well", price: 0.05, pools: [], weights: {}, rules: {} };
 
 function makeActor(currency = { pp: 0, gp: 1, ep: 0, sp: 0, cp: 0 }) {
   const actor = {
@@ -86,11 +86,21 @@ afterEach(() => {
 describe("the kind registry", () => {
   it("has the crate as soon as the core is imported, and a record with no kind is a crate", () => {
     expect(getKind("crate")?.id).toBe("crate");
-    expect(kindIds()).toEqual(expect.arrayContaining(["crate", "well", "flip"]));
+    // The real well is registered by the core's imports; the stub sits beside it, never over it.
+    expect(kindIds()).toEqual(expect.arrayContaining(["crate", "well", "stub", "flip"]));
+    expect(getKind("well")?.id).toBe("well");
+    expect(getKind("well")).not.toBe(WELL);
     expect(kindOf({})).toBe("crate");
     expect(kindOf({ kind: "" })).toBe("crate");
-    expect(kindOf({ kind: "well" })).toBe("well");
-    expect(kindFor({ kind: "well" })).toBe(WELL);
+    expect(kindOf({ kind: "stub" })).toBe("stub");
+    expect(kindFor({ kind: "stub" })).toBe(WELL);
+  });
+
+  it("says what the buyer came away with, for the late-cancel line: the result's name or nothing, unless the kind has its own words", () => {
+    expect(gotText(FLIP, { result: null })).toBe("got nothing");
+    expect(gotText(FLIP, { result: { name: "Rope" } })).toBe("got Rope");
+    expect(gotText({ ...FLIP, gotText: out => `drew ${out.result.name}` }, { result: { name: "Ruin" } })).toBe("drew Ruin");
+    expect(gotText(null, {})).toBe("got nothing");
   });
 
   it("refuses a kind without a roll, and names a kind this client doesn't know as a PullError", async () => {
@@ -107,7 +117,7 @@ describe("performPull on a second kind", () => {
   it("charges a copper stake and grants nothing on a miss, in one purse write", async () => {
     const actor = makeActor();
     const out = await performPull({ box: GAME, pools: {}, actor, rng: () => 0.9 });
-    expect(out).toMatchObject({ kind: "well", result: null, itemId: null, payoutCp: 0, state: { throws: 1 }, ripple: true });
+    expect(out).toMatchObject({ kind: "stub", result: null, itemId: null, payoutCp: 0, state: { throws: 1 }, ripple: true });
     expect(out).not.toHaveProperty("grant");
     expect(actor.writes).toHaveLength(1);
     expect(actor.system.currency).toEqual({ pp: 0, gp: 0, ep: 0, sp: 9, cp: 5 });
@@ -155,11 +165,11 @@ describe("the GM's socket path for a second kind", () => {
     const world = makeWorld();
     await pull(world, () => 0.9);
     const reveal = world.emitted.find(m => m.type === "reveal");
-    expect(reveal).toMatchObject({ kind: "well", requestId: "w1", userId: "p1", actorId: "actor1", box: { id: "well", name: "Wishing Well", price: 0.05 }, result: null, itemId: null, itemUuid: null, payoutCp: 0, ripple: true, stateBefore: {} });
+    expect(reveal).toMatchObject({ kind: "stub", requestId: "w1", userId: "p1", actorId: "actor1", box: { id: "well", name: "Wishing Well", price: 0.05 }, result: null, itemId: null, itemUuid: null, payoutCp: 0, ripple: true, stateBefore: {} });
     for (const k of ["grant", "state", "pools", "odds"]) expect(reveal).not.toHaveProperty(k);
     expect(showReveal).toHaveBeenCalledWith(reveal);
     const [row] = world.game.settings.get("loot-crates", "pullLog");
-    expect(row).toMatchObject({ id: reveal.logId, kind: "well", boxId: "well", boxName: "Wishing Well", actorId: "actor1", userId: "p1", itemId: null, price: 0.05, payoutCp: 0, name: "", wish: false });
+    expect(row).toMatchObject({ id: reveal.logId, kind: "stub", boxId: "well", boxName: "Wishing Well", actorId: "actor1", userId: "p1", itemId: null, price: 0.05, payoutCp: 0, name: "", wish: false });
     expect(row).not.toHaveProperty("uuid");
     expect(getActorState("actor1", "well")).toEqual({ throws: 1 });
     expect(world.actor.writes).toHaveLength(1);
@@ -170,7 +180,7 @@ describe("the GM's socket path for a second kind", () => {
     const world = makeWorld();
     await pull(world, () => 0.1);
     const [row] = world.game.settings.get("loot-crates", "pullLog");
-    expect(row).toMatchObject({ kind: "well", payoutCp: 300, wish: true, name: "A wish" });
+    expect(row).toMatchObject({ kind: "stub", payoutCp: 300, wish: true, name: "A wish" });
     expect(toCopper(world.actor.system.currency)).toBe(395);
 
     await world.game.settings.set("loot-crates", "boxes", { flip: { ...GAME, id: "flip", kind: "flip", name: "Coin flip", price: 1 } });
@@ -192,7 +202,7 @@ describe("the GM's socket path for a second kind", () => {
 });
 
 describe("the one refund, for a second kind", () => {
-  const WIN = { kind: "well", boxId: "well", boxName: "Wishing Well", actorId: "actor1", actorName: "Crate Tester", userId: "p1", itemId: null, name: "A wish", price: 0.05, payoutCp: 300, wish: true };
+  const WIN = { kind: "stub", boxId: "well", boxName: "Wishing Well", actorId: "actor1", actorName: "Crate Tester", userId: "p1", itemId: null, name: "A wish", price: 0.05, payoutCp: 300, wish: true };
 
   async function seed(actor, row, game = GAME, state = { throws: 3 }) {
     const world = makeWorld({ actor });
@@ -248,7 +258,7 @@ describe("the one refund, for a second kind", () => {
 });
 
 describe("the chat card is the kind's", () => {
-  const reveal = result => ({ type: "reveal", kind: "well", requestId: "w1", userId: "p1", actorId: "actor1", actorName: "Crate Tester", box: { id: "well", name: "Wishing Well", price: 0.05 }, result, itemId: null, itemUuid: null, logId: "L1", purse: {} });
+  const reveal = result => ({ type: "reveal", kind: "stub", requestId: "w1", userId: "p1", actorId: "actor1", actorName: "Crate Tester", box: { id: "well", name: "Wishing Well", price: 0.05 }, result, itemId: null, itemUuid: null, logId: "L1", purse: {} });
 
   it("posts none for a miss, and the kind's words for a win, with the row's id and no item or replay", async () => {
     makeWorld();

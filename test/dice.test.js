@@ -410,6 +410,9 @@ describe("the money, both ways", () => {
     const card = await postRefundCard({ row: getLog()[0], actor, removedItem: null });
     expect(card.content).toContain("20 gp was taken back from their purse: the 30 gp won, less the 10 gp stake.");
     expect(card.content).not.toContain("nothing moved");
+    // The head says "was refunded" alone: the stake isn't what moved.
+    expect(card.content).toContain("<strong>Dragon's Teeth</strong> was refunded</div>");
+    expect(card.content).not.toContain("lc-chat__price");
   });
 
   it("a losing row refunds the stake only", async () => {
@@ -521,11 +524,20 @@ describe("the stage", () => {
     runTo(1250);
     expect(onSettle.mock.calls.map(c => c[0])).toEqual([0, 1, 2]);
     expect(faceTexts(h)).toEqual(["4", "6", "5"]);
+    // Every die has settled and the total is still 90 ms off: the stage
+    // hasn't told it, so the feet keep the vault's line (module.css colours
+    // them from lc-dice--told alone) and the first die to land says nothing.
+    expect(h.querySelector(".lc-dice__total").textContent).toBe("");
+    expect(h.classList.contains("lc-dice--told")).toBe(false);
+    runTo(1350);
+    expect(h.querySelector(".lc-dice__total").textContent).toBe("15");
+    expect(h.classList.contains("lc-dice--told")).toBe(true);
     expect(onLand).not.toHaveBeenCalled();
     runTo(landTime(3) + 50);
     await played;
     expect(onLand).toHaveBeenCalledTimes(1);
     expect(h.classList.contains("lc-dice--landed")).toBe(true);
+    expect(h.classList.contains("lc-dice--told")).toBe(true);
     expect(h.querySelector(".lc-dice__total").textContent).toBe("15");
     expect(frames).toHaveLength(0);
   });
@@ -535,6 +547,7 @@ describe("the stage", () => {
     const a = host();
     await mountDice(a, { faces: [1, 1, 1], sides: 6, reducedMotion: true, three }).play();
     expect(a.classList.contains("lc-dice--landed")).toBe(true);
+    expect(a.classList.contains("lc-dice--told")).toBe(true);
     expect(faceTexts(a)).toEqual(["1", "1", "1"]);
     expect(three).not.toHaveBeenCalled();
     const b = host();
@@ -667,6 +680,9 @@ describe("the words", () => {
     expect(DICE.reveal.title).toBe("Dragon's Teeth");
     expect(DICE.noun).toBe("dice");
     expect(DICE.undo).toBeUndefined();
+    // The late-cancel line: the verdict is a roll, not a thing one got.
+    expect(DICE.gotText({ faces: [4, 6, 5], total: 15, target: 12, win: true })).toBe("rolled 4, 6, 5: 15 beats the dragon's 12");
+    expect(DICE.gotText({ faces: [2, 3, 4], total: 9, target: 12, win: false })).toBe("rolled 2, 3, 4: 9 doesn't beat the dragon's 12");
     // Only a win posts a card, so the seal must hide the whole message (reveal.js).
     expect(DICE.chat.conditional).toBe(true);
   });

@@ -12,7 +12,7 @@ import { createDocument } from "./minidom.js";
 vi.mock("../module/scripts/reveal.js", () => ({ showReveal: vi.fn(async () => ({ landed: Promise.resolve() })), heldState: () => null, onRelease: () => () => {} }));
 vi.mock("../module/scripts/sound.js", () => ({ playTick: vi.fn(), playSlow: vi.fn(), playReveal: vi.fn(), playPlop: vi.fn(), playPlink: vi.fn(), playCoinBack: vi.fn() }));
 
-const { WELL, WELL_DEFAULTS, WELL_TIMING, wellOdds, throwsToday, capOf, stillLine, collapseMisses, throwsText, mountWell, wellRulesText, stakeCoins, stakeGp, draftWell, wellPreview, wellPreviewHTML, wellSummary, wellOddsHTML } = await import("../module/scripts/well.js");
+const { WELL, WELL_DEFAULTS, WELL_TIMING, wellOdds, throwsToday, capOf, stillLine, noClockNote, collapseMisses, throwsText, mountWell, wellRulesText, stakeCoins, stakeGp, draftWell, wellPreview, wellPreviewHTML, wellSummary, wellOddsHTML } = await import("../module/scripts/well.js");
 const { dayKeyOf } = await import("../module/scripts/clock.js");
 const { getKind } = await import("../module/scripts/kinds.js");
 const { performPull, PullError } = await import("../module/scripts/pull.js");
@@ -271,6 +271,8 @@ describe("the one refund, for a throw", () => {
     const card = await postRefundCard({ row: getLog()[0], actor, removedItem: null });
     expect(card.content).toContain("1 sp went back into their purse.");
     expect(card.content).toContain("lc-rarity-none");
+    // A row that paid nothing out keeps the stake in the head.
+    expect(card.content).toContain('was refunded <span class="lc-chat__price">1 sp</span>');
   });
 
   it("a coin back: nothing moves, the pity count steps back", async () => {
@@ -283,6 +285,9 @@ describe("the one refund, for a throw", () => {
     expect(getActorState("a1", "well")).toMatchObject({ sinceRare: 2, pulls: 2 });
     const card = await postRefundCard({ row: getLog()[0], actor, removedItem: null });
     expect(card.content).toContain("The coin had already come back, so nothing moved.");
+    // The coin came back, so the head doesn't show the stake as if it moved.
+    expect(card.content).toContain("<strong>Wishing Well</strong> was refunded</div>");
+    expect(card.content).not.toContain("lc-chat__price");
   });
 });
 
@@ -488,6 +493,18 @@ describe("the manager's words", () => {
     expect(wellPreview({ ...draft, pools: [] }, POOLS).note).toBe("No pool is ticked, so a throw can never find an item.");
     expect(wellOddsHTML(wellOdds({ ...GAME, odds: { nothing: 0, coin: 0, item: 0 } }, POOLS))).toBe("");
     expect(WELL_DEFAULTS).toEqual({ price: 0.1, odds: { nothing: 90, coin: 8, item: 2 }, cap: 3 });
+  });
+
+  it("tells the editor when the world has no clock, since the cap is keyed on the in-game day", () => {
+    expect(noClockNote({ hasClock: true, cap: 3 })).toBe("");
+    expect(noClockNote({ hasClock: false, cap: null })).toBe('<p class="lc-form__hint">No calendar: the daily cap will not apply.</p>');
+    // A cap that is set and silently off is a warning, not a hint.
+    expect(noClockNote({ hasClock: false, cap: 3 })).toBe('<p class="lc-form__hint lc-form__hint--warn">No calendar: the daily cap will not apply.</p>');
+    expect(noClockNote({ hasClock: false, cap: 0 })).not.toContain("--warn");
+    // What the throw came to, for the late-cancel line.
+    expect(WELL.gotText({ outcome: "nothing", result: null })).toBe("got nothing");
+    expect(WELL.gotText({ outcome: "coin", result: { name: "Coin back" } })).toBe("got the coin back");
+    expect(WELL.gotText({ outcome: "item", result: { name: "Sling +2" } })).toBe("got Sling +2");
     expect(WELL.id).toBe("well");
   });
 });
