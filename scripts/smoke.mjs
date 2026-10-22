@@ -108,7 +108,48 @@ const STATES = [
   // A dropped item on a big pool that was collapsed and filtered to Rare:
   // opened, the chip cleared, the row pinned first and focused, and said.
   ["manager-dropped", "state=manager&dropped=1"],
+  // The Boxes tab the moment "New box" was saved as the Royal Vault
+  // (boxestable.js, manager.js #saveEditor): every kind's row in one table,
+  // the status line saying it is on the shelf, the new row's edge and its
+  // Edit focused and in view; the toolbar's five New buttons and the line
+  // wrap in a 480 px window instead of overflowing.
+  ["manager-boxes", "state=manager&tab=boxes&added=1"],
+  ["manager-boxes-narrow", "state=manager&tab=boxes&added=1&width=480"],
 ];
+
+// The Boxes tab after a New, read from the DOM (manager-boxes states).
+function boxesProblems(narrow) {
+  const out = [];
+  const app = document.getElementById("app").getBoundingClientRect();
+  if (narrow && app.width > 484) out.push(`narrow manager is ${Math.round(app.width)} px wide`);
+  const tabs = [...document.querySelectorAll('.lc-tabs [role="tablist"] > [role="tab"]')];
+  if (tabs.find(t => t.getAttribute("aria-selected") === "true")?.textContent !== "Boxes") out.push("the Boxes tab is not the selected one");
+  const toolbar = document.querySelector(".lc-toolbar--boxes");
+  if (!toolbar) return [...out, "no Boxes toolbar"];
+  const news = [...toolbar.querySelectorAll('[data-action^="add"]')].map(b => b.textContent.trim());
+  if (news.join("|") !== "New box|New well|New dice game|New deck|New wheel") out.push(`the New buttons read ${news.join(", ")}`);
+  if (toolbar.scrollWidth > toolbar.clientWidth + 1 || toolbar.getBoundingClientRect().right > app.right + 1) out.push("the Boxes toolbar overflows the window");
+  if (document.querySelectorAll('[role="status"]').length !== 1) out.push("expected one role=status");
+  const status = document.querySelector(".lc-manager__status");
+  if (!/^Royal Vault is on the shelf at 1,?200 gp\.$/.test(status?.textContent ?? "")) out.push(`status line says "${status?.textContent}"`);
+  if (status && (status.scrollWidth > status.clientWidth + 1 || status.getBoundingClientRect().right > app.right + 1)) out.push("the status line is cut off");
+  const rows = [...document.querySelectorAll(".lc-table tbody tr")];
+  if (rows.length !== 8) out.push(`expected 8 sample games, got ${rows.length}`);
+  const tags = [...document.querySelectorAll(".lc-table .lc-kind")].map(t => t.textContent);
+  if (tags.join("|") !== "Well|Dice|Deck|Wheel") out.push(`kind tags read ${tags.join(", ")}`);
+  const row = document.querySelector(".lc-table tr.lc-row--new");
+  if (!row || !/Royal Vault/.test(row.textContent)) out.push("the new row isn't marked");
+  if (row && getComputedStyle(row.children[0]).boxShadow === "none") out.push("the new row has no edge");
+  if (document.querySelectorAll(".lc-table tr.lc-row--new").length > 1) out.push("more than one row marked new");
+  const edit = row?.querySelector('[data-action="editBox"]');
+  if (!edit || edit.getAttribute("aria-label") !== "Edit Royal Vault") out.push("the new row has no Edit Royal Vault");
+  if (document.activeElement !== edit) out.push("focus is not on the new row's Edit");
+  const tab = document.querySelector(".lc-tab")?.getBoundingClientRect();
+  const er = edit?.getBoundingClientRect();
+  if (tab && er && (er.top < tab.top - 1 || er.bottom > tab.bottom + 1)) out.push("the new row is out of view");
+  if (!document.querySelector('[data-action="openTable"]') || !document.querySelector('[data-action="reshuffle"]')) out.push("the wheel's Open a round or the deck's Reshuffle is missing");
+  return out;
+}
 
 // The pool editor as a craft table, read from the DOM: an open pool draws at
 // most a page of controls, a collapsed one none (its census still shown),
@@ -896,6 +937,7 @@ try {
       else if (name.startsWith("dice")) problems0.push(...await page.evaluate(diceProblems, { "dice-rolling": "rolling", "dice-won": "win", "dice-lost": "lose" }[name]));
       else if (name.startsWith("deck")) problems0.push(...await page.evaluate(deckProblems, { "deck-held": "held", "deck-boon": "item", "deck-bane": "loss", "deck-effect": "effect" }[name]));
       else if (name === "manager-dropped") problems0.push(...await page.evaluate(droppedProblems));
+      else if (name.startsWith("manager-boxes")) problems0.push(...await page.evaluate(boxesProblems, name.endsWith("narrow")));
       else if (name.startsWith("manager")) problems0.push(...await page.evaluate(managerProblems, name === "manager-narrow"));
       else if (name === "replay") problems0.push(...await page.evaluate(replayProblems));
       else if (name.startsWith("well")) problems0.push(...await page.evaluate(wellProblems, { "well-missed": "nothing", "well-coin": "coin", "well-won": "item" }[name]));

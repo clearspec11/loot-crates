@@ -25,6 +25,10 @@
   unless ?duration is given; the card's button replays it at full length.
   "manager" is the pool editor's Pools tab (poolview.js), with chips and
   open/close working; search, edits and Show more need Foundry.
+  ?tab=boxes (manager: the Boxes tab, boxestable.js, every kind's row in
+  one table; &added=1 shows it the moment "New box" was saved as the Royal
+  Vault: the status line says it is on the shelf, the row carries the new
+  edge and its Edit has focus, as manager.js #saveEditor leaves it)
   ?dropped=1 (manager: the GM had the 200-entry pool filtered to Rare, then
   dropped its last item, a Very rare one, on it: the pool opens, the chip
   clears, the row is pinned at the top and focused, and the status line says so)
@@ -75,6 +79,8 @@ import { mountDeck, TONE_OF, CARD_KIND_LABEL, priceAt, deckPlan } from "../modul
 import { resolve as resolveBets, pocketsOf, coloursOf, betName } from "../module/scripts/roulette.js";
 import { tableBodyHTML } from "../module/scripts/tableview.js";
 import { poolRows, sortRows, defaultView, poolSummary, poolBody, pinRecent, dropNotice, poolUsers } from "../module/scripts/poolview.js";
+import { boxesTabHTML } from "../module/scripts/boxestable.js";
+import { addedNotice } from "../module/scripts/newgame.js";
 import { draw, seededRng } from "../module/scripts/odds.js";
 import { buildStrip } from "../module/scripts/strip.js";
 import { mountSpin } from "../module/scripts/spin.js";
@@ -113,7 +119,7 @@ document.getElementById("title").textContent = appTitle;
 const CRATE_ICON = `<svg class="lc-box__icon" viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M3 8.5 12 4l9 4.5v8L12 21l-9-4.5z"/><path d="M3 8.5 12 13l9-4.5M12 13v8"/></svg>`;
 
 const nav = document.getElementById("nav");
-for (const [label, query] of [["shop", "state=shop"], ["spin", "state=spin"], ["landed", "state=landed"], ["landed, buyer", "state=landed&buyer=1"], ["missed", "state=landed&buyer=1&watched=0"], ["replay", "state=replay"], ["well", "state=well&buyer=1"], ["well, coin", "state=well&outcome=coin&buyer=1"], ["well, item", "state=well&outcome=item&buyer=1"], ["dice", "state=dice&buyer=1"], ["dice, lost", "state=dice&outcome=lose&buyer=1"], ["dice, prize", "state=dice&outcome=prize&buyer=1"], ["deck", "state=deck&buyer=1"], ["deck, item", "state=deck&outcome=item&buyer=1"], ["deck, bane", "state=deck&outcome=loss&buyer=1"], ["deck, effect", "state=deck&outcome=effect&buyer=1"], ["table", "state=table"], ["table, GM", "state=table&phase=waiting&gm=1"], ["wheel", "state=table&phase=spinning"], ["wheel, landed", "state=table&phase=landed&duration=0"], ["manager", "state=manager"], ["box editor", "state=editor"]]) {
+for (const [label, query] of [["shop", "state=shop"], ["spin", "state=spin"], ["landed", "state=landed"], ["landed, buyer", "state=landed&buyer=1"], ["missed", "state=landed&buyer=1&watched=0"], ["replay", "state=replay"], ["well", "state=well&buyer=1"], ["well, coin", "state=well&outcome=coin&buyer=1"], ["well, item", "state=well&outcome=item&buyer=1"], ["dice", "state=dice&buyer=1"], ["dice, lost", "state=dice&outcome=lose&buyer=1"], ["dice, prize", "state=dice&outcome=prize&buyer=1"], ["deck", "state=deck&buyer=1"], ["deck, item", "state=deck&outcome=item&buyer=1"], ["deck, bane", "state=deck&outcome=loss&buyer=1"], ["deck, effect", "state=deck&outcome=effect&buyer=1"], ["table", "state=table"], ["table, GM", "state=table&phase=waiting&gm=1"], ["wheel", "state=table&phase=spinning"], ["wheel, landed", "state=table&phase=landed&duration=0"], ["manager", "state=manager"], ["boxes", "state=manager&tab=boxes&added=1"], ["box editor", "state=editor"]]) {
   const a = document.createElement("a");
   a.href = `?${query}&seed=${seed}&theme=${theme}`;
   a.textContent = label;
@@ -593,6 +599,34 @@ async function renderTable() {
 }
 
 /*
+  The manager's Boxes tab (boxestable.js) with the sample games, one of
+  every kind, and the log and round their rows read. With ?added=1 it is
+  the tab as "New box" leaves it once saved as the Royal Vault (manager.js
+  #saveEditor): the status line written after the render, the row marked
+  and its Edit focused and scrolled into view. The New buttons and Edit
+  need Foundry here.
+*/
+function renderBoxes() {
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+  const added = q.get("added") === "1" ? BOXES.find(b => b.id === "royal") : null;
+  const now = Date.now();
+  stage.innerHTML = `
+    <div class="lc-manager__body">
+      <nav class="lc-tabs"><div class="lc-tabs__list" role="tablist" aria-label="Loot Crates sections"><button type="button" role="tab" aria-selected="false" tabindex="-1">Pools</button><button type="button" role="tab" aria-selected="true" tabindex="0" class="active">Boxes</button><button type="button" role="tab" aria-selected="false" tabindex="-1">Pull log</button></div><span class="lc-tabs__spacer"></span><button type="button" class="lc-shop-toggle" data-open="true" aria-pressed="true">Shop open</button></nav>
+      <section class="lc-tab" role="tabpanel">
+        ${boxesTabHTML({ boxes: BOXES, pools: POOLS, log: [...deckDraws(1, now), ...limitBuys(1)], rounds: { R1: rouletteRound(now) }, recent: added?.id ?? null, esc })}
+      </section>
+    </div>`;
+  if (added) {
+    const edit = stage.querySelector(`.lc-table [data-action="editBox"][data-box="${CSS.escape(added.id)}"]`);
+    edit?.focus({ preventScroll: true });
+    edit?.closest("tr")?.scrollIntoView({ block: "nearest" });
+    stage.querySelector(".lc-manager__status").textContent = addedNotice(added, { shopOpen: true });
+  }
+  document.body.dataset.ready = "1";
+}
+
+/*
   The box editor's Rules and Limits groups (manager.js #editBox, limits.js
   limitsFieldset) as the dialog shows them for the Royal Vault: 3 of its 10
   left with Restock, one per character a day. Restock fills the shelf here
@@ -627,6 +661,7 @@ function renderEditor() {
 
 if (state === "shop") renderShop();
 else if (state === "editor") renderEditor();
+else if (state === "manager" && q.get("tab") === "boxes") renderBoxes();
 else if (state === "manager") renderManager();
 else if (state === "table") renderTable();
 else if (state === "well") renderWell();

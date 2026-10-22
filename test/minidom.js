@@ -80,6 +80,7 @@ class Element extends Node {
     for (const fn of this._listeners?.get(event.type) ?? []) fn(event);
     return !event.defaultPrevented;
   }
+  get tagName() { return this.nodeName; }
   get id() { return this.getAttribute("id") ?? ""; }
   set id(v) { this.setAttribute("id", v); }
   get children() { return this.childNodes.filter(n => n.nodeType === 1); }
@@ -92,13 +93,20 @@ class Element extends Node {
     if (where !== "beforeend") throw new Error(`minidom: insertAdjacentHTML ${where} not supported`);
     this.append(...parse(this.ownerDocument, html));
   }
+  // An input's value starts as its attribute and follows what is set on it,
+  // as a browser's does; a select's is its chosen option.
   get value() {
-    if (this.nodeName !== "SELECT") return this.getAttribute("value") ?? "";
+    if (this.nodeName !== "SELECT") return this._value ?? this.getAttribute("value") ?? "";
     const options = this.querySelectorAll("option");
     const pick = this._value != null ? options.find(o => o.getAttribute("value") === this._value) : options.findLast(o => o.hasAttribute("selected")) ?? options[0];
     return pick?.getAttribute("value") ?? "";
   }
   set value(v) { this._value = String(v); }
+  get defaultValue() { return this.getAttribute("value") ?? ""; }
+  set defaultValue(v) { this.setAttribute("value", String(v)); }
+  // A checkbox's state starts as its attribute and follows what is set.
+  get checked() { return this._checked ?? this.hasAttribute("checked"); }
+  set checked(v) { this._checked = !!v; }
   insertBefore(node, ref) {
     node.remove();
     const at = ref ? this.childNodes.indexOf(ref) : this.childNodes.length;
@@ -127,14 +135,15 @@ class Element extends Node {
   querySelector(selector) { return this.querySelectorAll(selector)[0] ?? null; }
 }
 
-// One compound selector: tag, .class, [attr] and [attr="v"], in any mix.
+// One compound selector: tag, .class, [attr], [attr="v"] and [attr=v], in any mix.
 function matchesCompound(el, compound) {
   // Classes are read with the attribute values taken out ([data-entry="Item.x"]).
   const bare = compound.replace(/\[[^\]]*\]/g, "");
   const tag = bare.match(/^[a-z][a-z0-9]*/i)?.[0];
   if (tag && el.nodeName !== tag.toUpperCase()) return false;
   for (const [, c] of bare.matchAll(/\.([\w-]+)/g)) if (!el.classList.contains(c)) return false;
-  for (const [, name, value] of compound.matchAll(/\[([\w-]+)(?:="([^"]*)")?\]/g)) {
+  for (const [, name, quoted, plain] of compound.matchAll(/\[([\w-]+)(?:=(?:"([^"]*)"|([^\]"]+)))?\]/g)) {
+    const value = quoted ?? plain;
     if (!el.hasAttribute(name) || (value != null && el.getAttribute(name) !== value)) return false;
   }
   return true;

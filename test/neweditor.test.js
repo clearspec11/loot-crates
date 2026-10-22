@@ -1,0 +1,328 @@
+/*
+  Every New on the manager's Boxes tab opens its kind's editor on an
+  unsaved draft (newgame.js): Cancel writes nothing, Save creates the game
+  once from the form, and the GM is shown where it went: the Boxes tab, the
+  new row marked and its Edit focused, the status line saying it is on the
+  shelf. "New crate from this pool" on the Pools tab opens the same editor
+  on a crate named for the pool. Drives the real manager through its
+  action handlers into a minimal DOM, with the real store writing to a
+  stubbed world setting and DialogV2 stubbed to a form the test fills in.
+*/
+import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from "vitest";
+import { createDocument } from "./minidom.js";
+
+vi.mock("../module/scripts/shop.js", () => ({ refreshShop: vi.fn() }));
+vi.mock("../module/scripts/chat.js", () => ({ postRefundCard: vi.fn() }));
+vi.mock("../module/scripts/store.js", async importOriginal => {
+  const orig = await importOriginal();
+  return {
+    ...orig,
+    checkSources: async entries => new Map(entries.map(e => [e.uuid, { name: e.name, img: e.img, rarity: e.rarity }])),
+    sweepPools: async () => [],
+    createBox: vi.fn(orig.createBox),
+    updateBox: vi.fn(orig.updateBox),
+  };
+});
+
+// The dialog as the test sees it: its title, its form (the content parsed
+// into a minidom <form>, as DialogV2 wraps it) and its buttons. Save runs
+// the ok button's callback on that form, as DialogV2 does. Cancel resolves
+// the string "cancel", as DialogV2 does for a button whose callback gives
+// nothing (its action name stands in); closing the dialog resolves null.
+let dialog = null;
+class Dialog {
+  static wait(config) {
+    return new Promise(resolve => {
+      const form = document.createElement("form");
+      form.innerHTML = config.content;
+      document.body.appendChild(form);
+      const done = v => { form.remove(); dialog = null; resolve(v); };
+      dialog = {
+        title: config.window.title,
+        form,
+        buttons: config.buttons,
+        save: () => done(config.buttons.find(b => b.action === "ok").callback(null, { form })),
+        cancel: () => done(config.buttons.find(b => b.action === "cancel").callback() ?? "cancel"),
+        close: () => done(null),
+      };
+      config.render?.({}, { element: document.body });
+    });
+  }
+}
+
+// FormData over the minidom form: named inputs (a ticked checkbox as "on")
+// and selects, as readForm reads them.
+class FormDataStub {
+  constructor(form) {
+    this.rows = [];
+    for (const el of form.querySelectorAll("input")) {
+      if (!el.getAttribute("name")) continue;
+      if (el.getAttribute("type") === "checkbox") { if (el.checked) this.rows.push([el.getAttribute("name"), "on"]); continue; }
+      this.rows.push([el.getAttribute("name"), el.value]);
+    }
+    for (const el of form.querySelectorAll("select")) if (el.getAttribute("name") && !el.hasAttribute("multiple")) this.rows.push([el.getAttribute("name"), el.value]);
+  }
+  entries() { return this.rows[Symbol.iterator](); }
+}
+
+class App {
+  rendered = false;
+  element = null;
+  async render() {
+    const root = await this._renderHTML();
+    if (!this.element) { this.element = document.createElement("div"); document.body.appendChild(this.element); }
+    this._replaceHTML(root, this.element);
+    this.rendered = true;
+    return this;
+  }
+  async close() {}
+}
+
+let settings, sets;
+const notifications = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+let CrateManager, store, newgame;
+beforeAll(async () => {
+  vi.stubGlobal("document", createDocument());
+  vi.stubGlobal("CSS", { escape: s => String(s) });
+  vi.stubGlobal("FormData", FormDataStub);
+  vi.stubGlobal("ui", { notifications });
+  vi.stubGlobal("foundry", {
+    utils: { escapeHTML: s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"), deepClone: v => structuredClone(v), randomID: n => Math.random().toString(36).slice(2, 2 + (n ?? 10)) },
+    applications: { api: { ApplicationV2: App, DialogV2: Dialog } },
+  });
+  vi.stubGlobal("game", { user: { isGM: true }, settings: {
+    register: (_m, key, cfg) => settings.set(key, cfg.default),
+    get: (_m, key) => settings.get(key),
+    set: async (_m, key, v) => { sets++; await new Promise(r => setTimeout(r, 1)); settings.set(key, structuredClone(v)); },
+  } });
+  store = await import("../module/scripts/store.js");
+  newgame = await import("../module/scripts/newgame.js");
+  ({ CrateManager } = await import("../module/scripts/manager.js"));
+});
+afterAll(() => vi.unstubAllGlobals());
+
+const POOL = { id: "p", name: "Odds and ends", pools: [], entries: [{ uuid: "Item.a", name: "Rope", img: "", rarity: "common", weight: 1 }, { uuid: "Item.b", name: "Flame Tongue", img: "", rarity: "rare", weight: 1 }] };
+beforeEach(async () => {
+  settings = new Map();
+  sets = 0;
+  store.registerSettings();
+  await store.savePool(POOL);
+  sets = 0;
+  store.createBox.mockClear();
+  store.updateBox.mockClear();
+  for (const fn of Object.values(notifications)) fn.mockClear();
+  document.body.replaceChildren();
+  document.activeElement = document.body;
+});
+
+const settle = async (n = 6) => { for (let i = 0; i < n; i++) await new Promise(r => setTimeout(r, 2)); };
+const act = (app, name, target = {}) => CrateManager.DEFAULT_OPTIONS.actions[name].call(app, {}, target);
+async function manager(tab = "boxes") {
+  const app = new CrateManager();
+  app.tab = tab;
+  await app.render();
+  return app;
+}
+const field = name => dialog.form.querySelector(`[name="${name}"]`);
+const status = app => app.element.querySelector(".lc-manager__status");
+const focused = () => document.activeElement;
+
+const NEWS = [["addBox", "crate", "New box"], ["addWell", "well", "New well"], ["addDice", "dice", "New dice game"], ["addDeck", "deck", "New deck"], ["addWheel", "roulette", "New wheel"]];
+
+describe("New then Cancel", () => {
+  for (const [action, kind, title] of NEWS) {
+    it(`${action}: opens "${title}" on a draft and writes nothing`, async () => {
+      const app = await manager();
+      const pending = act(app, action);
+      await settle(2);
+      expect(dialog).not.toBeNull();
+      expect(dialog.title).toBe(title);
+      expect(dialog.buttons.find(b => b.action === "ok").label).toBe("Add to shelf");
+      expect(field("name").value).toBe(title);
+      expect(field("name").hasAttribute("autofocus")).toBe(true);
+      // While the dialog is open the shelf is as it was: no record, no write.
+      expect(store.getBoxes()).toEqual({});
+      expect(sets).toBe(0);
+      dialog.cancel();
+      await pending;
+      await settle();
+      expect(store.getBoxes()).toEqual({});
+      expect(sets).toBe(0);
+      expect(store.createBox).not.toHaveBeenCalled();
+      expect(app.element.querySelector(".lc-table")).toBeNull();
+      void kind;
+    });
+  }
+});
+
+describe("New then Save", () => {
+  it("creates the crate once from the form, shows its row with Edit focused and says where it went", async () => {
+    const app = await manager();
+    const pending = act(app, "addBox");
+    await settle(2);
+    field("name").value = "Gilded Crate";
+    field("price").value = "250";
+    field("pool.p").checked = true;
+    field("stock").value = "10";
+    dialog.save();
+    await pending;
+    await settle();
+    expect(store.createBox).toHaveBeenCalledTimes(1);
+    expect(store.updateBox).not.toHaveBeenCalled();
+    expect(sets).toBe(1);
+    const boxes = Object.values(store.getBoxes());
+    expect(boxes).toHaveLength(1);
+    expect(boxes[0]).toMatchObject({ name: "Gilded Crate", price: 250, pools: [{ id: "p", share: 1 }], rules: { stock: 10, stockMax: 10, pity: null, noDuplicates: false } });
+    expect(boxes[0].kind).toBeUndefined();
+    expect(app.tab).toBe("boxes");
+    const edit = app.element.querySelector(`[data-action="editBox"][data-box="${boxes[0].id}"]`);
+    expect(edit.getAttribute("aria-label")).toBe("Edit Gilded Crate");
+    expect(focused()).toBe(edit);
+    expect(edit.closest("tr").classList.contains("lc-row--new")).toBe(true);
+    expect(status(app).getAttribute("role")).toBe("status");
+    expect(status(app).textContent).toBe("Gilded Crate is on the shelf at 250 gp.");
+    expect(notifications.warn).not.toHaveBeenCalled();
+    expect(notifications.info).not.toHaveBeenCalled();
+  });
+
+  for (const [action, kind] of NEWS.slice(1)) {
+    it(`${action}: creates one ${kind} with the form's values`, async () => {
+      const app = await manager();
+      const pending = act(app, action);
+      await settle(2);
+      field("name").value = `My ${kind}`;
+      dialog.save();
+      await pending;
+      await settle();
+      expect(store.createBox).toHaveBeenCalledTimes(1);
+      const boxes = Object.values(store.getBoxes());
+      expect(boxes).toHaveLength(1);
+      expect(boxes[0]).toMatchObject({ kind, name: `My ${kind}` });
+      expect(boxes[0].price).toBe(newgame.NEW_DEFAULTS[kind]().price);
+      expect(focused()?.getAttribute("aria-label")).toBe(`Edit My ${kind}`);
+      expect(status(app).textContent).toBe(newgame.addedNotice(boxes[0], { shopOpen: true }));
+    });
+  }
+
+  it("reads Add, and says the shop is closed, while it is", async () => {
+    settings.set("shopOpen", false);
+    const app = await manager();
+    const pending = act(app, "addDice");
+    await settle(2);
+    expect(dialog.buttons.find(b => b.action === "ok").label).toBe("Add");
+    dialog.save();
+    await pending;
+    await settle();
+    expect(status(app).textContent).toBe("New dice game added. The shop is closed, so players can't see it yet.");
+  });
+
+  it("marks only the newest row, and lets the mark go when the manager closes", async () => {
+    const app = await manager();
+    for (const name of ["First", "Second"]) {
+      const pending = act(app, "addBox");
+      await settle(2);
+      field("name").value = name;
+      dialog.save();
+      await pending;
+      await settle();
+    }
+    const marked = app.element.querySelectorAll(".lc-table tr.lc-row--new");
+    expect(marked).toHaveLength(1);
+    expect(marked[0].textContent).toContain("Second");
+    await app._onClose({});
+    await app.render();
+    expect(app.element.querySelectorAll(".lc-table tr.lc-row--new")).toHaveLength(0);
+  });
+});
+
+describe("Edit then Cancel", () => {
+  it("writes nothing, whether the dialog is cancelled or closed", async () => {
+    await store.saveBox({ id: "b1", name: "Old Crate", price: 50, pools: [{ id: "p", share: 2 }], weights: { common: 1 }, rules: { stock: 3, stockMax: 3 } });
+    const was = store.getBoxes().b1;
+    sets = 0;
+    const app = await manager();
+    for (const end of ["cancel", "close"]) {
+      const pending = act(app, "editBox", { dataset: { box: "b1" } });
+      await settle(2);
+      field("price").value = "0";
+      dialog[end]();
+      await pending;
+      await settle();
+    }
+    expect(store.updateBox).not.toHaveBeenCalled();
+    expect(sets).toBe(0);
+    expect(store.getBoxes().b1).toEqual(was);
+  });
+});
+
+describe("Edit", () => {
+  it("still updates the record in place, titled Edit, reading Save, and warns only when it is gone", async () => {
+    await store.saveBox({ id: "b1", name: "Old Crate", price: 50, pools: [], weights: {}, rules: {} });
+    sets = 0;
+    const app = await manager();
+    const pending = act(app, "editBox", { dataset: { box: "b1" } });
+    await settle(2);
+    expect(dialog.title).toBe("Edit box");
+    expect(dialog.buttons.find(b => b.action === "ok").label).toBe("Save");
+    expect(field("name").hasAttribute("autofocus")).toBe(false);
+    field("price").value = "60";
+    dialog.save();
+    await pending;
+    await settle();
+    expect(store.updateBox).toHaveBeenCalledTimes(1);
+    expect(store.createBox).not.toHaveBeenCalled();
+    expect(store.getBoxes().b1).toMatchObject({ name: "Old Crate", price: 60 });
+    expect(Object.keys(store.getBoxes())).toEqual(["b1"]);
+    expect(notifications.warn).not.toHaveBeenCalled();
+
+    const again = act(app, "editBox", { dataset: { box: "b1" } });
+    await settle(2);
+    await store.removeBox("b1");
+    dialog.save();
+    await again;
+    await settle();
+    expect(notifications.warn).toHaveBeenCalledWith("Old Crate was deleted while you were editing it.");
+    expect(store.getBoxes()).toEqual({});
+  });
+});
+
+describe("New crate from this pool", () => {
+  it("is on the pool's bar, naming the pool", async () => {
+    const app = await manager("pools");
+    const bar = app.element.querySelector('[data-action="crateFromPool"][data-pool="p"]');
+    expect(bar).not.toBeNull();
+    expect(bar.getAttribute("aria-label")).toBe("New crate from Odds and ends");
+    expect(bar.textContent).toContain("New crate from this pool");
+  });
+
+  it("opens the crate editor named for the pool, drawing from it, the price focused, and adds it on Save", async () => {
+    const app = await manager("pools");
+    const pending = act(app, "crateFromPool", { dataset: { pool: "p" } });
+    await settle(2);
+    expect(dialog.title).toBe("New box");
+    expect(field("name").value).toBe("Odds and ends");
+    expect(field("name").hasAttribute("autofocus")).toBe(false);
+    expect(field("price").hasAttribute("autofocus")).toBe(true);
+    expect(field("pool.p").checked).toBe(true);
+    // The preview already shows the pool's odds, as the shop would.
+    expect(dialog.form.querySelector(".lc-form__preview").textContent).toMatch(/Common \d+%/);
+    expect(store.getBoxes()).toEqual({});
+    field("price").value = "40";
+    dialog.save();
+    await pending;
+    await settle();
+    expect(store.createBox).toHaveBeenCalledTimes(1);
+    const [box] = Object.values(store.getBoxes());
+    expect(box).toMatchObject({ name: "Odds and ends", price: 40, pools: [{ id: "p", share: 1 }] });
+    expect(app.tab).toBe("boxes");
+    expect(focused()?.getAttribute("aria-label")).toBe("Edit Odds and ends");
+    expect(status(app).textContent).toBe("Odds and ends is on the shelf at 40 gp.");
+  });
+
+  it("does nothing for a pool that is gone", async () => {
+    const app = await manager("pools");
+    await act(app, "crateFromPool", { dataset: { pool: "nope" } });
+    expect(dialog).toBeNull();
+    expect(store.getBoxes()).toEqual({});
+  });
+});

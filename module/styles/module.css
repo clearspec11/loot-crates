@@ -779,7 +779,10 @@
 .loot-crates .lc-shop-toggle::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--lc-ink-mute); }
 .loot-crates .lc-shop-toggle[data-open="true"]::before { background: var(--lc-ok); }
 .loot-crates .lc-tab { overflow: auto; padding-right: 2px; }
-.loot-crates .lc-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.loot-crates .lc-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-bottom: 10px; }
+/* The Boxes tab's status line takes the rest of the row, or a line of its
+   own in a narrow window, and is never cut off. */
+.loot-crates .lc-toolbar--boxes .lc-manager__status { flex: 1 1 14em; min-width: 0; overflow-wrap: anywhere; }
 
 /* A pool is a dnd5e card: its census on the header, its items as rows. */
 .loot-crates .lc-pool {
@@ -892,6 +895,9 @@
   font-family: var(--lc-label); font-size: 11px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase;
   color: var(--lc-gold-ink); border: 1px solid var(--lc-rule-soft); border-radius: 3px;
 }
+/* The row a New just added (manager.js #saveEditor): an edge in the gold
+   rule, as a dropped item's row carries its rarity, until the next New. */
+.loot-crates .lc-table tr.lc-row--new td:first-child { box-shadow: inset 3px 0 0 var(--lc-gold-ink); }
 /* A sale its buyer called off too late: marked for the GM, not undone. */
 .loot-crates .lc-row--late td:first-child { box-shadow: inset 3px 0 var(--lc-warn); }
 .loot-crates .lc-log__late { display: block; margin-left: 14px; font-size: 12px; color: var(--lc-warn); }

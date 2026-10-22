@@ -1,0 +1,81 @@
+/*
+  The manager's Boxes tab as markup, drawn by the manager (manager.js
+  _boxes) and by the harness: the toolbar with one New button per kind and
+  the tab's status line (the manager writes there what a New did), then one
+  row per game the shop sells.
+
+  A crate's row: its odds as the shop shows them (the ribbon over the
+  pills), its pity and no-duplicates rules. A well's: its name tagged, its
+  three outcomes, its cap and pity in throws. A dice game's: win and lose,
+  the dragon's number, the payout and the prize. A deck's: the kinds of
+  card still in it, its cards and how many are drawn, and Reshuffle beside
+  Edit. A wheel's: its odds per bet type and "Open a round" or "Go to the
+  table" from the live rounds. Every pulled game's row ends with its stock
+  and limit per character ("3 of 10 left, 1 per character", limits.js).
+  The row a New just added carries lc-row--new (an edge in the gold rule,
+  as a dropped item's row carries its rarity) until the next New or the
+  manager closes.
+
+  No Foundry globals: the caller passes the records, the pools as the last
+  source check found them, the log, the rounds and the escape.
+*/
+import { RARITY_LABEL } from "./config.js";
+import { oddsPills, oddsRibbon } from "./boxcard.js";
+import { kindOf } from "./kinds.js";
+import { wellOdds, wellOddsHTML, wellRulesText } from "./well.js";
+import { diceOdds, diceOddsHTML, diceRulesText } from "./dicegame.js";
+import { deckOdds, deckOddsHTML, deckRulesText } from "./deck.js";
+import { betOdds, rouletteOddsHTML, rouletteRulesText } from "./roulette.js";
+import { liveRoundOf } from "./round.js";
+import { shopOdds } from "./odds.js";
+import { formatPrice } from "./currency.js";
+import { limitsText } from "./limits.js";
+
+// The New buttons, in the order the kinds arrived; their action names are
+// the manager's (test/actions.test.js keeps them off ApplicationV2's own).
+export const NEW_BUTTONS = [["addBox", "New box"], ["addWell", "New well"], ["addDice", "New dice game"], ["addDeck", "New deck"], ["addWheel", "New wheel"]];
+
+// A box's odds in the Boxes table: its ribbon over its named pills.
+const oddsCell = rows => rows.length ? `${oddsRibbon(rows)}<div class="lc-odds">${oddsPills(rows)}</div>` : "<em>empty</em>";
+
+const KIND_TAG = { well: "Well", dice: "Dice", deck: "Deck", roulette: "Wheel" };
+
+// The toolbar: every New, then the one status line the tab speaks through.
+export function boxesToolbarHTML(status = "", esc = s => String(s ?? "")) {
+  return `<div class="lc-toolbar lc-toolbar--boxes">${NEW_BUTTONS.map(([action, label]) => `<button type="button" data-action="${action}"><i class="fas fa-plus"></i> ${label}</button>`).join("")}<span class="lc-pool__hint lc-manager__status" role="status">${esc(status)}</span></div>`;
+}
+
+export function boxesTableHTML({ boxes, pools, log = [], rounds = {}, recent = null, esc }) {
+  if (!boxes.length) return `<p class="lc-empty">No boxes. A box prices a pull from one or more pools.</p>`;
+  const kind = b => kindOf(b);
+  const tag = b => (KIND_TAG[kind(b)] ? ` <span class="lc-kind">${KIND_TAG[kind(b)]}</span>` : "");
+  const odds = b => ({
+    well: () => wellOddsHTML(wellOdds(b, pools)) || "<em>dry</em>",
+    dice: () => diceOddsHTML(diceOdds(b, pools)) || "<em>unbeatable</em>",
+    deck: () => deckOddsHTML(deckOdds(b, pools, log)) || "<em>empty</em>",
+    roulette: () => rouletteOddsHTML(betOdds(b), esc) || "<em>no pockets</em>",
+  }[kind(b)] ?? (() => oddsCell(shopOdds(b, pools).rows)))();
+  const own = b => ({
+    well: () => wellRulesText(b),
+    dice: () => diceRulesText(b),
+    deck: () => deckRulesText(b, log),
+    roulette: () => rouletteRulesText(b),
+  }[kind(b)] ?? (() => [b.rules?.pity ? `${RARITY_LABEL[b.rules.pity.minRarity] ?? b.rules.pity.minRarity} or better after ${b.rules.pity.after} pulls` : "", b.rules?.noDuplicates ? "no dupes" : ""].filter(Boolean).join(", ")))();
+  const rules = b => esc([own(b), kind(b) === "roulette" ? "" : limitsText(b)].filter(Boolean).join(", "));
+  // A deck's row reshuffles; a wheel's opens its round (or brings the open one forward).
+  const extra = b => (kind(b) === "deck" ? `<button type="button" data-action="reshuffle" data-box="${esc(b.id)}" aria-label="Reshuffle ${esc(b.name)}">Reshuffle</button> `
+    : kind(b) === "roulette" ? `<button type="button" data-action="openTable" data-box="${esc(b.id)}" aria-label="${liveRoundOf(rounds, b.id) ? "Go to the table" : "Open a round"} at ${esc(b.name)}">${liveRoundOf(rounds, b.id) ? "Go to the table" : "Open a round"}</button> ` : "");
+  return `<table class="lc-table"><thead><tr><th>Box</th><th>Price</th><th>Pools</th><th>Odds</th><th>Rules</th><th></th></tr></thead><tbody>
+        ${boxes.map(b => `<tr${b.id === recent ? ` class="lc-row--new"` : ""}>
+          <td>${esc(b.name)}${tag(b)}</td><td>${esc(formatPrice(b.price))}</td>
+          <td>${(b.pools ?? []).map(r => esc(pools[r.id]?.name ?? "missing")).join(", ") || "<em>none</em>"}</td>
+          <td>${odds(b)}</td>
+          <td>${rules(b)}</td>
+          <td>${extra(b)}<button type="button" data-action="editBox" data-box="${esc(b.id)}" aria-label="Edit ${esc(b.name)}" data-tooltip="Edit"><i class="fas fa-pen" inert></i></button> <button type="button" data-action="deleteBox" data-box="${esc(b.id)}" aria-label="Delete ${esc(b.name)}" data-tooltip="Delete"><i class="fas fa-trash" inert></i></button></td>
+        </tr>`).join("")}</tbody></table>`;
+}
+
+// The whole tab.
+export function boxesTabHTML({ status = "", ...rest }) {
+  return `${boxesToolbarHTML(status, rest.esc)}${boxesTableHTML(rest)}`;
+}
