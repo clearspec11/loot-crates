@@ -423,10 +423,12 @@
 .loot-crates .lc-reveal__where { margin-top: 8px; font-size: 13px; color: var(--lc-vault-soft); animation: lc-reveal-after 260ms ease 460ms both; }
 .loot-crates .lc-reveal__gold { white-space: nowrap; color: var(--lc-pin); }
 @keyframes lc-reveal-after { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
-/* The Wishing Well's quiet result: nothing, or the coin back, in the display
-   face at a smaller size than a find's name, in vault-soft rather than a
+/* The quiet result: the well's nothing or coin back, the dice's verdict, the
+   deck's card name. A sentence, so the slab face (Modesto Condensed is an
+   upper-case face, kept for names that matter, DESIGN.md Labels Not
+   Kickers), smaller than a find's name, in vault-soft rather than a
    rarity's colour: it is a result, not a prize. */
-.loot-crates .lc-reveal__quiet { font-family: var(--lc-display); font-size: 24px; font-weight: 700; line-height: 1.05; color: var(--lc-vault-soft); text-wrap: balance; }
+.loot-crates .lc-reveal__quiet { font-family: var(--lc-slab); font-size: 18px; font-weight: 700; line-height: 1.25; color: var(--lc-vault-soft); text-wrap: balance; }
 .loot-crates .lc-reveal__actions { display: flex; justify-content: flex-end; align-items: center; flex-wrap: wrap; gap: 8px; }
 .loot-crates .lc-reveal__actions button { flex: 0 0 auto; min-width: 104px; min-height: 36px; }
 .loot-crates .lc-reveal__actions button[hidden] { display: none; }
@@ -497,9 +499,13 @@
   box-shadow: 0 6px 12px rgba(0, 0, 0, .55); color: var(--lc-vault-ink);
 }
 .loot-crates .lc-dice__face { font-family: var(--lc-display); font-size: 32px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
-/* A settled die takes the outcome's colour on its foot; a loss stays in the
-   vault's own line, since nothing was won. */
-.loot-crates .lc-dice__die--set { border-bottom-color: var(--lc-rarity); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--lc-pin) 45%, transparent), 0 6px 12px rgba(0, 0, 0, .55); }
+/* A settled die rings itself in the pin's gold, the same for a win and a
+   loss. Its foot takes the outcome's colour only once the stage has told
+   the total (lc-dice--told, dicegame.js), never as the first die lands,
+   or the table reads the win 440 ms early; a loss stays in the vault's
+   own line, since nothing was won. */
+.loot-crates .lc-dice__die--set { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--lc-pin) 45%, transparent), 0 6px 12px rgba(0, 0, 0, .55); }
+.loot-crates .lc-dice--told .lc-dice__die--set { border-bottom-color: var(--lc-rarity); }
 .loot-crates .lc-dice[data-outcome="lose"] .lc-dice__die--set { border-bottom-color: var(--lc-vault-line); }
 .loot-crates .lc-dice__total { font-family: var(--lc-display); font-size: 28px; font-weight: 700; line-height: 1; color: var(--lc-rarity, var(--lc-vault-ink)); opacity: 0; min-height: 28px; }
 .loot-crates .lc-dice[data-outcome="lose"] .lc-dice__total { color: var(--lc-vault-soft); }
@@ -507,8 +513,8 @@
 /* While Dice So Nice rolls the real dice over the canvas, the stage waits
    with blank faces: the dice in the window land with the 3D ones. */
 .loot-crates .lc-dice--three .lc-dice__face { visibility: hidden; }
-/* The verdict is the result, in the display face; a win reads in the
-   vault's gold rather than a rarity, a loss in vault-soft. */
+/* The verdict is the result, in the quiet line's slab face; a win reads in
+   the vault's gold rather than a rarity, a loss in vault-soft. */
 .loot-crates .lc-dice__verdict { color: var(--lc-rarity, var(--lc-vault-soft)); }
 .loot-crates .lc-vault.lc-rarity-none .lc-dice__verdict { color: var(--lc-vault-soft); }
 /* A win floods the vault with the rim's gold, a prize with its rarity. */

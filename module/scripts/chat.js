@@ -52,7 +52,10 @@ export async function postRefundCard({ row, actor, removedItem }) {
   // A row that granted no item (a well's miss or coin back, a dice bet, a
   // deck's card) has nothing to remove: the stake came back (and what a
   // bane took with it), the winnings were taken back less the stake (a
-  // dice win), or the coin had already come back.
+  // dice win), or the coin had already come back. A row that paid out or
+  // took coins beyond the stake has no one price to show in the head (the
+  // stake alone would misname what moved), so the head says "was refunded"
+  // and the line under it carries the sum.
   const stake = Math.round((Number(row.price) || 0) * 100);
   const payout = Math.round(Number(row.payoutCp) || 0);
   const net = stake - payout;
@@ -64,7 +67,7 @@ export async function postRefundCard({ row, actor, removedItem }) {
     : "The coin had already come back, so nothing moved.";
   const content = `
     <div class="loot-crates lc-chat lc-rarity-${esc(row.rarity ?? "none")}">
-      <div class="lc-chat__head">${esc(actor?.name ?? row.actorName)}'s <strong>${esc(row.boxName)}</strong> was refunded <span class="lc-chat__price">${esc(formatPrice(row.price))}</span></div>
+      <div class="lc-chat__head">${esc(actor?.name ?? row.actorName)}'s <strong>${esc(row.boxName)}</strong> was refunded${payout ? "" : ` <span class="lc-chat__price">${esc(formatPrice(row.price))}</span>`}</div>
       <div class="lc-chat__refund">${line}</div>
     </div>`;
   return ChatMessage.create({

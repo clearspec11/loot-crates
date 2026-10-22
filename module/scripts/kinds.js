@@ -53,6 +53,11 @@
                   buyer's state before the pull, which the shop holds).
     undo(state, row, log) the buyer's state with the row undone, for a
                   refund; a kind without one leaves the state as it is.
+    gotText(out)  what the buyer came away with, as a verb phrase after
+                  their name, for the late-cancel messages (socket.js
+                  lateCancel): the crate's "got Sling +2" or "got nothing"
+                  (the default, from out.result.name), the dice's "rolled
+                  4, 6, 5: 15 beats the dragon's 12", the deck's "drew Ruin".
     reveal        the window: { title, head(reveal, { esc }) -> html (the
                   line over the vault; the crate's "Tam opens Crate 150 gp"
                   when absent), play(host, reveal, { sound, pageHidden,
@@ -101,6 +106,12 @@ export function registerKind(kind) {
 }
 
 export const getKind = id => kinds.get(id) ?? null;
+
+// "got Sling +2" / "got nothing", or the kind's own phrase (gotText above).
+export function gotText(kind, out) {
+  const own = typeof kind?.gotText === "function" ? kind.gotText(out) : null;
+  return own || `got ${out?.result?.name || "nothing"}`;
+}
 
 export const kindIds = () => [...kinds.keys()];
 

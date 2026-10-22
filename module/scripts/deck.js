@@ -548,6 +548,8 @@ export const DECK = registerKind({
   priceOf,
   roll,
   logRow,
+  // The late-cancel line (socket.js): a card is drawn, not got.
+  gotText: out => `drew ${out.card?.label ?? out.result?.name ?? "a card"}`,
   reveal: {
     title: "A card from the deck",
     head,

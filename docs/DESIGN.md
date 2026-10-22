@@ -206,7 +206,7 @@ dnd5e's two sheet palettes (grey paper with maroon and gold; denim and slate wit
 
 **The Vault Speaks In Colour Rule.** Rarity-coloured text lives only inside the always-dark vault: the result name in its rarity, the strip card's foot bar, the landed card's ring and tint, the well's glow and the vault's wash.
 
-**The Quiet Result Rule.** A game's result that isn't a prize (the well's "The coin sinks. Nothing." and "The coin comes back.") is set in the display face at 24px in vault-soft, never a rarity colour, and goes to the window's live region like every result.
+**The Quiet Result Rule.** A game's result that isn't a prize (the well's "The coin sinks. Nothing." and "The coin comes back.", the dice's "15 beats the dragon's 12", the deck's card name) is a sentence, so it is set in the slab face (Roboto Slab 700, 18px, 1.25) in vault-soft, never a rarity colour (a bane's is the one exception, in the bane token), and goes to the window's live region like every result. Modesto Condensed is an upper-case face: it names the find, and never sets a sentence (the Labels Not Kickers rule).
 
 **The Warn Is Not Gold Rule.** Problems (missing, renamed, no rarity) are amber on a warm wash with a dashed border, never gold, so they never read as treasure.
 

@@ -208,14 +208,17 @@ export class CrateShop extends ApplicationV2 {
   // stateOf reads this character's pity count and owned items per box (a
   // world setting, so a player's client can read it), so each card shows
   // the odds draw() will use for them. `today` and `log` are for a game
-  // that counts plays per in-game day (the well's cap, well.js).
+  // that counts plays per in-game day (the well's cap, well.js) or per
+  // row (the deck's streak); the log is a deep clone of the whole setting
+  // (store.js), so it is read once per context and only when a kind asks.
   #ctx() {
     const actor = this.actor;
     const gm = !!game.users.activeGM;
+    let log;
     return {
       purse: actor?.system?.currency ?? {}, open: isShopOpen() && gm, gmOnline: gm, hasActor: !!actor,
       actorId: actor?.id ?? null, actorName: actor?.name ?? "", stateOf: boxId => (actor ? heldState(actor.id, boxId) ?? getActorState(actor.id, boxId) : {}),
-      today: todayKey(), log: getLog(),
+      today: todayKey(), get log() { return (log ??= getLog()); },
       held: boxId => !!(actor && heldState(actor.id, boxId)),
       busy: this.busy, busyBox: this.busyBox, waiting: this.waiting, art: `<i class="fas fa-box-open"></i>`, esc,
     };

@@ -254,7 +254,7 @@ export function mountDice(host, { faces = [], sides = 6, target = 0, outcome = "
   const scale = total / landTime(n);
   const T = ms => ms * scale;
   host.classList.add("lc-dice", `lc-rarity-${rarity}`);
-  host.classList.remove("lc-dice--landed", "lc-dice--three");
+  host.classList.remove("lc-dice--landed", "lc-dice--three", "lc-dice--told");
   host.dataset.outcome = outcome;
   host.innerHTML = `<div class="lc-dice__stage" aria-hidden="true">
       <div class="lc-dice__dragon">The dragon's <strong>${Math.floor(Number(target) || 0)}</strong></div>
@@ -271,6 +271,10 @@ export function mountDice(host, { faces = [], sides = 6, target = 0, outcome = "
   const settleAt = i => DICE_TIMING.tumble + i * DICE_TIMING.settleGap;
   const set = (el, props) => { if (!el?.style) return; for (const [k, v] of Object.entries(props)) el.style[k] = v; };
   const settled = new Set();
+  // Whether the stage has told the total: the feet take the outcome's
+  // colour only from then (module.css lc-dice--told), so the first die to
+  // settle, 440 ms before the total, says nothing about the win.
+  let told = false;
 
   const pose = t => {
     for (let i = 0; i < n; i++) {
@@ -293,6 +297,7 @@ export function mountDice(host, { faces = [], sides = 6, target = 0, outcome = "
     }
     const shown = t >= T(settleAt(n - 1) + DICE_TIMING.total * 0.4);
     if (totalEl) { totalEl.textContent = shown ? String(sum) : ""; set(totalEl, { opacity: shown ? "1" : "0", transform: shown ? "none" : "translateY(4px)" }); }
+    if (shown !== told) { told = shown; host.classList[shown ? "add" : "remove"]("lc-dice--told"); }
   };
 
   let landed = false, frame = null, t0 = null, resolveDone = null, timer = null;
@@ -515,6 +520,9 @@ export const DICE = registerKind({
   noun: "dice",
   roll,
   logRow,
+  // "rolled 4, 6, 5: 15 beats the dragon's 12", for the late-cancel line
+  // (socket.js), where "got <verdict>" read as if the verdict were an item.
+  gotText: out => `rolled ${facesText(out.faces)}: ${verdictText(out)}`,
   reveal: {
     title: "Dragon's Teeth",
     head,

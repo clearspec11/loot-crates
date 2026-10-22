@@ -16,7 +16,7 @@
     { type: "error", requestId, userId, message }          GM -> the buyer
     { type: "cancel", requestId, userId }                  the buyer -> GM, when
                                                            its wait timed out
-    { type: "late", requestId, userId, boxName, itemName, actorName }
+    { type: "late", requestId, userId, boxName, got, actorName }
                                                            GM -> the buyer, when
                                                            the cancel came after
                                                            the charge
@@ -68,7 +68,7 @@
 */
 import { SOCKET } from "./config.js";
 import { performPull, PullError } from "./pull.js";
-import { getKind, kindOf } from "./kinds.js";
+import { getKind, kindOf, gotText } from "./kinds.js";
 import { getBoxes, getPools, getLog, getActorState, setActorState, appendLog, updateLog, newId, isShopOpen, saveBox, enqueueWrite, refreshMissing, markMissing, reportMissing, todayKey } from "./store.js";
 import { showReveal } from "./reveal.js";
 import { postPullCard } from "./chat.js";
@@ -120,18 +120,19 @@ function rememberCharge(requestId, sale) {
 function lateCancel(sale) {
   if (sale.late) return null;
   sale.late = true;
-  const { requestId, userId, buyerName, actorName, boxName, itemName, logId } = sale;
+  const { requestId, userId, buyerName, actorName, boxName, got, logId } = sale;
   console.warn(`loot-crates | ${buyerName} called off ${requestId} after ${actorName} was charged for ${boxName}; the sale stands`);
-  globalThis.ui?.notifications?.warn(`Loot Crates: ${buyerName} gave up waiting on ${boxName}, but ${actorName} had already been charged and got ${itemName ?? "nothing"}. To undo it, use Refund on the marked row in the Pull log.`);
-  game.socket.emit(SOCKET, { type: "late", requestId, userId, boxName, itemName, actorName });
+  globalThis.ui?.notifications?.warn(`Loot Crates: ${buyerName} gave up waiting on ${boxName}, but ${actorName} had already been charged and ${got ?? "got nothing"}. To undo it, use Refund on the marked row in the Pull log.`);
+  game.socket.emit(SOCKET, { type: "late", requestId, userId, boxName, got, actorName });
   return enqueueWrite(() => updateLog(logId, { lateCancel: Date.now() }))
     .catch(err => console.error(`loot-crates | couldn't mark ${requestId}'s log row as called off`, err));
 }
 
 // The buyer's side of lateCancel: their shop said the purchase was called
-// off, so say plainly that it went through.
+// off, so say plainly that it went through. `got` is the kind's own phrase
+// (kinds.js gotText), since not every game opens or hands over an item.
 function openedAfterAll(msg) {
-  globalThis.ui?.notifications?.info(`Your ${msg.boxName} opened after all: ${msg.actorName} got ${msg.itemName ?? "nothing"}. Ask the GM if you'd like it refunded.`);
+  globalThis.ui?.notifications?.info(`Your ${msg.boxName} went through after all: ${msg.actorName} ${msg.got ?? "got nothing"}. Ask the GM if you'd like it refunded.`);
 }
 const uid = () => foundry.utils.randomID(12);
 
@@ -363,7 +364,7 @@ async function doPull(msg, timer, sent, stopWatching) {
     const itemUuid = out.itemId ? `Actor.${actor.id}.Item.${out.itemId}` : null;
     const logId = newId();
     // Charged now: a cancel from here on is too late to drop the pull.
-    rememberCharge(msg.requestId, { requestId: msg.requestId, userId: msg.userId, buyerName: buyer.name, actorName: actor.name, boxName: box.name, itemName: out.result?.name ?? "nothing", logId });
+    rememberCharge(msg.requestId, { requestId: msg.requestId, userId: msg.userId, buyerName: buyer.name, actorName: actor.name, boxName: box.name, got: gotText(kind, out), logId });
     // What every reveal carries, then what this kind adds (the crate: the
     // odds this roll was made at and the buyer's state before it, which a
     // client whose spin is still playing holds its shop at; reveal.js

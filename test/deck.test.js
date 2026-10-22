@@ -354,6 +354,9 @@ describe("the one refund, for a card", () => {
     const card = await postRefundCard({ row: getLog()[0], actor, removedItem: null });
     expect(card.content).toContain("30 gp went back into their purse: the 10 gp stake and the 20 gp the card took.");
     expect(card.content).toContain("lc-rarity-none");
+    // The head says "was refunded" alone: 10 gp isn't what moved.
+    expect(card.content).toContain("<strong>The Deck</strong> was refunded</div>");
+    expect(card.content).not.toContain("lc-chat__price");
   });
 
   it("a coins card gives the stake back less the payout, and refuses when the winnings are spent", async () => {
@@ -500,6 +503,7 @@ describe("the words", () => {
     expect(kind.reveal.title).toBe("A card from the deck");
     expect(kind.reveal.replayable).toBe(false);
     expect(kind.noun).toBe("deck");
+    expect(kind.gotText({ card: { label: "Ruin" }, result: { name: "Ruin" } })).toBe("drew Ruin");
     expect(kind.chat.conditional).toBeUndefined();
     expect(kind.reveal.head(reveal(), { esc }).replace(/\s+/g, " ")).toBe(`<span class="lc-reveal__who">Brinn</span> draws from <strong class="lc-reveal__crate">The Deck</strong> <span class="lc-reveal__price">10 gp</span>`);
     expect(kind.reveal.head(reveal({ streak: 3, box: { name: "The Deck", price: 22.5 } }), { esc })).toContain(`22 gp 5 sp</span> <span class="lc-reveal__streak">· 3rd in a row</span>`);

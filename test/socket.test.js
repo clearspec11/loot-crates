@@ -253,10 +253,10 @@ describe("the GM client", () => {
     expect(warnings).toHaveLength(1);
     const [text, options] = warnings[0];
     expect(text).toContain("Player gave up waiting on Test Crate");
-    expect(text).toContain(`Crate Tester had already been charged and got ${item}`);
+    expect(text).toContain(`Crate Tester had already been charged and got ${item}.`);
     expect(text).toContain("Refund on the marked row in the Pull log");
     expect(options?.permanent).not.toBe(true);
-    expect(emitted.filter(m => m.type === "late")).toEqual([{ type: "late", requestId: "slow", userId: "p1", boxName: "Test Crate", itemName: item, actorName: "Crate Tester" }]);
+    expect(emitted.filter(m => m.type === "late")).toEqual([{ type: "late", requestId: "slow", userId: "p1", boxName: "Test Crate", got: `got ${item}`, actorName: "Crate Tester" }]);
     const rows = game.settings.get("loot-crates", "pullLog");
     expect(rows).toHaveLength(1);
     expect(rows[0].lateCancel).toEqual(expect.any(Number));
@@ -290,11 +290,14 @@ describe("the GM client", () => {
     const infos = [];
     globalThis.ui = { notifications: { info: (...a) => infos.push(a) } };
     const { deliver } = makeWorld({ user: PLAYER });
-    await deliver({ type: "late", requestId: "x", userId: "someone-else", boxName: "Test Crate", itemName: "Rope", actorName: "Other" });
+    await deliver({ type: "late", requestId: "x", userId: "someone-else", boxName: "Test Crate", got: "got Rope", actorName: "Other" });
     expect(infos).toEqual([]);
-    await deliver({ type: "late", requestId: "x", userId: "p1", boxName: "Test Crate", itemName: "Rope", actorName: "Crate Tester" });
+    await deliver({ type: "late", requestId: "x", userId: "p1", boxName: "Test Crate", got: "got Rope", actorName: "Crate Tester" });
     expect(infos).toHaveLength(1);
-    expect(infos[0][0]).toBe("Your Test Crate opened after all: Crate Tester got Rope. Ask the GM if you'd like it refunded.");
+    expect(infos[0][0]).toBe("Your Test Crate went through after all: Crate Tester got Rope. Ask the GM if you'd like it refunded.");
+    // The dice's phrase travels as the kind wrote it, never as an item name.
+    await deliver({ type: "late", requestId: "y", userId: "p1", boxName: "Dragon's Teeth", got: "rolled 4, 6, 5: 15 beats the dragon's 12", actorName: "Crate Tester" });
+    expect(infos[1][0]).toBe("Your Dragon's Teeth went through after all: Crate Tester rolled 4, 6, 5: 15 beats the dragon's 12. Ask the GM if you'd like it refunded.");
   });
 
   it("fulfils a player's pull over the socket and broadcasts the reveal", async () => {
