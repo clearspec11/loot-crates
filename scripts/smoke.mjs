@@ -592,8 +592,10 @@ async function tableProblems({ phase, outcome, gm }) {
   const shown = el => !!el && !el.hidden && el.getBoundingClientRect().height > 0;
   const head = document.querySelector(".lc-table__head")?.innerText.replace(/\s+/g, " ") ?? "";
   if (!/Wheel of Fate/.test(head)) out.push(`head reads "${head}"`);
+  // The clock (betting) is a timer, not a status region: it ticks once a
+  // second and must not be read aloud each time.
   const stateEl = document.querySelector(".lc-table__state");
-  if (!stateEl?.closest("[role=status]")) out.push("the round's state is not a live region");
+  if (stateEl?.getAttribute("role") !== (phase === "betting" ? "timer" : "status")) out.push(`the round's state has role "${stateEl?.getAttribute("role")}" while ${phase}`);
   const want = { betting: /^Bets close in \d:\d\d$/, waiting: /^Bets are closed: waiting for the GM to spin$/, closed: /^Bets are closed: waiting for the GM to spin$/, spinning: /^The wheel is turning$/, landed: /^Settled$/ }[phase];
   if (!want.test(stateEl?.textContent.trim() ?? "")) out.push(`the state reads "${stateEl?.textContent}"`);
   const count = document.querySelector(".lc-table__count")?.textContent.trim();

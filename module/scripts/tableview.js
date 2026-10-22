@@ -16,7 +16,11 @@
 
   Screen readers hear the table in words: the chips are decorative, so a
   visually hidden list names every bet, and a status line says each new one
-  as it lands and the round's state as it changes.
+  as it lands and the round's state as it changes (tablewindow.js says it
+  there after each change of phase). The head's state line is a status
+  region too, except while it is the clock: that ticks once a second, and
+  a live region read every second would drown the table, so the clock is
+  a timer (role="timer": live, but silent until the user reads it).
 */
 import { formatPrice } from "./currency.js";
 import { isOpenStake, stakeReason, roundState, ROUND_WORDS } from "./round.js";
@@ -86,7 +90,7 @@ export function tableBodyHTML({ kind, game, round, stakes = [], viewer = {}, pha
       <div class="lc-table__head lc-reveal__head">
         <strong class="lc-reveal__crate">${esc(game?.name ?? "")}</strong>
         <span class="lc-table__count">${esc(countText(stakes))}</span>
-        <span class="lc-table__state" role="status" data-state="${esc(state.key)}"${state.closesAt ? ` data-lc-countdown="${esc(state.closesAt)}"` : ""}>${esc(state.text)}</span>
+        <span class="lc-table__state" role="${state.key === "clock" ? "timer" : "status"}" data-state="${esc(state.key)}"${state.closesAt ? ` data-lc-countdown="${esc(state.closesAt)}"` : ""}>${esc(state.text)}</span>
       </div>
       <div class="lc-vault lc-rarity-none">
         <div class="lc-table__host"></div>

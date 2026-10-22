@@ -103,8 +103,13 @@ export class TableWindow extends ApplicationV2 {
     this.#extra.set(msg.logId, row);
     this.#fresh.add(msg.logId);
     this.refresh();
+    this.#say(`${stakeSentence(row, this.kind?.tableView?.verb)}. ${countText(this.stakes())}.`);
+  }
+
+  // The window's status line, for a screen reader.
+  #say(text) {
     const live = this.element?.querySelector(".lc-table__live");
-    if (live) live.textContent = `${stakeSentence(row, this.kind?.tableView?.verb)}. ${countText(this.stakes())}.`;
+    if (live && live.textContent !== text) live.textContent = text;
   }
 
   // A stake, a refund or the round's change of state (redraw.js, the
@@ -117,11 +122,17 @@ export class TableWindow extends ApplicationV2 {
     this.#paintRail();
   }
 
-  // The clock's tick and a round's change of state.
+  // The clock's tick and a round's change of state. A new phase draws
+  // the body again and is then said in the status line (the head's state
+  // is a fresh node, which a screen reader doesn't announce; the clock,
+  // ticking, is a timer and never read aloud on its own).
   refreshHead() {
     const root = this.element;
     if (!root) return;
-    if (!this.reveal && this.phase !== this.#drawn) { this.render(); return; }
+    if (!this.reveal && this.phase !== this.#drawn) {
+      this.render().then(() => this.#say(stateText(this.round, this.phase, { kind: this.kind }).text)).catch(() => {});
+      return;
+    }
     const state = stateText(this.round, this.phase, { kind: this.kind });
     const el = root.querySelector(".lc-table__state");
     if (el && el.textContent !== state.text) { el.textContent = state.text; el.dataset.state = state.key; }
@@ -327,10 +338,14 @@ function tableFor(roundId, boxId) {
   return win;
 }
 
-// The window for a round, opened or brought forward.
+// The window for a round, opened or brought forward. A round on a clock
+// starts the page's one clock, so a client that joined after the round
+// opened (and never heard the "open" message) sees its head count down.
 export function openTable(roundId, boxId) {
   const win = tableFor(roundId, boxId);
   win.render({ force: true });
+  const round = getRounds()[roundId];
+  if (round && round.status !== STATUS.RESOLVED && round.closesAt != null) startClock();
   return win;
 }
 
@@ -361,6 +376,10 @@ export function refreshTables() {
   and the shop cards' "Bets close in 0:42" lines (data-lc-countdown), once
   a second while a round with a clock is open. When a clock runs out the
   shop is told to redraw (its Buy goes off), the window drops its form.
+  Started by the round's "open" message, by a table window opening on a
+  clocked round, and by a shop drawing a card with a countdown (shop.js),
+  so a client that loads mid-round ticks too; it stops itself when no
+  clock is left on the page.
 */
 let clock = null;
 function tick() {

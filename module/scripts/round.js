@@ -29,8 +29,9 @@
 */
 
 // How long an "until the GM spins" round may sit before a GM's load
-// refunds its stakes, and how long after a timed round closes. A reload
-// mid-round keeps the round; one left for longer than this does not.
+// refunds its stakes. A timed round goes stale one clock's length after
+// it closes (staleAt). A reload mid-round keeps the round; one left for
+// longer than that does not.
 export const ROUND_WINDOW_MS = 10 * 60 * 1000;
 // Resolved rounds kept for the log's group headers; open ones are never dropped.
 export const ROUNDS_KEPT = 50;

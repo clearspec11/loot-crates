@@ -286,7 +286,13 @@ export class CrateShop extends ApplicationV2 {
   // The notice node, the cards and the focused Buy are kept across renders
   // (see boxcard.js patchShop). The <select> is kept too, with the change
   // listener it got on the first render.
-  _replaceHTML(result, content) { patchShop(content, result, this.notice); }
+  _replaceHTML(result, content) {
+    patchShop(content, result, this.notice);
+    // A table game's card counting down ("Bets close in 0:42") ticks on
+    // the page's one clock (tablewindow.js), which a client that loaded
+    // mid-round has not started yet.
+    if (content.querySelector?.("[data-lc-countdown]")) import("./tablewindow.js").then(m => m.startClock()).catch(() => {});
+  }
 }
 
 let shop = null;

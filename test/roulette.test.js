@@ -375,6 +375,8 @@ describe("the rail and the table's body", () => {
     expect(betting).toContain("Place a bet");
     expect(betting).toContain('data-lc-countdown="1042000"');
     expect(betting).toContain("Bets close in 0:42");
+    // The clock ticks once a second: a timer, never a status region read each tick.
+    expect(betting).toContain('<span class="lc-table__state" role="timer" data-state="clock"');
     expect(betting).toContain("3 bets from 3 characters");
     expect(betting.match(/<li>/g)).toHaveLength(3);
     expect(betting).toContain("Tam Thornwick bets 5 gp on 7");
@@ -388,6 +390,7 @@ describe("the rail and the table's body", () => {
     expect(gm).toContain('data-action="spin">Spin<');
     expect(gm).not.toContain("lc-table__form");
     expect(gm).toContain("Bets are closed: waiting for the GM to spin");
+    expect(gm).toContain('<span class="lc-table__state" role="status" data-state="closed"');
     const spinning = tableBodyHTML({ kind: ROULETTE, game: GAME, round, stakes: rows, viewer: player, phase: "spinning", now, esc });
     expect(spinning).toContain('data-action="skip">Skip<');
     expect(spinning).toContain("The wheel is turning");
