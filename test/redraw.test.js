@@ -130,6 +130,11 @@ describe("the manager", () => {
     expect(managerShows("boxes", SETTINGS.LOG, { c: { kind: "crate" } })).toBe(false);
     expect(managerShows("boxes", SETTINGS.LOG, { c: { kind: "crate" }, d: { kind: "deck" } })).toBe(true);
     expect(managerShows("pools", SETTINGS.LOG, { d: { kind: "deck" } })).toBe(false);
+    // A wheel's row reads the rounds ("Open a round" / "Go to the table").
+    expect(managerShows("boxes", SETTINGS.ROUNDS)).toBe(false);
+    expect(managerShows("boxes", SETTINGS.ROUNDS, { w: { kind: "roulette" } })).toBe(true);
+    expect(managerShows("log", SETTINGS.ROUNDS)).toBe(true);
+    expect(managerShows("pools", SETTINGS.ROUNDS, { w: { kind: "roulette" } })).toBe(false);
     expect(managerShows("pools", SETTINGS.POOLS)).toBe(false);
     expect(managerShows("boxes", SETTINGS.POOLS)).toBe(true);
     expect(managerShows("boxes", SETTINGS.BOXES)).toBe(true);

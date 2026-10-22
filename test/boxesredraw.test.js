@@ -4,8 +4,10 @@
   deckOdds, deckRulesText), so a draw or a refund on any client redraws
   that row there and then, not when the tab is next opened. Without a deck
   a log change leaves the tab alone (a crate's row reads nothing from the
-  log). Drives the real manager and the real redraw batching (redraw.js),
-  the Boxes tab rendered into a minimal DOM, the store stubbed.
+  log). A wheel's row reads the rounds the same way (its button is "Open
+  a round" or "Go to the table"). Drives the real manager and the real
+  redraw batching (redraw.js), the Boxes tab rendered into a minimal DOM,
+  the store stubbed.
 */
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from "vitest";
 import { createDocument } from "./minidom.js";
@@ -13,13 +15,13 @@ import { createDocument } from "./minidom.js";
 vi.mock("../module/scripts/shop.js", () => ({ refreshShop: vi.fn() }));
 vi.mock("../module/scripts/chat.js", () => ({ postRefundCard: vi.fn() }));
 
-let pools, boxes, log;
+let pools, boxes, log, rounds;
 vi.mock("../module/scripts/store.js", async importOriginal => ({
   ...(await importOriginal()),
   getPools: () => structuredClone(pools),
   getBoxes: () => structuredClone(boxes),
   getLog: () => structuredClone(log),
-  getRounds: () => ({}),
+  getRounds: () => structuredClone(rounds),
   isShopOpen: () => true,
   checkSources: async entries => new Map(entries.map(e => [e.uuid, { name: e.name, img: e.img, rarity: e.rarity }])),
   sweepPools: async () => [],
@@ -60,6 +62,7 @@ const CARDS = [
 ];
 const DECK = { id: "deck", kind: "deck", name: "The Deck", price: 10, pools: [], weights: {}, deck: { step: 1.5, shuffledAt: 0, cards: CARDS }, rules: {} };
 const CRATE = { id: "crate", name: "Pauper's Box", price: 25, pools: [{ id: "p", share: 1 }], weights: { common: 1 }, rules: {} };
+const WHEEL = { id: "wheel", kind: "roulette", name: "The Wheel", price: 5, pools: [], weights: {}, roulette: {}, rules: {} };
 const draw = cardId => ({ id: `r${log.length}`, kind: "deck", boxId: "deck", actorId: "a1", actorName: "Tam", boxName: "The Deck", cardId, at: 1000 + log.length, price: 10, payoutCp: 0 });
 const settle = () => new Promise(r => setTimeout(r, 0));
 
@@ -67,6 +70,7 @@ beforeEach(() => {
   pools = { p: { id: "p", name: "Odds and ends", pools: [], entries: [{ uuid: "Item.a", name: "Rope", img: "", rarity: "common", weight: 1 }] } };
   boxes = { crate: CRATE, deck: DECK };
   log = [];
+  rounds = {};
 });
 
 async function boxesTab() {
@@ -100,6 +104,35 @@ describe("the Boxes tab and the pull log", () => {
       expect(renders).toBe(2);
       expect(deckRow(app).textContent).toMatch(/2 cards, ×1\.5/);
       expect(deckRow(app).textContent).toMatch(/Effect/);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("redraws a wheel's Open a round / Go to the table when the rounds change", async () => {
+    vi.useFakeTimers();
+    try {
+      boxes = { crate: CRATE, wheel: WHEEL };
+      const app = await boxesTab();
+      const button = () => app.element.querySelector('button[data-action="openTable"]');
+      expect(button().textContent).toBe("Open a round");
+      const listen = storeRedraw({ refreshShop: () => {}, refreshManager });
+      renders = 0;
+      // The round is opened from the shop card or the table window: only the rounds change.
+      rounds = { R1: { id: "R1", boxId: "wheel", kind: "roulette", status: "open", opensAt: 1000, closesAt: null } };
+      listen(SETTINGS.ROUNDS);
+      await vi.advanceTimersByTimeAsync(200);
+      expect(renders).toBe(1);
+      expect(button().textContent).toBe("Go to the table");
+      // The spin resolves it.
+      rounds.R1.status = "resolved";
+      listen(SETTINGS.ROUNDS);
+      await vi.advanceTimersByTimeAsync(200);
+      expect(renders).toBe(2);
+      expect(button().textContent).toBe("Open a round");
+      // Without a wheel on the tab, the rounds leave it alone.
+      boxes = { crate: CRATE, deck: DECK };
+      listen(SETTINGS.ROUNDS);
+      await vi.advanceTimersByTimeAsync(200);
+      expect(renders).toBe(2);
     } finally { vi.useRealTimers(); }
   });
 

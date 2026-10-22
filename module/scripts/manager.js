@@ -1366,11 +1366,15 @@ function heldRarities(draft, pools) {
   buyer's shop shows their own). The log shows on the Boxes tab too while
   a deck is on it: a deck's row reads its cards drawn and its odds from the
   log (deck.js deckOdds), so a draw or a refund redraws it there and then.
+  The rounds show there too while a wheel is on it: its row's button reads
+  "Open a round" or "Go to the table" from them (round.js liveRoundOf), so
+  a round opened or spun from the table window changes it there and then.
 */
 export function managerShows(tab, key, boxes = {}) {
   if (key === SETTINGS.SHOP_OPEN) return true;
-  if (key === SETTINGS.LOG) return tab === "log" || (tab === "boxes" && Object.values(boxes ?? {}).some(b => kindOf(b) === "deck"));
-  if (key === SETTINGS.ROUNDS) return tab === "log";
+  const has = kind => Object.values(boxes ?? {}).some(b => kindOf(b) === kind);
+  if (key === SETTINGS.LOG) return tab === "log" || (tab === "boxes" && has("deck"));
+  if (key === SETTINGS.ROUNDS) return tab === "log" || (tab === "boxes" && has("roulette"));
   if (key === SETTINGS.BOXES || key === SETTINGS.POOLS) return tab === "boxes";
   return false;
 }
@@ -1386,7 +1390,7 @@ export function refreshManager(keys, upTo = Infinity) {
   if (!manager?.rendered) return;
   if (manager.seen >= upTo) return;
   const list = typeof keys === "string" ? [keys] : [...keys];
-  const boxes = manager.tab === "boxes" && list.includes(SETTINGS.LOG) ? getBoxes() : {};
+  const boxes = manager.tab === "boxes" && (list.includes(SETTINGS.LOG) || list.includes(SETTINGS.ROUNDS)) ? getBoxes() : {};
   if (list.some(k => managerShows(manager.tab, k, boxes))) manager.render();
   else if (manager.tab === "pools" && list.some(k => USERS_KEYS.includes(k))) manager.patchUsers();
 }
