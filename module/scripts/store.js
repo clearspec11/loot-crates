@@ -12,6 +12,7 @@
 */
 import { MODULE_ID, SETTINGS } from "./config.js";
 import { normalizeRarity, flattenPool, markEntriesMissing, rawRarityOf, sourceRarityOf, curateEntries } from "./odds.js";
+import { dayKeyOf } from "./clock.js";
 
 const uid = () => (globalThis.foundry?.utils?.randomID?.(10)) ?? Math.random().toString(36).slice(2, 12);
 
@@ -81,6 +82,10 @@ export function enqueueWrite(task) {
 
 const get = key => foundry.utils.deepClone(game.settings.get(MODULE_ID, key));
 const set = (key, value) => game.settings.set(MODULE_ID, key, value);
+
+// The in-game day's key from the world's clock (clock.js), for anything
+// counted per day; null in a world with no clock.
+export const todayKey = () => dayKeyOf(globalThis.game?.time ?? null);
 
 export const getPools = () => get(SETTINGS.POOLS);
 export const getBoxes = () => get(SETTINGS.BOXES);

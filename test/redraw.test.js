@@ -73,11 +73,11 @@ describe("storeRedraw", () => {
     expect(refreshManager.mock.calls[1][0]).toEqual([SETTINGS.SHOP_OPEN]);
   });
 
-  it("leaves the shop alone for a log change, which it doesn't show", () => {
+  it("redraws the shop for a log change too: a well's card counts today's throws from it", () => {
     const { refreshShop, refreshManager, listen } = make();
     listen(SETTINGS.LOG);
     vi.advanceTimersByTime(REDRAW_DELAY_MS);
-    expect(refreshShop).not.toHaveBeenCalled();
+    expect(refreshShop).toHaveBeenCalledOnce();
     expect(refreshManager).toHaveBeenCalledOnce();
   });
 

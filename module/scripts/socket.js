@@ -69,7 +69,7 @@
 import { SOCKET } from "./config.js";
 import { performPull, PullError } from "./pull.js";
 import { getKind, kindOf } from "./kinds.js";
-import { getBoxes, getPools, getActorState, setActorState, appendLog, updateLog, newId, isShopOpen, saveBox, enqueueWrite, refreshMissing, markMissing, reportMissing } from "./store.js";
+import { getBoxes, getPools, getLog, getActorState, setActorState, appendLog, updateLog, newId, isShopOpen, saveBox, enqueueWrite, refreshMissing, markMissing, reportMissing, todayKey } from "./store.js";
 import { showReveal } from "./reveal.js";
 import { postPullCard } from "./chat.js";
 
@@ -349,7 +349,10 @@ async function doPull(msg, timer, sent, stopWatching) {
         reportMissing([{ poolId: entry.poolId, poolName: getPools()[entry.poolId]?.name ?? entry.poolId, uuid: entry.uuid, name: entry.name }]);
       } catch (err) { console.error(`loot-crates | could not flag ${entry.uuid} as missing`, err); }
     };
-    const out = await performPull({ box, pools: getPools(), actor, state, onMissing, expectedPrice: msg.price });
+    // The log and the day reach the roll for a game that counts plays per
+    // day (the well's cap), read here inside the queue so two quick throws
+    // can't both pass.
+    const out = await performPull({ box, pools: getPools(), actor, state, onMissing, expectedPrice: msg.price, log: getLog(), today: todayKey() });
     const kind = getKind(out.kind);
     timer.mark("roll+grant");
     ackIfSlow(msg, timer, sent);

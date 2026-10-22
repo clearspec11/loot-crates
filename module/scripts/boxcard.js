@@ -117,10 +117,13 @@ export function shopReason({ hasActor = false, open = true, gmOnline = true } = 
 // this character is short (said even while the shop is shut, so a player
 // knows what to save for).
 export function crateReason(box, odds, ctx = {}) {
-  const state = crateState(box, odds, ctx);
-  if (state) return state;
-  const { purse = {}, hasActor = false } = ctx;
-  if (hasActor && !canAfford(purse, box.price)) return `Needs ${formatPrice(shortfall(purse, box.price))} more`;
+  return crateState(box, odds, ctx) || shortReason(box, ctx);
+}
+
+// "Needs 3 gp more": this character is short of the price, said even while
+// the shop is shut, so a player knows what to save for. Every kind's last word.
+export function shortReason(game, { purse = {}, hasActor = false } = {}) {
+  if (hasActor && !canAfford(purse, game.price)) return `Needs ${formatPrice(shortfall(purse, game.price))} more`;
   return "";
 }
 
@@ -144,11 +147,12 @@ function crateState(box, odds, { actorName = "", held } = {}) {
   those rarities), else "Rare or better within 4 pulls". "" when the box
   has no pity this buyer can reach.
 */
-export function pityLine(odds) {
+export function pityLine(odds, noun = "pulls") {
   const pity = odds?.pity;
   if (!pity) return "";
   const what = `${RARITY_LABEL[pity.minRarity] ?? pity.minRarity} or better`;
-  return pity.due ? `${what} guaranteed this pull` : `${what} within ${pity.left} pulls`;
+  const one = noun.replace(/s$/, "");
+  return pity.due ? `${what} guaranteed this ${one}` : `${what} within ${pity.left} ${noun}`;
 }
 
 /*
@@ -269,28 +273,44 @@ export function boxCard(box, pools, ctx) {
   const state = ctx.stateOf?.(box.id) ?? {};
   const odds = shopOdds(box, pools, state);
   const reason = crateReason(box, odds, ctx);
+  const rarityClass = odds.top ? `lc-rarity-${odds.top}` : "lc-box--empty";
+  const peek = peekItems(box, pools, odds, 3, state);
+  const stock = odds.rows.length && box.rules?.stock != null ? `<div class="lc-box__stock">${esc(box.rules.stock)} left</div>` : "";
+  const pity = pityLine(odds);
+  const middle = [
+    odds.rows.length ? `${oddsRibbon(odds.rows)}<div class="lc-box__odds">${oddsPills(odds.rows)}</div>` : "",
+    pity ? `<div class="lc-box__pity lc-rarity-${odds.pity.minRarity}${odds.pity.due ? " lc-box__pity--due" : ""}">${esc(pity)}</div>` : "",
+    stock,
+  ];
+  return cardShell(box, ctx, { rarityClass, art: peek.length ? peekHTML(peek, esc) : ctx.art ?? "", middle, reason, label: `Open for ${esc(formatPrice(box.price))}` });
+}
+
+/*
+  The card every kind of game shares: the band with the name, the art, the
+  kind's own lines (`middle`: odds, pity, stock, whatever it says), the one
+  Buy with its price (`label`) and the reason it is off. `reason` is the
+  game's own (the crate's crateReason, the well's); the shop-wide reason and
+  "Opening…" are handled here for all of them, with the rules above (data-box,
+  data-price, aria-disabled, aria-describedby, the screen-reader name).
+*/
+export function cardShell(box, ctx, { rarityClass, art = "", middle = [], reason = "", label }) {
+  const esc = ctx.esc ?? (s => String(s ?? ""));
   const notice = shopNotice(ctx).text;
   const whyId = `lc-why-${box.id}`;
   const describedBy = [notice ? SHOP_NOTICE_ID : "", reason ? whyId : ""].filter(Boolean).join(" ");
   const off = !!(reason || notice || ctx.busy);
-  const rarityClass = odds.top ? `lc-rarity-${odds.top}` : "lc-box--empty";
   const opening = ctx.busy && (ctx.busyBox == null || ctx.busyBox === box.id);
   const waiting = opening && WAITING[ctx.waiting];
-  const peek = peekItems(box, pools, odds, 3, state);
-  const stock = odds.rows.length && box.rules?.stock != null ? `<div class="lc-box__stock">${esc(box.rules.stock)} left</div>` : "";
-  const pity = pityLine(odds);
   // The price this Buy says, which the shop sends with the pull (shop.js #buy).
   const price = Number.isFinite(Number(box.price)) && box.price !== "" && box.price != null ? String(Number(box.price)) : "";
   return `
       <div class="lc-box ${rarityClass}" data-box="${esc(box.id)}">
         <div class="lc-box__band"><h3 class="lc-box__name">${esc(box.name)}</h3></div>
         <div class="lc-box__body">
-          <div class="lc-box__art" aria-hidden="true">${peek.length ? peekHTML(peek, esc) : ctx.art ?? ""}</div>
-          ${odds.rows.length ? `${oddsRibbon(odds.rows)}<div class="lc-box__odds">${oddsPills(odds.rows)}</div>` : ""}
-          ${pity ? `<div class="lc-box__pity lc-rarity-${odds.pity.minRarity}${odds.pity.due ? " lc-box__pity--due" : ""}">${esc(pity)}</div>` : ""}
-          ${stock}
+          <div class="lc-box__art" aria-hidden="true">${art}</div>
+          ${middle.join("\n          ")}
           <button type="button" class="lc-box__buy" data-action="buy" data-box="${esc(box.id)}"${price ? ` data-price="${esc(price)}"` : ""}${off ? ` aria-disabled="true"` : ""}${off && describedBy ? ` aria-describedby="${esc(describedBy)}"` : ""}>
-            <span class="lc-sr-only">${esc(box.name)}: </span>${opening ? (waiting ? "Waiting for the GM…" : "Opening…") : `Open for ${esc(formatPrice(box.price))}`}
+            <span class="lc-sr-only">${esc(box.name)}: </span>${opening ? (waiting ? "Waiting for the GM…" : "Opening…") : label}
           </button>
           ${reason ? `<div class="lc-box__why" id="${esc(whyId)}">${esc(reason)}</div>` : ""}
         </div>

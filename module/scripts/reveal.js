@@ -118,6 +118,11 @@ function usedSlots() {
 
 const pageHidden = () => document.visibilityState === "hidden";
 
+// The line over the vault for a kind that writes none: the crate's.
+const crateHead = r => `<span class="lc-reveal__who">${esc(r.actorName)}</span> opens
+        <strong class="lc-reveal__crate">${esc(r.box.name)}</strong>
+        <span class="lc-reveal__price">${esc(formatPrice(r.box.price))}</span>`;
+
 // The landed promise of each reveal still spinning on this client, by the
 // pull's logId (what its chat card carries in flags).
 const spinning = new Map();
@@ -376,9 +381,7 @@ export class CrateReveal extends ApplicationV2 {
     root.className = "lc-reveal__body";
     root.innerHTML = `
       <div class="lc-reveal__head">
-        <span class="lc-reveal__who">${esc(r.actorName)}</span> opens
-        <strong class="lc-reveal__crate">${esc(r.box.name)}</strong>
-        <span class="lc-reveal__price">${esc(formatPrice(r.box.price))}</span>
+        ${this.#kind.head?.(r, { esc }) ?? crateHead(r)}
       </div>
       <div class="lc-vault lc-rarity-${esc(r.result?.rarity ?? "none")}">
         ${r.odds?.length ? oddsRibbon(r.odds) : ""}
@@ -451,6 +454,10 @@ export class CrateReveal extends ApplicationV2 {
     btn.dataset.action = "dismiss";
     btn.textContent = "Close";
     if (focusIsFree(root, r, this.returnTo)) btn.focus({ preventScroll: true });
+    // The kind's quiet word for the buyer alone (the well's miss), as the
+    // result lands: a player whose window sits behind the shop still hears.
+    const note = this.#kind.notice?.(r);
+    if (note && !r.replay && r.userId && r.userId === game.user?.id) globalThis.ui?.notifications?.info(note);
   }
 
   // The same result again, unhidden rather than rewritten, so a screen

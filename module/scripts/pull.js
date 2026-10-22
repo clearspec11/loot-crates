@@ -12,9 +12,11 @@
   coins back. A purchase either charges and grants, or does neither.
 */
 import { kindFor } from "./kinds.js";
-// The crate registers itself when imported: a direct caller of performPull
-// (a live check, the module API) finds it without loading main.js.
+// The crate and the well register themselves when imported: a direct caller
+// of performPull (a live check, the module API) finds them without loading
+// main.js.
 import { sourceRaritiesOf } from "./crate.js";
+import "./well.js";
 import { settle, canAfford, formatPrice } from "./currency.js";
 
 export { PullError } from "./kinds.js";
@@ -40,13 +42,15 @@ async function resolveSource(uuid) {
 
   `onMissing(entry)` reaches the kind's roll (the crate re-rolls past an
   entry whose source vanished since the sweep, and the socket handler flags
-  it). `grant: false` rolls without writing anything.
+  it). `grant: false` rolls without writing anything. `log` (the pull log as
+  it stands) and `today` (the in-game day's key, store.js todayKey) reach
+  the roll too, for a game that counts plays per day.
 
   Returns { result, grant?, itemId, purse, payoutCp, state, pools, kind,
   ...whatever the kind's roll added } (the crate: strip, sourceRarity,
   rarityOverride). `result` is null when the game gave nothing (a miss).
 */
-export async function performPull({ box, pools, actor, state = {}, rng = rollRng(), grant = true, onMissing = null, expectedPrice }) {
+export async function performPull({ box, pools, actor, state = {}, rng = rollRng(), grant = true, onMissing = null, expectedPrice, log = [], today = null }) {
   if (!box) throw new PullError("That box no longer exists.");
   if (!actor) throw new PullError("No character to buy with.");
   if (box.rules?.stock != null && box.rules.stock <= 0) throw new PullError(`${box.name} is sold out.`);
@@ -60,7 +64,7 @@ export async function performPull({ box, pools, actor, state = {}, rng = rollRng
   const purse = { ...(actor.system?.currency ?? {}) };
   if (!canAfford(purse, box.price)) throw new PullError(`${actor.name} can't afford ${box.name}.`);
 
-  const { result = null, grant: data = null, payoutCp: payout, state: nextState, pools: rolledFrom, ...own } = await kind.roll({ game: box, pools, actor, state, rng, resolveSource, onMissing });
+  const { result = null, grant: data = null, payoutCp: payout, state: nextState, pools: rolledFrom, ...own } = await kind.roll({ game: box, pools, actor, state, rng, resolveSource, onMissing, log, today });
   const payoutCp = Math.max(0, Math.round(Number(payout) || 0));
   const nextPurse = settle(purse, payoutCp - Math.round(box.price * 100));
   if (!nextPurse) throw new PullError(`${actor.name} can't afford ${box.name}.`);

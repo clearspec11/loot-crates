@@ -53,9 +53,18 @@
   The box editor shows the chances a player will see (the shop's ribbon and
   pills) for the form as it stands, redrawn on every keystroke, tick and
   untick, and says when the box would drop nothing (liveOdds below).
+
+  The Boxes tab holds every game the shop sells: a crate, or a Wishing Well
+  (well.js) with its own editor (the stake in cp, sp or gp, the three
+  outcomes' weights, the cap per in-game day). The Pull log folds a
+  character's misses at a well for one day into one line ("5 throws,
+  nothing") whose Refund gives the newest throw back, and "Hide misses"
+  leaves only the throws that gave something.
 */
 import { RARITIES, RARITY_LABEL, DEFAULT_WEIGHTS, DEFAULT_PRICE_GP, SETTINGS } from "./config.js";
 import { oddsPills, oddsRibbon, draftBox, boxPreview, boxPreviewHTML, oddsSummary, quietAnnouncer, refundRulesLine } from "./boxcard.js";
+import { kindOf } from "./kinds.js";
+import { WELL_DEFAULTS, wellOdds, wellOddsHTML, wellRulesText, stakeCoins, stakeGp, draftWell, wellPreview, wellPreviewHTML, wellSummary, collapseMisses, throwsText } from "./well.js";
 
 // A box's odds in the Boxes table: its ribbon over its named pills.
 const oddsCell = rows => rows.length ? `${oddsRibbon(rows)}<div class="lc-odds">${oddsPills(rows)}</div>` : "<em>empty</em>";
@@ -84,8 +93,8 @@ export class CrateManager extends ApplicationV2 {
       switchTab: CrateManager.#switchTab,
       addPool: CrateManager.#addPool, editPool: CrateManager.#editPool, deletePool: CrateManager.#deletePool,
       bulkAdd: CrateManager.#bulkAdd, setUnsetRarity: CrateManager.#setUnsetRarity, removeEntry: CrateManager.#removeEntry, updateEntry: CrateManager.#updateEntry, relinkEntry: CrateManager.#relinkEntry,
-      addBox: CrateManager.#addBox, editBox: CrateManager.#editBox, deleteBox: CrateManager.#deleteBox,
-      refund: CrateManager.#refund, toggleShop: CrateManager.#toggleShop,
+      addBox: CrateManager.#addBox, addWell: CrateManager.#addWell, editBox: CrateManager.#editBox, deleteBox: CrateManager.#deleteBox,
+      refund: CrateManager.#refund, toggleShop: CrateManager.#toggleShop, toggleMisses: CrateManager.#toggleMisses,
       filterChip: CrateManager.#filterChip, showMore: CrateManager.#showMore,
     },
   };
@@ -471,8 +480,16 @@ export class CrateManager extends ApplicationV2 {
 
   static async #addBox() { await createBox({ name: "New box", price: DEFAULT_PRICE_GP, weights: { ...DEFAULT_WEIGHTS } }); this.render(); }
 
+  // A well: a silver a throw, almost always nothing, three throws a day.
+  static async #addWell() {
+    await createBox({ kind: "well", name: "New well", price: WELL_DEFAULTS.price, weights: { ...DEFAULT_WEIGHTS }, odds: { ...WELL_DEFAULTS.odds }, rules: { cap: WELL_DEFAULTS.cap } });
+    this.render();
+  }
+
   static async #editBox(_e, t) {
     const box = getBoxes()[t.dataset.box];
+    if (!box) return this.render();
+    if (kindOf(box) === "well") return CrateManager.#editWell.call(this, box);
     const pools = Object.values(getPools());
     const poolIds = pools.map(p => p.id);
     const shares = Object.fromEntries((box.pools ?? []).map(p => [p.id, p.share ?? 1]));
@@ -521,6 +538,68 @@ export class CrateManager extends ApplicationV2 {
     this.render();
   }
 
+  /*
+    The well's editor: the stake as an amount of one coin (a copper or a
+    silver, not "0.1 gp"), the pools and rarity weights the rare find draws
+    on, the three outcomes' weights with the shop's own pills as a live
+    preview, and the rules: pity, no duplicates and the cap per in-game
+    day. Nothing is written until Save.
+  */
+  static async #editWell(box) {
+    const pools = Object.values(getPools());
+    const poolIds = pools.map(p => p.id);
+    const shares = Object.fromEntries((box.pools ?? []).map(p => [p.id, p.share ?? 1]));
+    const stake = stakeCoins(box.price);
+    const odds = { ...WELL_DEFAULTS.odds, ...(box.odds ?? {}) };
+    const data = await promptForm("Edit well", `
+      <label>Name <input name="name" value="${esc(box.name)}"></label>
+      <label class="lc-row lc-form__stake">Stake <input name="stake" type="number" min="0" step="1" value="${esc(stake.amount)}"> <select name="coin" aria-label="Coin">${["cp", "sp", "gp"].map(c => `<option value="${c}"${c === stake.coin ? " selected" : ""}>${c}</option>`).join("")}</select></label>
+      <fieldset><legend>Outcomes, by weight</legend>
+        ${[["nothing", "Nothing"], ["coin", "Coin back"], ["item", "An item from the pools"]].map(([k, l]) => `<label class="lc-row">${l} <input name="o.${k}" type="number" min="0" step="1" value="${esc(odds[k])}"></label>`).join("")}
+      </fieldset>
+      <fieldset><legend>Pools the item comes from, and their share</legend>
+        ${pools.map(p => `<label class="lc-row"><input type="checkbox" name="pool.${esc(p.id)}" ${p.id in shares ? "checked" : ""}> ${esc(p.name)} <input name="share.${esc(p.id)}" type="number" min="0" step="1" value="${esc(shares[p.id] ?? 1)}" title="Share"></label>`).join("") || "<p>No pools yet.</p>"}
+      </fieldset>
+      <fieldset class="lc-form__weights"><legend>The item's rarity weights</legend>
+        ${RARITIES.map(r => `<label class="lc-row">${RARITY_LABEL[r]} <input name="w.${r}" type="number" min="0" step="1" value="${esc(box.weights?.[r] ?? DEFAULT_WEIGHTS[r])}"><span class="lc-form__hint" data-held="${r}"></span></label>`).join("")}
+      </fieldset>
+      <div class="lc-form__odds" role="group" aria-labelledby="lc-odds-${esc(box.id)}">
+        <div class="lc-form__label" id="lc-odds-${esc(box.id)}">Chances a player sees</div>
+        <div class="lc-form__preview"></div>
+        <p class="lc-sr-only" role="status" aria-live="polite"></p>
+      </div>
+      <fieldset><legend>Rules</legend>
+        <label class="lc-row">Each character may throw <input name="cap" type="number" min="0" step="1" value="${box.rules?.cap ?? ""}"> times a day (blank for no limit; the day is the world's calendar)</label>
+        <label class="lc-row">Pity: guarantee <select name="pityRarity"><option value="">off</option>${RARITIES.map(r => `<option value="${r}" ${box.rules?.pity?.minRarity === r ? "selected" : ""}>${RARITY_LABEL[r]} or better</option>`).join("")}</select> after <input name="pityAfter" type="number" min="1" step="1" value="${esc(box.rules?.pity?.after ?? 10)}"> throws</label>
+        <label class="lc-row"><input type="checkbox" name="noDuplicates" ${box.rules?.noDuplicates ? "checked" : ""}> No duplicates per character</label>
+      </fieldset>`, {
+      onForm: form => liveOdds(form, box, poolIds, (draft, live) => {
+        const preview = wellPreview(draft, live);
+        return { html: wellPreviewHTML(preview, esc), summary: wellSummary(preview), held: heldRarities(draft, live) };
+      }, draftWell),
+      position: { width: 460 },
+    });
+    if (!data) return;
+    const draft = draftWell(box, data, poolIds);
+    const saved = await updateBox(box.id, fresh => ({
+      ...fresh,
+      kind: "well",
+      name: data.name || fresh.name,
+      price: stakeGp(data.stake, data.coin),
+      pools: draft.pools.filter(ref => ref.id in getPools()),
+      weights: draft.weights,
+      odds: draft.odds,
+      rules: {
+        ...fresh.rules,
+        cap: data.cap === "" || data.cap == null ? null : Math.max(0, Math.floor(Number(data.cap) || 0)),
+        pity: data.pityRarity ? { minRarity: data.pityRarity, after: Math.max(1, Number(data.pityAfter) || 1) } : null,
+        noDuplicates: !!data.noDuplicates,
+      },
+    }));
+    if (!saved) ui.notifications.warn(`${box.name} was deleted while you were editing it.`);
+    this.render();
+  }
+
   static async #deleteBox(_e, t) {
     const box = getBoxes()[t.dataset.box];
     if (await DialogV2.confirm({ window: { title: "Delete box" }, content: `<p>Delete <strong>${esc(box.name)}</strong>?</p>` })) {
@@ -534,14 +613,18 @@ export class CrateManager extends ApplicationV2 {
     if (plan.status !== "ready") return ui.notifications.warn(plan.message);
     const { row, actor, item, box } = plan;
     // A game that paid coins out gives the stake back less the payout; one
-    // that paid more than the stake takes the difference back.
+    // that paid more than the stake takes the difference back; a coin that
+    // already came back (a well's coin return) moves nothing.
     const coins = plan.coins ?? Math.round(row.price * 100);
-    const moneyLine = coins >= 0 ? `Return <strong>${esc(formatPrice(coins / 100))}</strong> to ${esc(actor.name)}` : `Take <strong>${esc(formatPrice(-coins / 100))}</strong> back from ${esc(actor.name)}`;
+    const moneyLine = coins > 0 ? `Return <strong>${esc(formatPrice(coins / 100))}</strong> to ${esc(actor.name)}`
+      : coins < 0 ? `Take <strong>${esc(formatPrice(-coins / 100))}</strong> back from ${esc(actor.name)}`
+      : `${esc(actor.name)}'s coin already came back, so no coins move`;
     const itemLine = item
       ? ` and remove <strong>${esc(item.name)}</strong> from their inventory`
       : row.itemId ? ` (<strong>${esc(row.name)}</strong> is no longer in their inventory, so nothing is removed)` : "";
     const stockLine = box?.rules?.stock != null ? ` ${esc(box.name)} goes back to ${box.rules.stock + 1} in stock.` : "";
-    const rules = box && row.uuid ? refundRulesLine({ actorName: actor.name, itemName: row.name, box, ...plan.state }) : "";
+    // A throw that gave no item still counted toward the pity (row.before).
+    const rules = box && (row.uuid || row.before) ? refundRulesLine({ actorName: actor.name, itemName: row.name, box, ...plan.state }) : "";
     const rulesLine = rules ? ` ${esc(rules)}` : "";
     const ok = await DialogV2.confirm({
       window: { title: "Refund" },
@@ -553,7 +636,7 @@ export class CrateManager extends ApplicationV2 {
     const done = await refundPull(row.id);
     if (done.status === "refunded") {
       const what = done.removedItem ? ` and ${done.removedItem} removed` : "";
-      ui.notifications.info(`${coins >= 0 ? `${formatPrice(coins / 100)} returned to` : `${formatPrice(-coins / 100)} taken back from`} ${actor.name}${what}.`);
+      ui.notifications.info(coins === 0 ? `${row.boxName} refunded for ${actor.name}; no coins moved${what}.` : `${coins > 0 ? `${formatPrice(coins / 100)} returned to` : `${formatPrice(-coins / 100)} taken back from`} ${actor.name}${what}.`);
       await postRefundCard({ row, actor, removedItem: done.removedItem });
     } else if (done.status === "already") {
       ui.notifications.info("That pull was already refunded.");
@@ -564,6 +647,10 @@ export class CrateManager extends ApplicationV2 {
   }
 
   static async #toggleShop() { await setShopOpen(!isShopOpen()); this.render(); }
+
+  // The Pull log without the throws that gave nothing (view state only).
+  hideMisses = false;
+  static #toggleMisses() { this.hideMisses = !this.hideMisses; this.render(); }
 
   // redraw.js's change count when this render read the settings.
   seen = -1;
@@ -694,27 +781,52 @@ export class CrateManager extends ApplicationV2 {
     // The odds as of now, not as of the last pull's sweep.
     const entries = Object.keys(stored).flatMap(id => flattenPool(id, stored, new Set(), { includeMissing: true }));
     const pools = withSources(stored, await this.#checkedSources(entries));
+    // A well's row: its name tagged, its three outcomes as the shop shows
+    // them, its cap and pity in throws.
+    const well = b => kindOf(b) === "well";
     return `
-      <div class="lc-toolbar"><button type="button" data-action="addBox"><i class="fas fa-plus"></i> New box</button></div>
+      <div class="lc-toolbar"><button type="button" data-action="addBox"><i class="fas fa-plus"></i> New box</button><button type="button" data-action="addWell"><i class="fas fa-plus"></i> New well</button></div>
       ${boxes.length ? `<table class="lc-table"><thead><tr><th>Box</th><th>Price</th><th>Pools</th><th>Odds</th><th>Rules</th><th></th></tr></thead><tbody>
         ${boxes.map(b => `<tr>
-          <td>${esc(b.name)}</td><td>${esc(formatPrice(b.price))}</td>
+          <td>${esc(b.name)}${well(b) ? ` <span class="lc-kind">Well</span>` : ""}</td><td>${esc(formatPrice(b.price))}</td>
           <td>${(b.pools ?? []).map(r => esc(pools[r.id]?.name ?? "missing")).join(", ") || "<em>none</em>"}</td>
-          <td>${oddsCell(shopOdds(b, pools).rows)}</td>
-          <td>${[b.rules?.pity ? esc(`${RARITY_LABEL[b.rules.pity.minRarity] ?? b.rules.pity.minRarity} or better after ${b.rules.pity.after} pulls`) : "", b.rules?.noDuplicates ? "no dupes" : "", b.rules?.stock != null ? `${b.rules.stock} left` : ""].filter(Boolean).join(", ")}</td>
+          <td>${well(b) ? wellOddsHTML(wellOdds(b, pools)) || "<em>dry</em>" : oddsCell(shopOdds(b, pools).rows)}</td>
+          <td>${well(b) ? esc(wellRulesText(b)) : [b.rules?.pity ? esc(`${RARITY_LABEL[b.rules.pity.minRarity] ?? b.rules.pity.minRarity} or better after ${b.rules.pity.after} pulls`) : "", b.rules?.noDuplicates ? "no dupes" : "", b.rules?.stock != null ? `${b.rules.stock} left` : ""].filter(Boolean).join(", ")}</td>
           <td><button type="button" data-action="editBox" data-box="${esc(b.id)}" aria-label="Edit ${esc(b.name)}" data-tooltip="Edit"><i class="fas fa-pen" inert></i></button> <button type="button" data-action="deleteBox" data-box="${esc(b.id)}" aria-label="Delete ${esc(b.name)}" data-tooltip="Delete"><i class="fas fa-trash" inert></i></button></td>
         </tr>`).join("")}</tbody></table>` : `<p class="lc-empty">No boxes. A box prices a pull from one or more pools.</p>`}`;
   }
 
+  /*
+    The log newest first, a well's misses folded per character and day
+    (well.js collapseMisses): one line for "5 throws, nothing" whose Refund
+    gives the newest of them back, so the log stays readable at a table that
+    throws a lot and every throw is still refundable. "Hide misses" leaves
+    only the pulls that gave something (the throws stay in the setting).
+  */
   _log() {
     const log = getLog();
     if (!log.length) return `<p class="lc-empty">No pulls yet.</p>`;
-    return `<table class="lc-table"><thead><tr><th>When</th><th>Who</th><th>Box</th><th>Got</th><th></th></tr></thead><tbody>
-      ${log.map(r => `<tr class="${r.refunded ? "lc-row--refunded" : r.lateCancel ? "lc-row--late" : ""}">
+    const items = collapseMisses(log);
+    const misses = items.filter(x => x.group).reduce((n, g) => n + g.rows.length, 0);
+    const shown = this.hideMisses ? items.filter(x => !x.group) : items;
+    const status = (id, at) => `<span class="lc-log__status" tabindex="-1" data-row="${esc(id)}">refunded ${esc(refundTime(at))}</span>`;
+    const row = r => `<tr class="${r.refunded ? "lc-row--refunded" : r.lateCancel ? "lc-row--late" : ""}">
         <td>${new Date(r.at).toLocaleString()}</td><td>${esc(r.actorName)}</td><td>${esc(r.boxName)} (${esc(formatPrice(r.price))})</td>
-        <td class="lc-rarity-${esc(r.rarity)}"><span class="lc-dot"></span>${r.refunded ? `<s>${esc(r.name)}</s>` : esc(r.name)}${r.pity ? " · pity" : ""}${logRarityNote(r)}${logLateNote(r)}</td>
-        <td>${r.refunded ? `<span class="lc-log__status" tabindex="-1" data-row="${esc(r.id)}">refunded ${esc(refundTime(r.refunded))}</span>` : `<button type="button" data-action="refund" data-row="${esc(r.id)}">Refund</button>`}</td>
-      </tr>`).join("")}</tbody></table>`;
+        <td class="lc-rarity-${esc(r.rarity ?? "none")}"><span class="lc-dot"></span>${r.refunded ? `<s>${esc(r.name)}</s>` : esc(r.name)}${r.pity ? " · pity" : ""}${logRarityNote(r)}${logLateNote(r)}</td>
+        <td>${r.refunded ? status(r.id, r.refunded) : `<button type="button" data-action="refund" data-row="${esc(r.id)}">Refund</button>`}</td>
+      </tr>`;
+    const group = g => {
+      const n = g.rows.length;
+      const newest = g.rows[0];
+      return `<tr class="lc-row--group${g.refunded ? " lc-row--refunded" : ""}">
+        <td>${new Date(newest.at).toLocaleString()}</td><td>${esc(g.actorName)}</td><td>${esc(g.boxName)} (${esc(formatPrice(g.price))})</td>
+        <td class="lc-rarity-none"><span class="lc-dot"></span>${g.refunded ? `<s>${esc(throwsText(n))}</s>` : esc(throwsText(n))}</td>
+        <td>${g.refunded ? status(newest.id, newest.refunded) : `<button type="button" data-action="refund" data-row="${esc(newest.id)}" aria-label="${n === 1 ? "Refund the throw" : `Refund one of ${n} throws`}">${n === 1 ? "Refund" : "Refund one"}</button>`}</td>
+      </tr>`;
+    };
+    const toolbar = misses ? `<div class="lc-toolbar"><button type="button" data-action="toggleMisses" aria-pressed="${this.hideMisses}">${this.hideMisses ? "Show misses" : "Hide misses"}</button><span class="lc-pool__hint">${this.hideMisses ? `${misses} throw${misses === 1 ? "" : "s"} that gave nothing hidden` : `${misses} throw${misses === 1 ? "" : "s"} that gave nothing, folded by day`}</span></div>` : "";
+    return `${toolbar}${shown.length ? `<table class="lc-table"><thead><tr><th>When</th><th>Who</th><th>Box</th><th>Got</th><th></th></tr></thead><tbody>
+      ${shown.map(x => (x.group ? group(x) : row(x.row))).join("")}</tbody></table>` : `<p class="lc-empty">Only misses so far; show them with the button above.</p>`}`;
   }
 
   #searchTimer = null;
@@ -844,21 +956,19 @@ async function promptForm(title, fieldsHtml, { onForm, position } = {}) {
   left out, as the shop leaves them out), and each weight whose rarity the
   ticked pools don't hold says so. Nothing is written until Save.
 */
-function liveOdds(form, box, poolIds) {
+function liveOdds(form, box, poolIds, previewOf = cratePreview, draftOf = draftBox) {
   const out = form.querySelector(".lc-form__preview");
   const status = form.querySelector(".lc-form__odds [role=status]");
   let shown = null;
   let announce = null;
   const paint = () => {
-    const draft = draftBox(box, readForm(form), poolIds);
-    const preview = boxPreview(draft, getPools());
-    const html = boxPreviewHTML(preview, esc);
-    if (html !== shown) { out.innerHTML = html; shown = html; }
+    const draft = draftOf(box, readForm(form), poolIds);
+    const preview = previewOf(draft, getPools());
+    if (preview.html !== shown) { out.innerHTML = preview.html; shown = preview.html; }
     // The picture follows every keystroke; a screen reader hears one line,
     // once the GM stops typing (the opening odds go unsaid).
-    const summary = oddsSummary(preview);
-    if (!announce) announce = quietAnnouncer(text => { if (status) status.textContent = text; }, { last: summary });
-    else announce(summary);
+    if (!announce) announce = quietAnnouncer(text => { if (status) status.textContent = text; }, { last: preview.summary });
+    else announce(preview.summary);
     for (const el of form.querySelectorAll("[data-held]")) {
       el.textContent = draft.pools.length && !preview.held.has(el.dataset.held) ? "none in these pools" : "";
     }
@@ -866,6 +976,20 @@ function liveOdds(form, box, poolIds) {
   form.addEventListener("input", paint);
   form.addEventListener("change", paint);
   paint();
+}
+
+// The crate editor's preview: the shop's ribbon and pills, one line for a
+// screen reader, and the rarities the ticked pools hold.
+function cratePreview(draft, pools) {
+  const preview = boxPreview(draft, pools);
+  return { html: boxPreviewHTML(preview, esc), summary: oddsSummary(preview), held: preview.held };
+}
+
+// The rarities a draft's ticked pools can drop (for the weights' notes).
+function heldRarities(draft, pools) {
+  const held = new Set();
+  for (const ref of draft.pools ?? []) for (const e of flattenPool(ref.id, pools)) held.add(e.rarity);
+  return held;
 }
 
 /*

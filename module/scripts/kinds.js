@@ -13,15 +13,18 @@
     reveal.js   one window, one hold: the sealed chat card, the hidden sheet
                 row and the held shop odds until this client's reveal lands
   The kind supplies what differs, through the contract below. The crate
-  (crate.js) is the first kind; the module API's registerKind lets another
-  module add one.
+  (crate.js) is the first kind and the Wishing Well (well.js) the second;
+  the module API's registerKind lets another module add one.
 
   Contract (every field but roll is optional; the crate shows each):
     id            the value stored on the record as `kind`
     noun          what a player buys, for messages: "The crate jammed."
     roll(ctx)     GM side, before anything is charged, so a failed roll costs
                   nothing. ctx: { game, pools, actor, state, rng,
-                  resolveSource, onMissing }. Resolves to the outcome:
+                  resolveSource, onMissing, log, today }: `log` is the pull
+                  log as it stands and `today` the in-game day's key
+                  (clock.js; null without a clock), for a game that counts
+                  plays per day (the well's cap). Resolves to the outcome:
                     result    what was won, { name, img, rarity?, ... }, or
                               null for nothing (a miss)
                     grant     Item data to create on the actor, or null
@@ -40,11 +43,15 @@
                   buyer's state before the pull, which the shop holds).
     undo(state, row, log) the buyer's state with the row undone, for a
                   refund; a kind without one leaves the state as it is.
-    reveal        the window: { title, play(host, reveal, { sound,
-                  pageHidden, onLand }) -> { play, skip, skipped,
-                  reducedMotion }, result(reveal, { esc, canSee }) -> html,
-                  sting(reveal), replayable }. play mounts the animation
-                  and calls onLand once when the result is under the marker.
+    reveal        the window: { title, head(reveal, { esc }) -> html (the
+                  line over the vault; the crate's "Tam opens Crate 150 gp"
+                  when absent), play(host, reveal, { sound, pageHidden,
+                  onLand }) -> { play, skip, skipped, reducedMotion },
+                  result(reveal, { esc, canSee }) -> html, sting(reveal),
+                  notice(reveal) -> a quiet word shown to the buyer alone
+                  as the result lands (or null), replayable }. play mounts
+                  the animation and calls onLand once when the result is
+                  under the marker.
     chat          { card(reveal, { esc, itemLink }) -> html, or null for no
                   chat card }
     shop          { card(game, pools, ctx) -> html, reason(game, pools,

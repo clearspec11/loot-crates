@@ -38,9 +38,14 @@ export function sourceRaritiesOf(data) {
   source is in hand. The pools the roll was finally made from (any lost entry
   marked missing) come back as `pools`, so the reveal shows the odds of that
   roll even when onMissing couldn't save the mark.
+
+  drawItem is the draw and the resolving, shared with every kind that hands
+  out an item from a pool (the Wishing Well's rare find, well.js): it
+  resolves to { result, source, pools }, with result null when the box has
+  nothing to give, and throws only when every entry it drew was dead.
 */
 const MAX_REDRAWS = 3;
-async function roll({ game: box, pools, actor, state = {}, rng, resolveSource, onMissing = null }) {
+export async function drawItem({ game: box, pools, state = {}, rng, resolveSource, onMissing = null }) {
   let result = draw({ box, pools, rng, state });
   let source = result && await resolveSource(result.entry.uuid);
   let lost = null;
@@ -55,12 +60,16 @@ async function roll({ game: box, pools, actor, state = {}, rng, resolveSource, o
   }
   // Every entry left was dead: say so rather than "nothing left".
   if (!result && lost) throw new PullError(`${lost.name} is missing from its compendium. Tell the GM.`);
-  if (!result) throw new PullError(`${box.name} has nothing left to give ${actor.name}.`);
+  return { result, source, pools };
+}
 
-  const strip = buildStrip({ result, box, pools, rng, state });
-
-  // The source's own rarity, kept on the copy and in the log when the GM's
-  // differs, so a Legendary rope can be traced back to an Uncommon one.
+/*
+  The Item data to put on the buyer's sheet for a drawn entry, from its
+  resolved source: the source's own rarity is kept on the copy and in the
+  log when the GM's differs, so a Legendary rope can be traced back to an
+  Uncommon one. Shared with every kind that grants an item (well.js).
+*/
+export function grantData(source, result, box) {
   const data = source.toObject();
   const sourceRarity = sourceRaritiesOf(data);
   const overridden = RARITIES.includes(result.entry.rarityOverride);
@@ -83,23 +92,27 @@ async function roll({ game: box, pools, actor, state = {}, rng, resolveSource, o
   if (source.pack || String(source.uuid ?? "").startsWith("Compendium.")) {
     data._stats = { ...(data._stats ?? {}), compendiumSource: source.uuid };
   }
-
   return {
     result: { uuid: result.entry.uuid, name: source.name, img: source.img, rarity: result.rarity, pity: result.pity },
     grant: data,
-    strip,
     sourceRarity,
     rarityOverride: overridden,
-    state: nextState(box, state, result),
-    pools,
   };
+}
+
+async function roll(ctx) {
+  const { game: box, actor } = ctx;
+  const { result, source, pools } = await drawItem(ctx);
+  if (!result) throw new PullError(`${box.name} has nothing left to give ${actor.name}.`);
+  const strip = buildStrip({ result, box, pools, rng: ctx.rng, state: ctx.state ?? {} });
+  return { ...grantData(source, result, box), strip, state: nextState(box, ctx.state ?? {}, result), pools };
 }
 
 // The pull log's own columns: what dropped, at what rarity, and what the
 // refund needs to undo the pity count and no-duplicates record (odds.js
 // undoPull). Provenance for a GM-set rarity: the source's own, only when it
 // differs.
-function logRow({ game: box, state, out }) {
+export function crateLogRow({ game: box, state, out }) {
   const row = { name: out.result.name, uuid: out.result.uuid, rarity: out.result.rarity, pity: out.result.pity, before: { sinceRare: state.sinceRare ?? 0, hadItem: (state.owned ?? []).includes(out.result.uuid) }, resetPity: resetsPity(box, out.result.rarity) };
   const src = out.sourceRarity ?? [];
   if (out.rarityOverride && !(src.length === 1 && src[0] === out.result.rarity)) row.sourceRarity = src;
@@ -180,7 +193,7 @@ export const CRATE = registerKind({
   id: "crate",
   noun: "crate",
   roll,
-  logRow,
+  logRow: crateLogRow,
   revealExtra,
   undo: undoPull,
   reveal: {

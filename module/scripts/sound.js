@@ -107,3 +107,29 @@ export function playReveal(rarity) {
   const notes = [0, 4, 7, 12].slice(0, 2 + Math.min(2, rank));
   notes.forEach((semi, i) => blip(ctx, base * Math.pow(2, semi / 12), 0.35 + rank * 0.08, { type: "triangle", gain: 0.12, at: i * 0.09 }));
 }
+
+/*
+  The Wishing Well's three small sounds (well.js). The plop as the coin meets
+  the water: a low sine knocked down an octave in a tenth of a second. The
+  plink of a throw that gave nothing: one high, short triangle note, soft,
+  so a miss is heard and not announced. The coin back: two rising notes,
+  the tease's shape at a lower pitch. An item plays the rarity sting above.
+*/
+export function playPlop() {
+  const ctx = channel();
+  if (!ctx) return;
+  blip(ctx, 220, 0.12, { type: "sine", gain: 0.08 });
+  blip(ctx, 110, 0.2, { type: "sine", gain: 0.05, at: 0.04 });
+}
+
+export function playPlink() {
+  const ctx = channel();
+  if (!ctx) return;
+  blip(ctx, 1760, 0.09, { type: "triangle", gain: 0.04 });
+}
+
+export function playCoinBack() {
+  const ctx = channel();
+  if (!ctx) return;
+  [660, 990].forEach((hz, i) => blip(ctx, hz, 0.12, { type: "triangle", gain: 0.06, at: i * 0.09 }));
+}

@@ -55,11 +55,14 @@ export function canSeePurse(reveal, viewer = {}) {
   return !!viewer.isGM || (!!reveal?.userId && reveal.userId === viewer.userId);
 }
 
-export function resultHTML(reveal, { esc = String, canSee = false } = {}) {
+// `extra` lines (already escaped) join the quiet line after the gold: a
+// kind's own words for a find (the well's "2 of 3 throws today").
+export function resultHTML(reveal, { esc = String, canSee = false, extra = [] } = {}) {
   const res = reveal.result;
   const where = [];
   if (reveal.itemUuid) where.push(`Added to ${esc(reveal.actorName)}'s inventory`);
   if (canSee && reveal.purse) where.push(`<span class="lc-reveal__gold">${esc(formatGold(reveal.purse))} left</span>`);
+  where.push(...extra);
   return `<div class="lc-reveal__name">${esc(res.name)}</div>`
     + `<div class="lc-reveal__rarity">${esc(RARITY_LABEL[res.rarity] ?? res.rarity)}${res.pity ? " · pity" : ""}</div>`
     + (where.length ? `<div class="lc-reveal__where">${where.join(" · ")}</div>` : "");

@@ -14,7 +14,7 @@ vi.mock("../module/scripts/sound.js", () => ({ playTick: vi.fn(), playSlow: vi.f
 const boxes = Object.fromEntries(BOXES.map(b => [b.id, b]));
 // The world setting, as the GM's write leaves it.
 let states = {};
-vi.mock("../module/scripts/store.js", () => ({ getBoxes: () => boxes, getPools: () => POOLS, isShopOpen: () => true, getActorState: (a, b) => states[`${a}.${b}`] ?? {} }));
+vi.mock("../module/scripts/store.js", () => ({ getBoxes: () => boxes, getPools: () => POOLS, getLog: () => [], todayKey: () => null, isShopOpen: () => true, getActorState: (a, b) => states[`${a}.${b}`] ?? {} }));
 vi.mock("../module/scripts/socket.js", () => ({ requestPull: vi.fn(async () => ({})) }));
 
 const fakeElement = () => ({

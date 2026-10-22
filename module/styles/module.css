@@ -126,6 +126,12 @@
 .loot-crates .lc-rarity-veryRare, .loot-crates.lc-rarity-veryRare { --lc-rarity: var(--lc-veryRare); --lc-rank: 3; }
 .loot-crates .lc-rarity-legendary, .loot-crates.lc-rarity-legendary { --lc-rarity: var(--lc-legendary); --lc-rank: 4; }
 .loot-crates .lc-rarity-artifact, .loot-crates.lc-rarity-artifact { --lc-rarity: var(--lc-artifact); --lc-rank: 5; }
+/* The two swatches that aren't a rarity, for the Wishing Well's outcomes
+   (well.js): nothing in mute ink, the coin back in the ribbon's gold rim.
+   Read through --lc-rarity like the six above, so pills, ribbon segments
+   and log dots need no rule of their own. */
+.loot-crates .lc-rarity-none, .loot-crates.lc-rarity-none { --lc-rarity: var(--lc-ink-mute); --lc-rank: 0; }
+.loot-crates .lc-rarity-coin, .loot-crates.lc-rarity-coin { --lc-rarity: var(--lc-gold-rim); --lc-rank: 0; }
 
 /* ---------- The window ---------- */
 
@@ -260,6 +266,8 @@
 .loot-crates .lc-box__art { display: flex; justify-content: center; align-items: center; min-height: 56px; color: var(--lc-gold-ink); }
 .loot-crates .lc-box__art > i { font-size: 34px; }
 .loot-crates .lc-box--empty .lc-box__art { color: var(--lc-ink-mute); opacity: .7; }
+/* A well's card: its own drawn mark in gold ink where a crate shows its peek. */
+.loot-crates .lc-well__icon { display: block; }
 /* The peek: up to three real items the crate can drop, fanned like cards,
    each in a gold-ruled frame with its rarity as an underline. */
 .loot-crates .lc-peek { display: inline-flex; padding: 2px 0 4px; }
@@ -409,9 +417,53 @@
 .loot-crates .lc-reveal__where { margin-top: 8px; font-size: 13px; color: var(--lc-vault-soft); animation: lc-reveal-after 260ms ease 460ms both; }
 .loot-crates .lc-reveal__gold { white-space: nowrap; color: var(--lc-pin); }
 @keyframes lc-reveal-after { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+/* The Wishing Well's quiet result: nothing, or the coin back, in the display
+   face at a smaller size than a find's name, in vault-soft rather than a
+   rarity's colour: it is a result, not a prize. */
+.loot-crates .lc-reveal__quiet { font-family: var(--lc-display); font-size: 24px; font-weight: 700; line-height: 1.05; color: var(--lc-vault-soft); text-wrap: balance; }
 .loot-crates .lc-reveal__actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
 .loot-crates .lc-reveal__actions button { flex: 0 0 auto; min-width: 104px; min-height: 36px; }
 .loot-crates .lc-reveal__actions button[hidden] { display: none; }
+
+/* ---------- The well (well.js) ---------- */
+
+/* The stage in the vault, the strip's height: dark water in a gold-rimmed
+   basin, three ripple rings, a gold coin, the glow and the find. Every
+   piece is placed once here; well.js moves them with transform and opacity
+   in one animation frame loop and nothing else. The last ring stays faint
+   once the water settles. */
+.loot-crates .lc-well { position: relative; width: 100%; height: 168px; overflow: hidden; }
+.loot-crates .lc-well__stage { position: absolute; inset: 0; }
+.loot-crates .lc-well__stage > * { position: absolute; left: 50%; top: 60%; }
+.loot-crates .lc-well__water {
+  width: 280px; height: 96px; margin: -48px 0 0 -140px; border-radius: 50%;
+  background: radial-gradient(ellipse at 50% 35%, #1b2b3b, #0a1016 72%);
+  box-shadow: inset 0 0 0 1px var(--lc-vault-line), inset 0 8px 16px rgba(0, 0, 0, .65), 0 0 0 3px color-mix(in srgb, var(--lc-gold-rim) 40%, transparent);
+}
+.loot-crates .lc-well__ring {
+  width: 120px; height: 42px; margin: -21px 0 0 -60px; border-radius: 50%; box-sizing: border-box;
+  border: 1px solid color-mix(in srgb, var(--lc-pin) 70%, transparent); opacity: 0; transform: scale(.2);
+}
+.loot-crates .lc-well__coin {
+  width: 22px; height: 22px; margin: -11px 0 0 -11px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #f8e7b4, var(--lc-pin) 45%, #8a7340 92%);
+  box-shadow: 0 0 0 1px var(--lc-pin-edge), 0 2px 6px rgba(0, 0, 0, .6);
+}
+.loot-crates .lc-well__glow {
+  width: 170px; height: 64px; margin: -32px 0 0 -85px; border-radius: 50%; opacity: 0; transform: scale(0);
+  background: radial-gradient(ellipse, color-mix(in srgb, var(--lc-rarity) 85%, transparent), transparent 70%);
+}
+/* The find surfaces in the strip card's art frame, ringed as a landed card is. */
+.loot-crates .lc-well__prize {
+  width: 70px; height: 70px; margin: -35px 0 0 -35px; display: grid; place-items: center; box-sizing: border-box; opacity: 0;
+  border: 1px solid var(--lc-pin); border-radius: 4px; background: color-mix(in srgb, var(--lc-rarity) 16%, var(--lc-vault));
+  box-shadow: 0 0 0 2px var(--lc-vault-card), 0 0 0 3px color-mix(in srgb, var(--lc-pin) 60%, transparent), 0 8px 16px rgba(0, 0, 0, .6);
+}
+.loot-crates .lc-well__prize:empty { display: none; }
+.loot-crates .lc-well__prize img { width: 64px; height: 64px; object-fit: contain; border: 0; }
+.loot-crates .lc-well:not(.lc-well--landed) .lc-well__stage > * { will-change: transform, opacity; }
+/* A find floods the vault with its rarity's wash, as a landed strip does. */
+.loot-crates .lc-vault:has(.lc-well--landed[data-outcome="item"])::after { opacity: calc(.12 + var(--lc-rank, 0) * .12); }
 
 /* ---------- Manager ---------- */
 
@@ -538,6 +590,14 @@
 .loot-crates .lc-row--refunded td { color: var(--lc-ink-mute); }
 .loot-crates .lc-row--refunded .lc-dot { --lc-rarity: var(--lc-ink-mute); }
 .loot-crates .lc-log__rarity { display: block; margin-left: 14px; font-size: 12px; color: var(--lc-ink-mute); }
+/* A day's misses at a well, folded into one line (well.js collapseMisses). */
+.loot-crates .lc-row--group td { color: var(--lc-ink-soft); }
+/* The Boxes table names a game that isn't a crate, in the label voice. */
+.loot-crates .lc-kind {
+  display: inline-block; vertical-align: middle; margin-left: 6px; padding: 0 5px; line-height: 16px;
+  font-family: var(--lc-label); font-size: 11px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase;
+  color: var(--lc-gold-ink); border: 1px solid var(--lc-rule-soft); border-radius: 3px;
+}
 /* A sale its buyer called off too late: marked for the GM, not undone. */
 .loot-crates .lc-row--late td:first-child { box-shadow: inset 3px 0 var(--lc-warn); }
 .loot-crates .lc-log__late { display: block; margin-left: 14px; font-size: 12px; color: var(--lc-warn); }
@@ -556,6 +616,7 @@
 .loot-crates .lc-form label { display: grid; gap: 4px; }
 .loot-crates .lc-form .lc-row { display: flex; align-items: center; gap: 8px; }
 .loot-crates .lc-form .lc-row input[type=number] { width: 76px; }
+.loot-crates .lc-form .lc-form__stake select { width: auto; min-width: 4.5em; }
 .loot-crates .lc-form fieldset { border: 1px solid var(--lc-rule); border-radius: var(--lc-radius); padding: 8px 10px 10px; background: var(--lc-card); }
 .loot-crates .lc-form legend, .loot-crates .lc-form__label { font-family: var(--lc-label); font-weight: 700; font-size: 12px; letter-spacing: .03em; text-transform: uppercase; color: var(--lc-gold-ink); padding: 0 4px; }
 .loot-crates .lc-form p { margin: 0; }
@@ -655,5 +716,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .loot-crates .lc-card, .loot-crates .lc-vault::after, .loot-crates .lc-pool__details > summary::before { transition: none; }
+  .loot-crates .lc-well__stage > * { will-change: auto; }
   .loot-crates .lc-reveal__where { animation: none; }
 }

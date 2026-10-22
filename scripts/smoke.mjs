@@ -51,6 +51,15 @@ const STATES = [
   // "Watch again" from the chat card: the replay window, titled as a replay,
   // shows the item and no gold or Open item; the card shows the button.
   ["replay", "state=replay&seed=7"],
+  // The Wishing Well's three results (well.js), landed, as the buyer sees
+  // them: a quiet line for nothing and for the coin back, the item block
+  // for a find, each in the window's live region; no Watch again.
+  ["well-missed", "state=well&outcome=nothing&buyer=1&duration=0"],
+  ["well-coin", "state=well&outcome=coin&buyer=1&duration=0"],
+  ["well-won", "state=well&outcome=item&buyer=1&duration=0&seed=3"],
+  // Tam has thrown today's three coins: the well's Buy is off with the
+  // "still until tomorrow" line under it.
+  ["shop-well-capped", "state=shop&well=capped"],
   ["manager", "state=manager"],
   // A manager window sized 480 px wide, on any screen: its rows follow the
   // window (a container query), so names wrap in full rather than cut off.
@@ -232,6 +241,77 @@ function replayProblems() {
   return out;
 }
 
+/*
+  The Wishing Well's reveal, read from the DOM: the result text is the
+  outcome's (and sits in a live region, so a screen reader hears it land),
+  the buyer sees the gold left, Close is focused, there is no Watch again,
+  the stage names the outcome and shows what it should (the coin back over
+  the water, the find surfaced), and nothing leaves the window.
+*/
+function wellProblems(outcome) {
+  const out = [];
+  const shown = el => !!el && !el.hidden && el.getBoundingClientRect().height > 0;
+  const result = document.querySelector(".lc-reveal__result");
+  const text = result?.innerText ?? "";
+  const want = { nothing: "The coin sinks. Nothing.", coin: "The coin comes back." }[outcome];
+  if (want && !text.includes(want)) out.push(`result reads "${text}"`);
+  if (!result?.closest("[aria-live]")) out.push("the result is not in a live region");
+  if (!/\d [gsc]p left/.test(text)) out.push("the buyer can't see the gold left");
+  if (!/\d of \d throws today/.test(text)) out.push("the buyer isn't told today's count");
+  if (outcome === "item") {
+    if (!document.querySelector(".lc-reveal__name")?.textContent) out.push("no item name in the result");
+    if (!/Added to .+'s inventory/.test(text)) out.push("a find doesn't say where it went");
+  } else if (/inventory/.test(text)) out.push("a quiet throw mentions the inventory");
+  const stage = document.querySelector(".lc-well");
+  if (!stage?.classList.contains("lc-well--landed")) out.push("the well never landed");
+  if (stage?.dataset.outcome !== outcome) out.push(`the stage says "${stage?.dataset.outcome}"`);
+  const coin = document.querySelector(".lc-well__coin");
+  const coinShown = !!coin && parseFloat(getComputedStyle(coin).opacity) > 0.5;
+  if ((outcome === "coin") !== coinShown) out.push(outcome === "coin" ? "the coin didn't come back" : "the coin is still showing");
+  const prize = document.querySelector(".lc-well__prize");
+  if (outcome === "item" && !(prize && parseFloat(getComputedStyle(prize).opacity) > 0.9 && prize.querySelector("img"))) out.push("the find didn't surface");
+  const close = document.querySelector(".lc-reveal__close");
+  if (close?.textContent !== "Close" || close.disabled || document.activeElement !== close) out.push("landed well has no focused Close");
+  if (shown(document.querySelector(".lc-reveal__watch"))) out.push("Watch again on a well");
+  if ((outcome === "item") !== shown(document.querySelector(".lc-reveal__open"))) out.push(outcome === "item" ? "no Open item for a find" : "Open item for a throw with no item");
+  const quiet = document.querySelector(".lc-reveal__quiet");
+  if (quiet && parseFloat(getComputedStyle(quiet).fontSize) < 11) out.push("the quiet line is under 11px");
+  const head = document.querySelector(".lc-reveal__head")?.innerText.replace(/\s+/g, " ") ?? "";
+  if (!/throws a coin into Wishing Well 1 sp/.test(head)) out.push(`head reads "${head}"`);
+  for (const el of document.querySelectorAll(".lc-reveal__body *")) {
+    const r = el.getBoundingClientRect();
+    if (r.right > document.documentElement.clientWidth + 1) { out.push(`well overflows: ${el.className}`); break; }
+  }
+  return out;
+}
+
+// The well's card in the shop: the three outcomes named as pills (no 0%, no
+// rarity colour on paper beyond the diamond), a ribbon, "Throw 1 sp" on the
+// Buy, today's count under it, and at the cap the Buy off with the "still
+// until tomorrow" line as its visible reason.
+function wellCardProblems({ capped, closed }) {
+  const out = [];
+  const card = document.querySelector('.lc-box[data-box="well"]');
+  if (!card) return ["no well card in the shop"];
+  const buy = card.querySelector(".lc-box__buy");
+  const pills = [...card.querySelectorAll(".lc-odd")].map(p => p.textContent.trim()).join(", ");
+  if (pills !== "Nothing 90%, Coin back 8%, Item 2%") out.push(`well pills: ${pills}`);
+  if (card.querySelectorAll(".lc-ribbon__seg").length !== 3) out.push("the well's ribbon doesn't show its three outcomes");
+  const why = card.querySelector(".lc-box__why")?.textContent.trim() ?? "";
+  const count = card.querySelector(".lc-box__stock")?.textContent.trim() ?? "";
+  if (!buy.textContent.includes("Throw 1 sp")) out.push(`well Buy reads "${buy.textContent.trim()}"`);
+  if (capped) {
+    if (buy.getAttribute("aria-disabled") !== "true") out.push("the capped well's Buy is on");
+    if (why !== "The well is still until tomorrow (3 of 3 today)") out.push(`the capped well says "${why}"`);
+    if (count) out.push(`the capped well still counts: "${count}"`);
+    if (parseFloat(getComputedStyle(card.querySelector(".lc-box__why")).fontSize) < 11) out.push("the still line is under 11px");
+  } else {
+    if (count !== "1 of 3 throws today") out.push(`the well's count reads "${count}"`);
+    if (!closed && why) out.push(`the well is off for "${why}"`);
+  }
+  return out;
+}
+
 // The shop's honesty rules, read from the DOM: no "0%" anywhere, every pill
 // names its rarity, every unbuyable Buy (aria-disabled, never disabled, so it
 // keeps focus) points at visible reasons, a shop-wide
@@ -350,14 +430,18 @@ try {
       // back to system fonts and plain grounds; that isn't a failure.
       page.on("console", m => { if (m.type() === "error" && !m.text().startsWith("Failed to load resource")) errors.push(m.text()); });
       await page.goto(`http://localhost:${PORT}/harness/?${query}`, { waitUntil: "networkidle" });
-      if (name.startsWith("landed") || name === "replay") await page.waitForSelector("body[data-landed]", { timeout: 10000 });
+      if (name.startsWith("landed") || name === "replay" || name.startsWith("well")) await page.waitForSelector("body[data-landed]", { timeout: 10000 });
       if (name.startsWith("manager")) await page.waitForSelector("body[data-ready]", { timeout: 10000 });
       await page.waitForTimeout(500);
       const wide = await page.evaluate(() => document.scrollingElement.scrollWidth > document.scrollingElement.clientWidth + 1);
-      if (name.startsWith("shop")) problems0.push(...await page.evaluate(shopProblems, name.slice(5)));
+      if (name.startsWith("shop")) {
+        problems0.push(...await page.evaluate(shopProblems, name.slice(5)));
+        problems0.push(...await page.evaluate(wellCardProblems, { capped: name === "shop-well-capped", closed: name === "shop-closed" }));
+      }
       else if (name === "manager-dropped") problems0.push(...await page.evaluate(droppedProblems));
       else if (name.startsWith("manager")) problems0.push(...await page.evaluate(managerProblems, name === "manager-narrow"));
       else if (name === "replay") problems0.push(...await page.evaluate(replayProblems));
+      else if (name.startsWith("well")) problems0.push(...await page.evaluate(wellProblems, { "well-missed": "nothing", "well-coin": "coin", "well-won": "item" }[name]));
       else problems0.push(...await page.evaluate(revealProblems, name === "landed-buyer" || name === "landed-missed"));
       if (name === "landed-missed") problems0.push(...await page.evaluate(missedProblems));
       if (name === "shop-short") {

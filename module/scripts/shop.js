@@ -25,15 +25,16 @@
   before the redraw showed it. That line stays while it still holds and
   clears on the next Buy that goes out.
 */
-import { getBoxes, getPools, getActorState, isShopOpen } from "./store.js";
+import { getBoxes, getPools, getLog, getActorState, isShopOpen, todayKey } from "./store.js";
 import { formatGold } from "./currency.js";
 import { actorPicker, boxCard, buyReason, changedCharacterLine, crateReason, refusalLine, shopHTML, shopNotice, shopReason, patchShop, pickActor } from "./boxcard.js";
 import { shopOdds } from "./odds.js";
 import { requestPull } from "./socket.js";
 import { heldState, onRelease } from "./reveal.js";
 import { getKind, kindOf } from "./kinds.js";
-// The crate registers itself when imported, so a row or record with no kind is found.
+// The crate and the well register themselves when imported, so every record is found.
 import "./crate.js";
+import "./well.js";
 
 const { ApplicationV2 } = foundry.applications.api;
 const esc = s => foundry.utils.escapeHTML(String(s ?? ""));
@@ -151,9 +152,11 @@ export class CrateShop extends ApplicationV2 {
       this.render();
       return;
     }
+    // The game's own reason as it stands now (the kind's, else the crate's).
     const reasonNow = box => {
       const now = this.#ctx();
-      return crateReason(box, shopOdds(box, getPools(), now.stateOf(boxId)), now);
+      const own = shopOf(box).reason;
+      return own ? own(box, getPools(), now) : crateReason(box, shopOdds(box, getPools(), now.stateOf(boxId)), now);
     };
     const box = getBoxes()[boxId];
     const text = refusalLine({ box, reason: box ? reasonNow(box) : "", shown, purse: ctx.purse, actorName: ctx.actorName });
@@ -202,13 +205,15 @@ export class CrateShop extends ApplicationV2 {
   // What decides whether a crate can be bought, for the cards and for #buy.
   // stateOf reads this character's pity count and owned items per box (a
   // world setting, so a player's client can read it), so each card shows
-  // the odds draw() will use for them.
+  // the odds draw() will use for them. `today` and `log` are for a game
+  // that counts plays per in-game day (the well's cap, well.js).
   #ctx() {
     const actor = this.actor;
     const gm = !!game.users.activeGM;
     return {
       purse: actor?.system?.currency ?? {}, open: isShopOpen() && gm, gmOnline: gm, hasActor: !!actor,
-      actorName: actor?.name ?? "", stateOf: boxId => (actor ? heldState(actor.id, boxId) ?? getActorState(actor.id, boxId) : {}),
+      actorId: actor?.id ?? null, actorName: actor?.name ?? "", stateOf: boxId => (actor ? heldState(actor.id, boxId) ?? getActorState(actor.id, boxId) : {}),
+      today: todayKey(), log: getLog(),
       held: boxId => !!(actor && heldState(actor.id, boxId)),
       busy: this.busy, busyBox: this.busyBox, waiting: this.waiting, art: `<i class="fas fa-box-open"></i>`, esc,
     };
@@ -283,6 +288,9 @@ export function registerShopHooks(hooks = globalThis.Hooks) {
     if (user?.id === game.user?.id && change && "character" in change) refreshShop();
   });
   hooks.on("userConnected", () => refreshShop());
+  // The in-game day moved (the GM's calendar, a long rest that advances
+  // time): a well's throws today start again (well.js).
+  hooks.on("updateWorldTime", () => refreshShop());
 }
 // A held pity line and odds change when the spin lands.
 onRelease(() => refreshShop());
