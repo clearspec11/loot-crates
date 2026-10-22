@@ -12,11 +12,12 @@
   coins back. A purchase either charges and grants, or does neither.
 */
 import { kindFor } from "./kinds.js";
-// The crate and the well register themselves when imported: a direct caller
-// of performPull (a live check, the module API) finds them without loading
-// main.js.
+// The crate, the well and the dice register themselves when imported: a
+// direct caller of performPull (a live check, the module API) finds them
+// without loading main.js.
 import { sourceRaritiesOf } from "./crate.js";
 import "./well.js";
+import "./dicegame.js";
 import { settle, canAfford, formatPrice } from "./currency.js";
 
 export { PullError } from "./kinds.js";

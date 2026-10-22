@@ -82,6 +82,8 @@ import { REFUNDED_CLASS } from "./chatcard.js";
 import { oddsRibbon } from "./boxcard.js";
 import { getKind, kindOf, DEFAULT_KIND } from "./kinds.js";
 import { CRATE } from "./crate.js";
+// The dice game's 3D dice bridge (Dice So Nice), set wherever reveals show.
+import "./dicereveal.js";
 
 export { stripVoice } from "./crate.js";
 

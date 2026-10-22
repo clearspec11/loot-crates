@@ -219,7 +219,7 @@ describe("the one refund, for a second kind", () => {
   it("refuses to take back winnings the character has spent, before marking the row", async () => {
     const actor = makeActor({ cp: 50 });
     const { rowId } = await seed(actor, WIN);
-    expect(describeRefund(rowId)).toMatchObject({ status: "short", message: "Crate Tester has spent the winnings: 2 gp 4 sp 5 cp more is needed to take back 2 gp 9 sp 5 cp. Nothing was refunded." });
+    expect(describeRefund(rowId)).toMatchObject({ status: "short", short: 2.45, message: "Crate Tester has spent 2 gp 4 sp 5 cp of the 3 gp won at Wishing Well (5 sp of the 2 gp 9 sp 5 cp to take back is left). Nothing was refunded; refund it once the purse can cover it." });
     const out = await refundPull(rowId);
     expect(out.status).toBe("short");
     expect(getLog()[0]).not.toHaveProperty("refunded");

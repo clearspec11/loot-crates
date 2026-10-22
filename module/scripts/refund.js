@@ -33,10 +33,26 @@ export function refundCoins(row) {
 
 // How much of a row's winnings the character no longer has, in gp (0 when
 // the refund can go ahead).
-function spentWinnings(row, actor) {
+export function spentWinnings(row, actor) {
   const net = refundCoins(row);
   if (net >= 0) return 0;
   return Math.max(0, -net - toCopper(actor?.system?.currency ?? {})) / 100;
+}
+
+/*
+  The plain sentence for a refund the purse can't cover: "Crate Tester has
+  spent 40 gp of the 60 gp won at Live dice (30 gp of the 50 gp to take
+  back is left). Nothing was refunded; refund it once the purse can cover
+  it." Says what was won, what the refund would take back and what is
+  missing, so the GM can top the purse up or wait, rather than the module
+  minting coins or taking the purse below zero.
+*/
+export function shortMessage(row, actor) {
+  const short = spentWinnings(row, actor);
+  const take = -refundCoins(row) / 100;
+  const won = Math.max(0, Math.round(Number(row?.payoutCp) || 0)) / 100;
+  const have = Math.max(0, take - short);
+  return `${actor.name} has spent ${formatPrice(short)} of the ${formatPrice(won)} won at ${row.boxName} (${formatPrice(have)} of the ${formatPrice(take)} to take back is left). Nothing was refunded; refund it once the purse can cover it.`;
 }
 
 // The item this row granted, if the actor still has it. Matching on the
@@ -60,7 +76,7 @@ export function describeRefund(rowId) {
   if (!actor) return { status: "no-actor", row, message: "That character is gone." };
   const box = getBoxes()[row.boxId] ?? null;
   const short = spentWinnings(row, actor);
-  if (short > 0) return { status: "short", row, actor, box, message: `${actor.name} has spent the winnings: ${formatPrice(short)} more is needed to take back ${formatPrice(-refundCoins(row) / 100)}. Nothing was refunded.` };
+  if (short > 0) return { status: "short", row, actor, box, short, message: shortMessage(row, actor) };
   return { status: "ready", row, actor, item: grantedItem(row, actor), box, coins: refundCoins(row), state: stateAfter(row, box) };
 }
 

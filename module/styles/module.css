@@ -465,6 +465,63 @@
 /* A find floods the vault with its rarity's wash, as a landed strip does. */
 .loot-crates .lc-vault:has(.lc-well--landed[data-outcome="item"])::after { opacity: calc(.12 + var(--lc-rank, 0) * .12); }
 
+/* ---------- The dice (dicegame.js) ---------- */
+
+/* The stage in the vault, the strip's height: the dragon's number over a
+   tray of dice, the total under them. Each die is a strip card's frame
+   turned square, its foot in the outcome's colour (the rim's gold for a
+   win, the prize's rarity, nothing for a loss). dicegame.js moves them
+   with transform and opacity in one animation frame loop and writes the
+   face numerals; nothing else is animated. */
+.loot-crates .lc-dice { position: relative; width: 100%; height: 168px; overflow: hidden; }
+.loot-crates .lc-dice__stage { position: absolute; inset: 0; display: grid; grid-template-rows: auto 1fr auto; justify-items: center; align-items: center; padding: 4px 0 2px; }
+.loot-crates .lc-dice__dragon { display: inline-flex; align-items: baseline; gap: 7px; font-family: var(--lc-label); font-size: 12px; font-weight: 700; letter-spacing: .03em; color: var(--lc-vault-soft); }
+.loot-crates .lc-dice__dragon::before { content: ""; align-self: center; width: 6px; height: 6px; background: var(--lc-pin); transform: rotate(45deg); }
+.loot-crates .lc-dice__dragon strong { font-family: var(--lc-display); font-size: 22px; line-height: 1; color: var(--lc-vault-ink); }
+.loot-crates .lc-dice__tray { display: flex; gap: 14px; }
+.loot-crates .lc-dice__die {
+  width: 58px; height: 58px; display: grid; place-items: center; box-sizing: border-box; border-radius: 9px;
+  background: var(--lc-vault-card); border: 1px solid var(--lc-vault-line); border-bottom: 3px solid var(--lc-vault-line);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, .55); color: var(--lc-vault-ink);
+}
+.loot-crates .lc-dice__face { font-family: var(--lc-display); font-size: 32px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+/* A settled die takes the outcome's colour on its foot; a loss stays in the
+   vault's own line, since nothing was won. */
+.loot-crates .lc-dice__die--set { border-bottom-color: var(--lc-rarity); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--lc-pin) 45%, transparent), 0 6px 12px rgba(0, 0, 0, .55); }
+.loot-crates .lc-dice[data-outcome="lose"] .lc-dice__die--set { border-bottom-color: var(--lc-vault-line); }
+.loot-crates .lc-dice__total { font-family: var(--lc-display); font-size: 28px; font-weight: 700; line-height: 1; color: var(--lc-rarity, var(--lc-vault-ink)); opacity: 0; min-height: 28px; }
+.loot-crates .lc-dice[data-outcome="lose"] .lc-dice__total { color: var(--lc-vault-soft); }
+.loot-crates .lc-dice:not(.lc-dice--landed) .lc-dice__die, .loot-crates .lc-dice:not(.lc-dice--landed) .lc-dice__total { will-change: transform, opacity; }
+/* While Dice So Nice rolls the real dice over the canvas, the stage waits
+   with blank faces: the dice in the window land with the 3D ones. */
+.loot-crates .lc-dice--three .lc-dice__face { visibility: hidden; }
+/* The verdict is the result, in the display face; a win reads in the
+   vault's gold rather than a rarity, a loss in vault-soft. */
+.loot-crates .lc-dice__verdict { color: var(--lc-rarity, var(--lc-vault-soft)); }
+.loot-crates .lc-vault.lc-rarity-none .lc-dice__verdict { color: var(--lc-vault-soft); }
+/* A win floods the vault with the rim's gold, a prize with its rarity. */
+.loot-crates .lc-vault:has(.lc-dice--landed[data-outcome="win"])::after { opacity: calc(.12 + var(--lc-rank, 0) * .12); }
+/* The faces on the chat card: small dice in the card's paper frame. */
+.loot-crates .lc-chat__dice { display: inline-flex; gap: 4px; flex: none; }
+.loot-crates .lc-dice__face--small {
+  display: inline-grid; place-items: center; width: 26px; height: 26px; box-sizing: border-box; border-radius: 6px;
+  background: var(--lc-field); border: 1px solid var(--lc-rule); border-bottom: 3px solid var(--lc-rarity);
+  font-size: 15px; color: var(--lc-ink);
+}
+/* The dice game's card: its own drawn die where a crate shows its peek,
+   the rule in one line over the win and lose pills, the prize line as the
+   pity line is drawn. */
+.loot-crates .lc-dice__icon { display: block; }
+.loot-crates .lc-box__rule { font-size: 12px; line-height: 1.3; color: var(--lc-ink-soft); }
+.loot-crates .lc-box__prize {
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px; margin-top: -3px;
+  font-size: 12px; line-height: 1.3; color: var(--lc-ink-mute);
+}
+.loot-crates .lc-box__prize::before {
+  content: ""; width: 5px; height: 5px; flex: none; background: var(--lc-rarity); transform: rotate(45deg);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--lc-ink) 25%, transparent);
+}
+
 /* ---------- Manager ---------- */
 
 .loot-crates .lc-manager__body { display: grid; grid-template-rows: auto 1fr; gap: 12px; height: 100%; }
@@ -717,5 +774,6 @@
 @media (prefers-reduced-motion: reduce) {
   .loot-crates .lc-card, .loot-crates .lc-vault::after, .loot-crates .lc-pool__details > summary::before { transition: none; }
   .loot-crates .lc-well__stage > * { will-change: auto; }
+  .loot-crates .lc-dice__die, .loot-crates .lc-dice__total { will-change: auto; }
   .loot-crates .lc-reveal__where { animation: none; }
 }
