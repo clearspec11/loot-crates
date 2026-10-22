@@ -14,7 +14,9 @@ let shopOpen = true;
 let states = {};
 // How many times a render read the pull log (a deep clone of the whole setting).
 let logReads = 0;
-vi.mock("../module/scripts/store.js", () => ({ getBoxes: () => boxes, getPools: () => POOLS, getLog: () => { logReads++; return []; }, getRounds: () => ({}), todayKey: () => null, isShopOpen: () => shopOpen, getActorState: (a, b) => states[`${a}.${b}`] ?? {} }));
+// The pull log as the world holds it (a deck's streak is read from it).
+let pullLog = [];
+vi.mock("../module/scripts/store.js", () => ({ getBoxes: () => boxes, getPools: () => POOLS, getLog: () => { logReads++; return pullLog; }, getRounds: () => ({}), todayKey: () => null, isShopOpen: () => shopOpen, getActorState: (a, b) => states[`${a}.${b}`] ?? {} }));
 const requestPull = vi.fn(async () => ({}));
 vi.mock("../module/scripts/socket.js", () => ({ requestPull: (...args) => requestPull(...args) }));
 
@@ -386,6 +388,31 @@ describe("the shop mid-purchase, and a Buy that does nothing", () => {
       expect(requestPull).toHaveBeenCalledTimes(1);
       expect(notice(app)).toBe("");
     } finally { boxes.common.price = was; }
+  });
+
+  it("names a deck's risen draw price, not its base, when another draw since put it past the purse", async () => {
+    const was = boxes.deck.price;
+    const draws = n => Array.from({ length: n }, (_, i) => ({ id: `d${i}`, kind: "deck", boxId: "deck", actorId: "a1", cardId: "blank", at: Date.now() - 10_000 * (i + 1), price: 0 }));
+    try {
+      // 200 gp a draw, 300 gp for the 2nd in a row: Tam (420 gp 7 sp 3 cp) can pay that.
+      boxes.deck.price = 200;
+      pullLog = draws(1);
+      const app = new CrateShop();
+      await draw(app);
+      expect(app.content.querySelector('.lc-box__buy[data-box="deck"]').dataset.price).toBe("300");
+      // A draw from the reveal's Draw again lands before the shop redraws: the next is 450 gp.
+      pullLog = draws(2);
+      await press(app, "deck", "300");
+      await app.last;
+      expect(requestPull).not.toHaveBeenCalled();
+      expect(notice(app)).toBe("The Thornwick Deck now costs 450 gp, more than Tam has.");
+      await draw(app);
+      expect(notice(app)).toBe("The Thornwick Deck now costs 450 gp, more than Tam has.");
+      // The newer draw refunded: back to 300 gp, and the line goes on the redraw.
+      pullLog = draws(1);
+      await draw(app);
+      expect(notice(app)).toBe("");
+    } finally { boxes.deck.price = was; pullLog = []; }
   });
 
   it("drops the line on a redraw where it no longer holds", async () => {

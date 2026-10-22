@@ -205,16 +205,18 @@ export function shopNotice(ctx = {}) {
   later and, for a press, said nothing: the cards were drawn a moment before
   the data changed. `box` is the crate as it stands now (undefined once the
   GM took it off the shelf), `reason` its fresh crateReason, `shown` the
-  price on the pressed Buy (its data-price). A price the GM changed to one
-  past this character's purse is named with the new figure, since the card
-  the player pressed still says the old one. A shop-wide reason is the notice's own, so
-  the caller leaves those out.
+  price on the pressed Buy (its data-price), `price` what a play costs this
+  character now: the kind's (a deck's risen draw, kinds.js priceOf), the
+  one the GM checks, else the record's. A price that changed to one past
+  this character's purse is named with the new figure, since the card the
+  player pressed still says the old one. A shop-wide reason is the
+  notice's own, so the caller leaves those out.
 */
-export function refusalLine({ box, reason = "", shown, purse = {}, actorName = "" }) {
+export function refusalLine({ box, reason = "", shown, price = box?.price, purse = {}, actorName = "" }) {
   if (!box) return "That crate is no longer on the shelf.";
   const who = actorName || "this character";
-  const raised = shown != null && shown !== "" && Number(shown) !== Number(box.price);
-  if (raised && !canAfford(purse, box.price)) return `${box.name} now costs ${formatPrice(box.price)}, more than ${who} has.`;
+  const raised = shown != null && shown !== "" && Number(shown) !== Number(price);
+  if (raised && !canAfford(purse, price)) return `${box.name} now costs ${formatPrice(price)}, more than ${who} has.`;
   if (!reason) return "";
   return `Couldn't open ${box.name}: ${reason[0].toLowerCase()}${reason.slice(1)}.`;
 }

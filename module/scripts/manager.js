@@ -1363,11 +1363,14 @@ function heldRarities(draft, pools) {
   tab, whose odds read the pools. On the Pools tab a boxes or pools change
   patches only the pools' "In X, Y" lines, and only those that differ
   (CrateManager.patchUsers). The pity state shows nowhere here (each
-  buyer's shop shows their own).
+  buyer's shop shows their own). The log shows on the Boxes tab too while
+  a deck is on it: a deck's row reads its cards drawn and its odds from the
+  log (deck.js deckOdds), so a draw or a refund redraws it there and then.
 */
-export function managerShows(tab, key) {
+export function managerShows(tab, key, boxes = {}) {
   if (key === SETTINGS.SHOP_OPEN) return true;
-  if (key === SETTINGS.LOG || key === SETTINGS.ROUNDS) return tab === "log";
+  if (key === SETTINGS.LOG) return tab === "log" || (tab === "boxes" && Object.values(boxes ?? {}).some(b => kindOf(b) === "deck"));
+  if (key === SETTINGS.ROUNDS) return tab === "log";
   if (key === SETTINGS.BOXES || key === SETTINGS.POOLS) return tab === "boxes";
   return false;
 }
@@ -1383,7 +1386,8 @@ export function refreshManager(keys, upTo = Infinity) {
   if (!manager?.rendered) return;
   if (manager.seen >= upTo) return;
   const list = typeof keys === "string" ? [keys] : [...keys];
-  if (list.some(k => managerShows(manager.tab, k))) manager.render();
+  const boxes = manager.tab === "boxes" && list.includes(SETTINGS.LOG) ? getBoxes() : {};
+  if (list.some(k => managerShows(manager.tab, k, boxes))) manager.render();
   else if (manager.tab === "pools" && list.some(k => USERS_KEYS.includes(k))) manager.patchUsers();
 }
 

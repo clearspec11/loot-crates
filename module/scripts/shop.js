@@ -56,6 +56,14 @@ const shopOf = game => getKind(kindOf(game))?.shop ?? {};
 const cardFor = (game, pools, ctx) => (shopOf(game).card ?? boxCard)(game, pools, ctx);
 const reasonFor = (game, pools, ctx) => (shopOf(game).reason ?? ((b, p, c) => buyReason(b, shopOdds(b, p, c.stateOf(b.id)), c)))(game, pools, ctx);
 
+// What a play costs this character now, as the GM will check it (pull.js):
+// the kind's price (the deck's risen draw), else the record's.
+function priceNow(game, ctx) {
+  const own = getKind(kindOf(game))?.priceOf;
+  if (!own) return Number(game.price);
+  return Number(own({ game, actor: { id: ctx.actorId }, state: ctx.stateOf(game.id) ?? {}, log: ctx.log, today: ctx.today, now: ctx.now }) ?? game.price);
+}
+
 export function buyableActors(user = game.user) {
   const owned = game.actors.filter(a => a.type === "character" && a.testUserPermission(user, "OWNER"));
   const main = user.character;
@@ -172,12 +180,12 @@ export class CrateShop extends ApplicationV2 {
       return own ? own(box, getPools(), now) : crateReason(box, shopOdds(box, getPools(), now.stateOf(boxId)), now);
     };
     const box = getBoxes()[boxId];
-    const text = refusalLine({ box, reason: box ? reasonNow(box) : "", shown, purse: ctx.purse, actorName: ctx.actorName });
-    const price = box?.price;
+    const price = box ? priceNow(box, ctx) : undefined;
+    const text = refusalLine({ box, reason: box ? reasonNow(box) : "", shown, price, purse: ctx.purse, actorName: ctx.actorName });
     const holds = () => {
       const now = getBoxes()[boxId];
       if (!box) return !now;
-      return !!now && now.price === price && !!reasonNow(now);
+      return !!now && priceNow(now, this.#ctx()) === price && !!reasonNow(now);
     };
     this.said = text ? { text, actorId: this.actorId, holds } : null;
     this.render();

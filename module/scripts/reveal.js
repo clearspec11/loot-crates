@@ -61,9 +61,14 @@
   price the kind names from the log as it stands. It is a pull like any
   other (socket.js requestPull, so the GM's price check, queue and guards
   apply); the button reads "Drawing…" while it is out, and this window
-  closes once the next one has opened. Shown to the buyer alone, never on
-  a replay; when it can't be played (the deck spent, the shop shut, the
-  purse short) the button is off with the reason as a visible line.
+  closes once the next one has opened. Focus goes from Draw again straight
+  to the next window's one button (Skip, then Close on the same node),
+  never through the shop: closing first handed it to the shop's Buy, held
+  aria-disabled "Still turning" for the next play's whole reveal, and a
+  screen reader announced that before the new Close took focus at the
+  landing. Shown to the buyer alone, never on a replay; when it can't be
+  played (the deck spent, the shop shut, the purse short) the button is
+  off with the reason as a visible line.
 
   The sheet and the shop keep the secret too, as the chat card does. The GM
   creates the item before it broadcasts the reveal, and writes the buyer's
@@ -255,6 +260,7 @@ export function _resetHolds() {
   for (const t of preSealed.values()) clearTimeout(t);
   preSealed.clear();
   held.clear();
+  opened.clear();
   syncSealStyle();
 }
 
@@ -266,6 +272,11 @@ function focusIsFree(root, reveal, opener = null) {
   const a = document.activeElement;
   return !a || a === document.body || a === document.documentElement || root?.contains(a) || (!!reveal && a === ownBuy(reveal)) || (!!opener && a === opener);
 }
+
+// The reveal windows open on this client, by requestId, so Draw again can
+// find the window its pull opened (the request resolves on the broadcast
+// that opens it).
+const opened = new Map();
 
 // The shop's Buy for this pull's crate, when this client is the buyer.
 function ownBuy(reveal) {
@@ -308,7 +319,12 @@ export class CrateReveal extends ApplicationV2 {
   #replaying = false;
   // When Watch again last turned into Skip or back.
   #swappedAt = -Infinity;
+  // When the window before handed focus to this one's Skip (takeFocus).
+  #handedAt = -Infinity;
   landed = new Promise(resolve => { this.#resolveLanded = resolve; });
+  // Resolves once the window is drawn and playing (or will never be).
+  #resolveShown;
+  shown = new Promise(resolve => { this.#resolveShown = resolve; });
 
   constructor(reveal, options = {}) {
     // The first free slot, so a third window doesn't land on the second
@@ -320,6 +336,7 @@ export class CrateReveal extends ApplicationV2 {
     this.slot = slot;
     this.reveal = reveal;
     this.#kind = windowOf(reveal);
+    if (reveal.requestId && !reveal.replay) opened.set(reveal.requestId, this);
     // A replay holds no chat card back: the card it came from is whole.
     if (reveal.logId && !reveal.replay) {
       spinning.set(reveal.logId, { landed: this.landed, hide: !!getKind(kindOf(reveal))?.chat?.conditional });
@@ -352,9 +369,21 @@ export class CrateReveal extends ApplicationV2 {
   }
   // On Watch again's replay, the second click of a double-click (or a held
   // Enter) on Watch again would land on Skip: ignore it for a moment.
+  // The same for a held Enter that pressed Draw again in the window before,
+  // which handed focus to this Skip.
   static #skip(event) {
     if (this.#replaying && (event?.detail > 1 || performance.now() - this.#swappedAt < CLOSE_GRACE_MS)) return;
+    if (performance.now() - this.#handedAt < CLOSE_GRACE_MS) return;
     this.#spin?.skip();
+  }
+
+  // Focus from the window before (its Draw again) onto this one's button.
+  takeFocus() {
+    const btn = this.element?.querySelector?.(".lc-reveal__close");
+    if (this.#closed || !btn) return false;
+    this.#handedAt = performance.now();
+    btn.focus({ preventScroll: true });
+    return true;
   }
 
   static #watchAgain(event, button) {
@@ -384,13 +413,25 @@ export class CrateReveal extends ApplicationV2 {
     button.textContent = "Drawing…";
     button.setAttribute("aria-disabled", "true");
     try {
-      await requestPull({ boxId: this.reveal.box.id, actorId: this.reveal.actorId, price: again.price });
-      this.close();
+      const sent = await requestPull({ boxId: this.reveal.box.id, actorId: this.reveal.actorId, price: again.price });
+      await this.#handOver(sent?.requestId);
     } catch (err) {
       globalThis.ui?.notifications?.warn(err.message);
       this.#drawing = false;
       if (!this.#closed) this.#showAgain(this.#againOffer());
     }
+  }
+
+  // Closes this window for the next one (`requestId`'s), once that is drawn:
+  // focus goes to its button first, if it was still ours to move, so
+  // _onClose finds it taken and leaves it there.
+  async #handOver(requestId) {
+    const next = requestId ? opened.get(requestId) : null;
+    if (next && next !== this) {
+      await next.shown;
+      if (focusIsFree(this.element, this.reveal)) next.takeFocus();
+    }
+    this.close();
   }
 
   // What the kind offers the buyer as a next play, or null: not to the
@@ -445,8 +486,14 @@ export class CrateReveal extends ApplicationV2 {
   // Ends this reveal's hold without a window (showReveal, when it fails).
   abandon() {
     this.#closed = true;
+    this.#forget();
     this.#spin?.skip();
     this.#resolveLanded();
+  }
+
+  #forget() {
+    if (opened.get(this.reveal.requestId) === this) opened.delete(this.reveal.requestId);
+    this.#resolveShown();
   }
 
   _onClose(options) {
@@ -455,6 +502,7 @@ export class CrateReveal extends ApplicationV2 {
     const buy = ownBuy(this.reveal) ?? replayReturn(this.reveal, this.returnTo);
     if (buy?.isConnected && focusIsFree(this.element)) buy.focus({ preventScroll: true });
     this.#closed = true;
+    this.#forget();
     this.#stopWatching();
     // End the loop now rather than animating a detached strip for seconds.
     this.#spin?.skip();
@@ -491,7 +539,10 @@ export class CrateReveal extends ApplicationV2 {
     this.#onHidden = null;
   }
 
-  _onRender() { this.#mount(); }
+  _onRender() {
+    this.#mount();
+    this.#resolveShown();
+  }
 
   /*
     Plays the kind's animation in the window's host: the first time (the
@@ -543,8 +594,12 @@ export class CrateReveal extends ApplicationV2 {
     if (focusIsFree(root, r, this.returnTo)) btn.focus({ preventScroll: true });
     // The kind's quiet word for the buyer alone (the well's miss), as the
     // result lands: a player whose window sits behind the shop still hears.
+    // And the core's: which price was charged, when the press came just as
+    // a clock-driven price changed (pull.js PRICE_SKEW_MS).
+    const buyer = !r.replay && r.userId && r.userId === game.user?.id;
     const note = this.#kind.notice?.(r);
-    if (note && !r.replay && r.userId && r.userId === game.user?.id) globalThis.ui?.notifications?.info(note);
+    if (note && buyer) globalThis.ui?.notifications?.info(note);
+    if (r.priceNote && buyer) globalThis.ui?.notifications?.info(r.priceNote);
   }
 
   // The same result again, unhidden rather than rewritten, so a screen

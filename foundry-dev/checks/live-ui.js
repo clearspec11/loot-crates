@@ -23,17 +23,33 @@ try { store.registerSettings(); } catch (e) { if (!/already registered/i.test(St
 store.registerIndexFields();
 try { registerSocket(); } catch { /* registered on an earlier run of the same page */ }
 
-// Seed a pool and a box if the world has none yet, so the windows show something.
-if (!Object.keys(store.getPools()).length) {
+// Seed "Live UI pool" and "Live UI crate" by name whenever either is
+// missing, through the write queue: the other live checks find them by
+// these names, and a world trimmed of them still holds other pools (seeding
+// only an empty world left every dependent check failing "no Live UI
+// pool"). A crate left pointing at a pool that is gone is pointed back at
+// the Live UI pool. Records already there are not touched.
+const seeded = [];
+let pool = Object.values(store.getPools()).find(p => p.name === "Live UI pool");
+if (!pool) {
   const entries = await store.entriesFromCompendium("dnd5e.items", { types: ["weapon", "equipment"], rarities: ["uncommon", "rare"] });
-  const pool = await store.savePool({ name: "Live UI pool", entries: entries.slice(0, 40) });
-  await store.saveBox({ name: "Live UI crate", price: 75, pools: [{ id: pool.id, share: 1 }], weights: { uncommon: 75, rare: 25 } });
+  pool = await store.createPool({ name: "Live UI pool", entries: entries.slice(0, 40) });
+  seeded.push("Live UI pool");
+}
+const crate = Object.values(store.getBoxes()).find(b => b.name === "Live UI crate");
+if (!crate) {
+  await store.createBox({ name: "Live UI crate", price: 75, pools: [{ id: pool.id, share: 1 }], weights: { uncommon: 75, rare: 25 } });
+  seeded.push("Live UI crate");
+} else if (!(crate.pools ?? []).some(r => store.getPools()[r.id])) {
+  await store.updateBox(crate.id, b => ({ ...b, pools: [{ id: pool.id, share: 1 }] }));
+  seeded.push("Live UI crate's pool");
 }
 
 const app = WHICH === "shop" ? openShop() : openManager();
 await new Promise(r => setTimeout(r, 1500));
 const el = app.element;
 return {
+  seeded,
   rendered: !!el && el.isConnected,
   windowTitle: el?.querySelector(".window-title")?.textContent?.trim(),
   text: el?.querySelector(".window-content")?.innerText?.slice(0, 600),

@@ -20,7 +20,7 @@ vi.mock("../module/scripts/sound.js", () => ({ playTick: vi.fn(), playSlow: vi.f
 
 const { DECK, DECK_DEFAULTS, DECK_TIMING, STREAK_MS, cardsOf, drawnIds, deckPlan, deckOdds, streakOf, priceAt, nextPrice, ordinal, mountDeck, deckLandTime, cardsLeftText, streakLine, deckRulesText, draftDeck, deckPreview, deckPreviewHTML, deckSummary, deckOddsHTML } = await import("../module/scripts/deck.js");
 const { getKind } = await import("../module/scripts/kinds.js");
-const { performPull, PullError } = await import("../module/scripts/pull.js");
+const { performPull, PullError, PRICE_SKEW_MS } = await import("../module/scripts/pull.js");
 const { registerSocket } = await import("../module/scripts/socket.js");
 const { registerSettings, appendLog, getLog } = await import("../module/scripts/store.js");
 const { refundPull, describeRefund, refundCoins } = await import("../module/scripts/refund.js");
@@ -169,6 +169,58 @@ describe("the rising price", () => {
       // Two minutes on, the first price again.
       Date.now.mockReturnValue(NOW + STREAK_MS + 1);
       expect(await performPull({ box: GAME, pools: POOLS, actor, rng: rngOf(0.9), log, expectedPrice: 10 })).toMatchObject({ price: 10, streak: 1 });
+    } finally { vi.restoreAllMocks(); }
+  });
+});
+
+describe("a press at the streak's two-minute boundary", () => {
+  /*
+    The buyer's client reads the two minutes on its own clock, the GM on
+    its own, against the GM-stamped row.at: a few seconds of skew (or the
+    trip to the GM) put a press made as the price changed on the other
+    side of it. The GM charges the pressed price when the kind names it
+    within PRICE_SKEW_MS of now, the streak matching what was paid, and
+    says so; further out it refuses as before.
+  */
+  it("charges the streak's price pressed just after it lapsed on the GM's clock, as the 2nd in a row, and says which was charged", async () => {
+    const actor = actorOf();
+    const log = [row({ at: NOW - STREAK_MS - 2000 })];
+    vi.spyOn(Date, "now").mockReturnValue(NOW);
+    try {
+      const out = await performPull({ box: GAME, pools: POOLS, actor, rng: rngOf(0.9), log, expectedPrice: 15 });
+      expect(out).toMatchObject({ price: 15, streak: 2, nextPrice: 22.5, priceNote: "Charged 15 gp, the price you pressed for The Deck; by the GM's clock it was 10 gp just then." });
+      expect(toCopper(actor.system.currency)).toBe(8500);
+    } finally { vi.restoreAllMocks(); }
+  });
+
+  it("charges the base price pressed just before the streak lapses on the GM's clock, as a first draw", async () => {
+    const actor = actorOf();
+    const log = [row({ at: NOW - STREAK_MS + 2000 })];
+    vi.spyOn(Date, "now").mockReturnValue(NOW);
+    try {
+      const out = await performPull({ box: GAME, pools: POOLS, actor, rng: rngOf(0.9), log, expectedPrice: 10 });
+      expect(out).toMatchObject({ price: 10, streak: 1, nextPrice: 15, priceNote: "Charged 10 gp, the price you pressed for The Deck; by the GM's clock it was 15 gp just then." });
+      expect(toCopper(actor.system.currency)).toBe(9000);
+    } finally { vi.restoreAllMocks(); }
+  });
+
+  it("refuses a pressed price further from the boundary than the tolerance, or one step off, and names no note for the price as it stands", async () => {
+    const actor = actorOf();
+    vi.spyOn(Date, "now").mockReturnValue(NOW);
+    try {
+      const lapsed = [row({ at: NOW - STREAK_MS - PRICE_SKEW_MS - 1000 })];
+      await expect(performPull({ box: GAME, pools: POOLS, actor, rng: rngOf(0.9), log: lapsed, expectedPrice: 15 })).rejects.toThrow("The Deck now costs 10 gp (you pressed 15 gp). Nothing was charged.");
+      // Near the boundary of the 2nd step, 10 gp is two steps away: refused.
+      const two = [row({ at: NOW - 20_000 }), row({ at: NOW - STREAK_MS + 2000 - 20_000 })];
+      await expect(performPull({ box: GAME, pools: POOLS, actor, rng: rngOf(0.9), log: two, expectedPrice: 10 })).rejects.toThrow("The Deck now costs 22 gp 5 sp (you pressed 10 gp). Nothing was charged.");
+      expect(actor.writes).toHaveLength(0);
+      // A second press at the price just paid, behind the first's fresh row, is still refused (no double charge).
+      const fresh = [row({ at: NOW - 100 })];
+      await expect(performPull({ box: GAME, pools: POOLS, actor, rng: rngOf(0.9), log: fresh, expectedPrice: 10 })).rejects.toThrow("The Deck now costs 15 gp (you pressed 10 gp). Nothing was charged.");
+      expect(await performPull({ box: GAME, pools: POOLS, actor, rng: rngOf(0.9), log: lapsed, expectedPrice: 10 })).toMatchObject({ price: 10, priceNote: null });
+      // A game whose price doesn't turn on the clock refuses any other price.
+      const crate = { id: "c", name: "Pauper's Box", price: 25, pools: [{ id: "p", share: 1 }], weights: { uncommon: 1 }, rules: {} };
+      await expect(performPull({ box: crate, pools: POOLS, actor, rng: rngOf(0), log: [], expectedPrice: 20 })).rejects.toThrow("Pauper's Box now costs 25 gp (you pressed 20 gp). Nothing was charged.");
     } finally { vi.restoreAllMocks(); }
   });
 });

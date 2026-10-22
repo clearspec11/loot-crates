@@ -24,7 +24,11 @@
                   ctx: { game, actor, state, log, today, now }. The core
                   checks the Buy's price against it, charges it, and writes
                   it to the row and the reveal, so a refund gives back what
-                  was paid. A kind without one plays at game.price.
+                  was paid. A kind without one plays at game.price. A Buy
+                  whose price the kind names a few seconds either side of
+                  `now` (pull.js PRICE_SKEW_MS: clock skew at the deck's
+                  streak boundary) is charged at that price, and the roll
+                  gets that moment as `now`.
     roll(ctx)     GM side, before anything is charged, so a failed roll costs
                   nothing. ctx: { game, pools, actor, state, rng,
                   resolveSource, onMissing, log, today, now, price }: `log`
