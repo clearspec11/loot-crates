@@ -1,9 +1,15 @@
 /*
-  Undo one pull from the log, on a GM client: the coins go back in the same
-  whole gp/sp/cp that charge() took, the granted item (and only that item) is
-  removed, the box's stock goes back up by one, and the character's pity
-  count and no-duplicates record for the box are put back as if the pull
-  never happened (odds.js undoPull).
+  Undo one pull from the log, on a GM client, for every kind of game: the
+  coins go back in the same whole gp/sp/cp that charge() took (less any
+  payout the game made, taken back in the same move: currency.js settle),
+  the granted item (and only that item) is removed, the box's stock goes
+  back up by one, and the character's state for the game is put back as if
+  the pull never happened (the kind's undo: the crate's pity count and
+  no-duplicates record, odds.js undoPull).
+
+  Winnings already spent can't come back: such a refund is refused before
+  anything is marked, naming the shortfall, rather than minting coins or
+  taking the purse below zero.
 
   Constraints this holds: a row refunds at most once (the row is marked before
   any write that could fail, and refunds run one at a time), and the only item
@@ -11,10 +17,27 @@
   The pull's chat card is marked refunded in the same queued write, so chat,
   the log and the sheet agree, and the card stops linking a deleted item.
 */
-import { refund } from "./currency.js";
+import { settle, toCopper, formatPrice } from "./currency.js";
 import { getLog, updateLog, getBoxes, saveBox, enqueueWrite, getActorState, setActorState } from "./store.js";
-import { undoPull } from "./odds.js";
+import { getKind, kindOf } from "./kinds.js";
+// The crate registers itself when imported, so a row or record with no kind is found.
+import "./crate.js";
 import { findPullCard, isRefundedCard, refundedCardContent } from "./chatcard.js";
+
+// What a refund of this row moves, in copper: the stake back, the payout
+// taken back. Positive is paid to the character; a row from before payouts
+// has none.
+export function refundCoins(row) {
+  return Math.round((Number(row?.price) || 0) * 100) - Math.max(0, Math.round(Number(row?.payoutCp) || 0));
+}
+
+// How much of a row's winnings the character no longer has, in gp (0 when
+// the refund can go ahead).
+function spentWinnings(row, actor) {
+  const net = refundCoins(row);
+  if (net >= 0) return 0;
+  return Math.max(0, -net - toCopper(actor?.system?.currency ?? {})) / 100;
+}
 
 // The item this row granted, if the actor still has it. Matching on the
 // sourceUuid flag written at grant time means a reused id, or an item the
@@ -27,20 +50,28 @@ export function grantedItem(row, actor) {
 }
 
 // What a refund of this row would do, for the confirm dialog. Writes nothing.
-// status: "ready" | "already" | "missing" | "no-actor"
+// status: "ready" | "already" | "missing" | "no-actor" | "short"
+// `coins` is what the character gets back, in copper (negative: gives back).
 export function describeRefund(rowId) {
   const row = getLog().find(r => r.id === rowId);
   if (!row) return { status: "missing", message: "That pull is no longer in the log." };
   if (row.refunded) return { status: "already", row, message: "That pull was already refunded." };
   const actor = game.actors.get(row.actorId);
   if (!actor) return { status: "no-actor", row, message: "That character is gone." };
-  return { status: "ready", row, actor, item: grantedItem(row, actor), box: getBoxes()[row.boxId] ?? null, state: stateAfter(row) };
+  const box = getBoxes()[row.boxId] ?? null;
+  const short = spentWinnings(row, actor);
+  if (short > 0) return { status: "short", row, actor, box, message: `${actor.name} has spent the winnings: ${formatPrice(short)} more is needed to take back ${formatPrice(-refundCoins(row) / 100)}. Nothing was refunded.` };
+  return { status: "ready", row, actor, item: grantedItem(row, actor), box, coins: refundCoins(row), state: stateAfter(row, box) };
 }
 
-// The buyer's state for the row's box now, and with the row undone.
-function stateAfter(row) {
+// The buyer's state for the row's game now, and with the row undone the way
+// its kind undoes one. The row names its kind; a row from before kinds, or
+// one whose box is gone, is a crate's. A kind this client doesn't know, or
+// one with no undo, leaves the state as it is.
+function stateAfter(row, box) {
   const before = getActorState(row.actorId, row.boxId);
-  return { before, after: undoPull(before, row, getLog()) };
+  const kind = getKind(kindOf(row.kind ? row : box ?? row));
+  return { before, after: kind?.undo ? kind.undo(before, row, getLog()) : before };
 }
 
 // Refunds run strictly one after another, in the same queue as pulls, so two
@@ -60,7 +91,7 @@ async function doRefund(rowId) {
   const refunded = Date.now();
   await updateLog(row.id, { refunded });
 
-  const purse = refund(actor.system?.currency ?? {}, row.price);
+  const purse = settle(actor.system?.currency ?? {}, plan.coins);
   await actor.update({ "system.currency": purse });
 
   let removedItem = null;
@@ -82,7 +113,7 @@ async function doRefund(rowId) {
   // the card is still marked and the manager still posts the refund.
   let state = null;
   if (box) {
-    const next = stateAfter(row);
+    const next = stateAfter(row, box);
     try {
       await setActorState(row.actorId, row.boxId, next.after);
       state = next;

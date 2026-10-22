@@ -31,9 +31,22 @@ import { actorPicker, boxCard, buyReason, changedCharacterLine, crateReason, ref
 import { shopOdds } from "./odds.js";
 import { requestPull } from "./socket.js";
 import { heldState, onRelease } from "./reveal.js";
+import { getKind, kindOf } from "./kinds.js";
+// The crate registers itself when imported, so a row or record with no kind is found.
+import "./crate.js";
 
 const { ApplicationV2 } = foundry.applications.api;
 const esc = s => foundry.utils.escapeHTML(String(s ?? ""));
+
+/*
+  The shop sells every kind of game (kinds.js) by the same rules: a kind's
+  own card and buy reason when it has them, else the crate's (boxcard.js),
+  so a game this client doesn't know still shows as a crate-shaped card
+  that says why it can't be bought rather than nothing at all.
+*/
+const shopOf = game => getKind(kindOf(game))?.shop ?? {};
+const cardFor = (game, pools, ctx) => (shopOf(game).card ?? boxCard)(game, pools, ctx);
+const reasonFor = (game, pools, ctx) => (shopOf(game).reason ?? ((b, p, c) => buyReason(b, shopOdds(b, p, c.stateOf(b.id)), c)))(game, pools, ctx);
 
 export function buyableActors(user = game.user) {
   const owned = game.actors.filter(a => a.type === "character" && a.testUserPermission(user, "OWNER"));
@@ -94,7 +107,7 @@ export class CrateShop extends ApplicationV2 {
     const boxId = target.dataset.box;
     const box = getBoxes()[boxId];
     const ctx = this.#ctx();
-    if (!box || buyReason(box, shopOdds(box, getPools(), ctx.stateOf(boxId)), ctx)) {
+    if (!box || reasonFor(box, getPools(), ctx)) {
       // An aria-disabled Buy already shows its reason; one that looked live
       // was drawn before the change, so say what changed.
       if (target.getAttribute?.("aria-disabled") !== "true") this.#refuse(boxId, target.dataset.price, ctx);
@@ -222,7 +235,7 @@ export class CrateShop extends ApplicationV2 {
     this.notice = this.#notice(ctx);
     root.innerHTML = shopHTML({
       fields: picker + purseField,
-      cards: boxes.length ? boxes.map(b => boxCard(b, pools, ctx)).join("") : `<p class="lc-shop__empty">No crates on the shelf yet. The GM builds them from Game Settings, Loot Crates.</p>`,
+      cards: boxes.length ? boxes.map(b => cardFor(b, pools, ctx)).join("") : `<p class="lc-shop__empty">No crates on the shelf yet. The GM builds them from Game Settings, Loot Crates.</p>`,
       notice: this.notice,
     });
     const select = root.querySelector(".lc-shop__actor");

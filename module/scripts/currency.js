@@ -104,3 +104,18 @@ export function refund(purse = {}, priceGp) {
   next.cp += owed;
   return consolidate(next);
 }
+
+/*
+  Coins both ways, in copper, for every game of chance: a negative amount is
+  charged (charge(), null when the purse can't cover it), a positive one is
+  paid out (refund()), and zero leaves the purse as it is in whole coins. A
+  crate's pull is settle(purse, -priceCp); a dice win is settle(purse,
+  payoutCp - stakeCp); a refund gives the stake back and takes the payout
+  back in one move, settle(purse, stakeCp - payoutCp), which is null when
+  the winnings have been spent. Copper, not gp, so a copper stake is exact.
+*/
+export function settle(purse = {}, cp) {
+  const n = Math.round(Number(cp) || 0);
+  if (n < 0) return charge(purse, -n / 100);
+  return refund(purse, n / 100);
+}

@@ -1,6 +1,9 @@
 /*
-  The window that plays the spin. Opens on every client when a reveal is
-  broadcast, so the whole table watches the pull.
+  The window that plays the reveal of any game (kinds.js). Opens on every
+  client when a reveal is broadcast, so the whole table watches the pull.
+  The animation, the result block and the sting are the kind's (the crate's
+  strip and spin, crate.js); the window, its one button, focus, the hidden
+  page rule, the hold below and the sealed chat card are this file's, once.
 
   One window per pull: the id carries the requestId, so two players buying
   within a few seconds of each other get two windows, cascaded 32px apart
@@ -73,12 +76,35 @@
   nothing is written.
 */
 import { MODULE_ID, SETTINGS } from "./config.js";
-import { mountSpin } from "./spin.js";
 import { formatPrice } from "./currency.js";
-import { cascadeOffset, canSeePurse, resultHTML, freeSlot, CLOSE_GRACE_MS, replayReveal, replayTitle, replayWindowId, revealActionsHTML } from "./revealcard.js";
+import { cascadeOffset, canSeePurse, freeSlot, CLOSE_GRACE_MS, replayReveal, replayTitle, replayWindowId, revealActionsHTML } from "./revealcard.js";
 import { REFUNDED_CLASS } from "./chatcard.js";
 import { oddsRibbon } from "./boxcard.js";
-import { playTick, playSlow, playReveal } from "./sound.js";
+import { getKind, kindOf, DEFAULT_KIND } from "./kinds.js";
+import { CRATE } from "./crate.js";
+
+export { stripVoice } from "./crate.js";
+
+// A kind with no animation shows its result at once: the controller the
+// spin returns, landing on play() (or skip()), under the reduced-motion
+// rule so nothing offers to replay it.
+const INSTANT = {
+  play(_host, _reveal, { onLand }) {
+    let landed = false;
+    const land = () => { if (!landed) { landed = true; onLand(); } };
+    return { play: land, skip: land, skipped: false, reducedMotion: true };
+  },
+};
+
+// The window pieces of the kind this reveal is: the message names it (a
+// replay from a chat snapshot has none and is a crate's). A kind this
+// client doesn't know plays as a crate, so the table at least sees the
+// window. Whatever the kind leaves out, INSTANT fills.
+function windowOf(reveal) {
+  const kind = getKind(kindOf(reveal));
+  if (!kind) console.warn(`loot-crates | no kind ${kindOf(reveal)} on this client; showing the reveal as a ${DEFAULT_KIND}`);
+  return { ...INSTANT, ...((kind ?? getKind(DEFAULT_KIND) ?? CRATE).reveal ?? {}) };
+}
 
 const { ApplicationV2 } = foundry.applications.api;
 const esc = s => foundry.utils.escapeHTML(String(s ?? ""));
@@ -91,23 +117,6 @@ function usedSlots() {
 }
 
 const pageHidden = () => document.visibilityState === "hidden";
-
-// The strip's tick for each card that passes the marker, one voice per
-// mount. On a near-miss the card past the result is a tease, and the next
-// tick back on the result is the drop back; every other tick falls in pitch
-// with progress as before.
-export function stripVoice(strip) {
-  let teased = false;
-  return index => {
-    if (strip.nearMiss && index === strip.landIndex + 1) {
-      teased = true;
-      playTick(1, { tease: true });
-    } else if (teased && index === strip.landIndex) {
-      teased = false;
-      playTick(1, { back: true });
-    } else playTick(index / strip.landIndex);
-  };
-}
 
 // The landed promise of each reveal still spinning on this client, by the
 // pull's logId (what its chat card carries in flags).
@@ -262,8 +271,7 @@ export class CrateReveal extends ApplicationV2 {
 
   #resolveLanded;
   #spin = null;
-  // The braking sweep's stop(), while one may still be sounding.
-  #sweep = null;
+  #kind;
   #closed = false;
   #landedAt = -Infinity;
   #onHidden = null;
@@ -283,6 +291,7 @@ export class CrateReveal extends ApplicationV2 {
     super({ ...(id ? { id } : {}), position, ...options });
     this.slot = slot;
     this.reveal = reveal;
+    this.#kind = windowOf(reveal);
     // A replay holds no chat card back: the card it came from is whole.
     if (reveal.logId && !reveal.replay) {
       spinning.set(reveal.logId, this.landed);
@@ -293,7 +302,7 @@ export class CrateReveal extends ApplicationV2 {
   }
 
   get title() {
-    return this.reveal?.replay ? replayTitle(this.reveal) : super.title;
+    return this.reveal?.replay ? replayTitle(this.reveal) : this.#kind.title ?? super.title;
   }
 
   // Where focus goes back to when a replay closes (its Watch again).
@@ -371,10 +380,10 @@ export class CrateReveal extends ApplicationV2 {
         <strong class="lc-reveal__crate">${esc(r.box.name)}</strong>
         <span class="lc-reveal__price">${esc(formatPrice(r.box.price))}</span>
       </div>
-      <div class="lc-vault lc-rarity-${esc(r.result.rarity)}">
+      <div class="lc-vault lc-rarity-${esc(r.result?.rarity ?? "none")}">
         ${r.odds?.length ? oddsRibbon(r.odds) : ""}
         <div class="lc-reveal__spin"></div>
-        <div class="lc-reveal__result lc-rarity-${esc(r.result.rarity)}" aria-live="polite"></div>
+        <div class="lc-reveal__result lc-rarity-${esc(r.result?.rarity ?? "none")}" aria-live="polite"></div>
       </div>
       ${revealActionsHTML()}`;
     return root;
@@ -396,26 +405,23 @@ export class CrateReveal extends ApplicationV2 {
   _onRender() { this.#mount(); }
 
   /*
-    Plays the strip in the window's host: the first time (the pull) and on
-    Watch again (`replay`). Only the first resolves `landed`, which opens
-    this client's sealed chat card; a replay touches nothing outside the
-    window.
+    Plays the kind's animation in the window's host: the first time (the
+    pull) and on Watch again (`replay`). Only the first resolves `landed`,
+    which opens this client's sealed chat card; a replay touches nothing
+    outside the window. The kind's play returns the controller the spin
+    does: play(), skip({ now }), skipped, reducedMotion.
   */
   #mount({ replay = false } = {}) {
     const root = this.element;
     const host = root.querySelector(".lc-reveal__spin");
     const sound = game.settings.get(MODULE_ID, SETTINGS.SOUND);
     const r = this.reveal;
+    const kind = this.#kind;
     this.#stopWatching();
-    const spin = this.#spin = mountSpin(host, r.strip, {
-      onTick: sound ? stripVoice(r.strip) : null,
-      // The braking sweep starts with the ease-out and lasts until the strip
-      // turns back, both read from the spin's own frames.
-      // A strip that lands early (Skip, Close, hidden) cuts the sweep with it.
-      onPhase: sound ? (phase, { settleIn }) => { if (phase === "brake" && !pageHidden()) this.#sweep = playSlow(settleIn); } : null,
+    const spin = this.#spin = kind.play(host, r, {
+      sound,
+      pageHidden,
       onLand: () => {
-        this.#sweep?.();
-        this.#sweep = null;
         this.#stopWatching();
         if (!replay) this.#resolveLanded();
         if (this.#closed) return;
@@ -424,7 +430,7 @@ export class CrateReveal extends ApplicationV2 {
         if (!spin.skipped && !spin.reducedMotion) this.#watched = true;
         if (replay) this.#landReplay(root);
         else this.#landFirst(root, spin);
-        if (sound && !pageHidden()) playReveal(r.result.rarity);
+        if (sound && !pageHidden()) kind.sting?.(r);
       },
     });
     if (pageHidden()) spin.skip();
@@ -439,9 +445,9 @@ export class CrateReveal extends ApplicationV2 {
     const r = this.reveal;
     const btn = root.querySelector(".lc-reveal__close");
     this.#landedAt = performance.now();
-    root.querySelector(".lc-reveal__result").innerHTML = resultHTML(r, { esc, canSee: this.canSee });
+    root.querySelector(".lc-reveal__result").innerHTML = this.#kind.result?.(r, { esc, canSee: this.canSee }) ?? "";
     root.querySelector(".lc-reveal__open").hidden = !this.#itemStillThere();
-    root.querySelector(".lc-reveal__watch").hidden = this.#watched || spin.reducedMotion;
+    root.querySelector(".lc-reveal__watch").hidden = this.#watched || spin.reducedMotion || !this.#kind.replayable;
     btn.dataset.action = "dismiss";
     btn.textContent = "Close";
     if (focusIsFree(root, r, this.returnTo)) btn.focus({ preventScroll: true });

@@ -31,11 +31,14 @@ export function findPullCard(messages, row) {
   for (let i = list.length - 1; i >= 0; i--) {
     const msg = list[i];
     const f = flagsOf(msg);
-    if (f.refunded || !f.uuid) continue;
+    if (f.refunded) continue;
+    // A card with a logId matches on it alone, whether or not it names an
+    // item (a game that paid coins has none).
     if (f.logId) {
       if (f.logId === row.id) return msg;
       continue;
     }
+    if (!f.uuid) continue;
     if (f.uuid === row.uuid && msg.speaker?.actor === row.actorId
       && Number.isFinite(msg.timestamp) && Number.isFinite(row.at)
       && Math.abs(msg.timestamp - row.at) <= LEGACY_WINDOW_MS) return msg;

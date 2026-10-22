@@ -533,15 +533,19 @@ export class CrateManager extends ApplicationV2 {
     if (plan.status === "already") { ui.notifications.info("That pull was already refunded."); this.#focusRow = t.dataset.row; return this.render(); }
     if (plan.status !== "ready") return ui.notifications.warn(plan.message);
     const { row, actor, item, box } = plan;
+    // A game that paid coins out gives the stake back less the payout; one
+    // that paid more than the stake takes the difference back.
+    const coins = plan.coins ?? Math.round(row.price * 100);
+    const moneyLine = coins >= 0 ? `Return <strong>${esc(formatPrice(coins / 100))}</strong> to ${esc(actor.name)}` : `Take <strong>${esc(formatPrice(-coins / 100))}</strong> back from ${esc(actor.name)}`;
     const itemLine = item
-      ? `and remove <strong>${esc(item.name)}</strong> from their inventory`
-      : `(<strong>${esc(row.name)}</strong> is no longer in their inventory, so nothing is removed)`;
+      ? ` and remove <strong>${esc(item.name)}</strong> from their inventory`
+      : row.itemId ? ` (<strong>${esc(row.name)}</strong> is no longer in their inventory, so nothing is removed)` : "";
     const stockLine = box?.rules?.stock != null ? ` ${esc(box.name)} goes back to ${box.rules.stock + 1} in stock.` : "";
-    const rules = box ? refundRulesLine({ actorName: actor.name, itemName: row.name, box, ...plan.state }) : "";
+    const rules = box && row.uuid ? refundRulesLine({ actorName: actor.name, itemName: row.name, box, ...plan.state }) : "";
     const rulesLine = rules ? ` ${esc(rules)}` : "";
     const ok = await DialogV2.confirm({
       window: { title: "Refund" },
-      content: `<p>Return <strong>${esc(formatPrice(row.price))}</strong> to ${esc(actor.name)} ${itemLine}?${stockLine}${rulesLine}</p><p>A pull can only be refunded once.</p>`,
+      content: `<p>${moneyLine}${itemLine}?${stockLine}${rulesLine}</p><p>A pull can only be refunded once.</p>`,
     });
     if (!ok) return;
     // The Refund button is gone after the render; land on the row's status.
@@ -549,7 +553,7 @@ export class CrateManager extends ApplicationV2 {
     const done = await refundPull(row.id);
     if (done.status === "refunded") {
       const what = done.removedItem ? ` and ${done.removedItem} removed` : "";
-      ui.notifications.info(`${formatPrice(row.price)} returned to ${actor.name}${what}.`);
+      ui.notifications.info(`${coins >= 0 ? `${formatPrice(coins / 100)} returned to` : `${formatPrice(-coins / 100)} taken back from`} ${actor.name}${what}.`);
       await postRefundCard({ row, actor, removedItem: done.removedItem });
     } else if (done.status === "already") {
       ui.notifications.info("That pull was already refunded.");

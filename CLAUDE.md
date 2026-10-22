@@ -8,8 +8,9 @@ Loot Crates is a Foundry VTT module (v13/v14, dnd5e 5/6) for GM-curated item poo
 
 ## Rules that keep it working
 
-- **Pure first.** `odds.js`, `currency.js`, `boxcard.js`, `revealcard.js`, `chatcard.js`, `poolview.js`, `strip.js` and `spin.js` must not touch Foundry globals (`game`, `Hooks`, `ui`, `foundry`, `fromUuid`), so Vitest and the harness can run them. Put anything Foundry-aware in the other scripts.
-- **The result is rolled before the strip is built** (`pull.js` then `strip.js`). The animation never decides the outcome.
+- **Pure first.** `kinds.js`, `crate.js`, `odds.js`, `currency.js`, `boxcard.js`, `revealcard.js`, `chatcard.js`, `poolview.js`, `strip.js` and `spin.js` must not touch Foundry globals (`game`, `Hooks`, `ui`, `foundry`, `fromUuid`), so Vitest and the harness can run them. Put anything Foundry-aware in the other scripts.
+- **The result is rolled before the strip is built** (the kind's roll, then `strip.js`). The animation never decides the outcome.
+- **Every game runs on the core.** A game is a kind (`kinds.js`): it supplies the roll, the reveal's animation and result, the chat card and the shop card, nothing else. The money path (`pull.js`), the request and broadcast (`socket.js`), the log row, the refund (`refund.js`) and the hold (`reveal.js`) are one copy; never duplicate them in a kind. A roll may give no item or pay coins out (`payoutCp`); coins move only through `currency.js` `settle()`.
 - **Only a GM client writes.** Players send a `pull` over the socket; `socket.js` on the active GM does the purse check, the roll, the grant and the log, then broadcasts the reveal. Don't add client-side writes to actors, settings or compendia.
 - **Pools hold UUID references, not copies.** A missing source resolves to null and must be reported, not silently skipped.
 - **Rarity keys are dnd5e's** (`common, uncommon, rare, veryRare, legendary, artifact`), normalised through `normalizeRarity`.
