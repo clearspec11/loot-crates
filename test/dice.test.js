@@ -404,6 +404,12 @@ describe("the money, both ways", () => {
     expect(getLog()[0].refunded).toBeTypeOf("number");
     expect((await refundPull(rowId)).status).toBe("already");
     expect(actor.writes).toHaveLength(1);
+    // The player's refund card says what left the purse, not that nothing moved.
+    const { postRefundCard } = await import("../module/scripts/chat.js");
+    globalThis.ChatMessage = { create: async data => data, getSpeaker: () => ({ actor: actor.id }) };
+    const card = await postRefundCard({ row: getLog()[0], actor, removedItem: null });
+    expect(card.content).toContain("20 gp was taken back from their purse: the 30 gp won, less the 10 gp stake.");
+    expect(card.content).not.toContain("nothing moved");
   });
 
   it("a losing row refunds the stake only", async () => {
@@ -661,5 +667,7 @@ describe("the words", () => {
     expect(DICE.reveal.title).toBe("Dragon's Teeth");
     expect(DICE.noun).toBe("dice");
     expect(DICE.undo).toBeUndefined();
+    // Only a win posts a card, so the seal must hide the whole message (reveal.js).
+    expect(DICE.chat.conditional).toBe(true);
   });
 });

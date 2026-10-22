@@ -49,12 +49,17 @@ export async function postPullCard(reveal) {
 // Posted when the GM refunds a pull, so the player whose coins came back and
 // whose item vanished from their sheet can see why.
 export async function postRefundCard({ row, actor, removedItem }) {
-  // A row that granted no item (a well's miss or coin back) has nothing to
-  // remove: the coins came back, or had already.
-  const net = Math.round((Number(row.price) || 0) * 100) - Math.max(0, Math.round(Number(row.payoutCp) || 0));
+  // A row that granted no item (a well's miss or coin back, a dice bet) has
+  // nothing to remove: the stake came back, the winnings were taken back
+  // less the stake (a dice win), or the coin had already come back.
+  const stake = Math.round((Number(row.price) || 0) * 100);
+  const payout = Math.max(0, Math.round(Number(row.payoutCp) || 0));
+  const net = stake - payout;
   const line = removedItem ? `${esc(removedItem)} was removed from their inventory.`
     : row.itemId ? `${esc(row.name)} was already gone, so only the coins came back.`
-    : net > 0 ? `${esc(formatPrice(net / 100))} went back into their purse.` : "The coin had already come back, so nothing moved.";
+    : net > 0 ? `${esc(formatPrice(net / 100))} went back into their purse.`
+    : net < 0 ? `${esc(formatPrice(-net / 100))} was taken back from their purse: the ${esc(formatPrice(payout / 100))} won, less the ${esc(formatPrice(stake / 100))} stake.`
+    : "The coin had already come back, so nothing moved.";
   const content = `
     <div class="loot-crates lc-chat lc-rarity-${esc(row.rarity ?? "none")}">
       <div class="lc-chat__head">${esc(actor?.name ?? row.actorName)}'s <strong>${esc(row.boxName)}</strong> was refunded <span class="lc-chat__price">${esc(formatPrice(row.price))}</span></div>
