@@ -288,6 +288,26 @@ describe("the GM's socket path", () => {
     expect(msg.flags["loot-crates"]).toEqual({ boxId: "deck", logId: reveals[1].logId });
   });
 
+  it("two pulls pressed at the same risen price (Draw again and the shop's Buy, before either redraws) charge once: the queue prices the second after the first's row and refuses it", async () => {
+    const world = makeWorld();
+    await world.game.settings.set("loot-crates", "boxes", { deck: GAME });
+    await world.game.settings.set("loot-crates", "pools", POOLS);
+    await drawOnce(world, rngOf(0.9), { requestId: "d1", price: 10 });
+    expect(toCopper(world.actor.system.currency)).toBe(9000);
+    // Both arrive at the GM before the first is handled: the write queue runs them in turn.
+    globalThis.CONFIG = { Dice: { randomUniform: rngOf(0.9) } };
+    try {
+      await Promise.all([
+        world.deliver({ type: "pull", requestId: "again", boxId: "deck", actorId: "a1", userId: "p1", price: 15 }),
+        world.deliver({ type: "pull", requestId: "buy", boxId: "deck", actorId: "a1", userId: "p1", price: 15 }),
+      ]);
+    } finally { delete globalThis.CONFIG; }
+    expect(world.emitted.filter(m => m.type === "reveal")).toHaveLength(2);
+    expect(world.emitted.filter(m => m.type === "error")).toEqual([expect.objectContaining({ requestId: "buy", message: "The Deck now costs 22 gp 5 sp (you pressed 15 gp). Nothing was charged." })]);
+    expect(toCopper(world.actor.system.currency)).toBe(7500);
+    expect(world.game.settings.get("loot-crates", "pullLog").map(r => r.price)).toEqual([15, 10]);
+  });
+
   it("a once card drawn is out of the deck for the next draw, back after its refund, and the row carries what each card did", async () => {
     const world = makeWorld();
     await world.game.settings.set("loot-crates", "boxes", { deck: GAME });
