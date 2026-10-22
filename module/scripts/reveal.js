@@ -100,12 +100,18 @@ const INSTANT = {
 
 // The window pieces of the kind this reveal is: the message names it (a
 // replay from a chat snapshot has none and is a crate's). A kind this
-// client doesn't know plays as a crate, so the table at least sees the
-// window. Whatever the kind leaves out, INSTANT fills.
+// client doesn't know plays as a crate when the message carries a strip,
+// so the table at least sees the window; without one it lands at once,
+// naming whatever was won (the crate's spin needs a strip, and a window
+// that failed to open would show the table nothing). Whatever the kind
+// leaves out, INSTANT fills.
 function windowOf(reveal) {
   const kind = getKind(kindOf(reveal));
-  if (!kind) console.warn(`loot-crates | no kind ${kindOf(reveal)} on this client; showing the reveal as a ${DEFAULT_KIND}`);
-  return { ...INSTANT, ...((kind ?? getKind(DEFAULT_KIND) ?? CRATE).reveal ?? {}) };
+  if (kind) return { ...INSTANT, ...(kind.reveal ?? {}) };
+  console.warn(`loot-crates | no kind ${kindOf(reveal)} on this client; showing the reveal as a ${DEFAULT_KIND}`);
+  const crate = (getKind(DEFAULT_KIND) ?? CRATE).reveal;
+  if (reveal.strip) return { ...INSTANT, ...crate };
+  return { ...INSTANT, title: crate.title, result: (r, opts) => (r.result?.name ? crate.result(r, opts) : "") };
 }
 
 const { ApplicationV2 } = foundry.applications.api;
@@ -125,8 +131,10 @@ const crateHead = r => `<span class="lc-reveal__who">${esc(r.actorName)}</span> 
         <strong class="lc-reveal__crate">${esc(r.box.name)}</strong>
         <span class="lc-reveal__price">${esc(formatPrice(r.box.price))}</span>`;
 
-// The landed promise of each reveal still spinning on this client, by the
-// pull's logId (what its chat card carries in flags).
+// Each reveal still spinning on this client, by the pull's logId (what its
+// chat card carries in flags): { landed, hide }. `hide` is set for a kind
+// whose card only some outcomes post (kinds.js chat.conditional), so the
+// seal hides the whole message rather than its item block.
 const spinning = new Map();
 
 // Pulls whose result this client is still holding back (spinning here), by
@@ -301,7 +309,7 @@ export class CrateReveal extends ApplicationV2 {
     this.#kind = windowOf(reveal);
     // A replay holds no chat card back: the card it came from is whole.
     if (reveal.logId && !reveal.replay) {
-      spinning.set(reveal.logId, this.landed);
+      spinning.set(reveal.logId, { landed: this.landed, hide: !!getKind(kindOf(reveal))?.chat?.conditional });
       this.landed.then(() => spinning.delete(reveal.logId));
     }
     // The item on the sheet and the shop's pity line wait for the landing too.
@@ -481,22 +489,39 @@ export class CrateReveal extends ApplicationV2 {
   }
 }
 
-// renderChatMessageHTML: seal a pull's card while its spin plays here. Each
-// rendered copy (the log, the notification) is opened by its own reference,
-// so a copy put in the page after the landing is never left sealed.
+/*
+  renderChatMessageHTML: seal a pull's card while its spin plays here. Each
+  rendered copy (the log, the notification) is opened by its own reference,
+  so a copy put in the page after the landing is never left sealed.
+
+  A kind that posts a card for some outcomes only (the dice's win, the
+  well's find) can't be sealed by hiding the item block: the card turning
+  up at all, head and "Opening…", would tell the table the throw won while
+  the dice still tumble here. Its whole message is hidden until the landing
+  instead, and the chat log is scrolled on if it was at the bottom, as it
+  would have been when the message arrived.
+*/
 export function sealChatCard(message, html) {
   const logId = message?.flags?.[MODULE_ID]?.logId;
-  const landed = logId ? spinning.get(logId) : null;
-  const card = landed ? html?.querySelector?.(".lc-chat") : null;
+  const spin = logId ? spinning.get(logId) : null;
+  const card = spin ? html?.querySelector?.(".lc-chat") : null;
   if (!card || card.classList.contains("lc-chat--refunded")) return;
   const sealed = document.createElement("div");
   sealed.className = "lc-chat__sealed";
   sealed.textContent = "Opening…";
   card.classList.add("lc-chat--sealed");
   card.append(sealed);
-  landed.then(() => {
+  const whole = spin.hide && html?.style ? html : null;
+  if (whole) whole.style.display = "none";
+  spin.landed.then(() => {
     card.classList.remove("lc-chat--sealed");
     sealed.remove();
+    if (!whole) return;
+    whole.style.display = "";
+    try {
+      const chat = globalThis.ui?.chat;
+      if (chat?.isAtBottom) chat.scrollBottom?.();
+    } catch (err) { console.error("loot-crates | could not scroll the chat log after a sealed card opened", err); }
   });
 }
 

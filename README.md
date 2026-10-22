@@ -24,7 +24,7 @@ A refund from the Pull log undoes the whole pull: the coins come back, the grant
 
 ## The result waits for the spin
 
-Everything that would tell a client the result waits until that client's spin lands (or is skipped or closed). The chat card shows "Opening…" in place of the item. On a character sheet, the granted item's row stays hidden: anything that names it by `data-item-id`, in sheets already open and sheets opened mid-spin. In the shop, that crate's card keeps the character's pity line and odds from before the pull, then changes when the spin lands. Display only: nothing is written, and the item is on the sheet from the moment it is granted. A tab that is hidden, or set to reduced motion, lands at once, so nothing is held there. A replay holds nothing.
+Everything that would tell a client the result waits until that client's spin lands (or is skipped or closed). The chat card shows "Opening…" in place of the item; a game whose card only some outcomes post (the dice's win, the well's find) has the whole message hidden until then, since the card turning up at all would tell. On a character sheet, the granted item's row stays hidden: anything that names it by `data-item-id`, in sheets already open and sheets opened mid-spin. In the shop, that crate's card keeps the character's pity line and odds from before the pull, then changes when the spin lands. Display only: nothing is written, and the item is on the sheet from the moment it is granted. A tab that is hidden, or set to reduced motion, lands at once, so nothing is held there. A replay holds nothing.
 
 ## Watch again
 

@@ -63,6 +63,9 @@ const WELL = {
   },
 };
 const FLIP = { id: "flip", async roll() { return { result: null }; } };
+// A kind that posts a card for some outcomes only (the dice's win): the
+// card's presence would tell the result, so the seal hides the whole message.
+const QUIET = { id: "quiet", async roll() { return { result: null }; }, reveal: WELL.reveal, chat: { card: () => null, conditional: true } };
 
 let doc;
 beforeEach(() => {
@@ -83,6 +86,7 @@ beforeEach(() => {
   vi.stubGlobal("fromUuidSync", () => null);
   registerKind(WELL);
   registerKind(FLIP);
+  registerKind(QUIET);
   sting.mockClear();
 });
 afterEach(() => { _resetHolds(); _resetKinds(["crate"]); vi.unstubAllGlobals(); });
@@ -144,6 +148,39 @@ describe("a second kind's reveal", () => {
     expect(app.element.querySelector(".lc-reveal__result").innerHTML).toBe("");
     expect(app.element.querySelector(".lc-reveal__watch").hidden).toBe(true);
     expect(controllers).toHaveLength(0);
+  });
+
+  it("hides the whole message of a kind whose card only some outcomes post, until the landing", async () => {
+    const app = await showReveal(reveal({ kind: "quiet", requestId: "q1", logId: "LQ" }));
+    const card = element();
+    const html = { querySelector: () => card, style: { display: "" } };
+    sealChatCard({ flags: { "loot-crates": { logId: "LQ" } } }, html);
+    expect(card.classes.has("lc-chat--sealed")).toBe(true);
+    expect(html.style.display).toBe("none");
+    // The well's card (posted for every outcome the kind cards) is shown sealed, not hidden.
+    const well = await showReveal(reveal({ requestId: "w2", logId: "LW" }));
+    const wellHtml = { querySelector: () => element(), style: { display: "" } };
+    sealChatCard({ flags: { "loot-crates": { logId: "LW" } } }, wellHtml);
+    expect(wellHtml.style.display).toBe("");
+    controllers[0].land();
+    await app.landed;
+    await Promise.resolve();
+    expect(html.style.display).toBe("");
+    expect(card.classes.has("lc-chat--sealed")).toBe(false);
+    well.close();
+  });
+
+  it("shows a kind this client doesn't know with no strip at once, rather than failing to open", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const app = await showReveal(reveal({ kind: "slots", requestId: "x1", result: { name: "Bar", rarity: "common", img: "" } }));
+      await app.landed;
+      await Promise.resolve();
+      expect(app.element.querySelector(".lc-reveal__close").textContent).toBe("Close");
+      expect(app.element.querySelector(".lc-reveal__result").innerHTML).toContain("Bar");
+      expect(heldState("a1", "well")).toBeNull();
+      app.close();
+    } finally { warn.mockRestore(); }
   });
 
   it("shows a kind this client doesn't know as a crate, so the table still sees the window", async () => {

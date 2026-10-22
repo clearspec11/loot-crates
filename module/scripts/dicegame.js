@@ -524,6 +524,7 @@ export const DICE = registerKind({
     notice,
     replayable: false,
   },
-  chat: { card: chatCard },
+  // Only a win posts a card: hidden whole while sealed, or its arrival would tell.
+  chat: { card: chatCard, conditional: true },
   shop: { card, reason },
 });

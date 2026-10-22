@@ -53,7 +53,10 @@
                   the animation and calls onLand once when the result is
                   under the marker.
     chat          { card(reveal, { esc, itemLink }) -> html, or null for no
-                  chat card }
+                  chat card; conditional: true when only some outcomes post
+                  one (the dice's win), so the seal (reveal.js) hides the
+                  whole message until this client lands rather than showing
+                  its head with "Opening…", which would tell the result }
     shop          { card(game, pools, ctx) -> html, reason(game, pools,
                   ctx) -> why it can't be bought or "" }; a kind without
                   these gets the crate's card and rules.
