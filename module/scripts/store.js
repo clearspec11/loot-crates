@@ -13,6 +13,7 @@
 import { MODULE_ID, SETTINGS } from "./config.js";
 import { normalizeRarity, flattenPool, markEntriesMissing, rawRarityOf, sourceRarityOf, curateEntries } from "./odds.js";
 import { dayKeyOf } from "./clock.js";
+import { pruneRounds } from "./round.js";
 
 const uid = () => (globalThis.foundry?.utils?.randomID?.(10)) ?? Math.random().toString(36).slice(2, 12);
 
@@ -29,7 +30,7 @@ export function setStoreListener(fn) { storeListener = fn; }
 function storeChanged(key) {
   try { storeListener?.(key); } catch (err) { console.error(`loot-crates | redrawing after ${key} changed failed`, err); }
 }
-export const WORLD_KEYS = [SETTINGS.POOLS, SETTINGS.BOXES, SETTINGS.LOG, SETTINGS.STATE, SETTINGS.SHOP_OPEN];
+export const WORLD_KEYS = [SETTINGS.POOLS, SETTINGS.BOXES, SETTINGS.LOG, SETTINGS.STATE, SETTINGS.SHOP_OPEN, SETTINGS.ROUNDS];
 
 export function registerSettings() {
   const world = (key, type, def) => game.settings.register(MODULE_ID, key, { scope: "world", config: false, type, default: def, onChange: () => storeChanged(key) });
@@ -38,6 +39,7 @@ export function registerSettings() {
   world(SETTINGS.LOG, Array, []);
   world(SETTINGS.STATE, Object, {});
   world(SETTINGS.SHOP_OPEN, Boolean, true);
+  world(SETTINGS.ROUNDS, Object, {});
   game.settings.register(MODULE_ID, SETTINGS.SOUND, {
     name: "Crate sounds",
     hint: "Play the tick, slow-down and reveal sounds when a crate opens.",
@@ -186,6 +188,27 @@ export async function updateLog(id, patch) {
   const row = log.find(r => r.id === id);
   if (row) Object.assign(row, patch);
   await set(SETTINGS.LOG, log);
+}
+
+// Several rows in one write (a table round's resolve): Map or entries of id -> patch.
+export async function updateLogRows(patches) {
+  const by = new Map(patches);
+  if (!by.size) return;
+  const log = getLog();
+  for (const row of log) if (by.has(row.id)) Object.assign(row, by.get(row.id));
+  await set(SETTINGS.LOG, log);
+}
+
+// The table rounds (round.js), by id. Written only inside the write queue.
+export const getRounds = () => get(SETTINGS.ROUNDS) ?? {};
+export async function saveRound(round) {
+  await saveRounds([round]);
+  return round;
+}
+export async function saveRounds(list) {
+  const rounds = getRounds();
+  for (const round of list) rounds[round.id] = round;
+  await set(SETTINGS.ROUNDS, pruneRounds(rounds));
 }
 
 // A pool entry from an Item document or a compendium index row. The

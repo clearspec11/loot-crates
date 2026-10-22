@@ -103,6 +103,43 @@ export const DECK = {
 // Tam's draws at it in a row (the harness's now is Date.now()), newest first.
 export const deckDraws = (n, now = Date.now()) => Array.from({ length: n }, (_, i) => ({ id: `draw${i}`, kind: "deck", boxId: DECK.id, boxName: DECK.name, actorId: "tam", actorName: "Tam Thornwick", cardId: "blank", card: "A blank card", cardKind: "blank", at: now - 20000 * (i + 1), price: DECK.price, payoutCp: 0, name: "A blank card" }));
 
+// The Wheel of Fate (roulette.js): twelve pockets in Evocation red and
+// Abjuration black across four rarity bands, 5 gp to 50 gp a bet, three
+// bets a character, a 45-second window; a winning bet on a rarity band
+// also draws an item of that rarity from Leigh's homebrew.
+export const ROULETTE = {
+  id: "wheel", kind: "roulette", name: "Wheel of Fate", price: 5,
+  pools: [{ id: "homebrew", share: 1 }],
+  weights: {},
+  roulette: {
+    colours: ["Evocation red", "Abjuration black"],
+    pockets: [
+      { colour: 0, rarity: "common" }, { colour: 1, rarity: "uncommon" }, { colour: 0, rarity: "common" }, { colour: 1, rarity: "uncommon" },
+      { colour: 1, rarity: "rare" }, { colour: 0, rarity: "common" }, { colour: 0, rarity: "uncommon" }, { colour: 1, rarity: "common" },
+      { colour: 0, rarity: "legendary" }, { colour: 1, rarity: "uncommon" }, { colour: 1, rarity: "common" }, { colour: 0, rarity: "rare" },
+    ],
+    payouts: { colour: 2, parity: 2, number: 12, rarity: 3 },
+    itemOnRarity: true, maxStake: 50, maxBets: 3, windowSec: 45,
+  },
+  rules: {},
+};
+// The round the harness's wheel is in: open with its clock 42 s out.
+export const rouletteRound = (now = Date.now(), { status = "open", closesAt = now + 42000 } = {}) => ({ id: "R1", boxId: ROULETTE.id, kind: "roulette", status, opensAt: now - 3000, closesAt });
+// Three characters' bets on it, newest first: Tam on red and on 7, Orla
+// on Rare and on even, Bo on black.
+const WHEEL_BETS = [
+  ["bo", "Bo Marrow", { type: "colour", pick: 1 }, "Abjuration black", 10],
+  ["orla", "Orla Vane", { type: "parity", pick: "even" }, "Even", 5],
+  ["orla", "Orla Vane", { type: "rarity", pick: "rare" }, "Rare", 5],
+  ["tam", "Tam Thornwick", { type: "number", pick: 7 }, "7", 5],
+  ["tam", "Tam Thornwick", { type: "colour", pick: 0 }, "Evocation red", 20],
+];
+export const wheelStakes = (now = Date.now(), n = WHEEL_BETS.length) => WHEEL_BETS.slice(0, n).map(([actorId, actorName, bet, label, price], i) => ({
+  id: `bet${i}`, kind: "roulette", boxId: ROULETTE.id, boxName: ROULETTE.name, actorId, actorName, userId: actorId, itemId: null,
+  price, payoutCp: 0, status: "open", roundId: "R1", at: now - 1000 * (i + 1),
+  stake: { label, type: bet.type, pick: bet.pick, swatch: bet.type === "rarity" ? bet.pick : "coin", stake: price }, name: label,
+}));
+
 export const BOXES = [
   BOX,
   { id: "common", name: "Pauper's Box", price: 25, pools: [{ id: "core", share: 1 }], weights: { common: 85, uncommon: 15, rare: 0, veryRare: 0, legendary: 0 }, rules: {} },
@@ -112,6 +149,7 @@ export const BOXES = [
   WELL,
   DICE,
   DECK,
+  ROULETTE,
 ];
 
 // The pool editor's sample: the core pool, a 130-entry pool built from a

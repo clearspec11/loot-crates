@@ -29,8 +29,12 @@
 //      again (none) and Draw again (shown to the buyer, "Draw again for 15
 //      gp") are read; the GM's reveal must show the same card. The item is
 //      granted only if the card was the item card.
-//   2. The player presses Draw again in that window: this window must close
-//      and a second open, held and turned the same way, at 15 gp, with the
+//   2. The player focuses Draw again in that window and presses Enter (a
+//      real key press): this window must close and a second open, focus
+//      must go from the old window straight to the new window's Close
+//      (Skip until the landing) and sit there at every frame, never the
+//      shop's held Buy or the page's body; the second is held and turned
+//      the same way, at 15 gp, with the
 //      head saying "2nd in a row", the cards left down to "1 of 3 cards
 //      left" and Draw again now at 22 gp 5 sp. The purse must have dropped
 //      by 10 gp then 15 gp (plus or less what the cards did), and the two
@@ -172,12 +176,26 @@ const readReveal = page => page.evaluate(() => {
 });
 
 /*
-  One draw on the player's page, from `press` (the shop's Buy, or the open
-  reveal's Draw again), watched frame by frame to the landing: the new
-  window's card front must never face the viewer before the turn, and the
-  pull's chat card must render sealed until then.
+  One draw on the player's page, from `press` (the shop's Buy, clicked, or
+  the open reveal's Draw again, focused and pressed with a real Enter from
+  the keyboard), watched frame by frame to the landing: the new window's
+  card front must never face the viewer before the turn, the pull's chat
+  card must render sealed until then, and where focus is at each frame is
+  recorded (the old window, the new window's Close, the shop's held Buy,
+  the page's body, anything else).
 */
-const drawAndWatch = (page, { deckId, press }) => page.evaluate(async ({ base, deckId, press }) => {
+async function drawAndWatch(page, { deckId, press }) {
+  const focused = await page.evaluate(armDraw, { base: MODULE_BASE, deckId, press });
+  if (!focused) throw new Error(`could not focus ${press}`);
+  if (press === "again") await page.keyboard.press("Enter");
+  else await page.evaluate(() => globalThis.__lcDraw.press());
+  return page.evaluate(() => globalThis.__lcDraw.result);
+}
+
+// Runs in the page: focuses the button and starts watching, the clock from
+// the press (Enter's keydown on it, or the click). Resolves to whether the
+// button has focus; the watch's report is globalThis.__lcDraw.result.
+function armDraw({ base, deckId, press }) {
   const app = [...foundry.applications.instances.values()].find(a => a.options?.id === "loot-crates-shop");
   const card = () => app?.element?.querySelector(`.lc-box[data-box="${deckId}"]`);
   const readCard = () => ({
@@ -193,72 +211,97 @@ const drawAndWatch = (page, { deckId, press }) => page.evaluate(async ({ base, d
   const before = readCard();
   const seen = new Set(document.querySelectorAll(".lc-reveal"));
   const openBefore = [...document.querySelectorAll(".application.lc-reveal")];
+  const button = press === "buy" ? card()?.querySelector(".lc-box__buy") : openBefore.at(-1)?.querySelector(".lc-reveal__again");
+  if (!button) throw new Error(`no ${press} button to press`);
+  if (button.getAttribute("aria-disabled") === "true") throw new Error(`${press} is off: ${readCard().why || openBefore.at(-1)?.querySelector(".lc-reveal__why")?.textContent}`);
+  let t0 = null, start;
+  const pressed = new Promise(r => { start = () => { if (t0 == null) { t0 = performance.now(); r(); } }; });
+  button.addEventListener("keydown", e => { if (e.key === "Enter") start(); }, { capture: true, once: true });
   const renders = [];
   const onRender = (m, html) => {
     if (!m.flags?.["loot-crates"]?.logId) return;
     renders.push({ ms: performance.now() - t0, sealed: !!html.querySelector(".lc-chat--sealed"), itemShown: (html.querySelector(".lc-chat__item")?.getClientRects().length ?? 0) > 0, opening: /Opening…/.test(html.textContent) });
   };
   const hookId = Hooks.on("renderChatMessageHTML", onRender);
-  let button;
-  if (press === "buy") button = card()?.querySelector(".lc-box__buy");
-  else button = openBefore.at(-1)?.querySelector(".lc-reveal__again");
-  if (!button) throw new Error(`no ${press} button to press`);
-  if (button.getAttribute("aria-disabled") === "true") throw new Error(`${press} is off: ${readCard().why || openBefore.at(-1)?.querySelector(".lc-reveal__why")?.textContent}`);
-  button.focus();
-  const t0 = performance.now();
-  button.click();
-  const turnedOf = rv => { const c = rv?.querySelector(".lc-deck__card"); if (!c) return null; const m = new DOMMatrix(getComputedStyle(c).transform); return m.m11 < 0; };
-  let frames = 0, heldFrames = 0, firstTurnMs = null, landedFrameMs = null, done = false;
-  const frame = () => {
-    if (done) return;
-    const rv = [...document.querySelectorAll(".lc-reveal")].find(el => !seen.has(el));
-    if (rv?.querySelector(".lc-deck--landed")) { landedFrameMs ??= Math.round(performance.now() - t0); return; }
-    frames++;
-    if (rv) {
-      if (turnedOf(rv)) firstTurnMs ??= Math.round(performance.now() - t0);
-      else if (firstTurnMs == null) heldFrames++;
-    }
+  // Where focus is, by what a screen reader would announce there.
+  const old = openBefore.at(-1) ?? null;
+  const focusOf = rv => {
+    const a = document.activeElement;
+    if (!a || a === document.body || a === document.documentElement) return "body";
+    if (old?.isConnected && old.contains(a)) return "old window";
+    if (rv && a === rv.querySelector(".lc-reveal__close")) return "new Close";
+    if (rv?.contains(a)) return "new window, not Close";
+    if (a.matches?.(".lc-box__buy")) return a.getAttribute("aria-disabled") === "true" ? "held Buy" : "Buy";
+    return `other ${a.tagName.toLowerCase()}.${a.className}`;
+  };
+  // Each place focus was, in order, with how many frames it stayed there.
+  const focusPath = [];
+  const noteFocus = rv => {
+    const at = focusOf(rv);
+    const last = focusPath.at(-1);
+    if (last?.at === at) last.frames++;
+    else focusPath.push({ at, frames: 1, ms: Math.round(performance.now() - t0), oldOpen: !!old?.isConnected });
+  };
+  const watch = async () => {
+    await pressed;
+    const turnedOf = rv => { const c = rv?.querySelector(".lc-deck__card"); if (!c) return null; const m = new DOMMatrix(getComputedStyle(c).transform); return m.m11 < 0; };
+    let frames = 0, heldFrames = 0, firstTurnMs = null, landedFrameMs = null, done = false;
+    const frame = () => {
+      if (done) return;
+      const rv = [...document.querySelectorAll(".lc-reveal")].find(el => !seen.has(el));
+      noteFocus(rv);
+      if (rv?.querySelector(".lc-deck--landed")) { landedFrameMs ??= Math.round(performance.now() - t0); return; }
+      frames++;
+      if (rv) {
+        if (turnedOf(rv)) firstTurnMs ??= Math.round(performance.now() - t0);
+        else if (firstTurnMs == null) heldFrames++;
+      }
+      requestAnimationFrame(frame);
+    };
     requestAnimationFrame(frame);
+    let rv = null, revealMs = null, landedMs = null, drawingLabel = null;
+    for (let i = 0; i < 400 && landedMs == null; i++) {
+      await new Promise(r => setTimeout(r, 50));
+      if (press === "again") { const l = openBefore.at(-1)?.querySelector(".lc-reveal__again")?.textContent.trim(); if (l && l !== "Draw again for 15 gp") drawingLabel ??= l; }
+      rv ??= [...document.querySelectorAll(".lc-reveal")].find(el => !seen.has(el)) ?? null;
+      if (rv && revealMs == null) revealMs = Math.round(performance.now() - t0);
+      if (rv?.querySelector(".lc-deck--landed")) landedMs = Math.round(performance.now() - t0);
+    }
+    done = true;
+    await new Promise(r => setTimeout(r, 1200));
+    Hooks.off("renderChatMessageHTML", hookId);
+    const landedAt = landedFrameMs ?? landedMs;
+    const result = rv?.querySelector(".lc-reveal__result");
+    const again = rv?.querySelector(".lc-reveal__again");
+    const reveal = rv ? {
+      ms: { reveal: revealMs, landed: landedAt },
+      card: rv.querySelector(".lc-deck__label")?.textContent.trim() ?? null,
+      kind: rv.querySelector(".lc-deck__kind")?.textContent.trim() ?? null,
+      tone: rv.querySelector(".lc-deck")?.dataset.tone ?? null,
+      head: rv.querySelector(".lc-reveal__head")?.innerText.replace(/\s+/g, " ").trim() ?? null,
+      result: result?.innerText.replace(/\s+/g, " ").trim() ?? null,
+      liveRegion: !!result?.closest("[aria-live]"),
+      focusOnClose: document.activeElement?.matches?.(".lc-reveal__close") ?? false,
+      watchAgain: !!(rv.querySelector(".lc-reveal__watch") && !rv.querySelector(".lc-reveal__watch").hidden),
+      again: again && !again.hidden ? { text: again.textContent.trim(), off: again.getAttribute("aria-disabled") === "true", why: rv.querySelector(".lc-reveal__why")?.textContent.trim() ?? "" } : null,
+      openItem: !!(rv.querySelector(".lc-reveal__open") && !rv.querySelector(".lc-reveal__open").hidden),
+    } : null;
+    const openAfter = [...document.querySelectorAll(".application.lc-reveal")].length;
+    const previousClosed = press === "again" ? !openBefore.at(-1)?.isConnected : null;
+    const actor = game.actors.find(a => a.isOwner && a.type === "character");
+    const { getLog } = await import(base + "scripts/store.js");
+    const row = getLog().filter(r => r.boxId === deckId).sort((a, b) => b.at - a.at)[0] ?? null;
+    noteFocus(rv);
+    return {
+      before, reveal, frames, heldFrames, firstTurnMs, renders: renders.map(r => ({ ...r, ms: Math.round(r.ms) })), landedAt, openAfter, previousClosed, drawingLabel, focusPath,
+      purse: foundry.utils.deepClone(actor.system.currency), items: actor.items.size, cardAfter: readCard(),
+      row: row && { id: row.id, cardId: row.cardId, card: row.card, cardKind: row.cardKind, tone: row.tone, once: row.once, price: row.price, payoutCp: row.payoutCp, itemId: row.itemId, streak: row.streak, item: row.itemId ? { name: actor.items.get(row.itemId)?.name ?? null, type: actor.items.get(row.itemId)?.type ?? null } : null },
+    };
   };
-  requestAnimationFrame(frame);
-  let rv = null, revealMs = null, landedMs = null, drawingLabel = null;
-  for (let i = 0; i < 400 && landedMs == null; i++) {
-    await new Promise(r => setTimeout(r, 50));
-    if (press === "again") { const l = openBefore.at(-1)?.querySelector(".lc-reveal__again")?.textContent.trim(); if (l && l !== "Draw again for 15 gp") drawingLabel ??= l; }
-    rv ??= [...document.querySelectorAll(".lc-reveal")].find(el => !seen.has(el)) ?? null;
-    if (rv && revealMs == null) revealMs = Math.round(performance.now() - t0);
-    if (rv?.querySelector(".lc-deck--landed")) landedMs = Math.round(performance.now() - t0);
-  }
-  done = true;
-  await new Promise(r => setTimeout(r, 1200));
-  Hooks.off("renderChatMessageHTML", hookId);
-  const landedAt = landedFrameMs ?? landedMs;
-  const result = rv?.querySelector(".lc-reveal__result");
-  const again = rv?.querySelector(".lc-reveal__again");
-  const reveal = rv ? {
-    ms: { reveal: revealMs, landed: landedAt },
-    card: rv.querySelector(".lc-deck__label")?.textContent.trim() ?? null,
-    kind: rv.querySelector(".lc-deck__kind")?.textContent.trim() ?? null,
-    tone: rv.querySelector(".lc-deck")?.dataset.tone ?? null,
-    head: rv.querySelector(".lc-reveal__head")?.innerText.replace(/\s+/g, " ").trim() ?? null,
-    result: result?.innerText.replace(/\s+/g, " ").trim() ?? null,
-    liveRegion: !!result?.closest("[aria-live]"),
-    focusOnClose: document.activeElement?.matches?.(".lc-reveal__close") ?? false,
-    watchAgain: !!(rv.querySelector(".lc-reveal__watch") && !rv.querySelector(".lc-reveal__watch").hidden),
-    again: again && !again.hidden ? { text: again.textContent.trim(), off: again.getAttribute("aria-disabled") === "true", why: rv.querySelector(".lc-reveal__why")?.textContent.trim() ?? "" } : null,
-    openItem: !!(rv.querySelector(".lc-reveal__open") && !rv.querySelector(".lc-reveal__open").hidden),
-  } : null;
-  const openAfter = [...document.querySelectorAll(".application.lc-reveal")].length;
-  const previousClosed = press === "again" ? !openBefore.at(-1)?.isConnected : null;
-  const actor = game.actors.find(a => a.isOwner && a.type === "character");
-  const { getLog } = await import(base + "scripts/store.js");
-  const row = getLog().filter(r => r.boxId === deckId).sort((a, b) => b.at - a.at)[0] ?? null;
-  return {
-    before, reveal, frames, heldFrames, firstTurnMs, renders: renders.map(r => ({ ...r, ms: Math.round(r.ms) })), landedAt, openAfter, previousClosed, drawingLabel,
-    purse: foundry.utils.deepClone(actor.system.currency), items: actor.items.size, cardAfter: readCard(),
-    row: row && { id: row.id, cardId: row.cardId, card: row.card, cardKind: row.cardKind, tone: row.tone, once: row.once, price: row.price, payoutCp: row.payoutCp, itemId: row.itemId, streak: row.streak, item: row.itemId ? { name: actor.items.get(row.itemId)?.name ?? null, type: actor.items.get(row.itemId)?.type ?? null } : null },
-  };
-}, { base: MODULE_BASE, deckId, press });
+  globalThis.__lcDraw = { press: () => { start(); button.click(); }, result: watch() };
+  button.focus();
+  return document.activeElement === button;
+}
 
 // The GM refunds a row from the Pull log, as a person does: the tab, Refund, Yes.
 async function refundFromLog(gm, rowId) {
@@ -382,6 +425,10 @@ async function refundFromLog(gm, rowId) {
       drawAgainOffered: f.reveal?.again?.text === "Draw again for 15 gp" && f.reveal.again.off === false,
       secondWords: /draws from Live deck 15 gp · 2nd in a row$/.test(s.reveal?.head ?? "") && /1 of 3 cards left/.test(s.reveal?.result ?? "") && s.reveal?.again?.text === "Draw again for 22 gp 5 sp" && s.previousClosed === true && s.openAfter === 1,
       drawingLabel: s.drawingLabel === "Drawing…",
+      // Enter on Draw again: focus stays in the old window until the new one
+      // opens, then sits on the new window's Close (Skip till the landing)
+      // at every frame, never the shop's held Buy or the page's body.
+      againFocus: s.focusPath.length >= 2 && s.focusPath[0].at === "old window" && s.focusPath.slice(1).every(p => p.at === "new Close") && s.focusPath.every(p => p.at === "old window" || p.at === "new Close"),
       // At least one item per item card: a granted container brings its contents with it (dnd5e), as a crate's would.
       itemOnlyForItemCard: (r1.cardId === "live-item") === (r1.itemId != null) && (r2.cardId === "live-item") === (r2.itemId != null) && f.reveal?.openItem === (r1.cardId === "live-item") && s.reveal?.openItem === (r2.cardId === "live-item") && rows.items >= before.items + rows.rows.filter(r => r.itemId).length && (rows.rows.some(r => r.itemId) || rows.items === before.items),
       // What that check read, for the record.

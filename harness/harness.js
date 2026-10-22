@@ -48,12 +48,25 @@
   also shows Draw again, as the buyer alone sees it.
   ?streak=1 (shop: Tam drew from the deck a moment ago, so its card prices
   the next draw at 15 gp and says so)
+  ?round=none | closed (shop: the Wheel of Fate has no round open, or its
+  bets are closed, so its card says so with its Buy off; by default a
+  round is open with 42 s on the clock and "Place a bet" is on)
+  "table" is the shared table window (tableview.js) on the Wheel of Fate
+  (roulette.js): ?phase=betting (three characters' chips on the rail, the
+  clock, Tam's bet form) | waiting (bets closed, the GM's view with Spin:
+  add &gm=1) | closed (bets closed, as a player sees it) | spinning (the
+  ball running; ?duration=100000 holds it mid-spin, reduced motion off) |
+  landed (?outcome=win lands on 7, where Tam has two bets; lose on 8,
+  where Orla and Bo have theirs; ?duration=0 lands at once); gm=1 shows
+  the GM's controls.
 */
-import { POOLS, BOX, BOXES, WELL, DICE, DICE_FACES, DECK, deckDraws, wellThrows, MANAGER_POOLS, MANAGER_SOURCES, MANAGER_BOXES } from "./sample.js";
+import { POOLS, BOX, BOXES, WELL, DICE, DICE_FACES, DECK, ROULETTE, rouletteRound, wheelStakes, deckDraws, wellThrows, MANAGER_POOLS, MANAGER_SOURCES, MANAGER_BOXES } from "./sample.js";
 import { getKind, kindOf } from "../module/scripts/kinds.js";
 import { mountWell } from "../module/scripts/well.js";
 import { mountDice, resolve, rollData, parseFormula } from "../module/scripts/dicegame.js";
 import { mountDeck, TONE_OF, CARD_KIND_LABEL, priceAt, deckPlan } from "../module/scripts/deck.js";
+import { resolve as resolveBets, pocketsOf, coloursOf, betName } from "../module/scripts/roulette.js";
+import { tableBodyHTML } from "../module/scripts/tableview.js";
 import { poolRows, sortRows, defaultView, poolSummary, poolBody, pinRecent, dropNotice, poolUsers } from "../module/scripts/poolview.js";
 import { draw, seededRng } from "../module/scripts/odds.js";
 import { buildStrip } from "../module/scripts/strip.js";
@@ -81,7 +94,7 @@ const theme = q.get("theme") === "light" ? "light" : "dark";
 document.body.classList.replace("theme-dark", `theme-${theme}`);
 
 // The window the module would open for this state: its class and title.
-const WINDOWS = { shop: ["lc-shop", "Crate Shop"], manager: ["lc-manager", "Loot Crates"], well: ["lc-reveal", "A coin in the well"], dice: ["lc-reveal", "Dragon's Teeth"], deck: ["lc-reveal", "A card from the deck"] };
+const WINDOWS = { shop: ["lc-shop", "Crate Shop"], manager: ["lc-manager", "Loot Crates"], well: ["lc-reveal", "A coin in the well"], dice: ["lc-reveal", "Dragon's Teeth"], deck: ["lc-reveal", "A card from the deck"], table: ["lc-table", `The wheel at ${ROULETTE.name}`] };
 const [appClass, appTitle] = WINDOWS[state] ?? ["lc-reveal", "Opening a crate"];
 document.getElementById("app").classList.add(appClass);
 if (Number(q.get("width")) > 0) Object.assign(document.getElementById("app").style, { width: `${Number(q.get("width"))}px`, maxWidth: "100%" });
@@ -93,14 +106,14 @@ document.getElementById("title").textContent = appTitle;
 const CRATE_ICON = `<svg class="lc-box__icon" viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M3 8.5 12 4l9 4.5v8L12 21l-9-4.5z"/><path d="M3 8.5 12 13l9-4.5M12 13v8"/></svg>`;
 
 const nav = document.getElementById("nav");
-for (const [label, query] of [["shop", "state=shop"], ["spin", "state=spin"], ["landed", "state=landed"], ["landed, buyer", "state=landed&buyer=1"], ["missed", "state=landed&buyer=1&watched=0"], ["replay", "state=replay"], ["well", "state=well&buyer=1"], ["well, coin", "state=well&outcome=coin&buyer=1"], ["well, item", "state=well&outcome=item&buyer=1"], ["dice", "state=dice&buyer=1"], ["dice, lost", "state=dice&outcome=lose&buyer=1"], ["dice, prize", "state=dice&outcome=prize&buyer=1"], ["deck", "state=deck&buyer=1"], ["deck, item", "state=deck&outcome=item&buyer=1"], ["deck, bane", "state=deck&outcome=loss&buyer=1"], ["deck, effect", "state=deck&outcome=effect&buyer=1"], ["manager", "state=manager"]]) {
+for (const [label, query] of [["shop", "state=shop"], ["spin", "state=spin"], ["landed", "state=landed"], ["landed, buyer", "state=landed&buyer=1"], ["missed", "state=landed&buyer=1&watched=0"], ["replay", "state=replay"], ["well", "state=well&buyer=1"], ["well, coin", "state=well&outcome=coin&buyer=1"], ["well, item", "state=well&outcome=item&buyer=1"], ["dice", "state=dice&buyer=1"], ["dice, lost", "state=dice&outcome=lose&buyer=1"], ["dice, prize", "state=dice&outcome=prize&buyer=1"], ["deck", "state=deck&buyer=1"], ["deck, item", "state=deck&outcome=item&buyer=1"], ["deck, bane", "state=deck&outcome=loss&buyer=1"], ["deck, effect", "state=deck&outcome=effect&buyer=1"], ["table", "state=table"], ["table, GM", "state=table&phase=waiting&gm=1"], ["wheel", "state=table&phase=spinning"], ["wheel, landed", "state=table&phase=landed&duration=0"], ["manager", "state=manager"]]) {
   const a = document.createElement("a");
   a.href = `?${query}&seed=${seed}&theme=${theme}`;
   a.textContent = label;
   if (query === `state=${state}${buyer ? "&buyer=1" : ""}${unwatched ? "&watched=0" : ""}`) a.classList.add("active");
   nav.append(a);
 }
-if (state !== "shop" && state !== "manager" && state !== "well" && state !== "dice" && state !== "deck") {
+if (state !== "shop" && state !== "manager" && state !== "well" && state !== "dice" && state !== "deck" && state !== "table") {
   const again = document.createElement("a");
   again.href = `?state=spin&seed=${seed + 1}${q.has("box") ? `&box=${q.get("box")}` : ""}${buyer ? "&buyer=1" : ""}&theme=${theme}`;
   again.textContent = "open another";
@@ -129,7 +142,10 @@ function renderShop(extra = {}) {
     stateOf: id => (pityDue && id === BOX.id ? { sinceRare: BOX.rules.pity.after } : {}),
     // The in-game day and the log the well counts today's throws from, and
     // the deck its draws in a row.
-    today: "y1d1", log: [...deckDraws(Number(q.get("streak")) || 0), ...wellThrows(q.get("well") === "capped" ? WELL.rules.cap : 1)],
+    today: "y1d1", log: [...deckDraws(Number(q.get("streak")) || 0), ...wellThrows(q.get("well") === "capped" ? WELL.rules.cap : 1), ...wheelStakes()],
+    // The wheel's round, as the card reads it: open on the clock, closed, or none.
+    rounds: q.get("round") === "none" ? {} : { R1: q.get("round") === "closed" ? rouletteRound(Date.now(), { status: "closed", closesAt: Date.now() - 1000 }) : rouletteRound() },
+    isGM: q.get("gm") === "1", now: Date.now(),
     ...(waiting ? { busy: true, busyBox: BOXES[0].id, waiting } : {}), ...extra,
   };
   const fresh = document.createElement("div");
@@ -480,8 +496,98 @@ async function renderDeck() {
   document.body.dataset.landed = "1";
 }
 
+/*
+  The shared table window as tablewindow.js opens it on the Wheel of Fate:
+  tableview.js's body, the wheel kind's stage and rail with three
+  characters' chips, the bet form (Tam's, placing a bet drops a chip),
+  the GM's Spin, and the spin to the landing with the verdict and each
+  character's net in the live region.
+*/
+async function renderTable() {
+  const phase = ["betting", "waiting", "closed", "spinning", "landed"].includes(q.get("phase")) ? q.get("phase") : "betting";
+  const gm = q.get("gm") === "1";
+  const outcome = q.get("outcome") === "lose" ? "lose" : "win";
+  const kind = getKind("roulette");
+  const view = kind.tableView;
+  const esc = s => String(s ?? "");
+  const now = Date.now();
+  const round = phase === "betting" ? rouletteRound(now) : phase === "waiting" || phase === "closed" ? rouletteRound(now, { status: "closed", closesAt: null }) : rouletteRound(now, { status: "resolved", closesAt: null });
+  let stakes = wheelStakes(now);
+  // The landing: 7 (red, uncommon: Tam's two bets win) or 8 (black, common: Orla's even and Bo's black win).
+  const index = outcome === "win" ? 6 : 7;
+  const pocket = pocketsOf(ROULETTE)[index];
+  const reveal = phase === "spinning" || phase === "landed" ? {
+    type: "round", event: "resolve", roundId: "R1", boxId: ROULETTE.id, kind: "roulette", box: { id: ROULETTE.id, name: ROULETTE.name },
+    outcome: { index, number: pocket.n, colour: pocket.colour, colourName: pocket.colourName, rarity: pocket.rarity },
+    pockets: ROULETTE.roulette.pockets, colours: coloursOf(ROULETTE),
+    stakes: stakes.map(r => ({ logId: r.id, actorId: r.actorId, actorName: r.actorName, userId: r.userId, price: r.price, stake: r.stake, action: "settle", reason: null, payoutCp: resolveBets(pocket, [{ ...r.stake, stakeCp: r.price * 100 }], ROULETTE)[0].payoutCp, name: null, result: null })),
+  } : null;
+  if (reveal) stakes = reveal.stakes.map(s => ({ id: s.logId, actorId: s.actorId, actorName: s.actorName, price: s.price, stake: s.stake, name: s.stake.label, status: "settled", payoutCp: s.payoutCp }));
+  const viewer = { isGM: gm, actors: gm ? [] : characters };
+  // "closed" is a player's view of the GM's "waiting" (tableview.js phaseOf).
+  const bodyPhase = reveal ? "spinning" : phase === "closed" ? "waiting" : phase;
+  const draw = () => {
+    stage.innerHTML = `<div class="lc-table__body">${tableBodyHTML({ kind, game: ROULETTE, round, stakes, viewer, phase: bodyPhase, now, esc })}</div>`;
+  };
+  draw();
+  const host = stage.querySelector(".lc-table__host");
+  const ctrl = view.mount(host, { pockets: view.pockets(ROULETTE), esc });
+  // The GM bets with no character here, so none of the chips are theirs.
+  const actorIds = gm ? [] : characters.map(a => a.id);
+  const paintRail = (landed = false) => ctrl.rail(view.rail(ROULETTE, stakes, { esc, outcome: landed ? reveal.outcome : null, actorIds }));
+  paintRail(false);
+  const btn = stage.querySelector(".lc-reveal__close");
+  const form = stage.querySelector(".lc-table__form");
+  if (form) {
+    form.addEventListener("change", e => {
+      if (!e.target.matches(".lc-table__type")) return;
+      form.querySelector(".lc-table__pick").innerHTML = view.pickOptions(ROULETTE, e.target.value, null, esc);
+    });
+    // A bet placed drops a chip for Tam, as the GM's "staked" would.
+    form.addEventListener("submit", e => {
+      e.preventDefault();
+      const why = form.querySelector(".lc-table__why");
+      const values = Object.fromEntries(new FormData(form).entries());
+      try {
+        const { bet, price } = view.readBet(ROULETTE, values);
+        const actor = characters.find(a => a.id === values.actorId) ?? characters[0];
+        const id = `bet${stakes.length}`;
+        stakes = [{ id, kind: "roulette", boxId: ROULETTE.id, boxName: ROULETTE.name, actorId: actor.id, actorName: actor.name, price, payoutCp: 0, status: "open", roundId: "R1", at: Date.now(), stake: { label: labelOf(bet), type: bet.type, pick: bet.pick, swatch: view.betSwatch(bet) }, name: labelOf(bet) }, ...stakes];
+        ctrl.rail(view.rail(ROULETTE, stakes, { esc, fresh: [id], actorIds }));
+        stage.querySelector(".lc-table__count").textContent = `${stakes.length} bets from 3 characters`;
+        stage.querySelector(".lc-table__live").textContent = `${actor.name} bets ${price} gp on ${labelOf(bet)}.`;
+        why.textContent = "";
+      } catch (err) { why.textContent = err.message; }
+    });
+  }
+  const labelOf = bet => betName(ROULETTE, bet);
+  stage.querySelector(".lc-table__spin")?.addEventListener("click", () => { location.search = `?state=table&phase=spinning&gm=1&seed=${seed}&theme=${theme}`; });
+  if (!reveal) { btn.addEventListener("click", () => { location.search = `?state=shop&seed=${seed}&theme=${theme}`; }); window.__lootCrates = { stakes }; document.body.dataset.ready = "1"; return; }
+  let landed = false;
+  const spin = ctrl.spin({
+    index, duration, reducedMotion: duration === 0 ? true : duration != null ? false : undefined,
+    onLand: () => {
+      landed = true;
+      stage.querySelector(".lc-vault").className = `lc-vault lc-rarity-${view.rarityOf(reveal)}`;
+      stage.querySelector(".lc-table__result").innerHTML = view.result(reveal, { esc });
+      paintRail(true);
+      const state = stage.querySelector(".lc-table__state");
+      state.textContent = "Settled";
+      state.dataset.state = "landed";
+      btn.dataset.action = "dismiss";
+      btn.textContent = "Close";
+      btn.focus({ preventScroll: true });
+    },
+  });
+  btn.addEventListener("click", () => { if (landed) location.search = `?state=shop&seed=${seed}&theme=${theme}`; else spin.skip(); });
+  window.__lootCrates = { reveal, stakes };
+  await spin.play();
+  document.body.dataset.landed = "1";
+}
+
 if (state === "shop") renderShop();
 else if (state === "manager") renderManager();
+else if (state === "table") renderTable();
 else if (state === "well") renderWell();
 else if (state === "dice") renderDice();
 else if (state === "deck") renderDeck();

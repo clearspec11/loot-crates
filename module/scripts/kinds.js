@@ -24,7 +24,11 @@
                   ctx: { game, actor, state, log, today, now }. The core
                   checks the Buy's price against it, charges it, and writes
                   it to the row and the reveal, so a refund gives back what
-                  was paid. A kind without one plays at game.price.
+                  was paid. A kind without one plays at game.price. A Buy
+                  whose price the kind names a few seconds either side of
+                  `now` (pull.js PRICE_SKEW_MS: clock skew at the deck's
+                  streak boundary) is charged at that price, and the roll
+                  gets that moment as `now`.
     roll(ctx)     GM side, before anything is charged, so a failed roll costs
                   nothing. ctx: { game, pools, actor, state, rng,
                   resolveSource, onMissing, log, today, now, price }: `log`
@@ -82,6 +86,50 @@
     shop          { card(game, pools, ctx) -> html, reason(game, pools,
                   ctx) -> why it can't be bought or "" }; a kind without
                   these gets the crate's card and rules.
+
+  A table game (Roulette; the Auction to come) is played in rounds the
+  whole table stakes on, one resolve settling every stake (round.js,
+  table.js). It is a kind with `table: true`; it is staked, never pulled,
+  and the money, the hold and the log are still the core's:
+    table         true
+    priceOf(ctx)  as above, with ctx.bet: what this stake costs (the amount
+                  the player chose); the core checks, charges and logs it.
+    stake(ctx)    GM side at charge time, optional: { game, actor, bet,
+                  round, stakes (the round's live log rows), log, price } ->
+                  what the open row keeps of the bet ({ label?, ... }; the
+                  row is named by `label`), plus `outbid`: ids of open rows
+                  this stake displaces, refunded in the same queued task
+                  (the Auction's one open stake per lot). Throws a PullError
+                  for a bet the round can't take.
+    roll(ctx)     GM side at the resolve, once per round: { game, round,
+                  stakes (the open rows), rng, log, now, pools,
+                  resolveSource } -> { outcome, grants?, ...whatever the
+                  reveal broadcast carries besides }. `grants` (Item data
+                  by row id, with its `result`) is for stakes that won an
+                  item: the core grants them at the resolve and never
+                  broadcasts them.
+    settle(ctx)   per open stake that passed the resolve's guards: { game,
+                  round, outcome, row, stake, grants } -> { payoutCp,
+                  name?, result?, grant? }: the coins the character gets
+                  back in copper (the stake was taken already, so 0 is a
+                  loss and a 1:1 win on 10 gp is 2000), what the row is
+                  called after, and the item it won, if any.
+    tableView     the shared table window's pieces (tableview.js,
+                  tablewindow.js): { title(game), verb ("bets"), words
+                  (what the round is doing, in this game's voice, over
+                  round.js ROUND_WORDS: { open, closed, waiting, clock(left),
+                  held, none }), fields(game, { esc, values }) -> the bet
+                  form's fields,
+                  pickOptions(game, type, picked, esc), readBet(game,
+                  values) -> { bet, price } or a PullError, mount(host, {
+                  pockets, esc }) -> { rail(html), spin({ index, onTick,
+                  onDrop, onLand, duration, reducedMotion }) -> the play
+                  controller }, rail(game, stakes, { esc, outcome, fresh,
+                  actorIds }) -> html, pockets(game), pocketsIn(reveal),
+                  outcomeIndex(reveal), result(reveal, { esc }) -> html,
+                  sting(reveal, { actorIds }), sounds: { tick(progress),
+                  drop() }, windowMs(game), rarityOf(reveal) }.
+  The window that plays a round plugs into reveal.js setTableWindow.
 */
 
 // The error a player is shown, as one plain sentence. Here so a kind can

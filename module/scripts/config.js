@@ -7,6 +7,8 @@ export const SETTINGS = {
   LOG: "pullLog",
   STATE: "actorState",
   SHOP_OPEN: "shopOpen",
+  // The table rounds (round.js): one betting window per round, by id.
+  ROUNDS: "tableRounds",
   SOUND: "sound",
 };
 

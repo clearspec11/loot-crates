@@ -294,10 +294,12 @@ async function restore(gm, before) {
       // Hide misses, then show them again.
       click(app.element.querySelector('[data-action="toggleMisses"]'));
       await until(() => app.element?.querySelector('[data-action="toggleMisses"]')?.getAttribute("aria-pressed") === "true", 5000);
-      const hidden = { groups: app.element.querySelectorAll(".lc-row--group").length, button: app.element.querySelector('[data-action="toggleMisses"]')?.textContent.trim() };
+      const hidden = { groups: [...app.element.querySelectorAll(".lc-row--group")].filter(tr => /throws?, nothing/.test(tr.innerText)).length, button: app.element.querySelector('[data-action="toggleMisses"]')?.textContent.trim() };
       click(app.element.querySelector('[data-action="toggleMisses"]'));
-      await until(() => app.element?.querySelector(".lc-row--group"), 5000);
+      // A table round's header is a .lc-row--group too, and stays while
+      // misses are hidden: wait for the redraw that shows them again.
       const refundBtn = () => [...app.element.querySelectorAll(".lc-row--group button[data-action=refund]")].find(b => b.closest("tr").innerText.includes("Crate Tester"));
+      await until(() => app.element?.querySelector('[data-action="toggleMisses"]')?.getAttribute("aria-pressed") === "false" && refundBtn(), 5000);
       if (!refundBtn()) throw new Error("no Refund one on Crate Tester's folded row");
       const rowId = refundBtn().dataset.row;
       refundBtn().focus();

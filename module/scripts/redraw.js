@@ -15,7 +15,10 @@
 import { SETTINGS } from "./config.js";
 
 // The log too: a well's card counts today's throws from it (well.js).
-export const SHOP_KEYS = [SETTINGS.BOXES, SETTINGS.POOLS, SETTINGS.STATE, SETTINGS.SHOP_OPEN, SETTINGS.LOG];
+// The rounds: a table game's card says whether bets are open.
+export const SHOP_KEYS = [SETTINGS.BOXES, SETTINGS.POOLS, SETTINGS.STATE, SETTINGS.SHOP_OPEN, SETTINGS.LOG, SETTINGS.ROUNDS];
+// An open table window shows the round's stakes (the log) and its state.
+export const TABLE_KEYS = [SETTINGS.LOG, SETTINGS.ROUNDS, SETTINGS.BOXES];
 export const REDRAW_DELAY_MS = 100;
 
 /*
@@ -29,7 +32,7 @@ export const REDRAW_DELAY_MS = 100;
 let heard = 0;
 export const changeCount = () => heard;
 
-export function storeRedraw({ refreshShop, refreshManager, delay = REDRAW_DELAY_MS }) {
+export function storeRedraw({ refreshShop, refreshManager, refreshTables = null, delay = REDRAW_DELAY_MS }) {
   const keys = new Set();
   let timer = null;
   let last = 0;
@@ -40,6 +43,7 @@ export function storeRedraw({ refreshShop, refreshManager, delay = REDRAW_DELAY_
     const run = (what, fn) => { try { fn(); } catch (err) { console.error(`loot-crates | redrawing the ${what} failed`, err); } };
     if (changed.some(k => SHOP_KEYS.includes(k))) run("shop", refreshShop);
     run("manager", () => refreshManager(changed, last));
+    if (refreshTables && changed.some(k => TABLE_KEYS.includes(k))) run("table", refreshTables);
   };
   return key => {
     keys.add(key);

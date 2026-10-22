@@ -25,18 +25,23 @@
   before the redraw showed it. That line stays while it still holds and
   clears on the next Buy that goes out.
 */
-import { getBoxes, getPools, getLog, getActorState, isShopOpen, todayKey } from "./store.js";
+import { getBoxes, getPools, getLog, getRounds, getActorState, isShopOpen, todayKey } from "./store.js";
 import { formatGold } from "./currency.js";
 import { actorPicker, boxCard, buyReason, changedCharacterLine, crateReason, refusalLine, shopHTML, shopNotice, shopReason, patchShop, pickActor } from "./boxcard.js";
 import { shopOdds } from "./odds.js";
 import { requestPull } from "./socket.js";
 import { heldState, onRelease } from "./reveal.js";
 import { getKind, kindOf } from "./kinds.js";
-// The crate, the well, the dice and the deck register themselves when imported, so every record is found.
+// A table game's Buy opens the table (tablewindow.js), loaded when it is
+// first pressed: that window imports this file for the characters a player
+// may bet with, and the kinds' tests run the shop without it.
+const openTableFor = boxId => import("./tablewindow.js").then(m => m.openTableFor(boxId));
+// The crate, the well, the dice, the deck and the wheel register themselves when imported, so every record is found.
 import "./crate.js";
 import "./well.js";
 import "./dicegame.js";
 import "./deck.js";
+import "./roulette.js";
 
 const { ApplicationV2 } = foundry.applications.api;
 const esc = s => foundry.utils.escapeHTML(String(s ?? ""));
@@ -50,6 +55,14 @@ const esc = s => foundry.utils.escapeHTML(String(s ?? ""));
 const shopOf = game => getKind(kindOf(game))?.shop ?? {};
 const cardFor = (game, pools, ctx) => (shopOf(game).card ?? boxCard)(game, pools, ctx);
 const reasonFor = (game, pools, ctx) => (shopOf(game).reason ?? ((b, p, c) => buyReason(b, shopOdds(b, p, c.stateOf(b.id)), c)))(game, pools, ctx);
+
+// What a play costs this character now, as the GM will check it (pull.js):
+// the kind's price (the deck's risen draw), else the record's.
+function priceNow(game, ctx) {
+  const own = getKind(kindOf(game))?.priceOf;
+  if (!own) return Number(game.price);
+  return Number(own({ game, actor: { id: ctx.actorId }, state: ctx.stateOf(game.id) ?? {}, log: ctx.log, today: ctx.today, now: ctx.now }) ?? game.price);
+}
 
 export function buyableActors(user = game.user) {
   const owned = game.actors.filter(a => a.type === "character" && a.testUserPermission(user, "OWNER"));
@@ -116,6 +129,12 @@ export class CrateShop extends ApplicationV2 {
       if (target.getAttribute?.("aria-disabled") !== "true") this.#refuse(boxId, target.dataset.price, ctx);
       return;
     }
+    // A table game isn't bought here: its Buy opens the table (the GM's
+    // opens the round first), where the bets are placed.
+    if (getKind(kindOf(box))?.table) {
+      try { await openTableFor(boxId); } catch (err) { ui.notifications.warn(err.message); }
+      return;
+    }
     this.busy = true;
     this.busyBox = boxId;
     this.said = null;
@@ -161,12 +180,12 @@ export class CrateShop extends ApplicationV2 {
       return own ? own(box, getPools(), now) : crateReason(box, shopOdds(box, getPools(), now.stateOf(boxId)), now);
     };
     const box = getBoxes()[boxId];
-    const text = refusalLine({ box, reason: box ? reasonNow(box) : "", shown, purse: ctx.purse, actorName: ctx.actorName });
-    const price = box?.price;
+    const price = box ? priceNow(box, ctx) : undefined;
+    const text = refusalLine({ box, reason: box ? reasonNow(box) : "", shown, price, purse: ctx.purse, actorName: ctx.actorName });
     const holds = () => {
       const now = getBoxes()[boxId];
       if (!box) return !now;
-      return !!now && now.price === price && !!reasonNow(now);
+      return !!now && priceNow(now, this.#ctx()) === price && !!reasonNow(now);
     };
     this.said = text ? { text, actorId: this.actorId, holds } : null;
     this.render();
@@ -214,11 +233,13 @@ export class CrateShop extends ApplicationV2 {
   #ctx() {
     const actor = this.actor;
     const gm = !!game.users.activeGM;
-    let log;
+    let log, rounds;
     return {
       purse: actor?.system?.currency ?? {}, open: isShopOpen() && gm, gmOnline: gm, hasActor: !!actor,
       actorId: actor?.id ?? null, actorName: actor?.name ?? "", stateOf: boxId => (actor ? heldState(actor.id, boxId) ?? getActorState(actor.id, boxId) : {}),
       today: todayKey(), get log() { return (log ??= getLog()); },
+      // A table game's card says what its round is doing (roulette.js).
+      get rounds() { return (rounds ??= getRounds()); }, isGM: !!game.user.isGM, now: Date.now(),
       held: boxId => !!(actor && heldState(actor.id, boxId)),
       busy: this.busy, busyBox: this.busyBox, waiting: this.waiting, art: `<i class="fas fa-box-open"></i>`, esc,
     };
@@ -265,7 +286,13 @@ export class CrateShop extends ApplicationV2 {
   // The notice node, the cards and the focused Buy are kept across renders
   // (see boxcard.js patchShop). The <select> is kept too, with the change
   // listener it got on the first render.
-  _replaceHTML(result, content) { patchShop(content, result, this.notice); }
+  _replaceHTML(result, content) {
+    patchShop(content, result, this.notice);
+    // A table game's card counting down ("Bets close in 0:42") ticks on
+    // the page's one clock (tablewindow.js), which a client that loaded
+    // mid-round has not started yet.
+    if (content.querySelector?.("[data-lc-countdown]")) import("./tablewindow.js").then(m => m.startClock()).catch(() => {});
+  }
 }
 
 let shop = null;

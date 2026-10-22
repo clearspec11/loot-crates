@@ -105,8 +105,10 @@ async function doRefund(rowId) {
 
   // Marked first: if a later write throws, a retry can't pay twice. A refund
   // that failed halfway is visible in the console and the row says refunded.
+  // An open table stake is closed by its refund (round.js rowStatus): its
+  // round stops counting it, and its resolve passes it by.
   const refunded = Date.now();
-  await updateLog(row.id, { refunded });
+  await updateLog(row.id, { refunded, ...(row.status === "open" ? { status: "refunded" } : {}) });
 
   const purse = settle(actor.system?.currency ?? {}, plan.coins);
   await actor.update({ "system.currency": purse });
@@ -117,8 +119,9 @@ async function doRefund(rowId) {
     removedItem = item.name;
   }
 
+  // A table stake (round.js) never took stock, so it gives none back.
   let stock = null;
-  if (box?.rules?.stock != null) {
+  if (box?.rules?.stock != null && !row.roundId) {
     stock = box.rules.stock + 1;
     await saveBox({ ...box, rules: { ...box.rules, stock } });
   }

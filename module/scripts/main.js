@@ -9,21 +9,25 @@
   currency.js, strip.js, spin.js) are.
 */
 import { MODULE_ID } from "./config.js";
-import { registerSettings, setStoreListener, registerIndexFields, getPools, getBoxes, getLog, savePool, saveBox, entriesFromCompendium, entryFromItem, sweepAllPools } from "./store.js";
-import { registerSocket, requestPull, isActiveGM } from "./socket.js";
+import { registerSettings, setStoreListener, registerIndexFields, getPools, getBoxes, getLog, getRounds, savePool, saveBox, entriesFromCompendium, entryFromItem, sweepAllPools } from "./store.js";
+import { registerSocket, requestPull, requestStake, isActiveGM } from "./socket.js";
 import { registerKind, getKind, kindOf } from "./kinds.js";
 import { openShop, refreshShop, registerShopHooks } from "./shop.js";
 import { openManager, refreshManager, CrateManager } from "./manager.js";
 import { storeRedraw } from "./redraw.js";
 import { performPull } from "./pull.js";
-import { showReveal, showReplay, sealChatCard, watchAgain, preSealItem } from "./reveal.js";
+import { showReveal, showReplay, sealChatCard, watchAgain, preSealItem, setTableWindow } from "./reveal.js";
+import { openRound, closeRound, resolveRound, recoverRounds, onTable } from "./table.js";
+// The shared table window registers itself with the round's messages and
+// the core's hold when imported.
+import { openTable, openTableFor, refreshTables } from "./tablewindow.js";
 import { draw, oddsTable, seededRng } from "./odds.js";
 import { buildStrip } from "./strip.js";
 
 Hooks.once("init", () => {
   registerSettings();
   // Open windows follow the world settings as any client writes them.
-  setStoreListener(storeRedraw({ refreshShop, refreshManager }));
+  setStoreListener(storeRedraw({ refreshShop, refreshManager, refreshTables }));
   registerIndexFields();
   game.settings.registerMenu(MODULE_ID, "manager", {
     name: "Pools, boxes and pulls",
@@ -39,10 +43,15 @@ Hooks.once("ready", () => {
   registerSocket();
   const mod = game.modules.get(MODULE_ID);
   // registerKind adds a game of chance that runs on the crate's core (kinds.js).
-  if (mod) mod.api = { openShop, openManager, requestPull, performPull, showReveal, showReplay, draw, oddsTable, buildStrip, seededRng, getPools, getBoxes, getLog, savePool, saveBox, entriesFromCompendium, entryFromItem, registerKind, getKind, kindOf };
+  if (mod) mod.api = { openShop, openManager, requestPull, performPull, showReveal, showReplay, draw, oddsTable, buildStrip, seededRng, getPools, getBoxes, getLog, savePool, saveBox, entriesFromCompendium, entryFromItem, registerKind, getKind, kindOf, openRound, closeRound, resolveRound, requestStake, onTable, setTableWindow, getRounds, openTable, openTableFor };
   // Flag dead pool entries once at load, so the shop's odds are honest before
   // anyone buys; each pull sweeps its own box again (socket.js).
-  if (isActiveGM()) sweepAllPools();
+  // A table round's open stakes don't outlive their window across a reload
+  // (table.js recoverRounds): the GM's load refunds them and says how many.
+  if (isActiveGM()) {
+    sweepAllPools();
+    recoverRounds().catch(err => console.error("loot-crates | refunding stale table stakes failed", err));
+  }
 });
 
 Hooks.on("renderItemDirectory", (_app, html) => {
