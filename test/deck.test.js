@@ -588,6 +588,10 @@ describe("the words", () => {
     expect(boon).toContain(`<img src="r.webp" alt="">`);
     expect(boon).toContain("Fortune · Legendary");
     expect(kind.chat.card(reveal({ card: { label: "A blank card", kind: "blank" }, tone: "blank" }), { esc, itemLink: link })).toContain(`<div class="lc-chat__rarity">Blank</div>`);
+    // A bane the purse couldn't cover in full says what it took, then what it asked.
+    const bane = reveal({ card: { label: "Ruin", kind: "loss" }, tone: "bane", lossCp: 2000, takenCp: 500, payoutCp: -500 });
+    expect(kind.chat.card(bane, { esc, itemLink: link })).toContain("Loss · 5 gp taken (it asked 20 gp; the purse had no more)");
+    expect(kind.chat.card({ ...bane, takenCp: 2000, payoutCp: -2000 }, { esc, itemLink: link })).toContain(`<div class="lc-chat__rarity">Loss · 20 gp taken</div>`);
     expect(kind.chat.card(reveal({ card: { label: "Omen", kind: "effect" }, tone: "effect", text: "<b>x</b>" }), { esc: s => String(s).replace(/</g, "&lt;"), itemLink: link })).toContain("&lt;b>x&lt;/b>");
     // Through postPullCard: posted for a miss-like card too, with the row's id.
     makeWorld();

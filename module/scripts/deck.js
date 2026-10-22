@@ -348,7 +348,9 @@ function head(reveal, { esc }) {
 }
 
 export const cardsLeftText = (left, size) => `${left} of ${size} card${size === 1 ? "" : "s"} left`;
-const takesText = reveal => `The card takes ${formatPrice((reveal.takenCp ?? 0) / 100)}${reveal.takenCp < reveal.lossCp ? ` (it asked ${formatPrice(reveal.lossCp / 100)}; the purse had no more)` : ""}`;
+// " (it asked 20 gp; the purse had no more)" when the card took less than it named.
+const shortNote = reveal => (reveal.takenCp < reveal.lossCp ? ` (it asked ${formatPrice(reveal.lossCp / 100)}; the purse had no more)` : "");
+const takesText = reveal => `The card takes ${formatPrice((reveal.takenCp ?? 0) / 100)}${shortNote(reveal)}`;
 
 /*
   What the window says once the card has turned, into its live region: an
@@ -415,7 +417,7 @@ function chatCard(reveal, { esc, itemLink }) {
   const name = tone === "boon" && r.rarity ? itemLink(reveal.itemUuid ?? r.uuid, r.name) : esc(label);
   const line = tone === "boon" ? `${esc(label)} · ${esc(RARITY_LABEL[r.rarity] ?? r.rarity ?? "")}`
     : tone === "coin" ? `Coins · ${esc(formatPrice((reveal.payoutCp ?? 0) / 100))} into the purse`
-    : tone === "bane" ? `Loss · ${esc(takesText(reveal).replace(/^The card takes /, ""))} taken`
+    : tone === "bane" ? `Loss · ${esc(formatPrice((reveal.takenCp ?? 0) / 100))} taken${esc(shortNote(reveal))}`
     : tone === "effect" ? "Effect · the GM plays it out"
     : "Blank";
   const text = tone === "effect" && reveal.text ? `<div class="lc-chat__text">${esc(reveal.text)}</div>` : "";
