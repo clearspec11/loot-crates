@@ -87,10 +87,10 @@
                   ctx) -> why it can't be bought or "" }; a kind without
                   these gets the crate's card and rules.
 
-  A table game (Roulette; the Auction to come) is played in rounds the
-  whole table stakes on, one resolve settling every stake (round.js,
-  table.js). It is a kind with `table: true`; it is staked, never pulled,
-  and the money, the hold and the log are still the core's:
+  A table game (Roulette, the Auction) is played in rounds the whole
+  table stakes on, one resolve settling every stake (round.js, table.js).
+  It is a kind with `table: true`; it is staked, never pulled, and the
+  money, the hold and the log are still the core's:
     table         true
     priceOf(ctx)  as above, with ctx.bet: what this stake costs (the amount
                   the player chose); the core checks, charges and logs it.
@@ -99,21 +99,41 @@
                   what the open row keeps of the bet ({ label?, ... }; the
                   row is named by `label`), plus `outbid`: ids of open rows
                   this stake displaces, refunded in the same queued task
-                  (the Auction's one open stake per lot). Throws a PullError
-                  for a bet the round can't take.
+                  (the Auction's one open stake per lot), and `closesIn`:
+                  ms from now the round's clock is set to in the same task
+                  (the Auction's gavel, reset by every bid). Throws a
+                  PullError for a bet the round can't take.
     roll(ctx)     GM side at the resolve, once per round: { game, round,
-                  stakes (the open rows), rng, log, now, pools,
-                  resolveSource } -> { outcome, grants?, ...whatever the
-                  reveal broadcast carries besides }. `grants` (Item data
-                  by row id, with its `result`) is for stakes that won an
-                  item: the core grants them at the resolve and never
-                  broadcasts them.
+                  stakes (the open rows), rng, log, now, pools, boxes (every
+                  game record: the Auction's sealed crate), resolveSource }
+                  -> { outcome, grants?, ...whatever the reveal broadcast
+                  carries besides }. `grants` (Item data by row id, with
+                  its `result`) is for stakes that won an item: the core
+                  grants them at the resolve and never broadcasts them.
     settle(ctx)   per open stake that passed the resolve's guards: { game,
                   round, outcome, row, stake, grants } -> { payoutCp,
-                  name?, result?, grant? }: the coins the character gets
-                  back in copper (the stake was taken already, so 0 is a
-                  loss and a 1:1 win on 10 gp is 2000), what the row is
-                  called after, and the item it won, if any.
+                  name?, note?, result?, grant?, refundOnFail? }: the
+                  coins the character gets back in copper (the stake was
+                  taken already, so 0 is a loss and a 1:1 win on 10 gp is
+                  2000), what the row is called after, its line in the
+                  Pull log, the item it won, if any, and whether a grant
+                  that fails hands the stake back (a bid paid for the item
+                  alone). Or { refund: reason }: the stake comes back whole
+                  (the Auction's reserve not met, "reserve"; its lot gone,
+                  "lot"; round.js stakeNote says why in the log).
+    openReason(game)  why no round can open on this game yet, or "" (the
+                  Auction with no lot); table.js openRound refuses with it.
+    hammer        true: the GM's client resolves the round itself once its
+                  clock runs out (table.js watchTables), through the same
+                  resolveRound, as the Auction's gavel falls.
+    tick(ctx), tickMs  GM side, in the write queue, every tickMs while the
+                  round takes stakes: { game, round, stakes, rng, now } ->
+                  a house stake { label, amount, house, actorName, outbid,
+                  closesIn } or null (the Auction's house bidders). The
+                  core writes it as an open row with no character and no
+                  coins (`house: true`, price 0), refunds what it outbids
+                  and moves the clock in the same task, and broadcasts it
+                  as a "staked".
     tableView     the shared table window's pieces (tableview.js,
                   tablewindow.js): { title(game), verb ("bets"), words
                   (what the round is doing, in this game's voice, over
@@ -128,7 +148,19 @@
                   actorIds }) -> html, pockets(game), pocketsIn(reveal),
                   outcomeIndex(reveal), result(reveal, { esc }) -> html,
                   sting(reveal, { actorIds }), sounds: { tick(progress),
-                  drop() }, windowMs(game), rarityOf(reveal) }.
+                  drop(), bid()? }, windowMs(game), rarityOf(reveal) }.
+                  A kind may also name the window's words: betLabel(game,
+                  { stakes, values }) for the bet button (the Auction's
+                  "Bid 55 gp"; else "Place a bet"), busyLabel, spinLabel
+                  and spinningLabel for the GM's Spin, cancelLabel to give
+                  the GM Call it off (table.js cancelRound), sentence(row)
+                  and announce(row, { outbid }) for the list and the
+                  status line, count(history) for the head (every stake of
+                  the round, the beaten ones included), words.void, .list,
+                  .stakeOpen and .roundWaiting for the void head, the
+                  screen-reader list and the Pull log; and keep its form
+                  in step as stakes land (syncForm(form, { game, stakes }),
+                  onInput). fields() and readBet() get the live stakes too.
   The window that plays a round plugs into reveal.js setTableWindow.
 */
 

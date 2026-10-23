@@ -27,6 +27,7 @@
   a table game's shop card and the shared table window say one thing; a
   kind puts it in its own voice (kinds.js tableView.words).
 */
+import { getKind } from "./kinds.js";
 
 // How long an "until the GM spins" round may sit open before a GM's load
 // refunds its stakes. A reload mid-round keeps the round; one left for
@@ -109,13 +110,18 @@ export function nextStaleAt(rounds = {}) {
   is closed and the GM told) or "owner" (the staking user no longer owns
   the character, or is gone: the stake goes back to the character, not
   paid). `settle(row)` is the kind's payoff for a stake that passed: {
-  payoutCp, name?, result?, grant? }. A payout is coins back to the
+  payoutCp, name?, note?, result?, grant?, refundOnFail? } or { refund:
+  reason } for a stake the outcome hands back whole (the Auction's reserve
+  not met: "reserve", its lot gone: "lot"). A payout is coins back to the
   character, never below 0: the stake was already taken, so a table game
   can't take more. `grant` is Item data the core puts on the character's
-  sheet at the resolve (the wheel's item on a rarity band), with `result`
-  naming it ({ name, uuid, rarity }) so the row carries what the refund
-  needs. Returns [{ row, action: "settle" | "refund" | "void", reason?,
-  payoutCp, name?, result?, grant? }].
+  sheet at the resolve (the wheel's item on a rarity band, the Auction's
+  lot), with `result` naming it ({ name, uuid, rarity }) so the row carries
+  what the refund needs; `refundOnFail` hands the stake back if that grant
+  fails (a bid paid for the item alone), where a wheel's bet is still paid
+  its coins. `note` is the row's line in the Pull log (stakeNote).
+  Returns [{ row, action: "settle" | "refund" | "void", reason?, payoutCp,
+  name?, note?, result?, grant?, refundOnFail? }].
 */
 export function planResolve(rows, { check, settle }) {
   return rows.map(row => {
@@ -123,8 +129,9 @@ export function planResolve(rows, { check, settle }) {
     if (guard === "gone") return { row, action: "void", reason: "gone", payoutCp: 0 };
     if (guard !== "ok") return { row, action: "refund", reason: guard || "owner", payoutCp: 0 };
     const out = settle(row) ?? {};
+    if (out.refund) return { row, action: "refund", reason: String(out.refund), payoutCp: 0 };
     const payoutCp = Math.max(0, Math.round(Number(out.payoutCp) || 0));
-    return { row, action: "settle", payoutCp, name: out.name ?? null, result: out.result ?? null, grant: out.grant ?? null };
+    return { row, action: "settle", payoutCp, name: out.name ?? null, note: out.note ?? null, result: out.result ?? null, grant: out.grant ?? null, refundOnFail: !!out.refundOnFail };
   });
 }
 
@@ -154,7 +161,7 @@ export function coinsByActor(lines) {
 export function rowPatch(line, now = Date.now()) {
   if (line.action === "settle") {
     const item = line.itemId ? { itemId: line.itemId, uuid: line.result?.uuid ?? null, rarity: line.result?.rarity ?? null } : {};
-    return { status: "settled", payoutCp: line.payoutCp, settledAt: now, ...(line.name ? { name: line.name } : {}), ...item };
+    return { status: "settled", payoutCp: line.payoutCp, settledAt: now, ...(line.name ? { name: line.name } : {}), ...(line.note ? { note: line.note } : {}), ...item };
   }
   return { status: "refunded", payoutCp: 0, refunded: now, refundReason: line.reason };
 }
@@ -196,30 +203,54 @@ export function groupRounds(items = [], rounds = {}) {
   return out;
 }
 
-// "3 stakes, 2 open" for a round's header line.
+// A table kind's own words for the log (kinds.js tableView.words), by the row's kind.
+const wordsOf = kind => getKind(kind)?.tableView?.words ?? {};
+
+// "3 stakes, 2 open" for a round's header line ("waiting on the hammer"
+// in the Auction's words).
 export function roundLine(g) {
   const n = g.rows.filter(r => rowStatus(r) !== "refunded").length;
   const stakes = `${n} stake${n === 1 ? "" : "s"}`;
-  if (g.open) return `${stakes}, ${g.open} waiting on the spin`;
+  if (g.open) return `${stakes}, ${g.open} ${wordsOf(g.rows[0]?.kind).roundWaiting ?? "waiting on the spin"}`;
   return g.status === STATUS.RESOLVED ? `${stakes}, settled` : stakes;
 }
 
 // What happened to a table stake's coins, for its Pull log row: still
-// waiting, or why the resolve (or a GM's load) turned it back. "" for any
-// other row.
+// waiting, or why the resolve (or a GM's load) turned it back. A settled
+// row's own note (the Auction's "Won at the hammer for 55 gp.") wins over
+// "Lost at the spin.". "" for any other row.
 const STAKE_REASON = {
   owner: "Refunded at the spin: the character changed hands.",
   game: "Refunded at the spin: the game was gone.",
   gone: "The character was gone at the spin; the stake went with it.",
   stale: "Refunded when the GM loaded: the round never spun.",
   outbid: "Refunded: outbid.",
+  reserve: "Refunded at the hammer: the reserve wasn't met.",
+  lot: "Refunded at the hammer: the lot was gone.",
+  grant: "Refunded at the hammer: the lot couldn't be added to the sheet.",
+  cancel: "Refunded: the GM called the round off.",
 };
 export function stakeNote(row) {
   if (!row?.roundId) return "";
   const status = rowStatus(row);
-  if (status === "open") return "Open: waiting on the spin.";
-  if (status === "settled") return Math.round(Number(row.payoutCp) || 0) > 0 ? "" : "Lost at the spin.";
+  if (status === "open") return wordsOf(row.kind).stakeOpen ?? "Open: waiting on the spin.";
+  if (status === "settled") return row.note ?? (Math.round(Number(row.payoutCp) || 0) > 0 ? "" : "Lost at the spin.");
   return STAKE_REASON[row.refundReason] ?? "";
+}
+
+/*
+  What the GM's watch (table.js watchTables) owes a round of a kind that
+  runs itself, now: "hammer" once its clock has run out (kinds.js `hammer`:
+  the Auction's gavel), "tick" while it takes stakes and `tickMs` has
+  passed since its last turn (kinds.js `tick`: the house bidders), else
+  null. A resolved round is owed nothing.
+*/
+export function tableDue(round, kind, { now = Date.now(), lastTick = -Infinity } = {}) {
+  if (!round || !kind || round.status === STATUS.RESOLVED) return null;
+  if (kind.hammer && round.closesAt != null && now >= round.closesAt) return "hammer";
+  if (kind.hammer && round.status === STATUS.CLOSED) return "hammer";
+  if (typeof kind.tick === "function" && !stakeReason(round, now) && now - lastTick >= (Number(kind.tickMs) || 0)) return "tick";
+  return null;
 }
 
 // "0:42" from a time left in ms.

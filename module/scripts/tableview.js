@@ -25,9 +25,24 @@
 import { formatPrice } from "./currency.js";
 import { isOpenStake, stakeReason, roundState, ROUND_WORDS } from "./round.js";
 
-// "Orla Vane bets 5 gp on Red", for the status line and the list.
-export function stakeSentence(row, verb = "bets") {
+// "Orla Vane bets 5 gp on Red", for the status line and the list; a kind
+// with its own sentence (the Auction's "Orla Vane bids 55 gp") says it.
+export function stakeSentence(row, verb = "bets", view = null) {
+  if (typeof view?.sentence === "function") return view.sentence(row);
   return `${row.actorName} ${verb} ${formatPrice(row.price)} on ${row.name ?? row.stake?.label ?? "the table"}`;
+}
+
+// The head's count: the kind's own from every stake of the round, the
+// beaten ones included (the Auction's "5 bids from 3 bidders"), else the
+// live stakes counted below.
+export function countFor(view, stakes = [], history = null) {
+  return typeof view?.count === "function" ? view.count(history ?? stakes) : countText(stakes);
+}
+
+// The bet button's words: the kind's (the Auction's "Bid 55 gp", the next
+// legal bid), else "Place a bet".
+export function betLabelFor(view, game, { stakes = [], values = {} } = {}) {
+  return typeof view?.betLabel === "function" ? view.betLabel(game, { stakes, values }) : "Place a bet";
 }
 
 // "3 bets from 2 characters", "1 bet", "No bets yet".
@@ -76,7 +91,7 @@ export function stateText(round, phase, { now = Date.now(), kind = null, onReloa
   const words = kind?.tableView?.words ?? {};
   if (phase === "spinning") return roundState(round, { held: true, words });
   if (phase === "landed") return { key: "landed", text: "Settled" };
-  if (phase === "void") return { key: "void", text: onReload ? VOID_WORDS.onReload : VOID_WORDS.now };
+  if (phase === "void") return { key: "void", text: onReload ? VOID_WORDS.onReload : words.void ?? VOID_WORDS.now };
   if (phase === "waiting") return { key: "closed", text: words.waiting ?? ROUND_WORDS.waiting };
   return roundState(round, { now, words });
 }
@@ -84,9 +99,13 @@ export function stateText(round, phase, { now = Date.now(), kind = null, onReloa
 /*
   The window's body. `viewer`: { isGM, actors: [{ id, name }] (the
   characters this user may bet with), actorIds }. `values` are the form's
-  last values, kept across a redraw. `esc` escapes for the page.
+  last values, kept across a redraw. `history` is every stake of the
+  round, the ones refunded since included (the Auction's beaten bids), for
+  a kind that counts them. `esc` escapes for the page. The GM's buttons
+  are the kind's words (the Auction's "Bring the gavel down" for Spin),
+  and a kind with a cancelLabel gives the GM a way to call the round off.
 */
-export function tableBodyHTML({ kind, game, round, stakes = [], viewer = {}, phase = "betting", now = Date.now(), esc = s => String(s ?? ""), values = {}, onReload = false }) {
+export function tableBodyHTML({ kind, game, round, stakes = [], history = null, viewer = {}, phase = "betting", now = Date.now(), esc = s => String(s ?? ""), values = {}, onReload = false }) {
   const view = kind.tableView;
   const state = stateText(round, phase, { now, kind, onReload });
   const actors = viewer.actors ?? [];
@@ -97,16 +116,18 @@ export function tableBodyHTML({ kind, game, round, stakes = [], viewer = {}, pha
   const form = canBet ? `
       <form class="lc-table__form" autocomplete="off" novalidate>
         ${who}
-        ${view.fields(game, { esc, values })}
-        <button type="submit" class="lc-table__bet" data-action="placeBet">Place a bet</button>
+        ${view.fields(game, { esc, values, stakes })}
+        <button type="submit" class="lc-table__bet" data-action="placeBet">${esc(betLabelFor(view, game, { stakes, values }))}</button>
         <span class="lc-table__why" role="status"></span>
       </form>` : "";
-  const spin = viewer.isGM && (phase === "betting" || phase === "waiting") ? `<button type="button" class="lc-table__spin" data-action="spin">Spin</button>` : "";
+  const gmLive = viewer.isGM && (phase === "betting" || phase === "waiting");
+  const spin = gmLive ? `<button type="button" class="lc-table__spin" data-action="spin">${esc(view.spinLabel ?? "Spin")}</button>` : "";
+  const cancel = gmLive && view.cancelLabel ? `<button type="button" class="lc-table__cancel" data-action="cancelRound">${esc(view.cancelLabel)}</button>` : "";
   const closeLabel = phase === "spinning" ? "Skip" : "Close";
   return `
       <div class="lc-table__head lc-reveal__head">
         <strong class="lc-reveal__crate">${esc(game?.name ?? "")}</strong>
-        <span class="lc-table__count">${esc(countText(stakes))}</span>
+        <span class="lc-table__count">${esc(countFor(view, stakes, history))}</span>
         <span class="lc-table__state" role="${state.key === "clock" ? "timer" : "status"}" data-state="${esc(state.key)}"${state.closesAt ? ` data-lc-countdown="${esc(state.closesAt)}"` : ""}>${esc(state.text)}</span>
       </div>
       <div class="lc-vault lc-rarity-none">
@@ -114,10 +135,10 @@ export function tableBodyHTML({ kind, game, round, stakes = [], viewer = {}, pha
         <div class="lc-reveal__result lc-table__result" aria-live="polite"></div>
       </div>
       <p class="lc-table__live lc-sr-only" role="status"></p>
-      <ul class="lc-table__list lc-sr-only" aria-label="Bets on the table">${stakes.filter(r => isOpenStake(r) || r.status === "settled").map(r => `<li>${esc(stakeSentence(r, view.verb))}</li>`).join("")}</ul>
+      <ul class="lc-table__list lc-sr-only" aria-label="${esc(view.words?.list ?? "Bets on the table")}">${stakes.filter(r => isOpenStake(r) || r.status === "settled").map(r => `<li>${esc(stakeSentence(r, view.verb, view))}</li>`).join("")}</ul>
       ${form}
       <div class="lc-reveal__actions">
-        ${spin}
+        ${spin}${cancel}
         <button type="button" class="lc-reveal__close" data-action="${phase === "spinning" ? "skip" : "dismiss"}">${closeLabel}</button>
       </div>`;
 }

@@ -12,19 +12,59 @@
   the whole shop once in its header.
 */
 import { RARITIES, RARITY_SHORT, RARITY_LABEL } from "./config.js";
-import { shopOdds, oddsTable, flattenPool, rarityRank } from "./odds.js";
+import { shopOdds, oddsTable, flattenPool, rarityRank, chanceLabel, missChanceOf, oddsModeOf } from "./odds.js";
 import { canAfford, formatPrice, shortfall } from "./currency.js";
 import { stockOf, stockText, limitState, limitLine, withLimit } from "./limits.js";
 import { onShelf, OFF_SHELF_REASON } from "./shelf.js";
 
+// What an odds row is called: its rarity, or "Nothing" for a crate's miss.
+const rowName = (row, names = RARITY_SHORT) => (row.rarity === "none" ? "Nothing" : names[row.rarity] ?? row.rarity);
+
 // "Rare 12%": the rarity's name is on screen, not only its colour.
 export function oddPill(row) {
-  return `<span class="lc-odd lc-rarity-${row.rarity}">${RARITY_SHORT[row.rarity]} ${row.label}</span>`;
+  return `<span class="lc-odd lc-rarity-${row.rarity}">${rowName(row)} ${row.label}</span>`;
 }
 
 export function oddsPills(rows) {
   return rows.map(oddPill).join("");
 }
+
+// A box's odds rows and, when it can find nothing, a "Nothing" row after
+// them: what the pills and the ribbon show.
+export const oddsRows = odds => (odds?.nothing ? [...odds.rows, { rarity: "none", chance: odds.nothing.chance, label: odds.nothing.label }] : odds?.rows ?? []);
+
+/*
+  A crate that draws by the table's odds (odds.js oddsModeOf "weight")
+  names its items with their real chances: best finds first, up to `max`
+  of them, then "and N more" with what those add up to, then "Nothing"
+  when it can find nothing. Every chance under 1% reads "<1%", never "0%".
+  A list one longer than `max` shows in full rather than "and 1 more".
+*/
+export const CARD_CHANCES = 4;
+export function chanceLines(odds, max = CARD_CHANCES) {
+  const items = odds?.items ?? [];
+  const shown = items.length > max + 1 ? items.slice(0, max) : items;
+  const rest = items.slice(shown.length);
+  const lines = shown.map(it => ({ name: it.name, rarity: it.rarity, label: it.label }));
+  if (rest.length) {
+    const chance = rest.reduce((n, it) => n + it.chance, 0);
+    const pct = rest.reduce((n, it) => n + (it.pct ?? 0), 0);
+    lines.push({ name: `and ${rest.length} more`, rarity: "rest", label: chanceLabel(chance, pct), rest: true });
+  }
+  if (odds?.nothing) lines.push({ name: "Nothing", rarity: "none", label: odds.nothing.label });
+  return lines;
+}
+
+// The name and the chance are two spans; a screen reader hears "Flame
+// Tongue: <1%" (the shop's morph drops the whitespace between elements).
+export function chanceLinesHTML(odds, { max = CARD_CHANCES, esc = s => String(s ?? "") } = {}) {
+  const lines = chanceLines(odds, max);
+  if (!lines.length) return "";
+  return `<ul class="lc-chances">${lines.map(l => `<li class="lc-chance lc-rarity-${esc(l.rarity)}${l.rest ? " lc-chance--rest" : ""}"><span class="lc-chance__name">${esc(l.name)}</span><span class="lc-sr-only">: </span><span class="lc-chance__pct">${esc(l.label)}</span></li>`).join("")}</ul>`;
+}
+
+// The same in words, for a screen reader's one line: "Dragon Scale 1%, ...".
+export const chanceText = (odds, max = CARD_CHANCES) => chanceLines(odds, max).map(l => `${l.name} ${l.label}`).join(", ");
 
 /*
   The bet at a glance: one bar split by each rarity's real chance, in the
@@ -35,7 +75,7 @@ export function oddsRibbon(rows) {
   if (!rows?.length) return "";
   const segs = rows.map(row => {
     const share = Math.max(0, Number(row.chance) || 0);
-    return `<span class="lc-ribbon__seg lc-rarity-${row.rarity}" style="flex-grow:${+share.toFixed(4)}" title="${RARITY_LABEL[row.rarity] ?? row.rarity} ${row.label}"></span>`;
+    return `<span class="lc-ribbon__seg lc-rarity-${row.rarity}" style="flex-grow:${+share.toFixed(4)}" title="${rowName(row, RARITY_LABEL)} ${row.label}"></span>`;
   }).join("");
   return `<div class="lc-ribbon" aria-hidden="true">${segs}</div>`;
 }
@@ -281,8 +321,12 @@ export function boxCard(box, pools, ctx) {
   const peek = peekItems(box, pools, odds, 3, state);
   const stock = odds.rows.length && stockOf(box) ? `<div class="lc-box__stock">${esc(stockText(box))}</div>` : "";
   const pity = pityLine(odds);
+  // A crate on the table's odds names its items; one on rarity odds shows
+  // the rarities. Either way the ribbon is the rarities, and a crate that
+  // can find nothing says how often.
+  const named = odds.mode === "weight" && odds.rows.length;
   const middle = [
-    odds.rows.length ? `${oddsRibbon(odds.rows)}<div class="lc-box__odds">${oddsPills(odds.rows)}</div>` : "",
+    odds.rows.length ? `${oddsRibbon(oddsRows(odds))}${named ? chanceLinesHTML(odds, { esc }) : `<div class="lc-box__odds">${oddsPills(oddsRows(odds))}</div>`}` : "",
     pity ? `<div class="lc-box__pity lc-rarity-${odds.pity.minRarity}${odds.pity.due ? " lc-box__pity--due" : ""}">${esc(pity)}</div>` : "",
     stock,
   ];
@@ -484,11 +528,35 @@ function morphChildren(parent, freshParent) {
 */
 export function draftBox(box, values, poolIds) {
   const num = v => Math.max(0, Number(v) || 0);
-  return {
+  const out = {
     ...box,
     pools: poolIds.filter(id => values[`pool.${id}`] === true || values[`pool.${id}`] === "on").map(id => ({ id, share: num(values[`share.${id}`]) })),
     weights: Object.fromEntries(RARITIES.map(r => [r, num(values[`w.${r}`])])),
   };
+  // The crate editor's odds choice and "Count text results as nothing"
+  // (editorfields.js oddsModeFieldset, nothingRow); other editors have neither.
+  if ("oddsMode" in values || "countNothing" in values) out.rules = oddsRules(box.rules ?? {}, values, box.fromTable);
+  return out;
+}
+
+/*
+  The crate's odds rules from its editor: rules.oddsMode "weight" for the
+  table's odds (rarity, the default, is stored as no oddsMode at all), and
+  rules.missChance, the table's text results' share of pulls, while "Count
+  text results as nothing" is ticked. Other rules are kept as they are.
+*/
+export function oddsRules(rules, values, fromTable) {
+  const out = { ...rules };
+  if ("oddsMode" in values) {
+    if (values.oddsMode === "weight") out.oddsMode = "weight";
+    else delete out.oddsMode;
+  }
+  if ("countNothing" in values) {
+    const chance = missChanceOf({ rules: { missChance: fromTable?.textChance } });
+    if (values.countNothing === true && chance > 0) out.missChance = chance;
+    else delete out.missChance;
+  }
+  return out;
 }
 
 /*
@@ -506,13 +574,18 @@ export function boxPreview(box, pools) {
   let note = "";
   if (!box.pools?.length) note = "This box can drop nothing: tick a pool above.";
   else if (!odds.rows.length) note = "This box can drop nothing: its pools have no item that can drop.";
-  else if (oddsTable(box, pools).every(row => row.chance === 0)) note = "Every rarity these pools hold weighs 0, so each is equally likely.";
+  else if (oddsModeOf(box) === "rarity" && oddsTable(box, pools).every(row => row.chance === 0)) note = "Every rarity these pools hold weighs 0, so each is equally likely.";
   return { odds, held, note, empty: !odds.rows.length };
 }
 
+// The editor names more of a table crate's items than a shop card does.
+export const PREVIEW_CHANCES = 8;
+
 export function boxPreviewHTML(preview, esc = s => String(s ?? "")) {
   const { odds, note, empty } = preview;
-  return `${odds.rows.length ? `${oddsRibbon(odds.rows)}<div class="lc-odds">${oddsPills(odds.rows)}</div>` : ""}${note ? `<p class="lc-form__hint${empty ? " lc-form__hint--warn" : ""}">${esc(note)}</p>` : ""}`;
+  const named = odds.mode === "weight";
+  const lines = named ? chanceLinesHTML(odds, { max: PREVIEW_CHANCES, esc }) : `<div class="lc-odds">${oddsPills(oddsRows(odds))}</div>`;
+  return `${odds.rows.length ? `${oddsRibbon(oddsRows(odds))}${lines}` : ""}${note ? `<p class="lc-form__hint${empty ? " lc-form__hint--warn" : ""}">${esc(note)}</p>` : ""}`;
 }
 
 /*
@@ -521,7 +594,7 @@ export function boxPreviewHTML(preview, esc = s => String(s ?? "")) {
   silent; this is what the editor announces.
 */
 export function oddsSummary(preview) {
-  const odds = preview.odds.rows.map(row => `${RARITY_LABEL[row.rarity] ?? row.rarity} ${row.label}`).join(", ");
+  const odds = preview.odds.mode === "weight" ? chanceText(preview.odds, PREVIEW_CHANCES) : oddsRows(preview.odds).map(row => `${rowName(row, RARITY_LABEL)} ${row.label}`).join(", ");
   return [odds, preview.note].filter(Boolean).join(odds && preview.note ? ". " : "");
 }
 

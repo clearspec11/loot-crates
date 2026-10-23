@@ -51,6 +51,37 @@ export const POOLS = {
   },
 };
 
+/*
+  A crate made from a roll table (newgame.js crateFromTable): "Goblin's
+  Pockets", its items copied into a pool of their own at the table's
+  weights (a nested table of trinkets flattened into it), drawn at the
+  table's own odds, its text results ("lint and a button") counted as
+  nothing on a quarter of pulls. The Flame Tongue is 1 in 100 of the items.
+*/
+export const TABLE_POOL = {
+  id: "pockets", name: "Goblin's Pockets", pools: [],
+  entries: [
+    item("Flame Tongue", "rare", 1), item("Potion of Healing", "common", 40), item("Spell Scroll (Cantrip)", "common", 20),
+    item("Candle of the Deep", "common", 15), item("Pole of Collapsing", "common", 10), item("Bag of Holding", "uncommon", 8),
+    item("Boots of Elvenkind", "uncommon", 6),
+  ],
+};
+export const TABLE_CRATE = {
+  id: "pockets-crate", name: "Goblin's Pockets", price: 5, pools: [{ id: "pockets", share: 1 }],
+  weights: { common: 60, uncommon: 26, rare: 10, veryRare: 3, legendary: 1, artifact: 0 },
+  rules: { oddsMode: "weight", missChance: 0.25 },
+  fromTable: { uuid: "RollTable.pockets", name: "Goblin's Pockets", items: 7, flattened: 1, textChance: 0.25 },
+};
+// What a drop of that table on a pool found (store.js entriesFromDrop):
+// the seven items, one nested table flattened, two text results and a
+// spell skipped, one item already in the pool.
+export const TABLE_PLAN = {
+  label: "Goblin's Pockets", kind: "RollTable", uuid: "RollTable.pockets",
+  entries: TABLE_POOL.entries.slice(1),
+  skipped: { duplicates: 1, notLoot: { spell: 1 }, notItems: 0, text: 2, tooDeep: 0 },
+  flattened: 1, textWeight: 33, textChance: 0.25,
+};
+
 export const BOX = {
   id: "adventurer", name: "Adventurer's Crate", price: 150,
   pools: [{ id: "core", share: 4 }, { id: "homebrew", share: 1 }],
@@ -142,7 +173,33 @@ export const wheelStakes = (now = Date.now(), n = WHEEL_BETS.length) => WHEEL_BE
   stake: { label, type: bet.type, pick: bet.pick, swatch: bet.type === "rarity" ? bet.pick : "coin", stake: price }, name: label,
 }));
 
-// The Pull log's sample (logtable.js), newest first: Orla's Royal Vault
+// The Auction (auction.js): The Midnight Lot sells a Flame Tongue, bids
+// opening at 20 gp and rising by 5 gp, a 40 gp reserve, a 20-second gavel
+// and two house bidders up to 60 gp; The Sealed Lot sells the Adventurer's
+// Crate unopened, opened for the winner at the hammer.
+const flame = item("Flame Tongue", "rare");
+export const AUCTION = {
+  id: "auction", kind: "auction", name: "The Midnight Lot", price: 20, pools: [], weights: {},
+  auction: { lot: { type: "item", uuid: flame.uuid, name: flame.name, img: flame.img, rarity: "rare" }, increment: 5, reserve: 40, gavelSec: 20, house: { count: 2, budget: 60, chance: 25 } },
+  rules: {},
+};
+export const AUCTION_CRATE = { ...AUCTION, id: "auction-crate", name: "The Sealed Lot", auction: { ...AUCTION.auction, lot: { type: "crate", boxId: "adventurer", name: "Adventurer's Crate" }, reserve: 0 } };
+// The auction's round: open, its gavel 14 s from falling.
+export const auctionRound = (now = Date.now(), { status = "open", closesAt = now + 14000, boxId = AUCTION.id } = {}) => ({ id: "A1", boxId, kind: "auction", status, opensAt: now - 40000, closesAt });
+// Its bids, newest first: Tam's 20 opened, Bo's 25 and Orla's 35 beat it,
+// House bidder 1's 40 beat Orla's; with `tamLast`, Tam's 45 is on top.
+const AUCTION_BIDS = [["tam", "Tam Thornwick", 20], ["bo", "Bo Marrow", 25], ["orla", "Orla Vane", 35], [null, "House bidder 1", 40, 1]];
+export function auctionBids(now = Date.now(), { tamLast = false, boxId = AUCTION.id, boxName = AUCTION.name } = {}) {
+  const list = tamLast ? [...AUCTION_BIDS, ["tam", "Tam Thornwick", 45]] : AUCTION_BIDS;
+  return list.map(([actorId, actorName, amount, house], i) => ({
+    id: `bid${i}`, kind: "auction", boxId, boxName, actorId, actorName, userId: actorId, itemId: null,
+    price: house ? 0 : amount, payoutCp: 0, roundId: "A1", at: now - 4000 * (list.length - i), stake: { label: `Bid ${amount} gp`, amount, ...(house ? { house } : {}) }, name: `Bid ${amount} gp`,
+    ...(house ? { house: true } : {}),
+    ...(i === list.length - 1 ? { status: "open" } : { status: "refunded", refunded: now - 4000 * (list.length - i - 1), refundReason: "outbid" }),
+  })).reverse();
+}
+
+// The Pull log's sample (logtable.js), newest first:// The Pull log's sample (logtable.js), newest first: Orla's Royal Vault
 // pull refunded a moment later; Tam's pity pull whose rarity the GM set
 // over the source's; Bo's Pauper's Box sale called off after the charge; a
 // dice win with its faces and payout; a deck draw that took coins (the

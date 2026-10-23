@@ -1,6 +1,6 @@
 /*
   The shared table window: one room for any table kind's round (kinds.js
-  `table: true`; Roulette today, the Auction later). It opens on every
+  `table: true`; Roulette and the Auction). It opens on every
   client when the GM opens a round (table.js announces it), shows every
   stake as it arrives (the GM's "staked" broadcast, then the log setting's
   redraw for a refund), the clock or "waiting for the GM", a player's bet
@@ -12,19 +12,24 @@
 
   One window per round (the id carries the round's id). A bet is a stake on
   the core (socket.js requestStake: the GM's guards, queue and money path);
-  the GM's Spin is table.js resolveRound. Nothing here writes.
+  the GM's Spin is table.js resolveRound, and a kind with a cancelLabel
+  gives the GM table.js cancelRound. The kind's words name the buttons (the
+  Auction's "Bid 55 gp" and "Bring the gavel down") and a kind may keep its
+  form in step with the table as stakes land (tableView.syncForm). Nothing
+  here writes.
 */
 import { MODULE_ID, SETTINGS } from "./config.js";
 import { getBoxes, getLog, getRounds } from "./store.js";
 import { getKind, kindOf, PullError } from "./kinds.js";
 import { stakesOf, liveRoundOf, STATUS } from "./round.js";
-import { onTable, openRound, resolveRound } from "./table.js";
+import { onTable, openRound, resolveRound, cancelRound } from "./table.js";
 import { requestStake, isActiveGM } from "./socket.js";
 import { setTableWindow } from "./reveal.js";
 import { buyableActors } from "./shop.js";
-import { tableBodyHTML, phaseOf, stateText, stakeSentence, countText, countdownText } from "./tableview.js";
+import { tableBodyHTML, phaseOf, stateText, stakeSentence, countFor, countdownText, betLabelFor } from "./tableview.js";
 import { cascadeOffset } from "./revealcard.js";
 import "./roulette.js";
+import "./auction.js";
 
 const { ApplicationV2 } = foundry.applications.api;
 const esc = s => foundry.utils.escapeHTML(String(s ?? ""));
@@ -48,7 +53,7 @@ export class TableWindow extends ApplicationV2 {
     classes: ["loot-crates", "lc-table"],
     window: { title: "The table", resizable: false },
     position: { width: 760, height: "auto" },
-    actions: { spin: TableWindow.#spin, dismiss: TableWindow.#dismiss, skip: TableWindow.#skip },
+    actions: { spin: TableWindow.#spin, cancelRound: TableWindow.#cancel, dismiss: TableWindow.#dismiss, skip: TableWindow.#skip },
   };
 
   #ctrl = null;
@@ -61,6 +66,9 @@ export class TableWindow extends ApplicationV2 {
   #landedAt = -Infinity;
   // The phase the body was last drawn for: a change of phase draws it again.
   #drawn = null;
+  // The round as the GM's last "staked" carried it (the Auction's gavel,
+  // moved by the bid), until the rounds setting here catches up.
+  #heardRound = null;
   reveal = null;
   landed = false;
   // The round was called off without a write here (table.js undoResolve's
@@ -73,7 +81,12 @@ export class TableWindow extends ApplicationV2 {
     this.boxId = boxId;
   }
 
-  get round() { return getRounds()[this.roundId] ?? null; }
+  get round() {
+    const r = getRounds()[this.roundId] ?? null;
+    const h = this.#heardRound;
+    if (!h || (r && (r.status !== h.status || (r.closesAt ?? 0) >= (h.closesAt ?? 0)))) return r;
+    return { ...(r ?? {}), ...h };
+  }
   get game() { return getBoxes()[this.round?.boxId ?? this.boxId] ?? null; }
   get kind() { return getKind(kindOf(this.game ?? this.reveal ?? {})) ?? null; }
   get title() { return this.kind?.tableView?.title?.(this.game) ?? "The table"; }
@@ -95,7 +108,16 @@ export class TableWindow extends ApplicationV2 {
       return this.reveal.stakes.filter(s => live.has(s.logId) || !known.has(s.logId)).map(s => ({ id: s.logId, actorId: s.actorId, actorName: s.actorName, price: s.price, stake: s.stake, name: s.stake?.label ?? "", status: s.action === "settle" ? "settled" : "refunded", payoutCp: s.payoutCp, result: s.result }));
     }
     for (const [id, row] of this.#extra) if (known.has(id)) this.#extra.delete(id); else rows.unshift(row);
-    return rows;
+    return rows.filter(r => !this.#beaten.has(r.id));
+  }
+
+  // Every stake of the round, the ones refunded since included (the
+  // Auction's beaten bids, for its last five and its count), newest first.
+  history() {
+    const rows = getLog().filter(r => r?.roundId === this.roundId);
+    const known = new Set(rows.map(r => r.id));
+    return [...[...this.#extra.values()].filter(r => !known.has(r.id)).reverse(), ...rows]
+      .map(r => (this.#beaten.has(r.id) && !r.refunded ? { ...r, status: "refunded", refunded: true, refundReason: "outbid" } : r));
   }
 
   // A stake the GM just took (socket.js "staked"): its chip on the rail at
@@ -103,12 +125,23 @@ export class TableWindow extends ApplicationV2 {
   // line. The body stays as it is, so a player's own Place a bet (still
   // "Placing…", still focused) and the live region are the same elements.
   heardStake(msg) {
-    const row = { id: msg.logId, actorId: msg.actorId, actorName: msg.actorName, price: msg.price, stake: msg.stake, name: msg.stake?.label ?? "Stake", status: "open", roundId: msg.roundId };
+    const view = this.kind?.tableView;
+    const row = { id: msg.logId, actorId: msg.actorId, actorName: msg.actorName, price: msg.price, stake: msg.stake, name: msg.stake?.label ?? "Stake", status: "open", roundId: msg.roundId, ...(msg.house ? { house: true } : {}) };
+    const before = this.history();
+    const outbid = (msg.outbid ?? []).map(id => before.find(r => r.id === id)).filter(Boolean);
+    // The stakes it displaced are refunded already on the GM: shown so here
+    // at once, before the log setting arrives.
+    for (const id of msg.outbid ?? []) this.#beaten.add(id);
     this.#extra.set(msg.logId, row);
     this.#fresh.add(msg.logId);
+    if (msg.round?.id === this.roundId) this.#heardRound = msg.round;
     this.refresh();
-    this.#say(`${stakeSentence(row, this.kind?.tableView?.verb)}. ${countText(this.stakes())}.`);
+    if (game.settings.get(MODULE_ID, SETTINGS.SOUND) && !pageHidden()) view?.sounds?.bid?.();
+    this.#say(typeof view?.announce === "function" ? view.announce(row, { outbid }) : `${stakeSentence(row, view?.verb, view)}. ${countFor(view, this.stakes(), this.history())}.`);
   }
+
+  // Log rows the GM's "staked" said were outbid before the log here knew it.
+  #beaten = new Set();
 
   // The window's status line, for a screen reader.
   #say(text) {
@@ -141,7 +174,7 @@ export class TableWindow extends ApplicationV2 {
     const el = root.querySelector(".lc-table__state");
     if (el && el.textContent !== state.text) { el.textContent = state.text; el.dataset.state = state.key; }
     const count = root.querySelector(".lc-table__count");
-    if (count) count.textContent = countText(this.stakes());
+    if (count) count.textContent = countFor(this.kind?.tableView, this.stakes(), this.history());
   }
 
   async _renderHTML() {
@@ -150,15 +183,18 @@ export class TableWindow extends ApplicationV2 {
     root.className = "lc-table__body";
     const kind = this.kind;
     if (!kind?.tableView) { root.innerHTML = `<p class="lc-empty">This client can't show this table.</p>`; return root; }
-    root.innerHTML = tableBodyHTML({ kind, game: this.game ?? { id: this.boxId, name: this.reveal?.box?.name ?? "" }, round: this.round, stakes: this.stakes(), viewer: { isGM: game.user.isGM, actors: viewerActors().map(a => ({ id: a.id, name: a.name })) }, phase: this.phase, esc, values: this.#values, onReload: !!this.voided?.onReload });
+    root.innerHTML = tableBodyHTML({ kind, game: this.game ?? { id: this.boxId, name: this.reveal?.box?.name ?? "" }, round: this.round, stakes: this.stakes(), history: this.history(), viewer: { isGM: game.user.isGM, actors: viewerActors().map(a => ({ id: a.id, name: a.name })) }, phase: this.phase, esc, values: this.#values, onReload: !!this.voided?.onReload });
     const form = root.querySelector(".lc-table__form");
     if (form) {
       form.addEventListener("submit", e => { e.preventDefault(); this.#placeBet(form); });
-      form.addEventListener("input", () => { this.#values = readValues(form); });
+      form.addEventListener("input", () => {
+        kind.tableView.onInput?.(form, { game: this.game, stakes: this.stakes() });
+        this.#values = readValues(form);
+      });
       // The pick's options follow the bet type.
       form.addEventListener("change", e => {
         this.#values = readValues(form);
-        if (e.target.matches?.(".lc-table__type")) {
+        if (e.target.matches?.(".lc-table__type") && kind.tableView.pickOptions) {
           const pick = form.querySelector(".lc-table__pick");
           if (pick) pick.innerHTML = kind.tableView.pickOptions(this.game, e.target.value, null, esc);
           this.#values = readValues(form);
@@ -195,11 +231,19 @@ export class TableWindow extends ApplicationV2 {
     const view = this.kind?.tableView;
     if (!this.#ctrl || !view) return;
     const game = this.game ?? { ...(this.reveal ?? {}), roulette: { pockets: this.reveal?.pockets, colours: this.reveal?.colours } };
-    const outcome = this.landed ? this.reveal?.outcome ?? null : null;
-    this.#ctrl.rail(view.rail(game, this.stakes(), { esc, outcome, fresh: [...this.#fresh], actorIds: viewerActors().map(a => a.id) }));
+    // The outcome as it ended, in the kind's reading (the Auction's sale
+    // whose item couldn't be granted reads as no sale).
+    const outcome = this.landed ? (view.outcomeOf?.(this.reveal) ?? this.reveal?.outcome ?? null) : null;
+    const stakes = this.stakes();
+    const history = this.history();
+    this.#ctrl.rail(view.rail(game, stakes, { esc, outcome, fresh: [...this.#fresh], actorIds: viewerActors().map(a => a.id), round: this.round, history }));
     this.#fresh.clear();
     const list = this.element?.querySelector(".lc-table__list");
-    if (list) list.innerHTML = this.stakes().filter(r => r.status !== "refunded").map(r => `<li>${esc(stakeSentence(r, view.verb))}</li>`).join("");
+    if (list) list.innerHTML = stakes.filter(r => r.status !== "refunded").map(r => `<li>${esc(stakeSentence(r, view.verb, view))}</li>`).join("");
+    // The form follows the table: the Auction's field and button move to
+    // the next legal bid as bids land.
+    const form = this.element?.querySelector(".lc-table__form");
+    if (form && !this.#busy) view.syncForm?.(form, { game, stakes });
   }
 
   // A player's bet: read, checked here first (so a slip is said before any
@@ -212,13 +256,13 @@ export class TableWindow extends ApplicationV2 {
     const values = readValues(form);
     this.#values = values;
     let bet;
-    try { bet = view.readBet(this.game, values); } catch (err) { if (why) why.textContent = err.message; return; }
+    try { bet = view.readBet(this.game, values, this.stakes()); } catch (err) { if (why) why.textContent = err.message; return; }
     const actorId = values.actorId ?? viewerActors()[0]?.id;
     if (!actorId) { if (why) why.textContent = "You have no character to bet with."; return; }
     this.#busy = true;
     if (why) why.textContent = "";
     btn.setAttribute("aria-disabled", "true");
-    btn.textContent = "Placing…";
+    btn.textContent = view.busyLabel ?? "Placing…";
     try {
       await requestStake({ boxId: this.game.id, roundId: this.roundId, actorId, price: bet.price, bet: bet.bet });
       if (why) why.textContent = "";
@@ -227,7 +271,11 @@ export class TableWindow extends ApplicationV2 {
       if (!(err instanceof PullError)) console.error("loot-crates | the bet failed", err);
     } finally {
       this.#busy = false;
-      if (btn.isConnected) { btn.removeAttribute("aria-disabled"); btn.textContent = "Place a bet"; }
+      if (btn.isConnected) {
+        btn.removeAttribute("aria-disabled");
+        btn.textContent = betLabelFor(view, this.game, { stakes: this.stakes(), values: readValues(form) });
+        view.syncForm?.(form, { game: this.game, stakes: this.stakes() });
+      }
     }
   }
 
@@ -235,14 +283,31 @@ export class TableWindow extends ApplicationV2 {
   // back through the broadcast, as it does for everyone.
   static async #spin(_event, button) {
     if (button.getAttribute("aria-disabled") === "true") return;
+    const view = this.kind?.tableView;
     button.setAttribute("aria-disabled", "true");
-    button.textContent = "Spinning…";
+    button.textContent = view?.spinningLabel ?? "Spinning…";
     try {
       await resolveRound(this.roundId);
     } catch (err) {
-      ui.notifications.warn(err instanceof PullError ? err.message : "The wheel jammed. Check the console.");
+      ui.notifications.warn(err instanceof PullError ? err.message : `The ${this.kind?.noun ?? "wheel"} jammed. Check the console.`);
       if (!(err instanceof PullError)) console.error("loot-crates | the spin failed", err);
-      if (button.isConnected) { button.removeAttribute("aria-disabled"); button.textContent = "Spin"; }
+      if (button.isConnected) { button.removeAttribute("aria-disabled"); button.textContent = view?.spinLabel ?? "Spin"; }
+    }
+  }
+
+  // The GM calls the round off (a kind with a cancelLabel: the Auction):
+  // every open stake comes back (table.js cancelRound), once confirmed.
+  static async #cancel(_event, button) {
+    if (button.getAttribute("aria-disabled") === "true") return;
+    const ok = await foundry.applications.api.DialogV2.confirm({ window: { title: this.kind?.tableView?.cancelLabel ?? "Call it off" }, content: `<p>Call off <strong>${esc(this.game?.name ?? "this round")}</strong>? Every open ${this.kind?.tableView?.verb === "bids" ? "bid" : "stake"} goes back to its character, and nothing is sold.</p>` });
+    if (!ok) return button.isConnected && button.focus();
+    button.setAttribute("aria-disabled", "true");
+    try {
+      await cancelRound(this.roundId);
+    } catch (err) {
+      ui.notifications.warn(err instanceof PullError ? err.message : "The round couldn't be called off. Check the console.");
+      if (!(err instanceof PullError)) console.error("loot-crates | calling the round off failed", err);
+      if (button.isConnected) button.removeAttribute("aria-disabled");
     }
   }
 
@@ -427,7 +492,7 @@ onTable(msg => {
     for (const id of msg.roundIds ?? []) {
       const win = windows.get(id);
       if (!win) continue;
-      if (msg.onReload) win.heardVoid(msg); else win.refresh();
+      if (msg.onReload || msg.cancelled) win.heardVoid(msg); else win.refresh();
     }
     return;
   }

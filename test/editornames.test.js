@@ -1,6 +1,6 @@
 /*
   Every editor field says what it sets (editorfields.js): each input and
-  select in the crate, well, dice, deck and wheel editors has an
+  select in the crate, well, dice, deck, wheel and auction editors has an
   accessible name of its own (a label[for], a wrapping label holding only
   that control, or an aria-label), and no two in one editor are the same.
   A pool's share is named for its pool and is off while the pool is
@@ -110,6 +110,7 @@ const GAMES = {
   dice: () => newgame.newDraft("dice", { id: "dice", name: "Dragon's Teeth", pools: REFS }),
   deck: () => newgame.newDraft("deck", { id: "deck", name: "Thornwick Deck", pools: REFS }),
   roulette: () => newgame.newDraft("roulette", { id: "roulette", name: "Red Wheel", pools: REFS }),
+  auction: () => newgame.newDraft("auction", { id: "auction", name: "The Flame Tongue", auction: { lot: { type: "item", uuid: "Item.b", name: "Flame Tongue", img: "", rarity: "rare" }, increment: 5, reserve: 0, gavelSec: 20, house: { count: 1, budget: 80, chance: 25 } } }),
 };
 
 beforeEach(async () => {

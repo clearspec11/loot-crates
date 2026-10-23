@@ -78,7 +78,9 @@ export function cardElement(card) {
   el.dataset.rarity = card.rarity;
   const art = document.createElement("div");
   art.className = "lc-card__art";
-  if (card.img) {
+  // A blank (strip.js NOTHING_CARD): an empty slot, no letters standing in.
+  if (card.rarity === "none") art.classList.add("lc-card__art--empty");
+  else if (card.img) {
     const img = document.createElement("img");
     img.src = card.img;
     img.alt = "";
@@ -92,7 +94,7 @@ export function cardElement(card) {
   name.textContent = card.name ?? "";
   const bar = document.createElement("div");
   bar.className = "lc-card__bar";
-  bar.title = RARITY_LABEL[card.rarity] ?? card.rarity;
+  bar.title = card.rarity === "none" ? "Nothing" : RARITY_LABEL[card.rarity] ?? card.rarity;
   el.append(art, name, bar);
   return el;
 }

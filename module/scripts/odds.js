@@ -10,12 +10,22 @@
     rarityOverride  a dnd5e rarity key the GM chose, or absent; it wins
     weight        0 means the entry never drops
   A Box:  { id, name, price, pools: [{ id, share }], weights: { rarity: n },
-            rules: { pity: { after, minRarity }, noDuplicates, stock } }
+            rules: { pity: { after, minRarity }, noDuplicates, stock,
+                     oddsMode?, missChance? } }
 
   draw() picks the rarity first (box weights, limited to rarities the box's
   pools actually hold), then a pool among those holding that rarity (by share),
   then an entry inside it (by weight). Rarity odds are therefore exactly what the
   box editor shows, whatever the pools' sizes.
+
+  A crate with rules.oddsMode "weight" (one made from a roll table) skips the
+  rarity step: a pool by its share, then an entry by its weight, so an item
+  that was 1 in 100 on the table stays 1 in 100. Pity and no-duplicates
+  still apply: what the buyer owns is out, and a due pity keeps only the
+  entries at its rarity or better. A record without oddsMode draws by
+  rarity, as every record before it did. rules.missChance (a table's text
+  results counted as nothing) is the share of pulls that give no item,
+  rolled before the item (rollMiss) and never on a pull whose pity is due.
 
   An entry flagged `missing: true` (its source is gone; store.js sets the flag
   on the GM client) is invisible to everything here: it is never drawn, never
@@ -184,6 +194,19 @@ export function withSources(pools, sources) {
   return out;
 }
 
+// How a crate draws: "rarity" (absent, and every record before this) or
+// "weight" (entry weight alone, the roll table's own odds).
+export const ODDS_MODES = ["rarity", "weight"];
+export const oddsModeOf = box => (box?.rules?.oddsMode === "weight" ? "weight" : "rarity");
+
+// The share of pulls that find nothing, 0 up to MAX_MISS (a crate that
+// never gives anything is not a crate).
+export const MAX_MISS = 0.99;
+export function missChanceOf(box) {
+  const c = Number(box?.rules?.missChance);
+  return Number.isFinite(c) && c > 0 ? Math.min(MAX_MISS, c) : 0;
+}
+
 // The rarities a box can land on and the chance of each, as the editor shows.
 export function oddsTable(box, pools) {
   const weights = { ...DEFAULT_WEIGHTS, ...(box.weights ?? {}) };
@@ -220,11 +243,29 @@ export function shopOdds(box, pools, state = {}) {
   }
   const rows = plan.candidates.map(rarity => ({ rarity, weight: plan.weightOf(rarity) })).filter(row => row.weight > 0);
   const total = rows.reduce((n, row) => n + row.weight, 0);
-  const pcts = wholePercents(rows.map(row => row.weight / total));
+  // A pull that finds nothing takes its share off the top; the labels of
+  // the rows and the nothing together sum to 100.
+  const miss = plan.miss;
+  const keep = 1 - miss;
+  const chances = rows.map(row => keep * row.weight / total);
+  const pcts = wholePercents(miss > 0 ? [...chances, miss] : chances);
   const out = {
-    rows: rows.map((row, i) => ({ rarity: row.rarity, chance: row.weight / total, label: chanceLabel(row.weight / total, pcts[i]) })),
+    rows: rows.map((row, i) => ({ rarity: row.rarity, chance: chances[i], label: chanceLabel(chances[i], pcts[i]) })),
     top: rows[rows.length - 1].rarity,
   };
+  if (miss > 0) out.nothing = { chance: miss, label: chanceLabel(miss, pcts[pcts.length - 1]) };
+  if (plan.mode === "weight") {
+    // Each item's own chance, merged when an item sits in two pools, best
+    // find first: what the shop names. `pct` is its whole percent, so a
+    // card that names a few can say what the rest add up to.
+    out.mode = "weight";
+    const items = plan.items.map(({ entry, chance }) => ({ uuid: entry.uuid, name: entry.name, img: entry.img, rarity: entry.rarity, chance: keep * chance }));
+    const ipcts = wholePercents(miss > 0 ? [...items.map(it => it.chance), miss] : items.map(it => it.chance));
+    out.items = items
+      .map((it, i) => ({ ...it, pct: ipcts[i], label: chanceLabel(it.chance, ipcts[i]) }))
+      .sort((a, b) => rarityRank(b.rarity) - rarityRank(a.rarity) || a.chance - b.chance || String(a.name).localeCompare(String(b.name)));
+    if (miss > 0) out.nothing = { chance: miss, pct: ipcts[ipcts.length - 1], label: chanceLabel(miss, ipcts[ipcts.length - 1]) };
+  }
   const pity = box.rules?.pity;
   // Only a floor this buyer can reach: past it draw() falls back to the
   // best rarity left, and "Legendary or better" would be a promise it breaks.
@@ -265,9 +306,13 @@ function pityFloor(box, state) {
   shows it, so the odds next to Buy and the roll can't drift apart. Returns
   null when nothing is left to give, else { perPool: [{ share, entries }],
   available: [rarity] (what is left, low to high), candidates: [rarity]
-  (what this pull can land on), weightOf(rarity), pityApplied }. When every
-  candidate weighs 0 (a box whose weights exclude what it holds), weightOf
-  treats them as equal rather than giving nothing.
+  (what this pull can land on), weightOf(rarity), pityApplied, mode, miss }.
+  When every candidate weighs 0 (a box whose weights exclude what it holds),
+  weightOf treats them as equal rather than giving nothing. In weight mode
+  `items` is each entry's chance ([{ entry, chance }], by uuid) and
+  weightOf(rarity) the sum of its items' chances, so the rarity ribbon, the
+  strip's tease and the reveal read the same odds the roll uses. `miss` is
+  the share of pulls that find nothing (0 when pity is due).
 */
 function drawPlan(box, pools, state = {}) {
   const weights = { ...DEFAULT_WEIGHTS, ...(box.weights ?? {}) };
@@ -286,9 +331,47 @@ function drawPlan(box, pools, state = {}) {
   if (!candidates.length) candidates = [available[available.length - 1]];
   const pityApplied = floor >= 0 && candidates.every(r => rarityRank(r) >= floor);
 
+  const mode = oddsModeOf(box);
+  // A due pity is an item at its floor, never a miss.
+  const miss = floor >= 0 ? 0 : missChanceOf(box);
+  if (mode === "weight") {
+    const items = entryChances(weightHolders(perPool, candidates));
+    const byRarity = new Map();
+    for (const { entry, chance } of items) byRarity.set(entry.rarity, (byRarity.get(entry.rarity) ?? 0) + chance);
+    return { perPool, available, candidates, weightOf: r => byRarity.get(r) ?? 0, pityApplied, mode, items, miss };
+  }
   const weightOf = r => Math.max(0, Number(weights[r]) || 0);
   const weighed = candidates.some(r => weightOf(r) > 0);
-  return { perPool, available, candidates, weightOf: weighed ? weightOf : () => 1, pityApplied };
+  return { perPool, available, candidates, weightOf: weighed ? weightOf : () => 1, pityApplied, mode, miss };
+}
+
+// Weight mode's pools: each with only the entries this pull can land on.
+function weightHolders(perPool, candidates) {
+  const allowed = new Set(candidates);
+  return perPool.map(p => ({ share: p.share, entries: p.entries.filter(e => allowed.has(e.rarity)) })).filter(p => p.entries.length);
+}
+
+/*
+  Each entry's chance in weight mode, as draw() rolls it: a pool by its
+  share (all shares 0: the first pool, as weightedPick falls back), then an
+  entry by its weight within that pool. An item in two pools adds up.
+*/
+function entryChances(holders) {
+  const shareOf = p => Math.max(0, Number(p.share) || 0);
+  const shares = holders.reduce((n, p) => n + shareOf(p), 0);
+  const out = new Map();
+  holders.forEach((p, i) => {
+    const pool = shares > 0 ? shareOf(p) / shares : (i === 0 ? 1 : 0);
+    if (pool <= 0) return;
+    const total = p.entries.reduce((n, e) => n + e.weight, 0);
+    for (const e of p.entries) {
+      const chance = pool * e.weight / total;
+      const had = out.get(e.uuid);
+      if (had) had.chance += chance;
+      else out.set(e.uuid, { entry: e, chance });
+    }
+  });
+  return [...out.values()].filter(x => x.chance > 0);
 }
 
 /*
@@ -299,12 +382,36 @@ function drawPlan(box, pools, state = {}) {
 export function draw({ box, pools, rng = Math.random, state = {} }) {
   const plan = drawPlan(box, pools, state);
   if (!plan) return null;
+  if (plan.mode === "weight") {
+    const holders = weightHolders(plan.perPool, plan.candidates);
+    const pool = weightedPick(holders, p => p.share, rng) ?? holders[0];
+    const entry = pool && weightedPick(pool.entries, e => e.weight, rng);
+    if (!entry) return null;
+    return { entry, rarity: entry.rarity, poolId: entry.poolId, pity: plan.pityApplied };
+  }
   const rarity = weightedPick(plan.candidates, plan.weightOf, rng);
   const holders = plan.perPool.filter(p => p.entries.some(e => e.rarity === rarity));
   const pool = weightedPick(holders, p => p.share, rng) ?? holders[0];
   const entry = weightedPick(pool.entries.filter(e => e.rarity === rarity), e => e.weight, rng);
   if (!entry) return null;
   return { entry, rarity, poolId: entry.poolId, pity: plan.pityApplied };
+}
+
+/*
+  Whether this pull finds nothing (rules.missChance), rolled before the item.
+  It takes a number from `rng` only for a box that can miss, so every other
+  box rolls exactly as it did. Never on a pull whose pity is due, nor on a
+  box with nothing left to give (draw() then says so).
+*/
+export function rollMiss({ box, pools, rng = Math.random, state = {} }) {
+  const plan = drawPlan(box, pools, state);
+  return !!plan && plan.miss > 0 && rng() < plan.miss;
+}
+
+// The state after a pull that found nothing: one more pull toward pity,
+// nothing owned.
+export function missState(state = {}) {
+  return { sinceRare: (state.sinceRare ?? 0) + 1, owned: [...(state.owned ?? [])], pulls: (state.pulls ?? 0) + 1 };
 }
 
 // Whether a pull of `rarity` from `box` resets the buyer's pity count.

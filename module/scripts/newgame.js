@@ -30,6 +30,7 @@ import { WELL_DEFAULTS } from "./well.js";
 import { DICE_DEFAULTS } from "./dicegame.js";
 import { DECK_DEFAULTS } from "./deck.js";
 import { ROULETTE_DEFAULTS } from "./roulette.js";
+import { AUCTION_DEFAULTS } from "./auction.js";
 import { formatPrice } from "./currency.js";
 import { restocked } from "./limits.js";
 import { onShelf } from "./shelf.js";
@@ -44,7 +45,10 @@ const weights = () => ({ ...DEFAULT_WEIGHTS });
   draw, half again for each draw in a row, five placeholder cards for the
   GM to rename (nothing published ships). A wheel: twelve pockets in two
   colours and four rarity bands, 5 gp to 50 gp a bet, three bets a
-  character, a 45-second betting window. Each call builds fresh copies.
+  character, a 45-second betting window. An auction: no lot yet (the
+  editor asks for one), bids opening at 10 gp and rising by 5 gp, no
+  reserve, a 20-second gavel, no house bidders. Each call builds fresh
+  copies.
 */
 export const NEW_DEFAULTS = {
   crate: () => ({ name: "New box", price: DEFAULT_PRICE_GP, pools: [], weights: weights(), rules: {} }),
@@ -55,13 +59,17 @@ export const NEW_DEFAULTS = {
     const d = ROULETTE_DEFAULTS;
     return { kind: "roulette", name: "New wheel", price: d.price, pools: [], weights: weights(), roulette: { colours: [...d.colours], pockets: d.pockets.map(p => ({ ...p })), payouts: { ...d.payouts }, itemOnRarity: d.itemOnRarity, maxStake: d.maxStake, maxBets: d.maxBets, windowSec: d.windowSec }, rules: {} };
   },
+  auction: () => {
+    const d = AUCTION_DEFAULTS;
+    return { kind: "auction", name: "New auction", price: d.price, pools: [], weights: weights(), auction: { lot: null, increment: d.increment, reserve: d.reserve, gavelSec: d.gavelSec, house: { ...d.house } }, rules: {} };
+  },
 };
 
 // The dialog's title: the words on the button that opened it, so what the
 // GM pressed is what they see. An existing record's editor says Edit.
-export const NEW_TITLE = { crate: "New box", well: "New well", dice: "New dice game", deck: "New deck", roulette: "New wheel" };
-export const EDIT_TITLE = { crate: "Edit box", well: "Edit well", dice: "Edit dice game", deck: "Edit deck", roulette: "Edit wheel" };
-export const COPY_TITLE = { crate: "Copy box", well: "Copy well", dice: "Copy dice game", deck: "Copy deck", roulette: "Copy wheel" };
+export const NEW_TITLE = { crate: "New box", well: "New well", dice: "New dice game", deck: "New deck", roulette: "New wheel", auction: "New auction" };
+export const EDIT_TITLE = { crate: "Edit box", well: "Edit well", dice: "Edit dice game", deck: "Edit deck", roulette: "Edit wheel", auction: "Edit auction" };
+export const COPY_TITLE = { crate: "Copy box", well: "Copy well", dice: "Copy dice game", deck: "Copy deck", roulette: "Copy wheel", auction: "Copy auction" };
 export function editorTitle(game, isNew, copy = false) {
   const [titles, fallback] = copy ? [COPY_TITLE, "Copy game"] : isNew ? [NEW_TITLE, "New game"] : [EDIT_TITLE, "Edit game"];
   return titles[kindOf(game)] ?? fallback;
@@ -81,6 +89,21 @@ export function newDraft(kind, { id, ...over } = {}) {
 // that draws only from it, so the first crate is one dialog from a pool
 // with items in it (price, then Add).
 export const crateFromPool = (pool, id) => newDraft("crate", { id, name: pool.name, pools: [{ id: pool.id, share: 1 }] });
+
+/*
+  "Make a crate" from a roll table (the sidebar's menu on a table, or a
+  table dropped on the Boxes tab): a crate named for the table, drawing
+  from the pool its items were just copied into, at the table's own odds
+  (rules.oddsMode "weight"). `table` is what the drop found (store.js
+  entriesFromDrop): its name and uuid, and its text results' share of the
+  table, which the editor offers to count as pulls that find nothing.
+  The record keeps where it came from (`fromTable`), so its editor can say
+  it is a copy: edit the table and make the crate again to pick up changes.
+*/
+export function crateFromTable(table, poolId, id) {
+  const fromTable = { uuid: table.uuid ?? null, name: table.label ?? table.name ?? "", items: table.entries?.length ?? table.items ?? 0, flattened: table.flattened ?? 0, textChance: Number(table.textChance) || 0 };
+  return newDraft("crate", { id, name: fromTable.name || "New box", pools: [{ id: poolId, share: 1 }], rules: { oddsMode: "weight" }, fromTable });
+}
 
 /*
   The unsaved draft a Copy opens its editor on: every setting of the source
@@ -132,5 +155,6 @@ export function addedNotice(game, { shopOpen = true } = {}) {
   if (!onShelf(game)) return `${name} added off the shelf. Players can't see it until you put it on the shelf.`;
   if (!shopOpen) return `${name} added. The shop is closed, so players can't see it yet.`;
   const price = formatPrice(Number(game?.price) || 0);
+  if (kindOf(game) === "auction") return `${name} is on the shelf; bids open at ${price}.`;
   return getKind(kindOf(game))?.table ? `${name} is on the shelf; bets from ${price}.` : `${name} is on the shelf at ${price}.`;
 }

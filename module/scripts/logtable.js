@@ -8,7 +8,9 @@
   leaves only the pulls that gave something (the throws stay in the
   setting). Under a row, in small print: where a GM-set rarity came from,
   what a game paid or took, a stake's state, and a sale its buyer called
-  off too late.
+  off too late. An auction's house bid (auction.js) is a row with no
+  character and no coins: it names its bidder and its bid, and has no
+  Refund, there being nothing to give back.
 
   Every cell names its column (data-label), so a narrow panel can stack
   the row as a card and caption each value (module.css, the lc-tab
@@ -78,11 +80,16 @@ export function logTableHTML({ log = [], rounds = {}, hideMisses = false, esc = 
   const [WHEN, WHO, BOX, GOT, ACT] = LOG_COLUMNS;
   const status = (id, at) => `<span class="lc-log__status" tabindex="-1" data-row="${esc(id)}">refunded ${esc(refundTime(at))}</span>`;
   const got = (swatch, html) => cell(GOT, `<span class="lc-dot"></span>${html}`, `class="lc-rarity-${esc(swatch)}"`);
-  const row = r => `<tr class="${r.refunded ? "lc-row--refunded" : r.lateCancel ? "lc-row--late" : ""}" role="row">
+  const house = r => `<tr class="lc-row--house${r.refunded ? " lc-row--refunded" : ""}" role="row">
+        ${cell(WHEN, new Date(r.at).toLocaleString())}${cell(WHO, esc(r.actorName))}${cell(BOX, `${esc(r.boxName)} (house bid)`)}
+        ${got("none", `${r.refunded ? `<s>${esc(r.name)}</s>` : esc(r.name)}<small class="lc-log__rarity">${esc(r.refunded ? `A house bid, ${r.refundReason === "outbid" ? "outbid" : "closed"}: no coins were held.` : stakeNote(r) || "A house bid: no coins held.")}</small>`)}
+        ${cell(ACT, "")}
+      </tr>`;
+  const row = r => (r.house ? house(r) : `<tr class="${r.refunded ? "lc-row--refunded" : r.lateCancel ? "lc-row--late" : ""}" role="row">
         ${cell(WHEN, new Date(r.at).toLocaleString())}${cell(WHO, esc(r.actorName))}${cell(BOX, `${esc(r.boxName)} (${esc(formatPrice(r.price))})`)}
         ${got(r.rarity ?? r.swatch ?? r.stake?.swatch ?? (r.win ? "coin" : "none"), `${r.refunded ? `<s>${esc(r.name)}</s>` : esc(r.name)}${r.pity ? " · pity" : ""}${logRarityNote(r, esc)}${logPayoutNote(r, esc)}${logStakeNote(r, esc)}${logLateNote(r)}`)}
         ${cell(ACT, r.refunded ? status(r.id, r.refunded) : `<button type="button" data-action="refund" data-row="${esc(r.id)}">Refund</button>`)}
-      </tr>`;
+      </tr>`);
   const group = g => {
     const n = g.rows.length;
     const newest = g.rows[0];

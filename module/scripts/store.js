@@ -329,18 +329,26 @@ export function packHasLoot(pack) {
     Compendium  { type: "Compendium", collection }         a whole pack (the bulk
                 filter passes `filter` too, as for entriesFromCompendium)
     RollTable   { type: "RollTable", uuid }               the table's Item results,
-                each result's weight as the entry's weight; text results and
-                results pointing at other documents are counted in notItems
+                each result's weight as the entry's weight; a result that
+                rolls another table brings that table's items, their weights
+                multiplied through (flattenTable); text results are counted
+                in `text` (their share of the table in textChance), results
+                pointing at other documents in notItems, tables nested too
+                deep or rolling a table above them in tooDeep
   Anything that isn't a physical item type is left out and counted by type;
   so are entries whose uuid is in `known` (already in the pool) or repeats
   within the drop (a table's repeats add their weights together).
+  A table's drop also says how many nested tables it flattened
+  (`flattened`) and what share of the table its text results are
+  (`textChance`: their weight against theirs and the items' that go in),
+  which "Make a crate" can count as a pull that finds nothing.
   Returns null for drag data this can't use.
 */
 export async function entriesFromDrop(data, { known = [] } = {}) {
   const found = await collectDrop(data);
   if (!found) return null;
   const have = new Set(known);
-  const skipped = { duplicates: 0, notLoot: {}, notItems: found.notItems ?? 0 };
+  const skipped = { duplicates: 0, notLoot: {}, notItems: found.notItems ?? 0, text: found.text ?? 0, tooDeep: found.tooDeep ?? 0 };
   const byUuid = new Map();
   for (const { type, ...entry } of found.entries) {
     if (type && !isLootType(type)) { skipped.notLoot[type] = (skipped.notLoot[type] ?? 0) + 1; continue; }
@@ -349,7 +357,14 @@ export async function entriesFromDrop(data, { known = [] } = {}) {
     if (seen) { if (found.sumWeights) seen.weight += entry.weight; continue; }
     byUuid.set(entry.uuid, entry);
   }
-  return { label: found.label, kind: data.type, entries: [...byUuid.values()], skipped };
+  const entries = [...byUuid.values()];
+  const plan = { label: found.label, kind: data.type, entries, skipped };
+  if (data.type === "RollTable") {
+    const items = entries.reduce((n, e) => n + e.weight, 0);
+    const text = found.textWeight ?? 0;
+    Object.assign(plan, { uuid: found.uuid ?? data.uuid, flattened: found.flattened ?? 0, textWeight: text, textChance: text > 0 && items > 0 ? text / (text + items) : 0 });
+  }
+  return plan;
 }
 
 async function collectDrop(data) {
@@ -388,15 +403,9 @@ async function collectDrop(data) {
     case "RollTable": {
       const table = data.uuid ? await resolveEntry(data) : null;
       if (!table) return null;
-      const entries = [];
-      let notItems = 0;
-      for (const r of table.results ?? []) {
-        const uuid = r.documentUuid ?? (r.documentCollection && r.documentId ? tableResultUuid(r) : null);
-        const item = uuid && r.type !== "text" ? await resolveEntry({ uuid }) : null;
-        if (item?.documentName !== "Item") { notItems++; continue; }
-        entries.push({ ...entryFromItem(item), weight: Math.max(1, Number(r.weight) || 1), type: item.type });
-      }
-      return { label: table.name, entries, notItems, sumWeights: true };
+      const flat = await flattenTable(table, { load: uuid => resolveEntry({ uuid }) });
+      const entries = flat.items.map(({ item, weight }) => ({ ...entryFromItem(item), weight, type: item.type }));
+      return { label: table.name, uuid: table.uuid, entries, notItems: flat.notItems, text: flat.text, textWeight: flat.textWeight, tooDeep: flat.tooDeep, flattened: flat.flattened, sumWeights: true };
     }
     default: return null;
   }
@@ -406,6 +415,84 @@ async function collectDrop(data) {
 function tableResultUuid(r) {
   const c = r.documentCollection;
   return c.includes(".") ? `Compendium.${c}.Item.${r.documentId}` : `${c}.${r.documentId}`;
+}
+
+// How deep a table's nested tables are followed: the table itself is the
+// first level, so a chain of five tables comes in whole.
+export const TABLE_DEPTH = 5;
+
+// A result's weight as the table rolls it; a weight of 0 still counts as 1,
+// so its item is never left with nothing drawable.
+const resultWeight = r => Math.max(1, Number(r?.weight) || 1);
+
+/*
+  A roll table's items, nested tables flattened: a result that rolls
+  another table brings that table's results in, each weighted by the
+  parent result's weight times its own share of its table (its weight over
+  that table's total), down to TABLE_DEPTH levels. A table already on the
+  way down (a loop) or past the depth is skipped and counted in tooDeep.
+  Weights stay whole numbers, scaled together so their ratios are exact
+  (integerWeights); a table with nothing nested keeps its own weights.
+  `load(uuid)` resolves a result's document (fromUuid). Returns { items: [{
+  item, weight }], text, textWeight, notItems, tooDeep, flattened }.
+*/
+export async function flattenTable(root, { load, maxDepth = TABLE_DEPTH } = {}) {
+  const items = [];
+  const text = [];
+  let notItems = 0, tooDeep = 0, flattened = 0;
+  // `num` over `den` is a result's weight in the root table's units; den is
+  // the product of the nested tables' totals on the way down (the root's
+  // results keep their own weights, so its total never divides).
+  const walk = async (table, num, den, depth, path) => {
+    const results = [...(table?.results ?? [])];
+    const total = depth > 1 ? results.reduce((n, r) => n + resultWeight(r), 0) : 1;
+    if (!total) return;
+    for (const r of results) {
+      const n = num * resultWeight(r), d = den * total;
+      const uuid = r.type === "text" ? null : r.documentUuid ?? (r.documentCollection && r.documentId ? tableResultUuid(r) : null);
+      if (!uuid) { text.push([n, d]); continue; }
+      const doc = await load(uuid);
+      if (doc?.documentName === "RollTable") {
+        if (depth >= maxDepth || path.includes(doc.uuid)) { tooDeep++; continue; }
+        flattened++;
+        await walk(doc, n, d, depth + 1, [...path, doc.uuid]);
+      } else if (doc?.documentName === "Item") items.push({ item: doc, n, d });
+      else notItems++;
+    }
+  };
+  await walk(root, 1, 1, 1, [root?.uuid]);
+  const ints = integerWeights([...items.map(i => [i.n, i.d]), ...text]);
+  return {
+    items: items.map((i, k) => ({ item: i.item, weight: ints[k] })),
+    text: text.length,
+    textWeight: ints.slice(items.length).reduce((n, w) => n + w, 0),
+    notItems, tooDeep, flattened,
+  };
+}
+
+const gcd = (a, b) => { while (b) [a, b] = [b, a % b]; return a; };
+const MAX_SCALE = 1e6;
+
+/*
+  Whole-number weights for [numerator, denominator] pairs, in one scale so
+  every ratio holds: each times the least common multiple of the
+  denominators, then divided by what they all share. Weights that are
+  whole already come back as they are. Past MAX_SCALE (deep tables with
+  awkward totals) they are rounded on a scale of a million instead, never
+  below 1.
+*/
+export function integerWeights(pairs) {
+  let lcm = 1;
+  for (const [, d] of pairs) { lcm = lcm / gcd(lcm, d) * d; if (!(lcm <= MAX_SCALE)) break; }
+  if (lcm === 1) return pairs.map(([n]) => n);
+  if (lcm <= MAX_SCALE) {
+    const ints = pairs.map(([n, d]) => n * (lcm / d));
+    const g = ints.reduce((a, w) => gcd(a, w), 0) || 1;
+    return ints.map(w => w / g);
+  }
+  const values = pairs.map(([n, d]) => n / d);
+  const total = values.reduce((a, v) => a + v, 0);
+  return values.map(v => Math.max(1, Math.round(v / total * MAX_SCALE)));
 }
 
 /*
