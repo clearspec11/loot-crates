@@ -124,7 +124,7 @@ const READ_SHOP = `globalThis.__lcCards = () => [...document.querySelectorAll("#
       return {
         source: structuredClone(source), boxIds: Object.keys(store.getBoxes()), shopOpen: store.isShopOpen(), actorId: actor.id,
         sourceState: structuredClone(store.getActorState(actor.id, source.id)), sourceRows: store.getLog().filter(r => r.boxId === source.id).length,
-        logIds: store.getLog().map(r => r.id), purseCp: toCopper(actor.system.currency), items: actor.items.size,
+        logIds: store.getLog().map(r => r.id), purseCp: toCopper(actor.system.currency), items: actor.items.filter(i => !i.flags?.dnd5e?.cachedFor).length,
       };
     }, { base: MODULE_BASE, name: BOX });
     const source = out.before.source;
@@ -252,7 +252,7 @@ const READ_SHOP = `globalThis.__lcCards = () => [...document.querySelectorAll("#
           sourceState: structuredClone(store.getActorState(before.actorId, before.source.id)),
           copyState: structuredClone(store.getActorState(before.actorId, copyId)),
           source: structuredClone(store.getBoxes()[before.source.id]),
-          purseCp: toCopper(actor.system.currency), items: actor.items.size,
+          purseCp: toCopper(actor.system.currency), items: actor.items.filter(i => !i.flags?.dnd5e?.cachedFor).length,
         };
       }, { base: MODULE_BASE, before: out.before, copyId: copy.id });
       out.rows.push(...out.afterPull.rows.map(r => r.id));
@@ -314,7 +314,7 @@ const READ_SHOP = `globalThis.__lcCards = () => [...document.querySelectorAll("#
         for (const id of ids) if (store.getBoxes()[id]) { await store.removeBox(id); gone.push(id); }
         try { await globalThis.__lc?.app?.close(); } catch { /* closed */ }
         const actor = actorId && game.actors.get(actorId);
-        return { refunded, deleted: gone, purseCp: actor ? toCopper(actor.system.currency) : null, items: actor?.items.size ?? null };
+        return { refunded, deleted: gone, purseCp: actor ? toCopper(actor.system.currency) : null, items: actor ? actor.items.filter(i => !i.flags?.dnd5e?.cachedFor).length : null };
       }, { base: MODULE_BASE, ids: out.created, rows: out.rows, actorId: out.before?.actorId ?? null }) : null;
     } catch (err) { out.restored = { error: String(err) }; }
     console.log(JSON.stringify(out, null, 1));

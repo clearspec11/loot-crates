@@ -109,7 +109,7 @@ async function seed(gm) {
       rules: { pity: null, noDuplicates: false, stock: 3, stockMax: 3, perCharacter: { max: already + 1, per: "ever" } },
     });
     const { toCopper } = await import(base + "scripts/currency.js");
-    return { actorId: actor.id, boxId: box.id, old, max: already + 1, purseCp: toCopper(actor.system.currency), items: actor.items.size, logIds: store.getLog().map(r => r.id) };
+    return { actorId: actor.id, boxId: box.id, old, max: already + 1, purseCp: toCopper(actor.system.currency), items: actor.items.filter(i => !i.flags?.dnd5e?.cachedFor).length, logIds: store.getLog().map(r => r.id) };
   }, { base: MODULE_BASE, name: BOX });
 }
 
@@ -204,7 +204,7 @@ const untilCard = (pl, pred, since) => pl.evaluate(async ({ pred, since }) => {
       const { toCopper } = await import(base + "scripts/currency.js");
       const actor = game.actors.get(before.actorId);
       const rows = store.getLog().filter(r => !before.logIds.includes(r.id));
-      return { purseCp: toCopper(actor.system.currency), items: actor.items.size, rows: rows.map(r => ({ id: r.id, boxId: r.boxId, price: r.price, itemId: r.itemId })), rules: store.getBoxes()[before.boxId]?.rules };
+      return { purseCp: toCopper(actor.system.currency), items: actor.items.filter(i => !i.flags?.dnd5e?.cachedFor).length, rows: rows.map(r => ({ id: r.id, boxId: r.boxId, price: r.price, itemId: r.itemId })), rules: store.getBoxes()[before.boxId]?.rules };
     }, { base: MODULE_BASE, before });
 
     // 3. The GM's Boxes tab, Edit, Restock, Save.
@@ -274,7 +274,7 @@ const untilCard = (pl, pred, since) => pl.evaluate(async ({ pred, since }) => {
       await until(() => store.getLog().find(r => r.id === rowId)?.refunded);
       await wait(500);
       await app.close();
-      return { at, dialogText, purseCp: toCopper(actor.system.currency), items: actor.items.size, rules: structuredClone(store.getBoxes()[before.boxId].rules) };
+      return { at, dialogText, purseCp: toCopper(actor.system.currency), items: actor.items.filter(i => !i.flags?.dnd5e?.cachedFor).length, rules: structuredClone(store.getBoxes()[before.boxId].rules) };
     }, { base: MODULE_BASE, before, rowId });
     out.cardAfterRefund = await untilCard(pl.page, c => !c.off && c.limit !== "", out.refund.at);
     if (shot) await pl.page.screenshot({ path: shot });

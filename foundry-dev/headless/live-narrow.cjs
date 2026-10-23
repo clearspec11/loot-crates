@@ -5,7 +5,9 @@
 //   FOUNDRY_URL=http://<host>:30000 MODULE_BASE=http://<this machine>:8766/ \
 //     NODE_PATH=$(npm root -g) node foundry-dev/headless/live-narrow.cjs [--shot out.png]
 //
-// Env: BOX (default "Live UI crate", seeded by live-ui.js).
+// Env: BOX (default "Live UI crate", seeded by live-ui.js); WIDTH (default
+// 390) for another width: in a pane wider than 560 px (module.css) the rows
+// are expected as a table that still fits it, with no button off its edge.
 //
 // As a GM does: open the manager and drag its resize handle until the
 // window is 390 px wide (setPosition stands in if the drag is refused, and
@@ -29,6 +31,9 @@ const FOUNDRY = process.env.FOUNDRY_URL || "http://localhost:30000";
 const MODULE_BASE = process.env.MODULE_BASE || "http://localhost:8766/";
 const BOX = process.env.BOX || "Live UI crate";
 const WIDTH = Number(process.env.WIDTH || 390);
+// The pane width at and under which module.css stacks the rows as cards
+// (the lc-tab container query); a wider pane must show the table, fitting.
+const STACK_AT = 560;
 const shot = process.argv.includes("--shot") ? process.argv[process.argv.indexOf("--shot") + 1] : null;
 
 (async () => {
@@ -162,11 +167,15 @@ const shot = process.argv.includes("--shot") ? process.argv[process.argv.indexOf
     out.keyboard.written = (await page.evaluate(async base => JSON.stringify((await import(base + "scripts/store.js")).getBoxes()), MODULE_BASE)) !== boxesBefore;
 
     const b = out.boxes, l = out.log;
+    // Rows stack in a pane of STACK_AT or narrower; a wider one shows the
+    // table, which must still fit it (no sideways scroll, no button off it).
+    const stacks = b.paneWidth <= STACK_AT;
+    out.stacks = stacks;
     out.ok = Math.abs(out.resize.to - WIDTH) <= 4
-      && b.tab === "boxes" && b.sideways <= 0 && b.toolbarFits && b.newButtons.length === 5 && b.rows > 0 && b.stacked === true && b.headerHidden === true && b.roles
+      && b.tab === "boxes" && b.sideways <= 0 && b.toolbarFits && b.newButtons.length === 5 && b.rows > 0 && b.stacked === stacks && b.headerHidden === stacks && b.roles
       && b.tags.every(Boolean) && b.crateTag === "Crate" && b.offScreen.length === 0 && b.actions.every(a => a.slice(-3).join("|") === "editBox|copyBox|deleteBox")
       && out.edit.opened && out.edit.title === "Edit box" && out.edit.closed && !out.edit.written
-      && l.tab === "log" && l.sideways <= 0 && l.offScreen.length === 0 && (l.rows === 0 || (l.stacked === true && l.roles))
+      && l.tab === "log" && l.sideways <= 0 && l.offScreen.length === 0 && (l.rows === 0 || (l.stacked === stacks && l.roles))
       && out.keyboard.focused && out.keyboard.opened && /^Edit /.test(out.keyboard.title ?? "") && (out.keyboard.escapeClosed || out.keyboard.cancelClosed) && !out.keyboard.written
       && errors.length === 0;
   } catch (e) {
