@@ -188,7 +188,8 @@ dnd5e's two sheet palettes (grey paper with maroon and gold; denim and slate wit
 
 ### Tertiary: the rarity ladder (user pin)
 - **Common** (`rarity-common`), **Uncommon** (`rarity-uncommon`), **Rare** (`rarity-rare`), **Very Rare** (`rarity-very-rare`), **Legendary** (`rarity-legendary`), **Artifact** (`rarity-artifact`). One rule per rarity class sets `--lc-rarity` and `--lc-rank` (0 to 5); everything reads them.
-- Two swatches that aren't a rarity, for the Wishing Well's outcomes, read through the same variable: **None** (`lc-rarity-none`, mute ink: a throw that gave nothing) and **Coin** (`lc-rarity-coin`, the gold rim: the coin back). They colour pills, ribbon segments and log dots only.
+- Two swatches that aren't a rarity, for the Wishing Well's outcomes, read through the same variable: **None** (`lc-rarity-none`, mute ink: a throw that gave nothing) and **Coin** (`lc-rarity-coin`, the gold rim: the coin back). They colour pills, ribbon segments and log dots only. **None** also marks a crate's pull that found nothing (a roll table's text results counted as nothing): its strip card is an empty slot with a dashed frame, its odds pill and chance line read "Nothing".
+- A crate on a roll table's odds (`rules.oddsMode: "weight"`) names its items in place of the rarity pills: one line each (`lc-chance`), the rarity as the pills' diamond, the name at left, the chance in tabular label figures at right, best find first, then "and N more" and "Nothing" in mute ink. The ribbon above stays the rarities.
 - **Bane** (`bane-slate`, `lc-rarity-bane`): the one colour that means "you lost something", the deck's loss card. Cold slate, the same in both themes; not gold (treasure), not amber (a problem), not a rarity. On paper it is an edge, a diamond or a segment like the rest; in the vault it names the card.
 
 ### Neutral

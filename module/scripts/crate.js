@@ -11,11 +11,11 @@
   so Vitest runs the roll as it is.
 */
 import { RARITIES, RARITY_LABEL } from "./config.js";
-import { draw, nextState, markEntriesMissing, shopOdds, resetsPity, undoPull } from "./odds.js";
-import { buildStrip } from "./strip.js";
+import { draw, nextState, markEntriesMissing, shopOdds, resetsPity, undoPull, rollMiss, missState } from "./odds.js";
+import { buildStrip, NOTHING_CARD } from "./strip.js";
 import { mountSpin } from "./spin.js";
-import { playTick, playSlow, playReveal } from "./sound.js";
-import { resultHTML } from "./revealcard.js";
+import { playTick, playSlow, playReveal, playPlink } from "./sound.js";
+import { resultHTML, missHTML, oddsWithNothing } from "./revealcard.js";
 import { boxCard, buyReason } from "./boxcard.js";
 import { formatPrice } from "./currency.js";
 import { PullError, registerKind } from "./kinds.js";
@@ -100,8 +100,17 @@ export function grantData(source, result, box) {
   };
 }
 
+/*
+  A crate that can find nothing (rules.missChance: a roll table's text
+  results the GM counted as nothing) rolls that first, the core's miss: no
+  item, no grant, the strip landing on a blank, one more pull toward pity.
+*/
 async function roll(ctx) {
   const { game: box, actor } = ctx;
+  if (rollMiss({ box, pools: ctx.pools, rng: ctx.rng, state: ctx.state ?? {} })) {
+    const strip = buildStrip({ result: { entry: NOTHING_CARD, rarity: "none", miss: true }, box, pools: ctx.pools, rng: ctx.rng, state: ctx.state ?? {} });
+    return { result: null, grant: null, outcome: "nothing", strip, state: missState(ctx.state ?? {}), pools: ctx.pools };
+  }
   const { result, source, pools } = await drawItem(ctx);
   if (!result) throw new PullError(`${box.name} has nothing left to give ${actor.name}.`);
   const strip = buildStrip({ result, box, pools, rng: ctx.rng, state: ctx.state ?? {} });
@@ -113,6 +122,7 @@ async function roll(ctx) {
 // undoPull). Provenance for a GM-set rarity: the source's own, only when it
 // differs.
 export function crateLogRow({ game: box, state, out }) {
+  if (!out.result) return { outcome: "nothing", name: "Nothing", before: { sinceRare: state.sinceRare ?? 0, hadItem: false }, resetPity: false };
   const row = { name: out.result.name, uuid: out.result.uuid, rarity: out.result.rarity, pity: out.result.pity, before: { sinceRare: state.sinceRare ?? 0, hadItem: (state.owned ?? []).includes(out.result.uuid) }, resetPity: resetsPity(box, out.result.rarity) };
   const src = out.sourceRarity ?? [];
   if (out.rarityOverride && !(src.length === 1 && src[0] === out.result.rarity)) row.sourceRarity = src;
@@ -128,7 +138,7 @@ export function crateLogRow({ game: box, state, out }) {
 // just after this and would tell the result early.
 function revealExtra({ game: box, state, out }) {
   return {
-    odds: shopOdds(box, out.pools, state).rows.map(({ rarity, chance, label }) => ({ rarity, chance, label })),
+    odds: oddsWithNothing(shopOdds(box, out.pools, state)),
     stateBefore: { sinceRare: state.sinceRare ?? 0, owned: [...(state.owned ?? [])], pulls: state.pulls ?? 0 },
   };
 }
@@ -176,6 +186,20 @@ function play(host, reveal, { sound = false, pageHidden = () => false, onLand })
 // in the buyer's inventory, or at the pool's source when there isn't one.
 function chatCard(reveal, { esc, itemLink }) {
   const r = reveal.result;
+  // A pull that found nothing posts its card too, so the card turning up
+  // tells nobody anything; the seal hides its "Nothing" until the landing.
+  if (!r) {
+    return `
+    <div class="loot-crates lc-chat lc-rarity-none">
+      <div class="lc-chat__head">${esc(reveal.actorName)} opened <strong>${esc(reveal.box.name)}</strong> <span class="lc-chat__price">${esc(formatPrice(reveal.box.price))}</span></div>
+      <div class="lc-chat__item">
+        <div>
+          <div class="lc-chat__name">Nothing</div>
+          <div class="lc-chat__rarity">No item this time</div>
+        </div>
+      </div>
+    </div>`;
+  }
   return `
     <div class="loot-crates lc-chat lc-rarity-${esc(r.rarity)}">
       <div class="lc-chat__head">${esc(reveal.actorName)} opened <strong>${esc(reveal.box.name)}</strong> <span class="lc-chat__price">${esc(formatPrice(reveal.box.price))}</span></div>
@@ -199,8 +223,9 @@ export const CRATE = registerKind({
   reveal: {
     title: "Opening a crate",
     play,
-    result: resultHTML,
-    sting: reveal => playReveal(reveal.result.rarity),
+    result: (reveal, opts) => (reveal.result ? resultHTML(reveal, opts) : missHTML(reveal, opts)),
+    sting: reveal => (reveal.result ? playReveal(reveal.result.rarity) : playPlink()),
+    notice: reveal => (reveal.result || reveal.replay ? null : `${reveal.box.name}: nothing this time.`),
     replayable: true,
   },
   chat: { card: chatCard },

@@ -402,3 +402,51 @@ export function entryRow(poolId, row, esc) {
     ${curateControls(poolId, e, src, status, parts.name, esc)}
     ${update}${remove}</li>`;
 }
+
+/* ---------- The preview before a drop goes in ---------- */
+
+export const SKIPPED_NAMES = { spell: ["spell", "spells"], feat: ["feature", "features"], class: ["class", "classes"], subclass: ["subclass", "subclasses"], background: ["background", "backgrounds"], race: ["species", "species"], facility: ["facility", "facilities"] };
+
+/*
+  What a drop left out, and what it did on the way, one line each: "14
+  already in this pool, skipped", "3 spells, 2 features skipped, not loot",
+  and for a roll table (store.js entriesFromDrop) "2 nested tables
+  flattened into their items", "1 text result skipped" (or counted as
+  nothing, `textAsNothing`), "1 table result that isn't an item, skipped",
+  "1 nested table skipped: more than 5 deep, or rolling a table above it".
+*/
+export function describeSkipped({ duplicates = 0, notLoot = {}, notItems = 0, text = 0, tooDeep = 0 } = {}, { flattened = 0, textAsNothing = false, depth = 5 } = {}) {
+  const lines = [];
+  if (flattened) lines.push(`${plural(flattened, "nested table", "nested tables")} flattened into ${flattened === 1 ? "its" : "their"} items`);
+  if (duplicates) lines.push(`${duplicates} already in this pool, skipped`);
+  const kinds = Object.entries(notLoot).map(([type, n]) => `${n} ${(SKIPPED_NAMES[type] ?? [type, `${type}s`])[n === 1 ? 0 : 1]}`);
+  if (kinds.length) lines.push(`${kinds.join(", ")} skipped, not loot`);
+  if (text) lines.push(`${plural(text, "text result", "text results")} ${textAsNothing ? "counted as nothing" : "skipped"}`);
+  if (notItems) lines.push(`${notItems} table result${notItems === 1 ? "" : "s"} that ${notItems === 1 ? "isn't an item" : "aren't items"}, skipped`);
+  if (tooDeep) lines.push(`${plural(tooDeep, "nested table", "nested tables")} skipped: more than ${depth} deep, or rolling a table above ${tooDeep === 1 ? "it" : "them"}`);
+  return lines;
+}
+
+export const PREVIEW_ROWS = 50;
+
+/*
+  The preview before a folder, compendium, roll table or filter goes into a
+  pool (`plan` from store.js entriesFromDrop): how many items from where,
+  by rarity, what was flattened or left out, and the first PREVIEW_ROWS
+  names with their weights. Shared by the manager's dialog and the harness.
+*/
+export function dropPreviewHTML(plan, poolName, esc = s => String(s ?? "")) {
+  const n = plan.entries.length;
+  const counts = {};
+  for (const e of plan.entries) counts[normalizeRarity(e.rarity)] = (counts[normalizeRarity(e.rarity)] ?? 0) + 1;
+  const skipped = describeSkipped(plan.skipped, { flattened: plan.flattened ?? 0 });
+  const shown = plan.entries.slice(0, PREVIEW_ROWS);
+  const items = plural(n, "item", "items");
+  return `<div class="lc-preview">
+        <p class="lc-preview__lead">Add <strong>${items}</strong> from <strong>${esc(plan.label)}</strong> to <strong>${esc(poolName)}</strong>.</p>
+        <p class="lc-preview__rarities" aria-label="By rarity">${RARITIES.filter(r => counts[r]).map(r => `<span class="lc-odd lc-rarity-${r}">${counts[r]} ${RARITY_LABEL[r].toLowerCase()}</span>`).join("")}</p>
+        ${skipped.length ? `<ul class="lc-preview__skipped">${skipped.map(line => `<li>${esc(line)}</li>`).join("")}</ul>` : ""}
+        <ul class="lc-preview__list">${shown.map(e => `<li class="lc-entry lc-rarity-${normalizeRarity(e.rarity)}"><img src="${esc(e.img || FALLBACK_IMG)}" alt=""><span class="lc-entry__name">${esc(e.name)}</span>${e.weight > 1 ? `<small class="lc-preview__weight">weight ${esc(e.weight)}</small>` : ""}<em>${RARITY_LABEL[normalizeRarity(e.rarity)]}</em></li>`).join("")}</ul>
+        ${n > shown.length ? `<p class="lc-preview__more">and ${n - shown.length} more</p>` : ""}
+      </div>`;
+}

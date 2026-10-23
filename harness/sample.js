@@ -51,6 +51,37 @@ export const POOLS = {
   },
 };
 
+/*
+  A crate made from a roll table (newgame.js crateFromTable): "Goblin's
+  Pockets", its items copied into a pool of their own at the table's
+  weights (a nested table of trinkets flattened into it), drawn at the
+  table's own odds, its text results ("lint and a button") counted as
+  nothing on a quarter of pulls. The Flame Tongue is 1 in 100 of the items.
+*/
+export const TABLE_POOL = {
+  id: "pockets", name: "Goblin's Pockets", pools: [],
+  entries: [
+    item("Flame Tongue", "rare", 1), item("Potion of Healing", "common", 40), item("Spell Scroll (Cantrip)", "common", 20),
+    item("Candle of the Deep", "common", 15), item("Pole of Collapsing", "common", 10), item("Bag of Holding", "uncommon", 8),
+    item("Boots of Elvenkind", "uncommon", 6),
+  ],
+};
+export const TABLE_CRATE = {
+  id: "pockets-crate", name: "Goblin's Pockets", price: 5, pools: [{ id: "pockets", share: 1 }],
+  weights: { common: 60, uncommon: 26, rare: 10, veryRare: 3, legendary: 1, artifact: 0 },
+  rules: { oddsMode: "weight", missChance: 0.25 },
+  fromTable: { uuid: "RollTable.pockets", name: "Goblin's Pockets", items: 7, flattened: 1, textChance: 0.25 },
+};
+// What a drop of that table on a pool found (store.js entriesFromDrop):
+// the seven items, one nested table flattened, two text results and a
+// spell skipped, one item already in the pool.
+export const TABLE_PLAN = {
+  label: "Goblin's Pockets", kind: "RollTable", uuid: "RollTable.pockets",
+  entries: TABLE_POOL.entries.slice(1),
+  skipped: { duplicates: 1, notLoot: { spell: 1 }, notItems: 0, text: 2, tooDeep: 0 },
+  flattened: 1, textWeight: 33, textChance: 0.25,
+};
+
 export const BOX = {
   id: "adventurer", name: "Adventurer's Crate", price: 150,
   pools: [{ id: "core", share: 4 }, { id: "homebrew", share: 1 }],

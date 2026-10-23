@@ -151,8 +151,14 @@ describe("entriesFromDrop", () => {
     // The potion appears twice (1 + 2); a weight-0 result still goes in at 1
     // so its rarity is never left with nothing drawable.
     expect(byName).toEqual({ Longsword: 3, "Potion of Healing": 3, "Wand of Fireballs": 1 });
-    expect(plan.skipped.notItems).toBe(2);
+    // The text result is counted on its own; the nested table (empty) is
+    // flattened into nothing rather than counted as a non-item.
+    expect(plan.skipped.text).toBe(1);
+    expect(plan.skipped.notItems).toBe(0);
+    expect(plan.flattened).toBe(1);
     expect(plan.skipped.notLoot).toEqual({ spell: 1 });
+    // The text result's weight against what goes in: 4 / (4 + 3 + 3 + 1).
+    expect(plan.textChance).toBeCloseTo(4 / 11, 10);
   });
 
   it("returns null for drag data it can't use", async () => {

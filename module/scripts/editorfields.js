@@ -12,6 +12,7 @@
   render these as the manager does.
 */
 import { RARITIES, RARITY_LABEL } from "./config.js";
+import { oddsModeOf, missChanceOf, chanceLabel } from "./odds.js";
 
 const plain = s => String(s ?? "");
 
@@ -94,4 +95,54 @@ export function renumberCards(rows) {
   [...rows.children].forEach((row, i) => {
     for (const [key, name] of Object.entries(CARD_FIELDS)) row.querySelector(`.lc-card-row__${key}${key === "once" ? " input" : ""}`)?.setAttribute("aria-label", name(i + 1));
   });
+}
+
+/*
+  The crate's odds as one choice (rules.oddsMode, odds.js), each option a
+  radio in a label of its own with one plain sentence under it, named to
+  it with aria-describedby. A crate made from a roll table calls the
+  second "Use the table's odds"; any other crate, "By item weight".
+*/
+export function oddsModeFieldset(box, { esc = plain } = {}) {
+  const mode = oddsModeOf(box);
+  const id = esc(box.id);
+  const table = !!box.fromTable;
+  const options = [
+    ["rarity", "By rarity", "A pull picks a rarity by the weights below, then an item of that rarity."],
+    ["weight", table ? "Use the table's odds" : "By item weight", table
+      ? "Each item's chance is its weight against the rest of the table, so 1 in 100 stays 1 in 100. Rarity weights are not used."
+      : "Each item's chance is its weight against the rest of its pool, as on a roll table. Rarity weights are not used."],
+  ];
+  return `<fieldset class="lc-form__mode"><legend>Odds</legend>
+        ${options.map(([value, label, hint]) => `<div class="lc-mode">
+          <label class="lc-row lc-mode__pick"><input type="radio" name="oddsMode" value="${value}"${mode === value ? " checked" : ""} aria-describedby="lc-mode-${id}-${value}"> ${label}</label>
+          <p class="lc-form__hint lc-mode__hint" id="lc-mode-${id}-${value}">${hint}</p>
+        </div>`).join("")}
+      </fieldset>`;
+}
+
+/*
+  A crate made from a roll table says it is a copy, and what came in: the
+  table is read once, when the crate is made, never again.
+*/
+export function tableNoteHTML(box, { esc = plain } = {}) {
+  const t = box.fromTable;
+  if (!t) return "";
+  const what = [`${t.items} item${t.items === 1 ? "" : "s"}`, t.flattened ? `${t.flattened} nested table${t.flattened === 1 ? "" : "s"} flattened` : ""].filter(Boolean).join(", ");
+  return `<p class="lc-form__hint lc-form__from">Copied from <strong>${esc(t.name)}</strong> (${esc(what)}); edit the table and make the crate again to pick up changes.</p>`;
+}
+
+/*
+  "Count text results as nothing", for a crate made from a table with text
+  results ("You find nothing"): ticked, their share of the table is the
+  share of pulls that give no item (rules.missChance); unticked, they are
+  left out, as if the table had only its items. Off for a new crate.
+*/
+export function nothingRow(box, { esc = plain } = {}) {
+  const chance = missChanceOf({ rules: { missChance: box.fromTable?.textChance } });
+  if (!chance) return "";
+  const on = missChanceOf(box) > 0;
+  const id = `lc-nothing-${esc(box.id)}`;
+  return `<div class="lc-row lc-row--wrap lc-form__nothing">${field(`<input type="checkbox" name="countNothing"${on ? " checked" : ""} aria-describedby="${id}">`, "Count text results as nothing")}
+        <p class="lc-form__hint" id="${id}">The table's text results are ${esc(chanceLabel(chance))} of it. Ticked, that share of pulls gives no item; unticked, they are left out.</p></div>`;
 }

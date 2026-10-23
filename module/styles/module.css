@@ -217,6 +217,23 @@
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--lc-ink) 25%, transparent);
 }
 
+/* A table crate's named chances (boxcard.js chanceLinesHTML): one line per
+   item, its rarity as the pills' diamond, the chance in tabular figures at
+   the right; "and N more" and "Nothing" in muted ink. */
+.loot-crates .lc-chances { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; width: 100%; min-width: 0; text-align: left; }
+.loot-crates .lc-chance {
+  display: flex; align-items: center; gap: 6px; min-width: 0; margin: 0;
+  font-size: 12px; line-height: 18px; color: var(--lc-ink);
+}
+.loot-crates .lc-chance::before {
+  content: ""; width: 6px; height: 6px; flex: none; background: var(--lc-rarity); transform: rotate(45deg);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--lc-ink) 25%, transparent);
+}
+.loot-crates .lc-chance__name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.loot-crates .lc-chance__pct { flex: none; font-family: var(--lc-label); font-weight: 700; font-variant-numeric: tabular-nums; }
+.loot-crates .lc-chance--rest, .loot-crates .lc-chance.lc-rarity-none { color: var(--lc-ink-mute); }
+.loot-crates .lc-chance--rest::before { visibility: hidden; }
+
 /* ---------- Shop ---------- */
 
 /* Foundry caps a window at the screen's height and clips its content
@@ -393,6 +410,8 @@
   font-family: var(--lc-display); font-size: 22px; font-weight: 700; color: var(--lc-vault-soft);
 }
 .loot-crates .lc-card__art img { width: 64px; height: 64px; object-fit: contain; border: 0; }
+/* A blank: a pull that finds nothing lands on an empty slot. */
+.loot-crates .lc-card__art--empty { border-style: dashed; background: transparent; }
 .loot-crates .lc-card__name {
   width: 100%; font-size: 12px; line-height: 1.2; text-align: center; color: var(--lc-vault-ink);
   overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; min-height: 2.4em;
@@ -412,6 +431,7 @@
   border: 1px solid var(--lc-pin); border-radius: 4px;
   box-shadow: 0 0 0 2px var(--lc-vault-card), 0 0 0 3px color-mix(in srgb, var(--lc-pin) 60%, transparent);
 }
+.loot-crates .lc-card--landed .lc-card__art--empty { border-style: dashed; box-shadow: none; }
 .loot-crates .lc-spin--landed .lc-card:not(.lc-card--landed) { opacity: .45; }
 
 /* The result, inside the vault, under the strip. */
@@ -973,6 +993,14 @@
 /* The box editor's live odds: the shop's ribbon and pills, left-aligned. */
 .loot-crates .lc-form__preview { display: grid; gap: 6px; }
 .loot-crates .lc-form__preview .lc-odds { justify-content: flex-start; }
+/* The crate's odds as one choice (editorfields.js oddsModeFieldset): each
+   radio with its sentence under it, lined up with the label's words. */
+.loot-crates .lc-form .lc-form__mode { display: grid; gap: 8px; }
+.loot-crates .lc-form .lc-mode { display: grid; gap: 2px; }
+.loot-crates .lc-form .lc-mode__pick { font-weight: 600; }
+.loot-crates .lc-form .lc-mode__pick input[type=radio] { width: auto; min-height: 0; margin: 0; flex: none; }
+.loot-crates .lc-form .lc-mode__hint { padding-left: 24px; }
+.loot-crates .lc-form .lc-form__from strong { color: var(--lc-ink); }
 /* Weights in one column, each with its note beside it. */
 .loot-crates .lc-form .lc-form__weights .lc-row { display: grid; grid-template-columns: 6.5em 76px 1fr; }
 /* The odds stay in view while the GM scrolls up to the pools: a fieldset's
@@ -996,7 +1024,9 @@
 .loot-crates .lc-preview__lead { font-family: var(--lc-slab); font-size: 14px; }
 .loot-crates .lc-preview__rarities { display: flex; flex-wrap: wrap; gap: 4px; }
 .loot-crates .lc-preview__skipped { margin: 0; padding-left: 16px; color: var(--lc-ink-mute); }
-.loot-crates .lc-preview__list { list-style: none; margin: 0; padding: 0 4px 0 0; display: grid; gap: 3px; max-height: 260px; overflow-y: auto; }
+/* Rows keep their content's height (a row that wraps at a dialog's width
+   would otherwise be squeezed to fit the list's max-height and overlap). */
+.loot-crates .lc-preview__list { list-style: none; margin: 0; padding: 0 4px 0 0; display: grid; grid-auto-rows: max-content; gap: 3px; max-height: 260px; overflow-y: auto; }
 .loot-crates .lc-preview__weight { font-size: 12px; color: var(--lc-ink-mute); }
 .loot-crates .lc-preview__more { color: var(--lc-ink-mute); }
 
@@ -1068,6 +1098,7 @@
   .loot-crates .lc-entry__name, .loot-crates .lc-entry__text { flex: 1 1 calc(100% - 50px); }
   .loot-crates .lc-entry__name, .loot-crates .lc-entry__status { white-space: normal; overflow-wrap: anywhere; }
   .loot-crates .lc-entry select.lc-entry__rarity { margin-left: 41px; }
+  .loot-crates .lc-preview__list .lc-preview__weight { margin-left: 41px; }
 }
 
 /* The Boxes and Pull log tables follow their pane's width (the lc-tab

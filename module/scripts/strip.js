@@ -4,21 +4,35 @@
   Fillers are real entries from the box's pools, drawn with the box's odds, so
   what flies past is loot the player could have had.
 */
-import { flattenPool, weightedPick, rarityRank, shopOdds } from "./odds.js";
+import { flattenPool, weightedPick, rarityRank, shopOdds, oddsModeOf, missChanceOf } from "./odds.js";
 import { DEFAULT_WEIGHTS, RARITIES } from "./config.js";
 
 export const STRIP_LENGTH = 48;
 export const LAND_INDEX = 40;
 
+// The card a pull that found nothing lands on (odds.js rollMiss), and the
+// blanks that fly past in a crate that can miss: an empty slot, no item.
+export const NOTHING_CARD = Object.freeze({ uuid: "", name: "Nothing", img: "", rarity: "none", nothing: true });
+
+/*
+  What the fillers are drawn from. A crate drawing by rarity picks a rarity
+  by its weights, then an entry; one drawing by weight (odds.js oddsModeOf)
+  picks an entry by its chance across the pools, as the roll does. A crate
+  that can find nothing shows a blank as often as a pull finds nothing.
+*/
 export function fillerSource(box, pools) {
   const entries = (box.pools ?? []).flatMap(ref => flattenPool(ref.id, pools));
   const weights = { ...DEFAULT_WEIGHTS, ...(box.weights ?? {}) };
   const byRarity = Object.fromEntries(RARITIES.map(r => [r, entries.filter(e => e.rarity === r)]));
   const rarities = RARITIES.filter(r => byRarity[r].length);
-  return { byRarity, rarities, weights };
+  const source = { byRarity, rarities, weights, miss: missChanceOf(box) };
+  if (oddsModeOf(box) === "weight") source.items = shopOdds({ ...box, rules: { ...box.rules, missChance: 0 } }, pools).items ?? [];
+  return source;
 }
 
 export function pickFiller(source, rng) {
+  if (source.miss > 0 && rng() < source.miss) return NOTHING_CARD;
+  if (source.items) return weightedPick(source.items, it => it.chance, rng);
   const rarity = weightedPick(source.rarities, r => source.weights[r], rng) ?? weightedPick(source.rarities, () => 1, rng);
   if (!rarity) return null;
   return weightedPick(source.byRarity[rarity], e => e.weight, rng);
@@ -42,8 +56,9 @@ export const TEASE_RATE = 0.6;
 export const TEASE_TWO_UP = 0.2;
 
 export function teaseRarity(result, droppable, rng) {
-  if (result.pity || droppable.length < 2) return null;
-  const up = droppable.filter(r => rarityRank(r) > rarityRank(result.rarity));
+  // Any item outranks nothing, so a miss can tease the lowest droppable rarity.
+  if (result.pity || droppable.length < (result.miss ? 1 : 2)) return null;
+  const up = result.miss ? droppable : droppable.filter(r => rarityRank(r) > rarityRank(result.rarity));
   if (!up.length || rng() >= TEASE_RATE) return null;
   return up.length > 1 && rng() < TEASE_TWO_UP ? up[1] : up[0];
 }
@@ -53,9 +68,9 @@ export function buildStrip({ result, box, pools, rng = Math.random, length = STR
   const cards = [];
   for (let i = 0; i < length; i++) {
     const f = pickFiller(source, rng) ?? result.entry;
-    cards.push({ uuid: f.uuid, name: f.name, img: f.img, rarity: f.rarity });
+    cards.push({ uuid: f.uuid, name: f.name, img: f.img, rarity: f.rarity, ...(f.nothing ? { nothing: true } : {}) });
   }
-  cards[landIndex] = { uuid: result.entry.uuid, name: result.entry.name, img: result.entry.img, rarity: result.rarity, result: true };
+  cards[landIndex] = { uuid: result.entry.uuid, name: result.entry.name, img: result.entry.img, rarity: result.rarity, result: true, ...(result.miss ? { nothing: true } : {}) };
 
   let miss = false;
   if (nearMiss && landIndex + 1 < length) {

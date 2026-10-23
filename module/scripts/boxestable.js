@@ -40,14 +40,14 @@
   source check found them, the log, the rounds and the escape.
 */
 import { RARITY_LABEL } from "./config.js";
-import { oddsPills, oddsRibbon } from "./boxcard.js";
+import { oddsPills, oddsRibbon, oddsRows } from "./boxcard.js";
 import { kindOf } from "./kinds.js";
 import { wellOdds, wellOddsHTML, wellRulesText } from "./well.js";
 import { diceOdds, diceOddsHTML, diceRulesText } from "./dicegame.js";
 import { deckOdds, deckOddsHTML, deckRulesText } from "./deck.js";
 import { betOdds, rouletteOddsHTML, rouletteRulesText } from "./roulette.js";
 import { liveRoundOf } from "./round.js";
-import { shopOdds } from "./odds.js";
+import { shopOdds, oddsModeOf } from "./odds.js";
 import { formatPrice } from "./currency.js";
 import { limitsText } from "./limits.js";
 import { onShelf, shelfCountText, shelfToggleHTML } from "./shelf.js";
@@ -98,13 +98,13 @@ export function boxesTableHTML({ boxes, pools, log = [], rounds = {}, recent = n
     dice: () => diceOddsHTML(diceOdds(b, pools)) || "<em>unbeatable</em>",
     deck: () => deckOddsHTML(deckOdds(b, pools, log)) || "<em>empty</em>",
     roulette: () => rouletteOddsHTML(betOdds(b), esc) || "<em>no pockets</em>",
-  }[kind(b)] ?? (() => oddsCell(shopOdds(b, pools).rows)))();
+  }[kind(b)] ?? (() => oddsCell(oddsRows(shopOdds(b, pools)))))();
   const own = b => ({
     well: () => wellRulesText(b),
     dice: () => diceRulesText(b),
     deck: () => deckRulesText(b, log),
     roulette: () => rouletteRulesText(b),
-  }[kind(b)] ?? (() => [b.rules?.pity ? `${RARITY_LABEL[b.rules.pity.minRarity] ?? b.rules.pity.minRarity} or better after ${b.rules.pity.after} pulls` : "", b.rules?.noDuplicates ? "no dupes" : ""].filter(Boolean).join(", ")))();
+  }[kind(b)] ?? (() => [oddsModeOf(b) === "weight" ? (b.fromTable ? "the table's odds" : "by item weight") : "", b.rules?.pity ? `${RARITY_LABEL[b.rules.pity.minRarity] ?? b.rules.pity.minRarity} or better after ${b.rules.pity.after} pulls` : "", b.rules?.noDuplicates ? "no dupes" : ""].filter(Boolean).join(", ")))();
   const rules = b => esc([own(b), kind(b) === "roulette" ? "" : limitsText(b)].filter(Boolean).join(", "));
   // A deck's row reshuffles; a wheel's opens its round (or brings the open one
   // forward). The text button sits on a line of its own over the icons
@@ -138,7 +138,11 @@ export function priceInputHTML(b, esc = s => String(s ?? "")) {
   return `<input type="text" class="lc-price-input" data-box-price="${esc(b.id)}" value="${esc(formatPrice(b.price))}" aria-label="${esc(priceLabel(b))}" autocomplete="off" spellcheck="false">`;
 }
 
+// Under the table, how a roll table becomes a crate (manager.js
+// makeCrateFromTable): the tab takes a dropped table, as a pool takes items.
+export const TABLE_DROP_HINT = "Drop a roll table here to make a crate with its items and odds.";
+
 // The whole tab.
 export function boxesTabHTML({ status = "", ...rest }) {
-  return `${boxesToolbarHTML(status, rest.esc, rest.boxes)}${boxesTableHTML(rest)}`;
+  return `${boxesToolbarHTML(status, rest.esc, rest.boxes)}${boxesTableHTML(rest)}<p class="lc-form__hint lc-boxes__drop">${TABLE_DROP_HINT}</p>`;
 }

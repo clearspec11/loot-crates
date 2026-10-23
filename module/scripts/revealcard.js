@@ -69,6 +69,22 @@ export function resultHTML(reveal, { esc = String, canSee = false, extra = [] } 
 }
 
 /*
+  A crate pull that found nothing (odds.js rollMiss): one quiet line where
+  the item's name would be, then, for the buyer and GMs, the gold left.
+*/
+export function missHTML(reveal, { esc = String, canSee = false } = {}) {
+  const where = canSee && reveal.purse ? `<div class="lc-reveal__where"><span class="lc-reveal__gold">${esc(formatGold(reveal.purse))} left</span></div>` : "";
+  return `<div class="lc-reveal__quiet">Nothing this time.</div>${where}`;
+}
+
+// The odds a crate's reveal and replay show: its rarities, then the share
+// of pulls that find nothing as a "none" row when it can miss.
+export function oddsWithNothing(odds) {
+  const rows = (odds?.rows ?? []).map(({ rarity, chance, label }) => ({ rarity, chance, label }));
+  return odds?.nothing ? [...rows, { rarity: "none", chance: odds.nothing.chance, label: odds.nothing.label }] : rows;
+}
+
+/*
   "Watch again": what a pull's chat card keeps so anyone at the table can
   replay the spin later (a hidden tab, a Skip, joining late). Display only:
   each card's name, art and rarity, where it lands, whether it teases, the
@@ -78,7 +94,9 @@ export function resultHTML(reveal, { esc = String, canSee = false, extra = [] } 
 */
 export function replaySnapshot(reveal) {
   const strip = reveal?.strip;
-  if (!Array.isArray(strip?.cards) || !strip.cards.length || !reveal.result) return null;
+  // A crate's miss replays too: its strip lands on the blank.
+  const nothing = !reveal?.result && reveal?.outcome === "nothing";
+  if (!Array.isArray(strip?.cards) || !strip.cards.length || (!reveal.result && !nothing)) return null;
   return {
     strip: {
       cards: strip.cards.map(c => ({ name: String(c?.name ?? ""), img: String(c?.img ?? ""), rarity: c?.rarity, ...(c?.result ? { result: true } : {}) })),
@@ -88,11 +106,12 @@ export function replaySnapshot(reveal) {
     odds: (reveal.odds ?? []).map(({ rarity, chance, label }) => ({ rarity, chance, label })),
     box: { name: String(reveal.box?.name ?? ""), price: reveal.box?.price ?? 0 },
     actorName: String(reveal.actorName ?? ""),
-    result: { name: String(reveal.result.name ?? ""), rarity: reveal.result.rarity, pity: !!reveal.result.pity },
+    result: nothing ? { name: "Nothing", rarity: "none", nothing: true } : { name: String(reveal.result.name ?? ""), rarity: reveal.result.rarity, pity: !!reveal.result.pity },
   };
 }
 
-const rarityOr = r => (RARITIES.includes(r) ? r : "common");
+// "none" is a crate's blank (strip.js NOTHING_CARD); anything else unknown reads common.
+const rarityOr = r => (RARITIES.includes(r) || r === "none" ? r : "common");
 
 /*
   The reveal a replay window plays, from a stored snapshot, or null when the
@@ -109,8 +128,10 @@ export function replayReveal(snapshot, key) {
     replayKey: String(key ?? ""),
     actorName: String(snapshot.actorName ?? ""),
     box: { name: String(snapshot.box?.name ?? ""), price: Number(snapshot.box?.price) || 0 },
-    odds: Array.isArray(snapshot.odds) ? snapshot.odds.filter(o => RARITIES.includes(o?.rarity) && Number.isFinite(o.chance)) : [],
-    result: { name: String(snapshot.result.name ?? ""), rarity: rarityOr(snapshot.result.rarity), pity: !!snapshot.result.pity },
+    odds: Array.isArray(snapshot.odds) ? snapshot.odds.filter(o => (RARITIES.includes(o?.rarity) || o?.rarity === "none") && Number.isFinite(o.chance)) : [],
+    ...(snapshot.result.nothing
+      ? { result: null, outcome: "nothing" }
+      : { result: { name: String(snapshot.result.name ?? ""), rarity: rarityOr(snapshot.result.rarity), pity: !!snapshot.result.pity } }),
     strip: {
       cards: cards.map(c => ({ name: String(c?.name ?? ""), img: String(c?.img ?? ""), rarity: rarityOr(c?.rarity), ...(c?.result ? { result: true } : {}) })),
       landIndex: land,

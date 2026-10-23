@@ -83,6 +83,21 @@ export function newDraft(kind, { id, ...over } = {}) {
 export const crateFromPool = (pool, id) => newDraft("crate", { id, name: pool.name, pools: [{ id: pool.id, share: 1 }] });
 
 /*
+  "Make a crate" from a roll table (the sidebar's menu on a table, or a
+  table dropped on the Boxes tab): a crate named for the table, drawing
+  from the pool its items were just copied into, at the table's own odds
+  (rules.oddsMode "weight"). `table` is what the drop found (store.js
+  entriesFromDrop): its name and uuid, and its text results' share of the
+  table, which the editor offers to count as pulls that find nothing.
+  The record keeps where it came from (`fromTable`), so its editor can say
+  it is a copy: edit the table and make the crate again to pick up changes.
+*/
+export function crateFromTable(table, poolId, id) {
+  const fromTable = { uuid: table.uuid ?? null, name: table.label ?? table.name ?? "", items: table.entries?.length ?? table.items ?? 0, flattened: table.flattened ?? 0, textChance: Number(table.textChance) || 0 };
+  return newDraft("crate", { id, name: fromTable.name || "New box", pools: [{ id: poolId, share: 1 }], rules: { oddsMode: "weight" }, fromTable });
+}
+
+/*
   The unsaved draft a Copy opens its editor on: every setting of the source
   (its kind, price, pools and shares, weights, odds, pity, no duplicates,
   the limit per character, the dice, the deck's step and cards, the
