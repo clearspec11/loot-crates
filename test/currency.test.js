@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { toCopper, canAfford, charge, formatPrice, refund, isWholeCoins, consolidate, settle } from "../module/scripts/currency.js";
+import { toCopper, canAfford, charge, formatPrice, refund, isWholeCoins, consolidate, settle, parsePrice, unreadablePrice } from "../module/scripts/currency.js";
 
 describe("currency", () => {
   it("values a purse in copper", () => {
@@ -127,5 +127,47 @@ describe("currency", () => {
     expect(settle(purse, -1735)).toEqual(charge(purse, 17.35));
     expect(settle(charge(purse, 17.35), 1735)).toEqual(refund(charge(purse, 17.35), 17.35));
     expect(toCopper(settle(settle(purse, -1735), 1735))).toBe(toCopper(purse));
+  });
+});
+
+/*
+  parsePrice reads a price the way the Boxes row and the editors show it
+  (formatPrice), so whatever the GM sees can be typed back as it reads.
+*/
+describe("parsePrice", () => {
+  it("reads back every price formatPrice writes, 1 cp to 1000 gp", () => {
+    for (let cp = 1; cp <= 100000; cp++) {
+      const gp = cp / 100;
+      expect(parsePrice(formatPrice(gp))).toBe(gp);
+    }
+    expect(parsePrice(formatPrice(0))).toBe(0);
+  });
+
+  it("reads what a GM types", () => {
+    expect(parsePrice("50")).toBe(50);
+    expect(parsePrice("50 gp")).toBe(50);
+    expect(parsePrice("5 sp")).toBe(0.5);
+    expect(parsePrice("12 gp 5 sp")).toBe(12.5);
+    expect(parsePrice("1gp 2sp 3cp")).toBe(1.23);
+    expect(parsePrice("  7 gp 5 sp ")).toBe(7.5);
+    expect(parsePrice("5 sp 7 gp")).toBe(7.5);
+    expect(parsePrice("12.5")).toBe(12.5);
+    expect(parsePrice("0.5")).toBe(0.5);
+    expect(parsePrice("5 GP 3 Sp")).toBe(5.3);
+    expect(parsePrice("1,200 gp")).toBe(1200);
+    // A stake select's coins, and the purse's others.
+    expect(parsePrice("3 cp")).toBe(0.03);
+    expect(parsePrice("1 pp 1 ep")).toBe(10.5);
+  });
+
+  it("refuses what it can't read for sure", () => {
+    for (const t of ["", "   ", "abc", "-5", "-5 gp", "5 gold", "gp", "5 gp gp", "5 gp 2 gp", "12 5 sp", "0.5 cp", "0.001", "1,20 gp", "5 sp!", null, undefined]) {
+      expect(parsePrice(t), JSON.stringify(t)).toBeNull();
+    }
+  });
+
+  it("says how to type a price it can't read", () => {
+    expect(unreadablePrice("5 gold")).toBe('Couldn\'t read "5 gold"; try 5 gp or 5 sp.');
+    expect(unreadablePrice("  ")).toBe("Type a price, such as 5 gp or 5 sp.");
   });
 });

@@ -1,7 +1,9 @@
 /*
   The GM's workbench: pools (what can drop), boxes (what's for sale), and the
-  pull log (who got what, with Refund). Reached from Game Settings, or
-  game.modules.get("loot-crates").api.openManager().
+  pull log (who got what, with Refund). Reached from the Items sidebar's
+  "Manage crates", the shop's own "Manage crates" (route.js), Game Settings,
+  or game.modules.get("loot-crates").api.openManager(). Its nav's "View
+  shop" opens the shop beside it.
 
   Deliberately plain for v0.1: lists with Add, Edit (a form dialog), Delete,
   a drop target on each pool, and a bulk "Add from compendium" filter.
@@ -94,10 +96,14 @@ export { logRarityNote, logPayoutNote, logStakeNote, logLateNote };
 // The table window (tablewindow.js), loaded when a wheel's round is opened
 // from here: it is Foundry's, and the editors' tests run this file without it.
 const openTableFor = boxId => import("./tablewindow.js").then(m => m.openTableFor(boxId));
+// The shop, opened from the nav's "View shop"; loaded when pressed, as the
+// table is (shop.js reaches back here for its own "Manage crates").
+const openShopWindow = () => import("./shop.js").then(m => m.openShop());
 import { getRounds, getPools, getBoxes, getLog, todayKey, newId, createPool, updatePool, removePool, createBox, updateBox, removeBox, entryFromItem, entriesFromDrop, addEntries, packHasLoot, LOOT_TYPES, isLootType, isShopOpen, setShopOpen, checkSources, sweepPools, removeEntry, patchEntry } from "./store.js";
 import { normalizeRarity, flattenPool, withSources, entryWeight, curateEntries } from "./odds.js";
 import { PAGE_ROWS, FALLBACK_IMG, defaultView, poolRows, sortRows, filterRows, pageRows, nextRows, poolCount, poolSummary, poolBody, chipsHTML, unsetButton, footHTML, entryRow, entryParts, pinRecent, dropNotice, poolUsers, usersText, deleteImpact, removeImpact, deletePoolText, removeEntryText } from "./poolview.js";
-import { formatPrice } from "./currency.js";
+import { formatPrice, parsePrice, unreadablePrice } from "./currency.js";
+import { managerNavHTML, MANAGER_TABS } from "./route.js";
 import { describeRefund, refundPull } from "./refund.js";
 import { postRefundCard } from "./chat.js";
 import { changeCount } from "./redraw.js";
@@ -122,7 +128,7 @@ export class CrateManager extends ApplicationV2 {
       bulkAdd: CrateManager.#bulkAdd, setUnsetRarity: CrateManager.#setUnsetRarity, removeEntry: CrateManager.#removeEntry, updateEntry: CrateManager.#updateEntry, relinkEntry: CrateManager.#relinkEntry,
       addBox: CrateManager.#addBox, addWell: CrateManager.#addWell, addDice: CrateManager.#addDice, addDeck: CrateManager.#addDeck, addWheel: CrateManager.#addWheel, crateFromPool: CrateManager.#crateFromPool,
       editBox: CrateManager.#editBox, toggleShelf: CrateManager.#toggleShelf, copyBox: CrateManager.#copyBox, deleteBox: CrateManager.#deleteBox, reshuffle: CrateManager.#reshuffle, openTable: CrateManager.#openTable,
-      refund: CrateManager.#refund, toggleShop: CrateManager.#toggleShop, toggleMisses: CrateManager.#toggleMisses,
+      refund: CrateManager.#refund, toggleShop: CrateManager.#toggleShop, openShop: CrateManager.#openShop, toggleMisses: CrateManager.#toggleMisses,
       filterChip: CrateManager.#filterChip, showMore: CrateManager.#showMore,
     },
   };
@@ -612,7 +618,7 @@ export class CrateManager extends ApplicationV2 {
     const shares = Object.fromEntries((box.pools ?? []).map(p => [p.id, p.share ?? 1]));
     const data = await promptForm(editorTitle(box, isNew, opts.copy), `
       <label>Name <input name="name" value="${esc(box.name)}"${autofocus("name", opts)}></label>
-      <label>Price (gp) <input name="price" type="number" min="0" step="1" value="${esc(box.price)}"${autofocus("price", opts)}></label>
+      ${priceFieldHTML("Price", box, opts)}
       <fieldset><legend>Pools and their share of pulls</legend>
         ${pools.map(p => `<label class="lc-row"><input type="checkbox" name="pool.${esc(p.id)}" ${p.id in shares ? "checked" : ""}> ${esc(p.name)} <input name="share.${esc(p.id)}" type="number" min="0" step="1" value="${esc(shares[p.id] ?? 1)}" title="Share"></label>`).join("") || "<p>No pools yet.</p>"}
       </fieldset>
@@ -631,7 +637,7 @@ export class CrateManager extends ApplicationV2 {
       ${limitsFieldset(box, { draft: isNew, hasClock: todayKey() != null, esc })}
       ${shelfFieldHTML(box, opts)}`, {
       // Restock writes to the stored record; a draft has none to fill.
-      onForm: form => { liveOdds(form, box, poolIds); if (!isNew) wireRestock(form, box.id); wireShelf(form, isNew); },
+      onForm: form => { liveOdds(form, box, poolIds); if (!isNew) wireRestock(form, box.id); wireShelf(form, isNew); wirePrice(form); },
       position: { width: 460 },
       okLabel: saveLabel(isNew),
     });
@@ -646,7 +652,7 @@ export class CrateManager extends ApplicationV2 {
       return {
         ...fresh,
         name: data.name || fresh.name,
-        price: Math.max(0, Number(data.price) || 0),
+        price: parsePrice(data.price) ?? Math.max(0, Number(fresh.price) || 0),
         pools: draft.pools.filter(ref => ref.id in live),
         weights: draft.weights,
         rules: {
@@ -805,7 +811,7 @@ export class CrateManager extends ApplicationV2 {
     const shares = Object.fromEntries((box.pools ?? []).map(p => [p.id, p.share ?? 1]));
     const data = await promptForm(editorTitle(box, isNew, opts.copy), `
       <label>Name <input name="name" value="${esc(box.name)}"${autofocus("name", opts)}></label>
-      <label>First draw (gp) <input name="price" type="number" min="0" step="1" value="${esc(box.price)}"></label>
+      ${priceFieldHTML("First draw", box, opts)}
       <label class="lc-row">Each draw in a row costs <input name="step" type="number" min="1" step="0.1" value="${esc(stepOf(box))}"> times the last</label>
       <p class="lc-form__hint">A draw within two minutes of the last counts as in a row; the price comes back down after that, and a refund takes a step back.</p>
       <fieldset class="lc-cards"><legend>Cards</legend>
@@ -829,6 +835,7 @@ export class CrateManager extends ApplicationV2 {
       ${shelfFieldHTML(box, opts)}`, {
       onForm: form => {
         wireShelf(form, isNew);
+        wirePrice(form);
         const paint = liveOdds(form, box, poolIds, (draft, live) => {
           const preview = deckPreview(draft, live, getLog());
           return { html: deckPreviewHTML(preview, esc), summary: deckSummary(preview), held: heldRarities(draft, live) };
@@ -1017,6 +1024,45 @@ export class CrateManager extends ApplicationV2 {
 
   static async #toggleShop() { await setShopOpen(!isShopOpen()); this.render(); }
 
+  // "View shop": the shop window as it stands (one window, brought forward
+  // if open). It opens or closes nothing for the players; the toggle does.
+  static async #openShop() {
+    try { await openShopWindow(); } catch (err) { console.error("loot-crates | opening the shop failed", err); }
+  }
+
+  /*
+    A price typed into a Boxes row (boxestable.js priceInputHTML), saved on
+    change (Enter, Tab, or leaving the field) as a pool row's weight is:
+    read with currency.js parsePrice, written through the write queue onto
+    the record as it is then (only the price: a pull's stock or pity
+    written meanwhile stays), and shown back as the shop will say it. A
+    save says nothing; one that can't be read, or a wheel's lowest bet over
+    its highest, puts the field back and says why in the tab's status line.
+  */
+  async #onPrice(el) {
+    const id = el.dataset.boxPrice;
+    const box = getBoxes()[id];
+    if (!box) return this.render();
+    const typed = el.value;
+    const price = parsePrice(typed);
+    const back = text => { el.value = formatPrice(box.price); this.#announce(text); };
+    if (price == null) return back(unreadablePrice(typed));
+    const overMax = record => kindOf(record) === "roulette" && maxStakeOf(record) != null && price > maxStakeOf(record);
+    if (overMax(box)) return back(wheelOverMax(box));
+    if (price === Number(box.price)) { el.value = formatPrice(price); return; }
+    let refused = null;
+    const saved = await updateBox(id, fresh => {
+      if (overMax(fresh)) { refused = fresh; return fresh; }
+      return { ...fresh, price };
+    });
+    if (!saved) return this.render();
+    if (refused) { el.value = formatPrice(saved.price); return this.#announce(wheelOverMax(refused)); }
+    // The field may have been redrawn by the write's own render meanwhile.
+    const live = el.isConnected === false ? null : el;
+    if (live && live.value === typed) live.value = formatPrice(saved.price);
+    if (live) live.defaultValue = formatPrice(saved.price);
+  }
+
   /*
     A row's On the shelf toggle (shelf.js): one click puts a game out for
     the players, or takes it back, through the write queue like any edit;
@@ -1041,13 +1087,9 @@ export class CrateManager extends ApplicationV2 {
     this.seen = changeCount();
     const root = document.createElement("div");
     root.className = "lc-manager__body";
-    const tabs = [["pools", "Pools"], ["boxes", "Boxes"], ["log", "Pull log"]];
+    const tabs = MANAGER_TABS;
     root.innerHTML = `
-      <nav class="lc-tabs">
-        <div class="lc-tabs__list" role="tablist" aria-label="Loot Crates sections">${tabs.map(([k, l]) => `<button type="button" role="tab" id="lc-manager-tab-${k}" aria-controls="lc-manager-panel" aria-selected="${k === this.tab}" tabindex="${k === this.tab ? 0 : -1}" data-action="switchTab" data-tab="${k}" class="${k === this.tab ? "active" : ""}">${l}</button>`).join("")}</div>
-        <span class="lc-tabs__spacer"></span>
-        <button type="button" data-action="toggleShop" class="lc-shop-toggle" data-open="${isShopOpen()}" aria-pressed="${isShopOpen()}" title="${isShopOpen() ? "Players can buy now. Click to close the shop." : "Players can't buy now. Click to open the shop."}">${isShopOpen() ? "Shop open" : "Shop closed"}</button>
-      </nav>
+      ${managerNavHTML({ tab: this.tab, shopOpen: isShopOpen() })}
       <section class="lc-tab" role="tabpanel" id="lc-manager-panel" aria-labelledby="lc-manager-tab-${this.tab}">${await this[`_${this.tab}`]()}</section>`;
     // The tabs as one stop in the tab order, arrows between them (the ARIA
     // tabs pattern a screen reader announces). Focus moves first, so the
@@ -1067,6 +1109,8 @@ export class CrateManager extends ApplicationV2 {
     root.addEventListener("change", e => {
       const el = e.target.closest?.("[data-curate]");
       if (el) this.#onCurate(el).catch(err => { console.error(`loot-crates | saving that entry failed`, err); this.render(); });
+      const price = e.target.closest?.("[data-box-price]");
+      if (price) this.#onPrice(price).catch(err => { console.error(`loot-crates | saving that price failed`, err); this.render(); });
     });
     this.#wireRelinks(root);
     root.querySelectorAll(".lc-pool__details").forEach(d => d.addEventListener("toggle", () => this.#onToggle(d)));
@@ -1188,7 +1232,10 @@ export class CrateManager extends ApplicationV2 {
   _replaceHTML(result, content) {
     const active = content.contains(document.activeElement) ? document.activeElement : null;
     const key = active ? focusKey(active) : null;
-    const caret = active?.matches?.('input[type="search"]') ? [active.selectionStart, active.selectionEnd] : null;
+    const caret = active?.matches?.('input[type="search"]') || active?.matches?.("input[data-box-price]") ? [active.selectionStart, active.selectionEnd] : null;
+    // A price being typed into (not yet saved: no change yet) when another
+    // write redraws the tab keeps what was typed.
+    const typing = active?.matches?.("input[data-box-price]") && active.value !== active.defaultValue ? active.value : null;
     content.replaceChildren(result);
     // The Pools tab read the boxes before awaiting the source check, and a
     // box saved elsewhere in that wait was patched into the page this one
@@ -1210,6 +1257,7 @@ export class CrateManager extends ApplicationV2 {
     if (!key) return;
     const again = content.querySelector(key.selector) ?? (key.pool && content.querySelector(`.lc-pool__details[data-pool="${CSS.escape(key.pool)}"] > summary`));
     if (!again) return;
+    if (typing != null) again.value = typing;
     again.focus();
     if (caret && again.setSelectionRange) try { again.setSelectionRange(...caret); } catch { /* not a text input */ }
   }
@@ -1225,13 +1273,14 @@ export function tabAfter(keys, current, key) {
 
 // A selector that finds the same control in a fresh render: its tag, its
 // search class, and whichever of the data attributes that identify it are set.
-const FOCUS_ATTRS = ["action", "curate", "pool", "uuid", "chip", "tab", "box", "row"];
+const FOCUS_ATTRS = ["action", "curate", "pool", "uuid", "chip", "tab", "box", "row", "boxPrice"];
+const dataAttr = key => `data-${key.replace(/[A-Z]/g, c => `-${c.toLowerCase()}`)}`;
 function focusKey(el) {
   if (el.matches("summary")) {
     const pool = el.closest(".lc-pool__details")?.dataset.pool;
     return pool ? { selector: `.lc-pool__details[data-pool="${CSS.escape(pool)}"] > summary`, pool } : null;
   }
-  const attrs = FOCUS_ATTRS.filter(a => el.dataset[a] != null).map(a => `[data-${a}="${CSS.escape(el.dataset[a])}"]`);
+  const attrs = FOCUS_ATTRS.filter(a => el.dataset[a] != null).map(a => `[${dataAttr(a)}="${CSS.escape(el.dataset[a])}"]`);
   const search = el.classList.contains("lc-pool__search") ? ".lc-pool__search" : "";
   if (!attrs.length && !search) return null;
   return { selector: `${el.tagName.toLowerCase()}${search}${attrs.join("")}`, pool: el.dataset.pool ?? el.closest(".lc-pool__details")?.dataset.pool ?? null };
@@ -1302,6 +1351,38 @@ function readForm(form) {
 // Save as every DialogV2 does. `autofocus` is read by the <dialog>'s
 // show(), the first in tree order winning over the default button's.
 const autofocus = (field, { isNew = false, focus = null } = {}) => (isNew && (focus ?? "name") === field ? " autofocus" : "");
+
+/*
+  The crate's price and the deck's first draw, typed as the Boxes row and
+  the shop say them ("12 gp 5 sp", "5 sp", or a bare number of gold), read
+  with currency.js parsePrice. While the field can't be read, the line
+  under it says so and the default button is off (wirePrice); once it can,
+  leaving the field writes it back the way the shop will show it.
+*/
+function priceFieldHTML(label, box, opts) {
+  const why = `lc-price-why-${esc(box.id)}`;
+  return `<label class="lc-form__price">${label} <input name="price" type="text" data-price-field value="${esc(formatPrice(box.price))}" placeholder="50 gp, 5 sp or 12 gp 5 sp" autocomplete="off" spellcheck="false" aria-describedby="${why}"${autofocus("price", opts)}></label>
+      <p class="lc-form__hint lc-form__hint--warn" id="${why}" data-price-why aria-live="polite"></p>`;
+}
+function wirePrice(form) {
+  const input = form.querySelector("input[data-price-field]");
+  if (!input) return;
+  const why = form.querySelector("[data-price-why]");
+  const ok = form.querySelector('button[data-action="ok"]') ?? form.closest(".application, dialog")?.querySelector('button[data-action="ok"]');
+  const check = () => {
+    const text = parsePrice(input.value) == null ? unreadablePrice(input.value) : "";
+    input.setCustomValidity?.(text);
+    input.setAttribute("aria-invalid", text ? "true" : "false");
+    if (why && why.textContent !== text) why.textContent = text;
+    if (ok) ok.disabled = !!text;
+    return !text;
+  };
+  input.addEventListener("input", check);
+  input.addEventListener("change", () => { if (check()) input.value = formatPrice(parsePrice(input.value)); });
+}
+
+// The wheel's lowest bet can't go over its highest (the Boxes row's price).
+const wheelOverMax = box => `The lowest bet at ${box.name} can't be over its highest, ${formatPrice(maxStakeOf(box))}.`;
 
 // The default button: "Add to shelf" (or "Add" while the shop is closed)
 // puts a new game where players buy; an edit's reads Save.

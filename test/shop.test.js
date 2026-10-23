@@ -285,7 +285,11 @@ describe("the shelf a player sees", () => {
       const app = new CrateShop();
       await draw(app);
       expect(cards(app)).toEqual([]);
-      expect(app.content.querySelector(".lc-shop__empty").textContent).toMatch(/^No crates on the shelf yet\./);
+      const empty = app.content.querySelector(".lc-shop__empty");
+      expect(empty.textContent).toBe("No crates on the shelf yet. The GM hasn't put any out.");
+      // A player is pointed at nothing they can't open.
+      expect(empty.textContent).not.toMatch(/Game Settings/);
+      expect(empty.querySelector("button")).toBeNull();
     } finally { restore(was); }
   });
 
@@ -604,5 +608,49 @@ describe("the shop mid-purchase, and a Buy that does nothing", () => {
       await draw(app);
       expect(notice(app)).toBe("");
     } finally { boxes.common = old; }
+  });
+});
+
+/*
+  The way from the shop to the manager is a GM's (route.js): "Manage crates"
+  in the window's header controls, and on an empty shelf. A player has
+  neither, and an empty shelf points them at nothing they can't open.
+*/
+describe("the shop's way to the manager", () => {
+  beforeEach(() => { globalThis.document = createDocument(); });
+  afterEach(() => { delete globalThis.document; globalThis.game.user.isGM = false; });
+  const saved = () => Object.fromEntries(Object.entries(boxes).map(([k, v]) => [k, v]));
+  const restore = was => { for (const k of Object.keys(boxes)) delete boxes[k]; Object.assign(boxes, was); };
+
+  it("puts Manage crates in a GM's header controls, and none in a player's", () => {
+    const app = new CrateShop();
+    globalThis.game.user.isGM = false;
+    expect(app._getHeaderControls()).toEqual([]);
+    globalThis.game.user.isGM = true;
+    const controls = app._getHeaderControls();
+    expect(controls).toEqual([expect.objectContaining({ action: "openManager", label: "Manage crates" })]);
+    // Its action is the shop's own, not one ApplicationV2 keeps for itself.
+    expect(CrateShop.DEFAULT_OPTIONS.actions[controls[0].action]).toBeTypeOf("function");
+    expect(["close", "tab", "toggleControls"]).not.toContain(controls[0].action);
+  });
+
+  it("points a GM's empty shelf at Manage crates", async () => {
+    const was = saved();
+    try {
+      for (const k of Object.keys(boxes)) delete boxes[k];
+      globalThis.game.user.isGM = true;
+      const app = new CrateShop();
+      app.render();
+      await app.last;
+      const empty = app.content.querySelector(".lc-shop__empty");
+      expect(empty.textContent.replace(/\s+/g, " ").trim()).toBe("No crates on the shelf yet. Make one in Manage crates.");
+      expect(empty.querySelector("button").getAttribute("data-action")).toBe("openManager");
+      expect(empty.textContent).not.toMatch(/Game Settings/);
+    } finally { restore(was); }
+  });
+
+  it("opens nothing for a player who sends its action anyway", async () => {
+    globalThis.game.user.isGM = false;
+    await expect(CrateShop.DEFAULT_OPTIONS.actions.openManager.call(new CrateShop(), {}, {})).resolves.toBeUndefined();
   });
 });

@@ -32,7 +32,7 @@ function markupActions(src) {
 describe("window actions", () => {
   it("finds the actions the scripts declare and use", () => {
     const all = scripts.flatMap(([, src]) => [...actionKeys(src), ...markupActions(src)]);
-    expect(all).toEqual(expect.arrayContaining(["switchTab", "buy", "dismiss", "skip", "refund"]));
+    expect(all).toEqual(expect.arrayContaining(["switchTab", "buy", "dismiss", "skip", "refund", "openShop", "openManager"]));
   });
 
   it("catches a reserved name in an actions object or in markup", () => {
@@ -50,9 +50,20 @@ describe("window actions", () => {
 
   it("the manager's tabs switch through switchTab and carry tab semantics", () => {
     const src = scripts.find(([f]) => f === "manager.js")[1];
+    // The nav is drawn by route.js (managerNavHTML), shared with the harness.
+    const nav = scripts.find(([f]) => f === "route.js")[1];
     expect(actionKeys(src)).toContain("switchTab");
-    expect(src).toMatch(/role="tablist"/);
-    expect(src).toMatch(/role="tab"[^>]*aria-selected="\$\{k === this\.tab\}"[^>]*data-action="switchTab"/);
+    expect(nav).toMatch(/role="tablist"/);
+    expect(nav).toMatch(/role="tab"[^>]*aria-selected="\$\{k === tab\}"[^>]*data-action="switchTab"/);
     expect(src).toMatch(/role="tabpanel"/);
+  });
+
+  it("the routes between the shop and the manager are declared where they are drawn", () => {
+    const manager = scripts.find(([f]) => f === "manager.js")[1];
+    const shop = scripts.find(([f]) => f === "shop.js")[1];
+    const route = scripts.find(([f]) => f === "route.js")[1];
+    expect(actionKeys(manager)).toContain("openShop");
+    expect(actionKeys(shop)).toContain("openManager");
+    expect(markupActions(route)).toEqual(expect.arrayContaining(["openShop", "openManager", "toggleShop", "switchTab"]));
   });
 });

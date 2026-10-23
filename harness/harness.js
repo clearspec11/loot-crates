@@ -64,6 +64,10 @@
   reading Skip; ?streak=2 makes it the third draw in a row (the head says
   so, and Draw again names the risen price); buyer=1 as for landed, and
   also shows Draw again, as the buyer alone sees it.
+  ?gm=1 (shop: the GM's shop, every game on it, with "Manage crates" in the
+  window's header controls, their menu drawn open; route.js)
+  ?empty=1 (shop: nothing on the shelf; a player is told the GM hasn't put
+  anything out, a GM (with gm=1) is pointed at Manage crates)
   ?streak=1 (shop: Tam drew from the deck a moment ago, so its card prices
   the next draw at 15 gp and says so)
   ?round=none | closed (shop: the Wheel of Fate has no round open, or its
@@ -88,6 +92,7 @@ import { resolve as resolveBets, pocketsOf, coloursOf, betName } from "../module
 import { tableBodyHTML } from "../module/scripts/tableview.js";
 import { poolRows, sortRows, defaultView, poolSummary, poolBody, pinRecent, dropNotice, poolUsers } from "../module/scripts/poolview.js";
 import { boxesTabHTML } from "../module/scripts/boxestable.js";
+import { managerNavHTML, shopControls, shopEmptyHTML } from "../module/scripts/route.js";
 import { logTableHTML } from "../module/scripts/logtable.js";
 import { addedNotice } from "../module/scripts/newgame.js";
 import { onShelf, shelfFor, shelfFieldHTML, shelfRules, shelfNotice } from "../module/scripts/shelf.js";
@@ -155,6 +160,30 @@ if (state !== "shop" && state !== "manager" && state !== "well" && state !== "di
 
 const stage = document.getElementById("stage");
 
+/*
+  The shop window's header controls as Foundry draws them for a GM
+  (shop.js _getHeaderControls, route.js shopControls): the ellipsis beside
+  the title, and its menu, shown open here, holding "Manage crates". A
+  player's shop has none of the module's, so none are drawn (Foundry's
+  own, such as v14's Detach Window, aren't drawn here for anyone). Font
+  Awesome isn't loaded, so a character stands in for the icon. "Manage
+  crates" goes to the manager's Boxes tab, and the manager's "View shop"
+  back to the GM's shop.
+*/
+if (state === "shop") {
+  const controls = shopControls(q.get("gm") === "1");
+  if (controls.length) {
+    const header = document.querySelector("#app .window-header");
+    header.insertAdjacentHTML("beforeend", `<button type="button" class="header-control lc-harness-toggle" aria-label="Toggle Controls" aria-expanded="true">\u22EE</button>
+      <menu class="lc-harness-controls" aria-label="Window controls">${controls.map(c => `<li class="header-control" data-action="${c.action}"><button type="button" class="control"><span class="control-label">${c.label}</span></button></li>`).join("")}</menu>`);
+    header.querySelector('[data-action="openManager"] button')?.addEventListener("click", () => { location.search = `?state=manager&tab=boxes&theme=${theme}`; });
+  }
+}
+document.getElementById("app").addEventListener("click", e => {
+  if (e.target.closest?.('[data-action="openShop"]')) location.search = `?state=shop&gm=1&theme=${theme}`;
+  else if (state === "shop" && e.target.closest?.('.lc-shop__manage')) location.search = `?state=manager&tab=boxes&theme=${theme}`;
+});
+
 // The shop as shop.js draws it: one notice in the header (a live region kept
 // across renders by patchShop), the cards pointing at it. window.__lootCrates
 // .renderShop(extra) re-renders with extra ctx, as the shop does on each
@@ -179,7 +208,7 @@ function renderShop(extra = {}) {
   fresh.innerHTML = shopHTML({
     fields: `${actorPicker({ actors: characters, actorId: "tam", busy: !!ctx.busy })}
         <div class="lc-shop__field lc-shop__field--purse"><span class="lc-label">Purse</span><span class="lc-shop__purse">${formatGold(purse)}</span></div>`,
-    cards: shelfFor(GAMES, { isGM: ctx.isGM }).map(b => cardFor(b, POOLS, ctx)).join(""),
+    cards: q.get("empty") === "1" ? shopEmptyHTML(ctx.isGM) : shelfFor(GAMES, { isGM: ctx.isGM }).map(b => cardFor(b, POOLS, ctx)).join(""),
     notice,
   });
   patchShop(stage, fresh, notice);
@@ -312,7 +341,7 @@ function renderManager() {
   }
   stage.innerHTML = `
     <div class="lc-manager__body">
-      <nav class="lc-tabs"><div class="lc-tabs__list" role="tablist" aria-label="Loot Crates sections"><button type="button" role="tab" aria-selected="true" tabindex="0" class="active">Pools</button><button type="button" role="tab" aria-selected="false" tabindex="-1">Boxes</button><button type="button" role="tab" aria-selected="false" tabindex="-1">Pull log</button></div><span class="lc-tabs__spacer"></span><button type="button" class="lc-shop-toggle" data-open="true" aria-pressed="true">Shop open</button></nav>
+      ${managerNavHTML({ tab: "pools", shopOpen: true })}
       <section class="lc-tab" role="tabpanel">
         <div class="lc-toolbar"><button type="button"><i class="fas fa-plus"></i> New pool</button><span class="lc-pool__hint lc-manager__status" role="status">${esc(status)}</span></div>
         ${MANAGER_POOLS.map(p => `
@@ -624,7 +653,7 @@ function renderBoxes({ toggled = null } = {}) {
   const now = Date.now();
   stage.innerHTML = `
     <div class="lc-manager__body">
-      <nav class="lc-tabs"><div class="lc-tabs__list" role="tablist" aria-label="Loot Crates sections"><button type="button" role="tab" aria-selected="false" tabindex="-1">Pools</button><button type="button" role="tab" aria-selected="true" tabindex="0" class="active">Boxes</button><button type="button" role="tab" aria-selected="false" tabindex="-1">Pull log</button></div><span class="lc-tabs__spacer"></span><button type="button" class="lc-shop-toggle" data-open="true" aria-pressed="true">Shop open</button></nav>
+      ${managerNavHTML({ tab: "boxes", shopOpen: true })}
       <section class="lc-tab" role="tabpanel">
         ${boxesTabHTML({ boxes: GAMES, pools: POOLS, log: [...deckDraws(1, now), ...limitBuys(1)], rounds: { R1: rouletteRound(now) }, recent: added?.id ?? null, esc })}
       </section>
@@ -662,7 +691,7 @@ function renderLog() {
   const now = Date.now();
   stage.innerHTML = `
     <div class="lc-manager__body">
-      <nav class="lc-tabs"><div class="lc-tabs__list" role="tablist" aria-label="Loot Crates sections"><button type="button" role="tab" aria-selected="false" tabindex="-1">Pools</button><button type="button" role="tab" aria-selected="false" tabindex="-1">Boxes</button><button type="button" role="tab" aria-selected="true" tabindex="0" class="active">Pull log</button></div><span class="lc-tabs__spacer"></span><button type="button" class="lc-shop-toggle" data-open="true" aria-pressed="true">Shop open</button></nav>
+      ${managerNavHTML({ tab: "log", shopOpen: true })}
       <section class="lc-tab" role="tabpanel">
         ${logTableHTML({ log: sampleLog(now), rounds: { R1: rouletteRound(now - 400000, { status: "resolved", closesAt: now - 380000 }) }, esc })}
       </section>
@@ -685,7 +714,7 @@ function renderEditor() {
     <div class="dialog-form">
       <div class="dialog-content"><div class="lc-form">
         <label>Name <input name="name" value="${esc(box.name)}"></label>
-        <label>Price (gp) <input name="price" type="number" min="0" step="1" value="${esc(box.price)}"></label>
+        <label class="lc-form__price">Price <input name="price" type="text" data-price-field value="${esc(formatPrice(box.price))}" placeholder="50 gp, 5 sp or 12 gp 5 sp" autocomplete="off" spellcheck="false"></label>
         <fieldset><legend>Rules</legend>
           <label class="lc-row">Pity: guarantee <select name="pityRarity"><option value="">off</option></select> after <input name="pityAfter" type="number" min="1" step="1" value="10"> pulls</label>
           <label class="lc-row"><input type="checkbox" name="noDuplicates"> No duplicates per character</label>

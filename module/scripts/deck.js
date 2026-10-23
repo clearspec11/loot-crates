@@ -44,7 +44,7 @@
 */
 import { RARITY_LABEL } from "./config.js";
 import { shopOdds, weightedPick, wholePercents, chanceLabel } from "./odds.js";
-import { formatPrice, formatGold, toCopper, canAfford, shortfall } from "./currency.js";
+import { formatPrice, formatGold, toCopper, canAfford, shortfall, parsePrice } from "./currency.js";
 import { playTick, playReveal, playCoinBack, playPlink, playBane } from "./sound.js";
 import { resultHTML } from "./revealcard.js";
 import { cardShell, oddsRibbon, oddsPills, shopReason, shortReason, draftBox } from "./boxcard.js";
@@ -511,7 +511,9 @@ export function draftDeck(game, values, poolIds) {
   const step = Number(values.step);
   return {
     ...draftBox(game, values, poolIds),
-    price: Math.max(0, Number(values.price) || 0),
+    // The first draw as the editor's field reads it ("12 gp 5 sp"), as
+    // the Boxes row and the shop say it (currency.js parsePrice).
+    price: parsePrice(values.price) ?? Math.max(0, Number(values.price) || 0),
     deck: { ...(game.deck ?? {}), step: step > 0 ? step : stepOf(game), cards },
   };
 }

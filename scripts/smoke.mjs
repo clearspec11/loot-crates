@@ -63,6 +63,13 @@ const STATES = [
   ["shop-limit", "state=shop&limit=reached"],
   // The Royal Vault is off the shelf: a player's shop leaves it out.
   ["shop-shelf", "state=shop&shelf=off"],
+  // The GM's shop (route.js): every game on it, and "Manage crates" in the
+  // window's header controls, their menu drawn open beside the title.
+  ["shop-gm", "state=shop&gm=1"],
+  // An empty shelf: a player is told the GM hasn't put anything out (no
+  // talk of Game Settings); a GM is pointed at Manage crates.
+  ["shop-empty", "state=shop&empty=1"],
+  ["shop-empty-gm", "state=shop&empty=1&gm=1"],
   // The box editor's Limits group: the stock with what is left and
   // Restock, then the limit per character, each with its help.
   ["box-limits", "state=editor"],
@@ -288,6 +295,117 @@ function shelfBoxesProblems() {
   const status = document.querySelector(".lc-manager__status");
   if (status?.textContent !== "Royal Vault is off the shelf; players can't see it.") out.push(`status line says "${status?.textContent}"`);
   if (!document.querySelector('[data-action="openTable"]')) out.push("the wheel's table button is missing");
+  return out;
+}
+
+/*
+  The manager's nav, every tab (route.js managerNavHTML): the three tabs on
+  the rule they underline, then "View shop" beside the shop's open or
+  closed toggle, both whole, inside the window, at the 11px floor or over,
+  and clear of the tabs and of each other; in a narrow window the two go
+  to a line above the tabs rather than off the edge.
+*/
+function navProblems() {
+  const out = [];
+  const nav = document.querySelector(".lc-manager__body > nav.lc-tabs");
+  if (!nav) return ["no manager nav"];
+  const win = document.getElementById("app").getBoundingClientRect();
+  const view = nav.querySelector('[data-action="openShop"]');
+  const toggle = nav.querySelector('[data-action="toggleShop"]');
+  if (!view || view.textContent.trim() !== "View shop") return [...out, `no View shop in the nav (got "${view?.textContent.trim()}")`];
+  if (!toggle) return [...out, "no shop toggle in the nav"];
+  if (view.hasAttribute("aria-pressed")) out.push("View shop reads as a toggle");
+  const rects = [view, toggle].map(b => b.getBoundingClientRect());
+  for (const [b, r] of [[view, rects[0]], [toggle, rects[1]]]) {
+    if (r.width < 20 || r.height < 20) out.push(`"${b.textContent.trim()}" is not visible`);
+    if (r.left < win.left - 1 || r.right > win.right + 1) out.push(`"${b.textContent.trim()}" is outside the window`);
+    if (parseFloat(getComputedStyle(b).fontSize) < 11) out.push(`"${b.textContent.trim()}" is under 11px`);
+    if (b.scrollWidth > b.clientWidth + 1) out.push(`"${b.textContent.trim()}" is cut off`);
+  }
+  const overlap = (a, b) => a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1;
+  if (overlap(rects[0], rects[1])) out.push("View shop overlaps the shop toggle");
+  const tabs = [...nav.querySelectorAll('[role="tab"]')];
+  for (const t of tabs) { const r = t.getBoundingClientRect(); if (rects.some(b => overlap(b, r))) { out.push(`the ${t.textContent} tab is under a shop button`); break; } }
+  const rule = nav.getBoundingClientRect().bottom;
+  if (tabs.some(t => Math.abs(t.getBoundingClientRect().bottom - rule) > 2)) out.push("a tab is not on the nav's rule");
+  if (nav.scrollWidth > nav.clientWidth + 1) out.push("the nav scrolls sideways");
+  return out;
+}
+
+/*
+  Each Boxes row's price as a field (boxestable.js priceInputHTML): the
+  price as the shop says it, named for what it prices, at the 11px floor or
+  over, whole inside its cell and the pane at every width.
+*/
+function priceProblems() {
+  const out = [];
+  const pane = document.querySelector(".lc-tab")?.getBoundingClientRect();
+  const NAME = { Crate: "Price of", Deck: "First draw at", Wheel: "Lowest bet at", Well: "Stake at", Dice: "Stake at" };
+  const rows = [...document.querySelectorAll(".lc-table--boxes tbody tr")];
+  if (!rows.length) return ["no Boxes rows"];
+  for (const r of rows) {
+    const name = r.querySelector(".lc-table__name")?.firstChild?.textContent.trim();
+    const kind = r.querySelector(".lc-kind")?.textContent.trim();
+    const input = r.querySelector("input[data-box-price]");
+    if (!input) { out.push(`${name} has no price field`); continue; }
+    if (input.type !== "text") out.push(`${name}'s price field is ${input.type}, not text`);
+    if (!/^\d[\d,]* (gp|sp|cp)( \d+ (sp|cp))*$/.test(input.value)) out.push(`${name}'s price reads "${input.value}"`);
+    if (input.getAttribute("aria-label") !== `${NAME[kind]} ${name}`) out.push(`${name}'s price is labelled "${input.getAttribute("aria-label")}"`);
+    if (input.closest("td")?.dataset.label !== "Price") out.push(`${name}'s price field is not in the Price cell`);
+    if (parseFloat(getComputedStyle(input).fontSize) < 11) out.push(`${name}'s price is under 11px`);
+    const ir = input.getBoundingClientRect(), cr = input.closest("td").getBoundingClientRect();
+    if (ir.width < 40 || ir.height < 20) out.push(`${name}'s price field is not visible`);
+    if (ir.right > cr.right + 1 || ir.left < cr.left - 1) out.push(`${name}'s price field overflows its cell`);
+    if (pane && (ir.right > pane.right + 1 || ir.left < pane.left - 1)) out.push(`${name}'s price field is past the pane's edge`);
+    if (input.scrollWidth > input.clientWidth + 1) out.push(`${name}'s price "${input.value}" is cut off in its field`);
+  }
+  return out;
+}
+
+// A GM's shop (route.js shopControls): "Manage crates" in the header
+// controls, their toggle beside the title and clear of it, the title whole;
+// a player's shop has no header controls at all.
+function shopControlProblems(gm) {
+  const out = [];
+  const header = document.querySelector("#app .window-header");
+  const toggle = header.querySelector(".lc-harness-toggle");
+  const items = [...header.querySelectorAll('.lc-harness-controls [data-action]')];
+  if (!gm) return toggle || items.length ? ["a player's shop has header controls"] : [];
+  if (!toggle) return ["the GM's shop has no header controls"];
+  if (items.map(i => `${i.dataset.action}:${i.textContent.trim()}`).join("|") !== "openManager:Manage crates") out.push(`header controls read ${items.map(i => i.textContent.trim()).join(", ")}`);
+  const title = header.querySelector(".window-title");
+  const tr = title.getBoundingClientRect(), br = toggle.getBoundingClientRect(), hr = header.getBoundingClientRect();
+  if (title.scrollWidth > title.clientWidth + 1) out.push("the shop's title is cut off beside its header controls");
+  if (br.left < tr.right - 1) out.push("the header controls crowd the title");
+  if (br.right > hr.right + 1) out.push("the header controls are past the window's edge");
+  const menu = header.querySelector(".lc-harness-controls")?.getBoundingClientRect();
+  const app = document.getElementById("app").getBoundingClientRect();
+  if (menu && (menu.right > app.right + 1 || menu.left < app.left - 1)) out.push("the header controls' menu is past the window's edge");
+  for (const i of items) if (parseFloat(getComputedStyle(i.querySelector("button")).fontSize) < 11) out.push("a header control is under 11px");
+  return out;
+}
+
+// An empty shelf (route.js shopEmptyHTML): one line for a player, naming no
+// settings; a GM's points at Manage crates with a button in the sentence.
+function emptyShopProblems(gm) {
+  const out = [];
+  const empty = document.querySelector(".lc-shop__grid > .lc-shop__empty");
+  if (!empty) return ["no empty-shelf line"];
+  if (document.querySelector(".lc-box")) out.push("an empty shelf shows a crate");
+  const text = empty.textContent.replace(/\s+/g, " ").trim();
+  if (/Game Settings/.test(text)) out.push("the empty shelf talks of Game Settings");
+  if (parseFloat(getComputedStyle(empty).fontSize) < 11) out.push("the empty-shelf line is under 11px");
+  const button = empty.querySelector("button");
+  if (!gm) {
+    if (text !== "No crates on the shelf yet. The GM hasn't put any out.") out.push(`a player's empty shelf reads "${text}"`);
+    if (button) out.push("a player's empty shelf has a button");
+    return out;
+  }
+  if (text !== "No crates on the shelf yet. Make one in Manage crates.") out.push(`a GM's empty shelf reads "${text}"`);
+  if (button?.dataset.action !== "openManager") return [...out, "a GM's empty shelf has no Manage crates button"];
+  const r = button.getBoundingClientRect(), app = document.getElementById("app").getBoundingClientRect();
+  if (r.width < 40 || r.height < 20 || r.right > app.right + 1) out.push("the Manage crates button is not whole in the window");
+  if (parseFloat(getComputedStyle(button).fontSize) < 11) out.push("the Manage crates button is under 11px");
   return out;
 }
 
@@ -776,7 +894,7 @@ function wellCardProblems({ capped, closed }) {
 // ribbon, the three plain bets in words with what they pay, the stake
 // bounds, what the round is doing (a clock that ticks, or that no round is
 // open with "Place a bet" off for that reason), and "Place a bet" on the Buy.
-function rouletteCardProblems({ noRound, closed, busy }) {
+function rouletteCardProblems({ noRound, closed, busy, gm = false }) {
   const out = [];
   const card = document.querySelector('.lc-box[data-box="wheel"]');
   if (!card) return ["no wheel card in the shop"];
@@ -788,7 +906,8 @@ function rouletteCardProblems({ noRound, closed, busy }) {
   if (!/Evocation red or Abjuration black 1 in 2, pays 2×/.test(rule) || !/One number 1 in 12, pays 12×/.test(rule) || !/A rarity pays 3×/.test(rule)) out.push(`the bet lines read "${rule}"`);
   if (card.querySelector(".lc-box__stock")?.textContent.trim() !== "Stake 5 gp to 50 gp, 3 bets a round") out.push(`the bounds read "${card.querySelector(".lc-box__stock")?.textContent}"`);
   const round = card.querySelector(".lc-box__round");
-  if (!buy.textContent.includes("Place a bet")) out.push(`wheel Buy reads "${buy.textContent.trim()}"`);
+  // A GM's Buy takes them to the table they run (shop-gm).
+  if (!buy.textContent.includes(gm ? "Go to the table" : "Place a bet")) out.push(`wheel Buy reads "${buy.textContent.trim()}"`);
   if (buy.dataset.price !== "5") out.push(`the wheel's data-price is ${buy.dataset.price}`);
   if (noRound) {
     if (round?.textContent.trim() !== "No round open yet") out.push(`with no round the card says "${round?.textContent}"`);
@@ -1110,12 +1229,14 @@ try {
       if (name.startsWith("manager") || name === "box-limits") await page.waitForSelector("body[data-ready]", { timeout: 10000 });
       await page.waitForTimeout(500);
       const wide = await page.evaluate(() => document.scrollingElement.scrollWidth > document.scrollingElement.clientWidth + 1);
-      if (name.startsWith("shop")) {
+      if (name.startsWith("shop")) problems0.push(...await page.evaluate(shopControlProblems, name.endsWith("-gm")));
+      if (name.startsWith("shop-empty")) problems0.push(...await page.evaluate(emptyShopProblems, name.endsWith("-gm")));
+      else if (name.startsWith("shop")) {
         problems0.push(...await page.evaluate(shopProblems, name.slice(5)));
         problems0.push(...await page.evaluate(wellCardProblems, { capped: name === "shop-well-capped", closed: name === "shop-closed" }));
         problems0.push(...await page.evaluate(diceCardProblems, { closed: name === "shop-closed", busy: name === "shop-busy" }));
         problems0.push(...await page.evaluate(deckCardProblems, { streak: name === "shop-deck-streak", closed: name === "shop-closed", busy: name === "shop-busy" }));
-        problems0.push(...await page.evaluate(rouletteCardProblems, { noRound: name === "shop-no-round", closed: name === "shop-closed", busy: name === "shop-busy" }));
+        problems0.push(...await page.evaluate(rouletteCardProblems, { noRound: name === "shop-no-round", closed: name === "shop-closed", busy: name === "shop-busy", gm: name === "shop-gm" }));
         problems0.push(...await page.evaluate(limitCardProblems, { reached: name === "shop-limit", off: name === "shop-closed" || name === "shop-busy", shelved: name === "shop-shelf" }));
         problems0.push(...await page.evaluate(shelfShopProblems, name === "shop-shelf"));
       }
@@ -1131,6 +1252,8 @@ try {
       else if (name === "replay") problems0.push(...await page.evaluate(replayProblems));
       else if (name.startsWith("well")) problems0.push(...await page.evaluate(wellProblems, { "well-missed": "nothing", "well-coin": "coin", "well-won": "item" }[name]));
       else problems0.push(...await page.evaluate(revealProblems, name === "landed-buyer" || name === "landed-missed"));
+      if (name.startsWith("manager")) problems0.push(...await page.evaluate(navProblems));
+      if (name.startsWith("manager-boxes")) problems0.push(...await page.evaluate(priceProblems));
       if (name === "landed-missed") problems0.push(...await page.evaluate(missedProblems));
       if (name === "shop-short") {
         const grid = await page.$(".lc-shop__grid");

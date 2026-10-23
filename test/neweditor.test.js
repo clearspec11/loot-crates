@@ -273,7 +273,8 @@ describe("Copy", () => {
       expect(dialog.buttons.find(b => b.action === "ok").label).toBe("Add to shelf");
       expect(field("name").value).toBe("Goblin Crate (copy)");
       expect(field("name").hasAttribute("autofocus")).toBe(true);
-      expect(field("price").value).toBe("50");
+      // The price as the shop says it, in the same words the field reads back.
+      expect(field("price").value).toBe("50 gp");
       expect(field("pool.p").checked).toBe(true);
       expect(field("share.p").value).toBe("2");
       expect(field("w.common").value).toBe("10");

@@ -14,7 +14,8 @@
   beside Edit. A wheel's: its odds per bet type and "Open a round" or "Go
   to the table" from the live rounds. Every pulled game's row shows its
   stock and limit per character ("3 of 10 left, 1 per character",
-  limits.js). Every row's last cell holds Edit, Copy (the same editor on an
+  limits.js). Every row's price is a field the GM types into (priceInputHTML
+  below). Every row's last cell holds Edit, Copy (the same editor on an
   unsaved copy of the game, newgame.js copyOf) and Delete.
   Every row says whether players can see the game (shelf.js): its buttons'
   cell leads with the On the shelf toggle (aria-pressed, as the shop's own
@@ -112,12 +113,26 @@ export function boxesTableHTML({ boxes, pools, log = [], rounds = {}, recent = n
   const [BOX, PRICE, POOLS, ODDS, RULES, ACT] = BOXES_COLUMNS;
   const rowClass = b => [b.id === recent ? "lc-row--new" : "", onShelf(b) ? "" : "lc-row--off"].filter(Boolean).join(" ");
   return tableHTML("lc-table--boxes", BOXES_COLUMNS, boxes.map(b => `<tr${rowClass(b) ? ` class="${rowClass(b)}"` : ""} role="row">
-          ${cell(BOX, `<span class="lc-table__name">${esc(b.name)}${tag(b)}</span>`)}${cell(PRICE, esc(formatPrice(b.price)))}
+          ${cell(BOX, `<span class="lc-table__name">${esc(b.name)}${tag(b)}</span>`)}${cell(PRICE, priceInputHTML(b, esc))}
           ${cell(POOLS, (b.pools ?? []).map(r => esc(pools[r.id]?.name ?? "missing")).join(", ") || "<em>none</em>")}
           ${cell(ODDS, odds(b))}
           ${cell(RULES, rules(b))}
           ${cell(ACT, `${shelfToggleHTML(b, esc)} ${extra(b)}<button type="button" data-action="editBox" data-box="${esc(b.id)}" aria-label="Edit ${esc(b.name)}" data-tooltip="Edit"><i class="fas fa-pen" inert></i></button> <button type="button" data-action="copyBox" data-box="${esc(b.id)}" aria-label="Copy ${esc(b.name)}" data-tooltip="Copy"><i class="fas fa-copy" inert></i></button> <button type="button" data-action="deleteBox" data-box="${esc(b.id)}" aria-label="Delete ${esc(b.name)}" data-tooltip="Delete"><i class="fas fa-trash" inert></i></button>`)}
         </tr>`).join(""));
+}
+
+/*
+  The Price cell is the price, typed in place as a pool row's weight is
+  (manager.js #onPrice): a text field holding the price as the shop says it
+  ("12 gp 5 sp", currency.js formatPrice) and reading it back the same way
+  (parsePrice), so "5 sp" and "12 gp 5 sp" go in as they read. Its name
+  says what the price is for the game's kind: a crate's price, a deck's
+  first draw, a wheel's lowest bet, a well's or dice game's stake.
+*/
+const PRICE_NAME = { deck: "First draw at", roulette: "Lowest bet at", well: "Stake at", dice: "Stake at" };
+export const priceLabel = b => `${PRICE_NAME[kindOf(b)] ?? "Price of"} ${b.name ?? ""}`.trim();
+export function priceInputHTML(b, esc = s => String(s ?? "")) {
+  return `<input type="text" class="lc-price-input" data-box-price="${esc(b.id)}" value="${esc(formatPrice(b.price))}" aria-label="${esc(priceLabel(b))}" autocomplete="off" spellcheck="false">`;
 }
 
 // The whole tab.

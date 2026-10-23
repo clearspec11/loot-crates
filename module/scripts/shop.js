@@ -34,10 +34,14 @@ import { requestPull } from "./socket.js";
 import { heldState, onRelease } from "./reveal.js";
 import { getKind, kindOf } from "./kinds.js";
 import { onShelf, shelfFor, OFF_SHELF_REASON } from "./shelf.js";
+import { shopControls, shopEmptyHTML } from "./route.js";
 // A table game's Buy opens the table (tablewindow.js), loaded when it is
 // first pressed: that window imports this file for the characters a player
 // may bet with, and the kinds' tests run the shop without it.
 const openTableFor = boxId => import("./tablewindow.js").then(m => m.openTableFor(boxId));
+// A GM's "Manage crates" (route.js): the manager, loaded when pressed, as
+// the manager loads this file for its "View shop".
+const openManagerWindow = () => import("./manager.js").then(m => m.openManager());
 // The crate, the well, the dice, the deck and the wheel register themselves when imported, so every record is found.
 import "./crate.js";
 import "./well.js";
@@ -94,8 +98,19 @@ export class CrateShop extends ApplicationV2 {
     classes: ["loot-crates", "lc-shop"],
     window: { title: "Crate Shop", resizable: true },
     position: { width: 640, height: "auto" },
-    actions: { buy: CrateShop.#buy },
+    actions: { buy: CrateShop.#buy, openManager: CrateShop.#openManager },
   };
+
+  // A GM's way to the manager from here: "Manage crates" in the window's
+  // header controls, and on an empty shelf (route.js). A player has neither.
+  _getHeaderControls() {
+    return [...(super._getHeaderControls?.() ?? []), ...shopControls(!!game.user?.isGM)];
+  }
+
+  static async #openManager() {
+    if (!game.user?.isGM) return;
+    try { await openManagerWindow(); } catch (err) { console.error("loot-crates | opening the manager failed", err); }
+  }
 
   // The character the cards were last drawn for (see #resolve).
   actorId = pickActor(null, buyableActors(), game.user.character);
@@ -289,7 +304,7 @@ export class CrateShop extends ApplicationV2 {
     this.notice = this.#notice(ctx);
     root.innerHTML = shopHTML({
       fields: picker + purseField,
-      cards: boxes.length ? boxes.map(b => cardFor(b, pools, ctx)).join("") : `<p class="lc-shop__empty">No crates on the shelf yet. The GM builds them from Game Settings, Loot Crates.</p>`,
+      cards: boxes.length ? boxes.map(b => cardFor(b, pools, ctx)).join("") : shopEmptyHTML(!!game.user?.isGM),
       notice: this.notice,
     });
     const select = root.querySelector(".lc-shop__actor");
