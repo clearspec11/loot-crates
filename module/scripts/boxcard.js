@@ -14,6 +14,7 @@
 import { RARITIES, RARITY_SHORT, RARITY_LABEL } from "./config.js";
 import { shopOdds, oddsTable, flattenPool, rarityRank } from "./odds.js";
 import { canAfford, formatPrice, shortfall } from "./currency.js";
+import { stockOf, stockText, limitState, limitLine, withLimit } from "./limits.js";
 
 // "Rare 12%": the rarity's name is on screen, not only its colour.
 export function oddPill(row) {
@@ -277,7 +278,7 @@ export function boxCard(box, pools, ctx) {
   const reason = crateReason(box, odds, ctx);
   const rarityClass = odds.top ? `lc-rarity-${odds.top}` : "lc-box--empty";
   const peek = peekItems(box, pools, odds, 3, state);
-  const stock = odds.rows.length && box.rules?.stock != null ? `<div class="lc-box__stock">${esc(box.rules.stock)} left</div>` : "";
+  const stock = odds.rows.length && stockOf(box) ? `<div class="lc-box__stock">${esc(stockText(box))}</div>` : "";
   const pity = pityLine(odds);
   const middle = [
     odds.rows.length ? `${oddsRibbon(odds.rows)}<div class="lc-box__odds">${oddsPills(odds.rows)}</div>` : "",
@@ -296,10 +297,19 @@ export function boxCard(box, pools, ctx) {
   data-price, aria-disabled, aria-describedby, the screen-reader name).
   `price` is what this Buy charges when it isn't the record's (the deck's
   rising draw price): it goes on the Buy as data-price, which the pull
-  carries and the GM checks (pull.js expectedPrice).
+  carries and the GM checks (pull.js expectedPrice). The limit per
+  character (limits.js) is added here for every kind, from ctx's log,
+  actorId, actorName and today.
 */
-export function cardShell(box, ctx, { rarityClass, art = "", middle = [], reason = "", label, price: cost = box.price }) {
+export function cardShell(box, ctx, { rarityClass, art = "", middle: lines = [], reason: own = "", label, price: cost = box.price }) {
   const esc = ctx.esc ?? (s => String(s ?? ""));
+  // The limit per character is the core's (limits.js), for every kind:
+  // "You can buy 1 more" while there is some left, and once it is reached
+  // the card's reason, whatever the kind said.
+  const limit = limitState(box, ctx);
+  const more = limitLine(limit);
+  const reason = withLimit(box, own, ctx);
+  const middle = more ? [...lines, `<div class="lc-box__limit">${esc(more)}</div>`] : lines;
   const notice = shopNotice(ctx).text;
   const whyId = `lc-why-${box.id}`;
   const describedBy = [notice ? SHOP_NOTICE_ID : "", reason ? whyId : ""].filter(Boolean).join(" ");

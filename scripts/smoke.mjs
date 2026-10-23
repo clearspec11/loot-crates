@@ -57,6 +57,13 @@ const STATES = [
   ["well-missed", "state=well&outcome=nothing&buyer=1&duration=0"],
   ["well-coin", "state=well&outcome=coin&buyer=1&duration=0"],
   ["well-won", "state=well&outcome=item&buyer=1&duration=0&seed=3"],
+  // Tam has bought the Pauper's Box twice, its limit per character: its
+  // card reads "Limit reached: 2 of 2 for Tam Thornwick" with the Buy off
+  // (the plain shop shows "You can buy 1 more" and "3 of 10 left").
+  ["shop-limit", "state=shop&limit=reached"],
+  // The box editor's Limits group: the stock with what is left and
+  // Restock, then the limit per character, each with its help.
+  ["box-limits", "state=editor"],
   // Tam has thrown today's three coins: the well's Buy is off with the
   // "still until tomorrow" line under it.
   ["shop-well-capped", "state=shop&well=capped"],
@@ -101,7 +108,171 @@ const STATES = [
   // A dropped item on a big pool that was collapsed and filtered to Rare:
   // opened, the chip cleared, the row pinned first and focused, and said.
   ["manager-dropped", "state=manager&dropped=1"],
+  // The Boxes tab the moment "New box" was saved as the Royal Vault
+  // (boxestable.js, manager.js #saveEditor): every kind's row in one table,
+  // the status line saying it is on the shelf, the new row's edge and its
+  // Edit focused and in view; the toolbar's five New buttons and the line
+  // wrap in a 480 px window instead of overflowing.
+  ["manager-boxes", "state=manager&tab=boxes&added=1"],
+  ["manager-boxes-narrow", "state=manager&tab=boxes&added=1&width=480"],
+  // The Pull log (logtable.js) with one of everything: a refunded pull
+  // struck through and muted, a pity pull tracing its rarity, a sale called
+  // off too late, a dice win with its faces and payout, a deck draw that
+  // took coins, five throws at the well folded into one line with "Refund
+  // one", and the wheel's settled round with its stakes under it. In a 480
+  // px window (and at 390) the rows stack as cards with every Refund in view.
+  ["manager-log", "state=manager&tab=log"],
+  ["manager-log-narrow", "state=manager&tab=log&width=480"],
 ];
+
+// The manager's tables at any width, read from the DOM: the pane never
+// scrolls sideways, the toolbar fits it, every button (Edit, Copy, Delete,
+// Reshuffle, Open a round, Refund) sits inside the pane and the window, and
+// the rows stack as cards exactly when the pane is narrow, with the header
+// row out of sight but kept, the table's roles and every cell's caption in
+// place, and nothing under the 11px floor. The next column added to the
+// Boxes table fails here before anyone reads a screenshot.
+function panelProblems() {
+  const out = [];
+  const panel = document.querySelector(".lc-tab");
+  if (!panel) return ["no tab panel"];
+  const pr = panel.getBoundingClientRect();
+  if (panel.scrollWidth > panel.clientWidth + 1) out.push(`the pane scrolls sideways by ${panel.scrollWidth - panel.clientWidth} px`);
+  for (const bar of panel.querySelectorAll(".lc-toolbar")) if (bar.scrollWidth > bar.clientWidth + 1 || bar.getBoundingClientRect().right > pr.right + 1) out.push("a toolbar overflows the pane");
+  const label = b => b.getAttribute("aria-label") ?? b.textContent.trim();
+  const off = [...panel.querySelectorAll("button")].filter(b => { const r = b.getBoundingClientRect(); return r.width > 0 && (r.right > pr.right + 1 || r.left < pr.left - 1); });
+  if (off.length) out.push(`${off.length} buttons past the pane's edge, e.g. "${label(off[0])}"`);
+  const win = document.getElementById("app").getBoundingClientRect();
+  const outside = [...panel.querySelectorAll('[data-action="editBox"], [data-action="refund"]')].filter(b => { const r = b.getBoundingClientRect(); return r.left < win.left - 1 || r.right > win.right + 1; });
+  if (outside.length) out.push(`${outside.length} Edit or Refund buttons outside the window, e.g. "${label(outside[0])}"`);
+  const table = panel.querySelector(".lc-table--stack");
+  if (!table) return [...out, "no stacking table"];
+  const style = getComputedStyle(panel);
+  const inner = panel.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+  const stacked = getComputedStyle(table.querySelector("tbody tr")).display === "grid";
+  if (stacked !== inner <= 560) out.push(stacked ? `rows stacked in a ${Math.round(inner)} px pane` : `rows not stacked in a ${Math.round(inner)} px pane`);
+  // In a wide pane, the table's narrowest layout must fit the pane where the
+  // rows begin to stack, or a pane between the two shows a table wider than
+  // itself with its buttons past the edge (the buttons' cell is the one that
+  // never wraps, so it must stay as narrow as its icons).
+  if (!stacked) {
+    const was = table.style.width;
+    table.style.width = "min-content";
+    const narrowest = table.getBoundingClientRect().width;
+    table.style.width = was;
+    if (narrowest > 560) out.push(`the table's narrowest layout is ${Math.round(narrowest)} px, wider than the 560 px pane where its rows begin to stack`);
+  }
+  const thead = table.querySelector("thead");
+  if (!thead?.querySelectorAll("th").length) out.push("no header row");
+  else if (stacked && thead.getBoundingClientRect().width > 2) out.push("the header row shows over stacked rows");
+  else if (!stacked && thead.getBoundingClientRect().height < 10) out.push("the header row is hidden in a wide pane");
+  if (table.getAttribute("role") !== "table" || [...table.querySelectorAll("tr")].some(tr => tr.getAttribute("role") !== "row") || [...table.querySelectorAll("td")].some(td => td.getAttribute("role") !== "cell")) out.push("the table lost its roles");
+  const heads = [...thead.querySelectorAll("th")].map(th => th.textContent);
+  for (const tr of table.querySelectorAll("tbody tr")) {
+    const labels = [...tr.children].map(td => td.dataset.label);
+    if (labels.join("|") !== heads.join("|")) { out.push(`a row's captions read ${labels.join(", ")}, not the header's ${heads.join(", ")}`); break; }
+  }
+  if (stacked) {
+    // Each caption is drawn (the name's and the buttons' are not), and the
+    // buttons sit on a line of their own after everything else.
+    const captioned = [...table.querySelectorAll("tbody td[data-label]")].filter(td => td.dataset.label && getComputedStyle(td, "::before").content !== "none" && getComputedStyle(td, "::before").content !== "normal");
+    if (!captioned.length) out.push("no cell shows its caption");
+    for (const tr of table.querySelectorAll("tbody tr")) {
+      const last = tr.lastElementChild;
+      if (!last.querySelector("button")) continue;
+      const above = [...tr.children].slice(0, -1).filter(td => getComputedStyle(td).display !== "none").map(td => td.getBoundingClientRect().bottom);
+      if (above.length && last.getBoundingClientRect().top < Math.max(...above) - 1) { out.push("a row's buttons overlap its text"); break; }
+    }
+  }
+  const small = [...table.querySelectorAll("td, td *")].filter(el => el.childNodes.length && [...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim()) && parseFloat(getComputedStyle(el).fontSize) < 11);
+  if (small.length) out.push(`${small.length} texts under 11px, e.g. "${small[0].textContent.trim().slice(0, 30)}"`);
+  return out;
+}
+
+// The Pull log sample (harness sample.js sampleLog), read from the DOM.
+function logProblems(narrow) {
+  const out = [];
+  const app = document.getElementById("app").getBoundingClientRect();
+  if (narrow && app.width > 484) out.push(`narrow manager is ${Math.round(app.width)} px wide`);
+  const tabs = [...document.querySelectorAll('.lc-tabs [role="tablist"] > [role="tab"]')];
+  if (tabs.find(t => t.getAttribute("aria-selected") === "true")?.textContent !== "Pull log") out.push("the Pull log tab is not the selected one");
+  const toggle = document.querySelector('[data-action="toggleMisses"]');
+  if (toggle?.textContent !== "Hide misses" || toggle.getAttribute("aria-pressed") !== "false") out.push("no Hide misses button");
+  if (!/^5 throws that gave nothing, folded by day$/.test(document.querySelector(".lc-toolbar .lc-pool__hint")?.textContent ?? "")) out.push(`the misses line reads "${document.querySelector(".lc-toolbar .lc-pool__hint")?.textContent}"`);
+  const rows = [...document.querySelectorAll(".lc-table tbody tr")];
+  if (rows.length !== 13) out.push(`expected 13 rows, got ${rows.length}`);
+  const plain = rows.find(r => !r.className);
+  const refunded = document.querySelector(".lc-row--refunded");
+  if (!refunded || !refunded.querySelector("s") || !/^refunded \S/.test(refunded.querySelector(".lc-log__status")?.textContent ?? "")) out.push("no refunded row reading as withdrawn");
+  else if (refunded.querySelector('[data-action="refund"]')) out.push("the refunded row still offers Refund");
+  else if (plain && getComputedStyle(refunded.querySelector("td")).color === getComputedStyle(plain.querySelector("td")).color) out.push("the refunded row isn't muted");
+  const groups = [...document.querySelectorAll(".lc-row--group")];
+  const misses = groups.find(tr => /5 throws, nothing/.test(tr.textContent));
+  if (!misses) out.push("no folded misses row");
+  else if (misses.querySelector('[data-action="refund"]')?.textContent !== "Refund one") out.push("the folded row has no Refund one");
+  const round = groups.find(tr => /^Round$/.test(tr.children[1].textContent.trim()));
+  if (!round || !/5 stakes, settled/.test(round.textContent) || !/45 gp staked/.test(round.textContent)) out.push(`no settled round line: "${round?.textContent.replace(/\s+/g, " ").trim()}"`);
+  else if (round.querySelector("button")) out.push("the round's line has a button");
+  const late = document.querySelector(".lc-row--late");
+  if (!late || !/Called off by the buyer after the charge/.test(late.textContent)) out.push("the late sale isn't explained");
+  else if (getComputedStyle(late.querySelector("td")).boxShadow === "none" && getComputedStyle(late).boxShadow === "none") out.push("the late sale has no edge");
+  const text = document.querySelector(".lc-table").textContent;
+  if (!/Rolled 4, 6, 5 · won 30 gp/.test(text)) out.push("the dice row has no faces and payout");
+  if (!/Loss card · took 20 gp/.test(text)) out.push("the deck's bane row doesn't say what it took");
+  if (!/Rare, set by GM \(source Uncommon\)/.test(text)) out.push("the pity row doesn't trace its rarity");
+  if (!/· pity/.test(text)) out.push("the pity row isn't marked");
+  if (!/Lost at the spin\./.test(text)) out.push("a losing stake doesn't say so");
+  const refunds = [...document.querySelectorAll('[data-action="refund"]')];
+  if (refunds.length !== 11) out.push(`expected 11 Refund buttons (one per live row, one per folded group), got ${refunds.length}`);
+  for (const b of refunds) { const r = b.getBoundingClientRect(); if (r.width < 20 || r.height < 20) { out.push(`"${b.textContent}" is not visible`); break; } }
+  return out;
+}
+
+// The Boxes tab after a New, read from the DOM (manager-boxes states).
+function boxesProblems(narrow) {
+  const out = [];
+  const app = document.getElementById("app").getBoundingClientRect();
+  if (narrow && app.width > 484) out.push(`narrow manager is ${Math.round(app.width)} px wide`);
+  const tabs = [...document.querySelectorAll('.lc-tabs [role="tablist"] > [role="tab"]')];
+  if (tabs.find(t => t.getAttribute("aria-selected") === "true")?.textContent !== "Boxes") out.push("the Boxes tab is not the selected one");
+  const toolbar = document.querySelector(".lc-toolbar--boxes");
+  if (!toolbar) return [...out, "no Boxes toolbar"];
+  const news = [...toolbar.querySelectorAll('[data-action^="add"]')].map(b => b.textContent.trim());
+  if (news.join("|") !== "New box|New well|New dice game|New deck|New wheel") out.push(`the New buttons read ${news.join(", ")}`);
+  if (toolbar.scrollWidth > toolbar.clientWidth + 1 || toolbar.getBoundingClientRect().right > app.right + 1) out.push("the Boxes toolbar overflows the window");
+  if (document.querySelectorAll('[role="status"]').length !== 1) out.push("expected one role=status");
+  const status = document.querySelector(".lc-manager__status");
+  if (!/^Royal Vault is on the shelf at 1,?200 gp\.$/.test(status?.textContent ?? "")) out.push(`status line says "${status?.textContent}"`);
+  if (status && (status.scrollWidth > status.clientWidth + 1 || status.getBoundingClientRect().right > app.right + 1)) out.push("the status line is cut off");
+  const rows = [...document.querySelectorAll(".lc-table tbody tr")];
+  if (rows.length !== 8) out.push(`expected 8 sample games, got ${rows.length}`);
+  const tags = [...document.querySelectorAll(".lc-table .lc-kind")].map(t => t.textContent);
+  if (tags.join("|") !== "Crate|Crate|Crate|Crate|Well|Dice|Deck|Wheel") out.push(`kind tags read ${tags.join(", ")}`);
+  const row = document.querySelector(".lc-table tr.lc-row--new");
+  if (!row || !/Royal Vault/.test(row.textContent)) out.push("the new row isn't marked");
+  // The gold edge sits on the first cell, or on the row once it stacks as a card.
+  if (row && getComputedStyle(row.children[0]).boxShadow === "none" && getComputedStyle(row).boxShadow === "none") out.push("the new row has no edge");
+  if (document.querySelectorAll(".lc-table tr.lc-row--new").length > 1) out.push("more than one row marked new");
+  const edit = row?.querySelector('[data-action="editBox"]');
+  if (!edit || edit.getAttribute("aria-label") !== "Edit Royal Vault") out.push("the new row has no Edit Royal Vault");
+  if (document.activeElement !== edit) out.push("focus is not on the new row's Edit");
+  const tab = document.querySelector(".lc-tab")?.getBoundingClientRect();
+  const er = edit?.getBoundingClientRect();
+  if (tab && er && (er.top < tab.top - 1 || er.bottom > tab.bottom + 1)) out.push("the new row is out of view");
+  if (!document.querySelector('[data-action="openTable"]') || !document.querySelector('[data-action="reshuffle"]')) out.push("the wheel's Open a round or the deck's Reshuffle is missing");
+  // Every row has a visible Copy naming its game, between Edit and Delete.
+  for (const r of rows) {
+    const name = r.children[0].firstChild?.textContent.trim();
+    const copy = r.querySelector('[data-action="copyBox"]');
+    if (!copy) { out.push(`${name} has no Copy`); continue; }
+    if (copy.getAttribute("aria-label") !== `Copy ${name}`) out.push(`${name}'s Copy is labelled "${copy.getAttribute("aria-label")}"`);
+    if (copy.getBoundingClientRect().width < 20 || copy.getBoundingClientRect().height < 20) out.push(`${name}'s Copy is not visible`);
+    if ((copy.querySelector("i")?.getBoundingClientRect().width ?? 0) < 10) out.push(`${name}'s Copy has no icon`);
+    const order = [...r.lastElementChild.querySelectorAll("[data-action]")].map(b => b.dataset.action).slice(-3).join("|");
+    if (order !== "editBox|copyBox|deleteBox") out.push(`${name}'s row actions end ${order}`);
+  }
+  return out;
+}
 
 // The pool editor as a craft table, read from the DOM: an open pool draws at
 // most a page of controls, a collapsed one none (its census still shown),
@@ -699,6 +870,57 @@ async function tableProblems({ phase, outcome, gm }) {
 // keeps focus) points at visible reasons, a shop-wide
 // reason is said once (in the header's notice, never under a card), and the
 // shop has one live region, which keeps its node across a re-render.
+// The stock and the limit per character on the shop's cards (limits.js):
+// the Royal Vault reads "3 of 10 left"; the Pauper's Box says Tam can buy
+// one more, or once reached, says so as its reason with the Buy off.
+async function limitCardProblems({ reached, off }) {
+  const out = [];
+  const card = id => document.querySelector(`.lc-box[data-box="${id}"]`);
+  const stock = card("royal")?.querySelector(".lc-box__stock")?.textContent.trim();
+  if (stock !== "3 of 10 left") out.push(`Royal Vault's stock reads "${stock}"`);
+  const pauper = card("common");
+  const line = pauper?.querySelector(".lc-box__limit")?.textContent.trim() ?? "";
+  const why = pauper?.querySelector(".lc-box__why")?.textContent.trim() ?? "";
+  const buy = pauper?.querySelector(".lc-box__buy");
+  if (reached) {
+    if (why !== "Limit reached: 2 of 2 for Tam Thornwick") out.push(`Pauper's Box at its limit says "${why}"`);
+    if (line) out.push(`Pauper's Box at its limit still says "${line}"`);
+    if (buy?.getAttribute("aria-disabled") !== "true" || !(buy.getAttribute("aria-describedby") ?? "").includes("lc-why-common")) out.push("Pauper's Box's Buy isn't off with its reason at the limit");
+  } else {
+    if (line !== "You can buy 1 more") out.push(`Pauper's Box's limit line reads "${line}"`);
+    if (why) out.push(`Pauper's Box has a reason under the limit: "${why}"`);
+    if (!off && buy?.getAttribute("aria-disabled") === "true") out.push("Pauper's Box's Buy is off under its limit");
+  }
+  const small = [...document.querySelectorAll(".lc-box__limit")].filter(el => parseFloat(getComputedStyle(el).fontSize) < 11);
+  if (small.length) out.push("a limit line is under 11px");
+  return out;
+}
+
+// The box editor's Limits group: one group with the stock, what is left of
+// it beside Restock (a status, on), the limit per character with its
+// period, and plain help tied to the fields.
+async function limitsEditorProblems() {
+  const out = [];
+  const group = [...document.querySelectorAll(".lc-form fieldset")].find(f => f.querySelector("legend")?.textContent.trim() === "Limits");
+  if (!group) return ["no Limits group"];
+  if (group.querySelector('input[name="stock"]')?.value !== "10") out.push("the stock field doesn't show the GM's 10");
+  const left = group.querySelector('.lc-limits__left[role="status"]');
+  if (left?.textContent.trim() !== "3 of 10 left") out.push(`the stock line reads "${left?.textContent}"`);
+  const restock = group.querySelector("[data-restock]");
+  if (!restock || restock.disabled || restock.getAttribute("aria-disabled") === "true") out.push("Restock isn't on with 3 of 10 left");
+  if (group.querySelector('input[name="limitMax"]')?.value !== "1" || group.querySelector('select[name="limitPer"]')?.value !== "day") out.push("the limit per character isn't 1 a day");
+  for (const input of group.querySelectorAll("input[aria-describedby]")) {
+    const help = document.getElementById(input.getAttribute("aria-describedby"));
+    if (!help?.textContent.trim()) out.push(`${input.name}'s help is missing`);
+  }
+  const hints = [...group.querySelectorAll(".lc-form__hint")].filter(el => parseFloat(getComputedStyle(el).fontSize) < 11);
+  if (hints.length) out.push("a hint is under 11px");
+  const r = restock?.getBoundingClientRect();
+  const g = group.getBoundingClientRect();
+  if (r && (r.right > g.right + 1 || r.left < g.left - 1)) out.push("Restock spills out of the group");
+  return out;
+}
+
 async function shopProblems(mode) {
   const closed = mode === "closed";
   const out = [];
@@ -788,7 +1010,7 @@ async function shopProblems(mode) {
   if (after !== notice) out.push("the notice node was replaced on re-render");
   if (!/^Waiting for the GM/.test(after?.textContent ?? "")) out.push(`waiting notice reads "${after?.textContent}"`);
   const pressed = document.querySelector('.lc-box__buy[data-box="common"]');
-  if (pressed?.getAttribute("aria-describedby") !== "lc-shop-notice") out.push("the waiting Buy doesn't point at the notice");
+  if (!(pressed?.getAttribute("aria-describedby") ?? "").split(" ").includes("lc-shop-notice")) out.push("the waiting Buy doesn't point at the notice");
   window.__lootCrates.renderShop();
   if (document.querySelector(".lc-shop__notice") !== notice || notice.textContent) out.push("the notice didn't clear in place");
   return out;
@@ -822,7 +1044,7 @@ try {
       // Mid-roll: the dice are tumbling (reduced motion is off for this
       // state); two frames in, they have faces to show.
       if (name === "dice-rolling") await page.waitForFunction(() => [...document.querySelectorAll(".lc-dice__tray .lc-dice__face")].every(f => f.textContent.trim()), null, { timeout: 10000 });
-      if (name.startsWith("manager")) await page.waitForSelector("body[data-ready]", { timeout: 10000 });
+      if (name.startsWith("manager") || name === "box-limits") await page.waitForSelector("body[data-ready]", { timeout: 10000 });
       await page.waitForTimeout(500);
       const wide = await page.evaluate(() => document.scrollingElement.scrollWidth > document.scrollingElement.clientWidth + 1);
       if (name.startsWith("shop")) {
@@ -831,11 +1053,15 @@ try {
         problems0.push(...await page.evaluate(diceCardProblems, { closed: name === "shop-closed", busy: name === "shop-busy" }));
         problems0.push(...await page.evaluate(deckCardProblems, { streak: name === "shop-deck-streak", closed: name === "shop-closed", busy: name === "shop-busy" }));
         problems0.push(...await page.evaluate(rouletteCardProblems, { noRound: name === "shop-no-round", closed: name === "shop-closed", busy: name === "shop-busy" }));
+        problems0.push(...await page.evaluate(limitCardProblems, { reached: name === "shop-limit", off: name === "shop-closed" || name === "shop-busy" }));
       }
+      else if (name === "box-limits") problems0.push(...await page.evaluate(limitsEditorProblems));
       else if (name.startsWith("table") || name.startsWith("roulette")) problems0.push(...await page.evaluate(tableProblems, { phase: { "table-betting": "betting", "table-waiting": "waiting", "table-closed": "closed", "roulette-spinning": "spinning", "roulette-won": "landed", "roulette-lost": "landed" }[name], outcome: name === "roulette-lost" ? "lose" : "win", gm: name === "table-waiting" }));
       else if (name.startsWith("dice")) problems0.push(...await page.evaluate(diceProblems, { "dice-rolling": "rolling", "dice-won": "win", "dice-lost": "lose" }[name]));
       else if (name.startsWith("deck")) problems0.push(...await page.evaluate(deckProblems, { "deck-held": "held", "deck-boon": "item", "deck-bane": "loss", "deck-effect": "effect" }[name]));
       else if (name === "manager-dropped") problems0.push(...await page.evaluate(droppedProblems));
+      else if (name.startsWith("manager-boxes")) problems0.push(...await page.evaluate(boxesProblems, name.endsWith("narrow")), ...await page.evaluate(panelProblems));
+      else if (name.startsWith("manager-log")) problems0.push(...await page.evaluate(logProblems, name.endsWith("narrow")), ...await page.evaluate(panelProblems));
       else if (name.startsWith("manager")) problems0.push(...await page.evaluate(managerProblems, name === "manager-narrow"));
       else if (name === "replay") problems0.push(...await page.evaluate(replayProblems));
       else if (name.startsWith("well")) problems0.push(...await page.evaluate(wellProblems, { "well-missed": "nothing", "well-coin": "coin", "well-won": "item" }[name]));

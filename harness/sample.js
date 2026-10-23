@@ -68,6 +68,8 @@ export const WELL = {
   odds: { nothing: 90, coin: 8, item: 2 },
   rules: { cap: 3 },
 };
+// Tam's buys of the Pauper's Box (its limit per character is two), newest first.
+export const limitBuys = n => Array.from({ length: n }, (_, i) => ({ id: `buy${i}`, kind: "crate", boxId: "common", boxName: "Pauper's Box", actorId: "tam", actorName: "Tam Thornwick", day: "y1d1", at: Date.UTC(2026, 9, 20, 9, 30 - i), price: 25, payoutCp: 0, name: "Rope" }));
 // Tam's throws at it today (the harness's day is "y1d1"), newest first.
 export const wellThrows = n => Array.from({ length: n }, (_, i) => ({ id: `throw${i}`, kind: "well", outcome: "nothing", boxId: WELL.id, boxName: WELL.name, actorId: "tam", actorName: "Tam Thornwick", day: "y1d1", at: Date.UTC(2026, 9, 20, 10, 30 - i), price: WELL.price, payoutCp: 0, name: "Nothing" }));
 
@@ -140,10 +142,30 @@ export const wheelStakes = (now = Date.now(), n = WHEEL_BETS.length) => WHEEL_BE
   stake: { label, type: bet.type, pick: bet.pick, swatch: bet.type === "rarity" ? bet.pick : "coin", stake: price }, name: label,
 }));
 
+// The Pull log's sample (logtable.js), newest first: Orla's Royal Vault
+// pull refunded a moment later; Tam's pity pull whose rarity the GM set
+// over the source's; Bo's Pauper's Box sale called off after the charge; a
+// dice win with its faces and payout; a deck draw that took coins (the
+// bane); the wheel's settled round with its five stakes under it (Tam's
+// two won, 30 gp back on 7 and 40 gp on red); then, days ago, Tam's five
+// throws at the well that gave nothing and her Pauper's Box buy.
+export const sampleLog = (now = Date.now()) => [
+  { id: "p1", kind: "crate", boxId: "royal", boxName: "Royal Vault", actorId: "orla", actorName: "Orla Vane", at: now - 60000, price: 1200, payoutCp: 0, name: "Staff of Power", rarity: "veryRare", refunded: now - 30000 },
+  { id: "p2", kind: "crate", boxId: BOX.id, boxName: BOX.name, actorId: "tam", actorName: "Tam Thornwick", at: now - 120000, price: BOX.price, payoutCp: 0, name: "Cloak of Elvenkind", rarity: "rare", pity: true, sourceRarity: ["uncommon"] },
+  { id: "p3", kind: "crate", boxId: "common", boxName: "Pauper's Box", actorId: "bo", actorName: "Bo Marrow", at: now - 180000, price: 25, payoutCp: 0, name: "Club", rarity: "common", lateCancel: 1 },
+  { id: "d1", kind: "dice", boxId: DICE.id, boxName: DICE.name, actorId: "tam", actorName: "Tam Thornwick", at: now - 240000, price: DICE.price, payoutCp: 3000, win: true, faces: DICE_FACES.win, name: "Beat the dragon" },
+  { id: "k1", kind: "deck", boxId: DECK.id, boxName: DECK.name, actorId: "orla", actorName: "Orla Vane", at: now - 300000, price: DECK.price, payoutCp: -2000, cardId: "flames", card: "The Flames", cardKind: "loss", swatch: "bane", name: "The Flames" },
+  ...wheelStakes(now - 400000).map(s => ({ ...s, status: "settled", payoutCp: s.actorId === "tam" ? (s.stake.type === "number" ? 3000 : 4000) : 0 })),
+  ...wellThrows(5),
+  ...limitBuys(1),
+];
+
 export const BOXES = [
   BOX,
-  { id: "common", name: "Pauper's Box", price: 25, pools: [{ id: "core", share: 1 }], weights: { common: 85, uncommon: 15, rare: 0, veryRare: 0, legendary: 0 }, rules: {} },
-  { id: "royal", name: "Royal Vault", price: 1200, pools: [{ id: "core", share: 1 }, { id: "homebrew", share: 1 }], weights: { common: 0, uncommon: 20, rare: 45, veryRare: 28, legendary: 7 }, rules: { stock: 3 } },
+  // Two to a character (limits.js): Tam has one (limitBuys), so the card says one more.
+  { id: "common", name: "Pauper's Box", price: 25, pools: [{ id: "core", share: 1 }], weights: { common: 85, uncommon: 15, rare: 0, veryRare: 0, legendary: 0 }, rules: { perCharacter: { max: 2, per: "ever" } } },
+  // Three left of the ten the GM stocked.
+  { id: "royal", name: "Royal Vault", price: 1200, pools: [{ id: "core", share: 1 }, { id: "homebrew", share: 1 }], weights: { common: 0, uncommon: 20, rare: 45, veryRare: 28, legendary: 7 }, rules: { stock: 3, stockMax: 10 } },
   // Its only pool is gone: the shop shows it empty with Buy off.
   { id: "empty", name: "Collector's Crate", price: 60, pools: [{ id: "gone", share: 1 }], weights: {}, rules: {} },
   WELL,

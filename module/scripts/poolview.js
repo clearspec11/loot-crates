@@ -331,6 +331,7 @@ export function poolBody(pool, rows, view, esc) {
       <span class="lc-pool__unset">${unsetButton(pool, matched, view, esc)}</span>
       <span class="lc-tabs__spacer"></span>
       <button type="button" data-action="bulkAdd" data-pool="${id}" title="Add every item in a compendium that matches a filter"><i class="fas fa-book"></i> Add from compendium</button>
+      <button type="button" data-action="crateFromPool" data-pool="${id}" aria-label="New crate from ${esc(pool.name)}" title="A crate that draws from this pool alone; price it and add it to the shelf"><i class="fas fa-box-open"></i> New crate from this pool</button>
       <button type="button" data-action="editPool" data-pool="${id}" aria-label="Rename ${esc(pool.name)}"><i class="fas fa-pen"></i></button>
       <button type="button" data-action="deletePool" data-pool="${id}" aria-label="Delete ${esc(pool.name)}"><i class="fas fa-trash"></i></button>
     </div>

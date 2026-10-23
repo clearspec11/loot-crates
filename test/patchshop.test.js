@@ -85,7 +85,7 @@ describe("patchShop keeps the pressed Buy", () => {
     const card = content.querySelector('.lc-box[data-box="royal"]');
     const btn = buy("royal");
     btn.focus();
-    expect(card.querySelector(".lc-box__stock").textContent).toBe("3 left");
+    expect(card.querySelector(".lc-box__stock").textContent).toBe("3 of 10 left");
     render(rich, { boxes: BOXES.map(b => b === royal ? { ...b, rules: { stock: 2 } } : b) });
     expect(content.querySelector('.lc-box[data-box="royal"]')).toBe(card);
     expect(card.querySelector(".lc-box__stock").textContent).toBe("2 left");
@@ -119,7 +119,7 @@ describe("patchShop keeps the pressed Buy", () => {
     expect(buy("royal")).toBe(btn);
     expect(doc.activeElement).toBe(btn);
     expect(card.querySelector(".lc-box__why")).toBeNull();
-    expect(card.querySelector(".lc-box__stock").textContent).toBe("3 left");
+    expect(card.querySelector(".lc-box__stock").textContent).toBe("3 of 10 left");
   });
 
   it("adds and removes cards only when crates are added or removed", () => {

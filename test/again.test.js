@@ -14,7 +14,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 vi.mock("../module/scripts/sound.js", () => ({ playTick: vi.fn(), playSlow: vi.fn(), playReveal: vi.fn() }));
 vi.mock("../module/scripts/socket.js", () => ({ requestPull: vi.fn() }));
-vi.mock("../module/scripts/store.js", () => ({ getBoxes: vi.fn(() => ({})), getPools: vi.fn(() => ({})), getLog: vi.fn(() => []), getRounds: vi.fn(() => ({})), isShopOpen: vi.fn(() => true) }));
+vi.mock("../module/scripts/store.js", () => ({ getBoxes: vi.fn(() => ({})), getPools: vi.fn(() => ({})), getLog: vi.fn(() => []), getRounds: vi.fn(() => ({})), todayKey: vi.fn(() => null), isShopOpen: vi.fn(() => true) }));
 
 const fakeElement = () => {
   const el = {

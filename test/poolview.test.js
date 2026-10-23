@@ -26,6 +26,15 @@ const POOL = {
 const ROWS = poolRows(POOL, srcOf({ d: null, f: { name: "Shield +1", img: "", rarity: "uncommon", rawRarity: "uncommon" } }));
 const uuids = rows => rows.map(r => r.e.uuid);
 
+describe("the pool's bar", () => {
+  it("offers a new crate from the pool, named for it, beside Add from compendium", () => {
+    const html = poolBody(POOL, ROWS, defaultView(POOL), esc);
+    expect(html).toMatch(/data-action="bulkAdd"[^>]*data-pool="p"/);
+    expect(html).toMatch(/<button[^>]*data-action="crateFromPool"[^>]*data-pool="p"[^>]*aria-label="New crate from Big pool"[^>]*>[^<]*<i[^>]*><\/i> New crate from this pool<\/button>/);
+    expect(html.indexOf('data-action="crateFromPool"')).toBeLessThan(html.indexOf('data-action="editPool"'));
+  });
+});
+
 describe("poolRows and sortRows", () => {
   it("annotate status, shown name, drawn rarity, unset and never", () => {
     const by = Object.fromEntries(ROWS.map(r => [r.e.uuid, r]));

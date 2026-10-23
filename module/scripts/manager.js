@@ -62,6 +62,16 @@
   the first draw's price, how much each draw in a row multiplies it, and
   the cards as rows the GM writes: a name, what it does, its weight, once
   per deck, its gold or its text; Reshuffle puts every drawn card back).
+  Every New opens its kind's editor on an unsaved draft (newgame.js):
+  nothing is written until "Add to shelf", so Cancel leaves no empty row
+  and a player's shelf never shows a half-built game. The Save then
+  switches to the Boxes tab, focuses the new row's Edit and says in the
+  tab's status line where the game went ("Gilded Crate is on the shelf
+  at 250 gp.", or that the shop is closed). A pool's bar has "New crate
+  from this pool", a crate named for the pool that draws from it alone.
+  Copy on a game's row opens the same editor on an unsaved copy of that
+  game (newgame.js copyOf): every setting, none of its history, named
+  "<name> (copy)" for the GM to rename and reprice.
   The Pull log folds a character's
   misses at a well for one day into one line ("5 throws, nothing") whose
   Refund gives the newest throw back, and "Hide misses" leaves only the
@@ -69,29 +79,29 @@
   and a refund the purse can't cover is refused naming the shortfall
   (refund.js shortMessage) instead of taking the purse below zero.
 */
-import { RARITIES, RARITY_LABEL, DEFAULT_WEIGHTS, DEFAULT_PRICE_GP, SETTINGS } from "./config.js";
-import { oddsPills, oddsRibbon, draftBox, boxPreview, boxPreviewHTML, oddsSummary, quietAnnouncer, refundRulesLine } from "./boxcard.js";
+import { RARITIES, RARITY_LABEL, DEFAULT_WEIGHTS, SETTINGS } from "./config.js";
+import { draftBox, boxPreview, boxPreviewHTML, oddsSummary, quietAnnouncer, refundRulesLine } from "./boxcard.js";
 import { kindOf } from "./kinds.js";
-import { WELL_DEFAULTS, wellOdds, wellOddsHTML, wellRulesText, stakeCoins, stakeGp, draftWell, wellPreview, wellPreviewHTML, wellSummary, collapseMisses, throwsText, noClockNote } from "./well.js";
-import { DICE_DEFAULTS, FORMULAS, diceOdds, diceOddsHTML, diceRulesText, draftDice, dicePreview, dicePreviewHTML, diceSummary } from "./dicegame.js";
-import { DECK_DEFAULTS, CARD_KINDS, CARD_KIND_LABEL, CARD_KIND_HINT, cardsOf, stepOf, deckOdds, deckOddsHTML, deckRulesText, draftDeck, deckPreview, deckPreviewHTML, deckSummary } from "./deck.js";
-import { ROULETTE_DEFAULTS, BET_TYPES, BET_TYPE_LABEL, pocketsOf, coloursOf, betOdds, rouletteOddsHTML, rouletteRulesText, draftRoulette, roulettePreview, roulettePreviewHTML, rouletteSummary, payoutOf, maxStakeOf, maxBetsOf, windowMsOf, itemOnRarity } from "./roulette.js";
-import { liveRoundOf } from "./round.js";
+import { WELL_DEFAULTS, stakeCoins, stakeGp, draftWell, wellPreview, wellPreviewHTML, wellSummary, noClockNote } from "./well.js";
+import { DICE_DEFAULTS, FORMULAS, draftDice, dicePreview, dicePreviewHTML, diceSummary } from "./dicegame.js";
+import { CARD_KINDS, CARD_KIND_HINT, cardsOf, stepOf, deckOdds, draftDeck, deckPreview, deckPreviewHTML, deckSummary } from "./deck.js";
+import { ROULETTE_DEFAULTS, BET_TYPES, BET_TYPE_LABEL, pocketsOf, coloursOf, draftRoulette, roulettePreview, roulettePreviewHTML, rouletteSummary, payoutOf, maxStakeOf, maxBetsOf, windowMsOf, itemOnRarity } from "./roulette.js";
+import { newDraft, crateFromPool, copyOf, editorTitle, addLabel, addedNotice } from "./newgame.js";
+import { boxesTabHTML } from "./boxestable.js";
+import { logTableHTML, logRarityNote, logPayoutNote, logStakeNote, logLateNote } from "./logtable.js";
+// The log's notes stay reachable here for the checks that import them from the manager.
+export { logRarityNote, logPayoutNote, logStakeNote, logLateNote };
 // The table window (tablewindow.js), loaded when a wheel's round is opened
 // from here: it is Foundry's, and the editors' tests run this file without it.
 const openTableFor = boxId => import("./tablewindow.js").then(m => m.openTableFor(boxId));
-
-// A box's odds in the Boxes table: its ribbon over its named pills.
-const oddsCell = rows => rows.length ? `${oddsRibbon(rows)}<div class="lc-odds">${oddsPills(rows)}</div>` : "<em>empty</em>";
-import { groupRounds, roundLine, stakeNote } from "./round.js";
-import { getRounds, getPools, getBoxes, getLog, todayKey, createPool, updatePool, removePool, createBox, updateBox, removeBox, entryFromItem, entriesFromDrop, addEntries, packHasLoot, LOOT_TYPES, isLootType, isShopOpen, setShopOpen, checkSources, sweepPools, removeEntry, patchEntry } from "./store.js";
-import { shopOdds, normalizeRarity, flattenPool, withSources, entryWeight, curateEntries } from "./odds.js";
+import { getRounds, getPools, getBoxes, getLog, todayKey, newId, createPool, updatePool, removePool, createBox, updateBox, removeBox, entryFromItem, entriesFromDrop, addEntries, packHasLoot, LOOT_TYPES, isLootType, isShopOpen, setShopOpen, checkSources, sweepPools, removeEntry, patchEntry } from "./store.js";
+import { normalizeRarity, flattenPool, withSources, entryWeight, curateEntries } from "./odds.js";
 import { PAGE_ROWS, FALLBACK_IMG, defaultView, poolRows, sortRows, filterRows, pageRows, nextRows, poolCount, poolSummary, poolBody, chipsHTML, unsetButton, footHTML, entryRow, entryParts, pinRecent, dropNotice, poolUsers, usersText, deleteImpact, removeImpact, deletePoolText, removeEntryText } from "./poolview.js";
 import { formatPrice } from "./currency.js";
 import { describeRefund, refundPull } from "./refund.js";
 import { postRefundCard } from "./chat.js";
-import { refundTime } from "./chatcard.js";
 import { changeCount } from "./redraw.js";
+import { limitsFieldset, perCharacterFromForm, restocked, stockAfterRefund, stockField, stockFromForm, stockText } from "./limits.js";
 
 const { ApplicationV2, DialogV2 } = foundry.applications.api;
 const esc = s => foundry.utils.escapeHTML(String(s ?? ""));
@@ -109,7 +119,8 @@ export class CrateManager extends ApplicationV2 {
       switchTab: CrateManager.#switchTab,
       addPool: CrateManager.#addPool, editPool: CrateManager.#editPool, deletePool: CrateManager.#deletePool,
       bulkAdd: CrateManager.#bulkAdd, setUnsetRarity: CrateManager.#setUnsetRarity, removeEntry: CrateManager.#removeEntry, updateEntry: CrateManager.#updateEntry, relinkEntry: CrateManager.#relinkEntry,
-      addBox: CrateManager.#addBox, addWell: CrateManager.#addWell, addDice: CrateManager.#addDice, addDeck: CrateManager.#addDeck, addWheel: CrateManager.#addWheel, editBox: CrateManager.#editBox, deleteBox: CrateManager.#deleteBox, reshuffle: CrateManager.#reshuffle, openTable: CrateManager.#openTable,
+      addBox: CrateManager.#addBox, addWell: CrateManager.#addWell, addDice: CrateManager.#addDice, addDeck: CrateManager.#addDeck, addWheel: CrateManager.#addWheel, crateFromPool: CrateManager.#crateFromPool,
+      editBox: CrateManager.#editBox, copyBox: CrateManager.#copyBox, deleteBox: CrateManager.#deleteBox, reshuffle: CrateManager.#reshuffle, openTable: CrateManager.#openTable,
       refund: CrateManager.#refund, toggleShop: CrateManager.#toggleShop, toggleMisses: CrateManager.#toggleMisses,
       filterChip: CrateManager.#filterChip, showMore: CrateManager.#showMore,
     },
@@ -216,9 +227,10 @@ export class CrateManager extends ApplicationV2 {
     return changed;
   }
 
-  // Closing the manager lets go of every pin.
+  // Closing the manager lets go of every pin, and of the new row's mark.
   async _onClose(options) {
     for (const v of this.#view.values()) v.recent = [];
+    this.#recentBox = null;
     return super._onClose?.(options);
   }
 
@@ -494,33 +506,54 @@ export class CrateManager extends ApplicationV2 {
     return true;
   }
 
-  static async #addBox() { await createBox({ name: "New box", price: DEFAULT_PRICE_GP, weights: { ...DEFAULT_WEIGHTS } }); this.render(); }
+  /*
+    Every New opens its kind's editor on an unsaved draft (newgame.js):
+    nothing is written, and nothing reaches a player's shelf, until the
+    dialog's "Add to shelf". Cancel, Escape and closing it leave the shelf
+    as it was, so there is never an empty "New box" row to go back and
+    delete, or a nameless dice game taking stakes while the GM looks for
+    its row.
+  */
+  static #addBox() { return this.#openEditor(newDraft("crate", { id: newId() }), { isNew: true }); }
+  static #addWell() { return this.#openEditor(newDraft("well", { id: newId() }), { isNew: true }); }
+  static #addDice() { return this.#openEditor(newDraft("dice", { id: newId() }), { isNew: true }); }
+  static #addDeck() { return this.#openEditor(newDraft("deck", { id: newId() }), { isNew: true }); }
+  static #addWheel() { return this.#openEditor(newDraft("roulette", { id: newId() }), { isNew: true }); }
 
-  // A well: a silver a throw, almost always nothing, three throws a day.
-  static async #addWell() {
-    await createBox({ kind: "well", name: "New well", price: WELL_DEFAULTS.price, weights: { ...DEFAULT_WEIGHTS }, odds: { ...WELL_DEFAULTS.odds }, rules: { cap: WELL_DEFAULTS.cap } });
-    this.render();
+  // "New crate from this pool" on a pool's bar: the crate's editor on a
+  // draft named for the pool and drawing only from it, the price focused,
+  // so a first crate is one dialog away from a pool with items in it.
+  static #crateFromPool(_e, t) {
+    const pool = getPools()[t.dataset.pool];
+    if (!pool) return this.render();
+    return this.#openEditor(crateFromPool(pool, newId()), { isNew: true, focus: "price" });
   }
 
-  // Dragon's Teeth: 10 gp a bet, 3d6 to beat 12, pays three times the stake.
-  static async #addDice() {
-    await createBox({ kind: "dice", name: "New dice game", price: DICE_DEFAULTS.price, weights: { ...DEFAULT_WEIGHTS }, dice: { formula: DICE_DEFAULTS.formula, target: DICE_DEFAULTS.target, multiplier: DICE_DEFAULTS.multiplier }, rules: { prize: false } });
-    this.render();
+  // The editor for a record's kind, on the record or on a new draft.
+  #openEditor(box, opts = {}) {
+    const editor = { well: CrateManager.#editWell, dice: CrateManager.#editDice, deck: CrateManager.#editDeck, roulette: CrateManager.#editWheel }[kindOf(box)] ?? CrateManager.#editCrate;
+    return editor.call(this, box, { isNew: false, focus: null, ...opts });
   }
 
-  // A deck: 10 gp a draw, half again for each draw in a row, five
-  // placeholder cards for the GM to rename (nothing published ships).
-  static async #addDeck() {
-    await createBox({ kind: "deck", name: "New deck", price: DECK_DEFAULTS.price, weights: { ...DEFAULT_WEIGHTS }, deck: { step: DECK_DEFAULTS.step, shuffledAt: 0, cards: DECK_DEFAULTS.cards.map(c => ({ ...c })) }, rules: {} });
-    this.render();
-  }
-
-  // A wheel: twelve pockets in two colours and four rarity bands, 5 gp to
-  // 50 gp a bet, three bets a character, a 45-second betting window.
-  static async #addWheel() {
-    const d = ROULETTE_DEFAULTS;
-    await createBox({ kind: "roulette", name: "New wheel", price: d.price, pools: [], weights: { ...DEFAULT_WEIGHTS }, roulette: { colours: [...d.colours], pockets: d.pockets.map(p => ({ ...p })), payouts: { ...d.payouts }, itemOnRarity: d.itemOnRarity, maxStake: d.maxStake, maxBets: d.maxBets, windowSec: d.windowSec }, rules: {} });
-    this.render();
+  /*
+    An editor's Save. A new game is created once, from its draft as the
+    form left it, and the GM is shown where it went: the Boxes tab, its
+    row's Edit focused and scrolled into view (_replaceHTML), the status
+    line saying it is on the shelf, or that the shop is closed. An edit is
+    applied to the record as it is now (store.js updateBox); only an edit
+    can find its record deleted meanwhile.
+  */
+  async #saveEditor(box, isNew, build) {
+    if (!isNew) {
+      const saved = await updateBox(box.id, build);
+      if (!saved) ui.notifications.warn(`${box.name} was deleted while you were editing it.`);
+      return this.render();
+    }
+    const saved = await createBox(build(box));
+    this.tab = "boxes";
+    this.#focusBox = this.#recentBox = saved.id;
+    await this.render();
+    this.#announce(addedNotice(saved, { shopOpen: isShopOpen() }));
   }
 
   // The table's round from the Boxes tab: opened (or brought forward) as
@@ -543,19 +576,31 @@ export class CrateManager extends ApplicationV2 {
     this.render();
   }
 
-  static async #editBox(_e, t) {
+  static #editBox(_e, t) {
     const box = getBoxes()[t.dataset.box];
     if (!box) return this.render();
-    if (kindOf(box) === "well") return CrateManager.#editWell.call(this, box);
-    if (kindOf(box) === "dice") return CrateManager.#editDice.call(this, box);
-    if (kindOf(box) === "deck") return CrateManager.#editDeck.call(this, box);
-    if (kindOf(box) === "roulette") return CrateManager.#editWheel.call(this, box);
+    return this.#openEditor(box);
+  }
+
+  // Copy on a row: the kind's editor on an unsaved copy of the game
+  // (newgame.js copyOf), titled "Copy box" with the name focused for the
+  // GM to rename; Add to shelf creates it as any New does, and Cancel
+  // writes nothing.
+  static #copyBox(_e, t) {
+    const box = getBoxes()[t.dataset.box];
+    if (!box) return this.render();
+    return this.#openEditor(copyOf(box, { id: newId(), now: Date.now() }), { isNew: true, copy: true });
+  }
+
+  // The crate's editor; on a new draft nothing is written until Save.
+  static async #editCrate(box, opts) {
+    const { isNew } = opts;
     const pools = Object.values(getPools());
     const poolIds = pools.map(p => p.id);
     const shares = Object.fromEntries((box.pools ?? []).map(p => [p.id, p.share ?? 1]));
-    const data = await promptForm("Edit box", `
-      <label>Name <input name="name" value="${esc(box.name)}"></label>
-      <label>Price (gp) <input name="price" type="number" min="0" step="1" value="${esc(box.price)}"></label>
+    const data = await promptForm(editorTitle(box, isNew, opts.copy), `
+      <label>Name <input name="name" value="${esc(box.name)}"${autofocus("name", opts)}></label>
+      <label>Price (gp) <input name="price" type="number" min="0" step="1" value="${esc(box.price)}"${autofocus("price", opts)}></label>
       <fieldset><legend>Pools and their share of pulls</legend>
         ${pools.map(p => `<label class="lc-row"><input type="checkbox" name="pool.${esc(p.id)}" ${p.id in shares ? "checked" : ""}> ${esc(p.name)} <input name="share.${esc(p.id)}" type="number" min="0" step="1" value="${esc(shares[p.id] ?? 1)}" title="Share"></label>`).join("") || "<p>No pools yet.</p>"}
       </fieldset>
@@ -570,15 +615,20 @@ export class CrateManager extends ApplicationV2 {
       <fieldset><legend>Rules</legend>
         <label class="lc-row">Pity: guarantee <select name="pityRarity"><option value="">off</option>${RARITIES.map(r => `<option value="${r}" ${box.rules?.pity?.minRarity === r ? "selected" : ""}>${RARITY_LABEL[r]} or better</option>`).join("")}</select> after <input name="pityAfter" type="number" min="1" step="1" value="${esc(box.rules?.pity?.after ?? 10)}"> pulls</label>
         <label class="lc-row"><input type="checkbox" name="noDuplicates" ${box.rules?.noDuplicates ? "checked" : ""}> No duplicates per character</label>
-        <label class="lc-row">Stock (blank for unlimited) <input name="stock" type="number" min="0" step="1" value="${box.rules?.stock ?? ""}"></label>
-      </fieldset>`, { onForm: form => liveOdds(form, box, poolIds), position: { width: 460 } });
+      </fieldset>
+      ${limitsFieldset(box, { draft: isNew, hasClock: todayKey() != null, esc })}`, {
+      // Restock writes to the stored record; a draft has none to fill.
+      onForm: form => { liveOdds(form, box, poolIds); if (!isNew) wireRestock(form, box.id); },
+      position: { width: 460 },
+      okLabel: saveLabel(isNew),
+    });
     if (!data) return;
     // Stock moves while the dialog is open (each pull takes one, a refund
-    // puts one back), so the form's stock only wins if the GM changed it.
-    const shownStock = box.rules?.stock ?? null;
-    const formStock = data.stock === "" || data.stock == null ? null : Math.max(0, Number(data.stock) || 0);
+    // puts one back, Restock fills it), so the form's number only changes
+    // it if the GM changed that number (limits.js stockFromForm).
+    const shownStock = stockField(box);
     const draft = draftBox(box, data, poolIds);
-    const saved = await updateBox(box.id, fresh => {
+    return this.#saveEditor(box, isNew, fresh => {
       const live = getPools();
       return {
         ...fresh,
@@ -590,12 +640,11 @@ export class CrateManager extends ApplicationV2 {
           ...fresh.rules,
           pity: data.pityRarity ? { minRarity: data.pityRarity, after: Math.max(1, Number(data.pityAfter) || 1) } : null,
           noDuplicates: !!data.noDuplicates,
-          stock: formStock === shownStock ? (fresh.rules?.stock ?? null) : formStock,
+          ...stockFromForm(fresh.rules ?? {}, { shown: shownStock, value: data.stock }),
+          perCharacter: perCharacterFromForm(data),
         },
       };
     });
-    if (!saved) ui.notifications.warn(`${box.name} was deleted while you were editing it.`);
-    this.render();
   }
 
   /*
@@ -605,14 +654,15 @@ export class CrateManager extends ApplicationV2 {
     preview, and the rules: pity, no duplicates and the cap per in-game
     day. Nothing is written until Save.
   */
-  static async #editWell(box) {
+  static async #editWell(box, opts) {
+    const { isNew } = opts;
     const pools = Object.values(getPools());
     const poolIds = pools.map(p => p.id);
     const shares = Object.fromEntries((box.pools ?? []).map(p => [p.id, p.share ?? 1]));
     const stake = stakeCoins(box.price);
     const odds = { ...WELL_DEFAULTS.odds, ...(box.odds ?? {}) };
-    const data = await promptForm("Edit well", `
-      <label>Name <input name="name" value="${esc(box.name)}"></label>
+    const data = await promptForm(editorTitle(box, isNew, opts.copy), `
+      <label>Name <input name="name" value="${esc(box.name)}"${autofocus("name", opts)}></label>
       <label class="lc-row lc-form__stake">Stake <input name="stake" type="number" min="0" step="1" value="${esc(stake.amount)}"> <select name="coin" aria-label="Coin">${["cp", "sp", "gp"].map(c => `<option value="${c}"${c === stake.coin ? " selected" : ""}>${c}</option>`).join("")}</select></label>
       <fieldset><legend>Outcomes, by weight</legend>
         ${[["nothing", "Nothing"], ["coin", "Coin back"], ["item", "An item from the pools"]].map(([k, l]) => `<label class="lc-row">${l} <input name="o.${k}" type="number" min="0" step="1" value="${esc(odds[k])}"></label>`).join("")}
@@ -639,10 +689,11 @@ export class CrateManager extends ApplicationV2 {
         return { html: wellPreviewHTML(preview, esc), summary: wellSummary(preview), held: heldRarities(draft, live) };
       }, draftWell),
       position: { width: 460 },
+      okLabel: saveLabel(isNew),
     });
     if (!data) return;
     const draft = draftWell(box, data, poolIds);
-    const saved = await updateBox(box.id, fresh => ({
+    return this.#saveEditor(box, isNew, fresh => ({
       ...fresh,
       kind: "well",
       name: data.name || fresh.name,
@@ -657,8 +708,6 @@ export class CrateManager extends ApplicationV2 {
         noDuplicates: !!data.noDuplicates,
       },
     }));
-    if (!saved) ui.notifications.warn(`${box.name} was deleted while you were editing it.`);
-    this.render();
   }
 
   /*
@@ -669,14 +718,15 @@ export class CrateManager extends ApplicationV2 {
     when the dragon can't be beaten (the shop refuses such a game). Nothing
     is written until Save.
   */
-  static async #editDice(box) {
+  static async #editDice(box, opts) {
+    const { isNew } = opts;
     const pools = Object.values(getPools());
     const poolIds = pools.map(p => p.id);
     const shares = Object.fromEntries((box.pools ?? []).map(p => [p.id, p.share ?? 1]));
     const stake = stakeCoins(box.price);
     const dice = { ...DICE_DEFAULTS, ...(box.dice ?? {}) };
-    const data = await promptForm("Edit dice game", `
-      <label>Name <input name="name" value="${esc(box.name)}"></label>
+    const data = await promptForm(editorTitle(box, isNew, opts.copy), `
+      <label>Name <input name="name" value="${esc(box.name)}"${autofocus("name", opts)}></label>
       <label class="lc-row lc-form__stake">Stake <input name="stake" type="number" min="0" step="1" value="${esc(stake.amount)}"> <select name="coin" aria-label="Coin">${["cp", "sp", "gp"].map(c => `<option value="${c}"${c === stake.coin ? " selected" : ""}>${c}</option>`).join("")}</select></label>
       <fieldset><legend>Beat the dragon</legend>
         <label class="lc-row">Roll <select name="formula">${FORMULAS.map(f => `<option value="${f}"${f === dice.formula ? " selected" : ""}>${f}</option>`).join("")}</select> over the dragon's <input name="target" type="number" min="0" step="1" value="${esc(dice.target)}"></label>
@@ -696,16 +746,18 @@ export class CrateManager extends ApplicationV2 {
       </fieldset>
       <fieldset class="lc-form__weights"><legend>The prize's rarity weights</legend>
         ${RARITIES.map(r => `<label class="lc-row">${RARITY_LABEL[r]} <input name="w.${r}" type="number" min="0" step="1" value="${esc(box.weights?.[r] ?? DEFAULT_WEIGHTS[r])}"><span class="lc-form__hint" data-held="${r}"></span></label>`).join("")}
-      </fieldset>`, {
+      </fieldset>
+      ${limitsFieldset(box, { stock: false, draft: isNew, hasClock: todayKey() != null, esc })}`, {
       onForm: form => liveOdds(form, box, poolIds, (draft, live) => {
         const preview = dicePreview(draft, live);
         return { html: dicePreviewHTML(preview, esc), summary: diceSummary(preview), held: heldRarities(draft, live) };
       }, draftDice),
       position: { width: 460 },
+      okLabel: saveLabel(isNew),
     });
     if (!data) return;
     const draft = draftDice(box, data, poolIds);
-    const saved = await updateBox(box.id, fresh => ({
+    return this.#saveEditor(box, isNew, fresh => ({
       ...fresh,
       kind: "dice",
       name: data.name || fresh.name,
@@ -713,10 +765,8 @@ export class CrateManager extends ApplicationV2 {
       pools: draft.pools.filter(ref => ref.id in getPools()),
       weights: draft.weights,
       dice: draft.dice,
-      rules: { ...fresh.rules, prize: draft.rules.prize },
+      rules: { ...fresh.rules, prize: draft.rules.prize, perCharacter: perCharacterFromForm(data) },
     }));
-    if (!saved) ui.notifications.warn(`${box.name} was deleted while you were editing it.`);
-    this.render();
   }
 
   /*
@@ -727,12 +777,13 @@ export class CrateManager extends ApplicationV2 {
     on, and the shop's own pills as a live preview with the cards left.
     Nothing is written until Save.
   */
-  static async #editDeck(box) {
+  static async #editDeck(box, opts) {
+    const { isNew } = opts;
     const pools = Object.values(getPools());
     const poolIds = pools.map(p => p.id);
     const shares = Object.fromEntries((box.pools ?? []).map(p => [p.id, p.share ?? 1]));
-    const data = await promptForm("Edit deck", `
-      <label>Name <input name="name" value="${esc(box.name)}"></label>
+    const data = await promptForm(editorTitle(box, isNew, opts.copy), `
+      <label>Name <input name="name" value="${esc(box.name)}"${autofocus("name", opts)}></label>
       <label>First draw (gp) <input name="price" type="number" min="0" step="1" value="${esc(box.price)}"></label>
       <label class="lc-row">Each draw in a row costs <input name="step" type="number" min="1" step="0.1" value="${esc(stepOf(box))}"> times the last</label>
       <p class="lc-form__hint">A draw within two minutes of the last counts as in a row; the price comes back down after that, and a refund takes a step back.</p>
@@ -752,7 +803,8 @@ export class CrateManager extends ApplicationV2 {
         <div class="lc-form__label" id="lc-odds-${esc(box.id)}">Chances a player sees</div>
         <div class="lc-form__preview"></div>
         <p class="lc-sr-only" role="status" aria-live="polite"></p>
-      </div>`, {
+      </div>
+      ${limitsFieldset(box, { stock: false, draft: isNew, hasClock: todayKey() != null, esc })}`, {
       onForm: form => {
         const paint = liveOdds(form, box, poolIds, (draft, live) => {
           const preview = deckPreview(draft, live, getLog());
@@ -782,10 +834,11 @@ export class CrateManager extends ApplicationV2 {
         });
       },
       position: { width: 560 },
+      okLabel: saveLabel(isNew),
     });
     if (!data) return;
     const draft = draftDeck(box, data, poolIds);
-    const saved = await updateBox(box.id, fresh => ({
+    return this.#saveEditor(box, isNew, fresh => ({
       ...fresh,
       kind: "deck",
       name: data.name || fresh.name,
@@ -793,9 +846,8 @@ export class CrateManager extends ApplicationV2 {
       pools: draft.pools.filter(ref => ref.id in getPools()),
       weights: draft.weights,
       deck: { ...(fresh.deck ?? {}), step: draft.deck.step, cards: draft.deck.cards },
+      rules: { ...(fresh.rules ?? {}), perCharacter: perCharacterFromForm(data) },
     }));
-    if (!saved) ui.notifications.warn(`${box.name} was deleted while you were editing it.`);
-    this.render();
   }
 
   /*
@@ -807,13 +859,14 @@ export class CrateManager extends ApplicationV2 {
     it draws from; the shop's own odds as a live preview. Nothing is
     written until Save.
   */
-  static async #editWheel(box) {
+  static async #editWheel(box, opts) {
+    const { isNew } = opts;
     const pools = Object.values(getPools());
     const poolIds = pools.map(p => p.id);
     const ticked = new Set((box.pools ?? []).map(p => p.id));
     const colours = coloursOf(box);
-    const data = await promptForm("Edit wheel", `
-      <label>Name <input name="name" value="${esc(box.name)}"></label>
+    const data = await promptForm(editorTitle(box, isNew, opts.copy), `
+      <label>Name <input name="name" value="${esc(box.name)}"${autofocus("name", opts)}></label>
       <fieldset><legend>Bets</legend>
         <label class="lc-row">From <input name="price" type="number" min="0" step="1" value="${esc(box.price)}"> to <input name="maxStake" type="number" min="0" step="1" value="${esc(maxStakeOf(box) ?? "")}" placeholder="any"> gp a bet</label>
         <label class="lc-row">Each character may place <input name="maxBets" type="number" min="0" step="1" value="${esc(maxBetsOf(box))}"> bets a round (0 for no limit)</label>
@@ -869,10 +922,11 @@ export class CrateManager extends ApplicationV2 {
         });
       },
       position: { width: 520 },
+      okLabel: saveLabel(isNew),
     });
     if (!data) return;
     const draft = draftRoulette(box, data, poolIds);
-    const saved = await updateBox(box.id, fresh => ({
+    return this.#saveEditor(box, isNew, fresh => ({
       ...fresh,
       kind: "roulette",
       name: data.name || fresh.name,
@@ -880,8 +934,6 @@ export class CrateManager extends ApplicationV2 {
       pools: draft.pools.filter(ref => ref.id in getPools()),
       roulette: draft.roulette,
     }));
-    if (!saved) ui.notifications.warn(`${box.name} was deleted while you were editing it.`);
-    this.render();
   }
 
   static async #deleteBox(_e, t) {
@@ -913,7 +965,8 @@ export class CrateManager extends ApplicationV2 {
     const itemLine = item
       ? ` and remove <strong>${esc(item.name)}</strong> from their inventory`
       : row.itemId ? ` (<strong>${esc(row.name)}</strong> is no longer in their inventory, so nothing is removed)` : "";
-    const stockLine = box?.rules?.stock != null ? ` ${esc(box.name)} goes back to ${box.rules.stock + 1} in stock.` : "";
+    const stockBack = row.roundId ? null : stockAfterRefund(box);
+    const stockLine = stockBack != null ? ` ${esc(box.name)} goes back to ${stockBack} in stock.` : "";
     // A throw that gave no item still counted toward the pity (row.before).
     const rules = box && (row.uuid || row.before) ? refundRulesLine({ actorName: actor.name, itemName: row.name, box, ...plan.state }) : "";
     const rulesLine = rules ? ` ${esc(rules)}` : "";
@@ -1066,81 +1119,30 @@ export class CrateManager extends ApplicationV2 {
       }).join("") : `<p class="lc-empty">No pools. A pool is the set of items a box can give out.</p>`}`;
   }
 
+  // The Boxes tab (boxestable.js): every New, the tab's status line, and
+  // one row per game, its odds as of now, not as of the last pull's sweep.
+  // The status line is written after the render (#saveEditor), so a screen
+  // reader hears it as a change; a line drawn with the tab would be silent.
   async _boxes() {
     const boxes = Object.values(getBoxes());
     const stored = getPools();
-    // The odds as of now, not as of the last pull's sweep.
     const entries = Object.keys(stored).flatMap(id => flattenPool(id, stored, new Set(), { includeMissing: true }));
     const pools = withSources(stored, await this.#checkedSources(entries));
-    // A well's row: its name tagged, its three outcomes as the shop shows
-    // them, its cap and pity in throws. A dice game's: win and lose, the
-    // dragon's number, the payout and the prize.
-    // A deck's row: the kinds of card still in it, its cards and how many
-    // are drawn, and Reshuffle beside Edit.
-    const log = getLog();
-    const rounds = getRounds();
-    const well = b => kindOf(b) === "well";
-    const dice = b => kindOf(b) === "dice";
-    const deck = b => kindOf(b) === "deck";
-    const wheel = b => kindOf(b) === "roulette";
-    const tag = b => (well(b) ? ` <span class="lc-kind">Well</span>` : dice(b) ? ` <span class="lc-kind">Dice</span>` : deck(b) ? ` <span class="lc-kind">Deck</span>` : wheel(b) ? ` <span class="lc-kind">Wheel</span>` : "");
-    const odds = b => (well(b) ? wellOddsHTML(wellOdds(b, pools)) || "<em>dry</em>" : dice(b) ? diceOddsHTML(diceOdds(b, pools)) || "<em>unbeatable</em>" : deck(b) ? deckOddsHTML(deckOdds(b, pools, log)) || "<em>empty</em>" : wheel(b) ? rouletteOddsHTML(betOdds(b), esc) || "<em>no pockets</em>" : oddsCell(shopOdds(b, pools).rows));
-    const rules = b => (well(b) ? esc(wellRulesText(b)) : dice(b) ? esc(diceRulesText(b)) : deck(b) ? esc(deckRulesText(b, log)) : wheel(b) ? esc(rouletteRulesText(b)) : [b.rules?.pity ? esc(`${RARITY_LABEL[b.rules.pity.minRarity] ?? b.rules.pity.minRarity} or better after ${b.rules.pity.after} pulls`) : "", b.rules?.noDuplicates ? "no dupes" : "", b.rules?.stock != null ? `${b.rules.stock} left` : ""].filter(Boolean).join(", "));
-    // A wheel's row opens its round (or brings the open one forward).
-    const extra = b => (deck(b) ? `<button type="button" data-action="reshuffle" data-box="${esc(b.id)}" aria-label="Reshuffle ${esc(b.name)}">Reshuffle</button> `
-      : wheel(b) ? `<button type="button" data-action="openTable" data-box="${esc(b.id)}" aria-label="${liveRoundOf(rounds, b.id) ? "Go to the table" : "Open a round"} at ${esc(b.name)}">${liveRoundOf(rounds, b.id) ? "Go to the table" : "Open a round"}</button> ` : "");
-    return `
-      <div class="lc-toolbar"><button type="button" data-action="addBox"><i class="fas fa-plus"></i> New box</button><button type="button" data-action="addWell"><i class="fas fa-plus"></i> New well</button><button type="button" data-action="addDice"><i class="fas fa-plus"></i> New dice game</button><button type="button" data-action="addDeck"><i class="fas fa-plus"></i> New deck</button><button type="button" data-action="addWheel"><i class="fas fa-plus"></i> New wheel</button></div>
-      ${boxes.length ? `<table class="lc-table"><thead><tr><th>Box</th><th>Price</th><th>Pools</th><th>Odds</th><th>Rules</th><th></th></tr></thead><tbody>
-        ${boxes.map(b => `<tr>
-          <td>${esc(b.name)}${tag(b)}</td><td>${esc(formatPrice(b.price))}</td>
-          <td>${(b.pools ?? []).map(r => esc(pools[r.id]?.name ?? "missing")).join(", ") || "<em>none</em>"}</td>
-          <td>${odds(b)}</td>
-          <td>${rules(b)}</td>
-          <td>${extra(b)}<button type="button" data-action="editBox" data-box="${esc(b.id)}" aria-label="Edit ${esc(b.name)}" data-tooltip="Edit"><i class="fas fa-pen" inert></i></button> <button type="button" data-action="deleteBox" data-box="${esc(b.id)}" aria-label="Delete ${esc(b.name)}" data-tooltip="Delete"><i class="fas fa-trash" inert></i></button></td>
-        </tr>`).join("")}</tbody></table>` : `<p class="lc-empty">No boxes. A box prices a pull from one or more pools.</p>`}`;
+    return boxesTabHTML({ boxes, pools, log: getLog(), rounds: getRounds(), recent: this.#recentBox, esc });
   }
 
-  /*
-    The log newest first, a well's misses folded per character and day
-    (well.js collapseMisses): one line for "5 throws, nothing" whose Refund
-    gives the newest of them back, so the log stays readable at a table that
-    throws a lot and every throw is still refundable. "Hide misses" leaves
-    only the pulls that gave something (the throws stay in the setting).
-  */
+  // The Pull log (logtable.js): newest first, a well's misses folded per
+  // character and day, a table round's stakes under its line, "Hide misses".
   _log() {
-    const log = getLog();
-    if (!log.length) return `<p class="lc-empty">No pulls yet.</p>`;
-    const items = groupRounds(collapseMisses(log), getRounds());
-    const misses = items.filter(x => x.group).reduce((n, g) => n + g.rows.length, 0);
-    const shown = this.hideMisses ? items.filter(x => !x.group) : items;
-    const status = (id, at) => `<span class="lc-log__status" tabindex="-1" data-row="${esc(id)}">refunded ${esc(refundTime(at))}</span>`;
-    const row = r => `<tr class="${r.refunded ? "lc-row--refunded" : r.lateCancel ? "lc-row--late" : ""}">
-        <td>${new Date(r.at).toLocaleString()}</td><td>${esc(r.actorName)}</td><td>${esc(r.boxName)} (${esc(formatPrice(r.price))})</td>
-        <td class="lc-rarity-${esc(r.rarity ?? r.swatch ?? r.stake?.swatch ?? (r.win ? "coin" : "none"))}"><span class="lc-dot"></span>${r.refunded ? `<s>${esc(r.name)}</s>` : esc(r.name)}${r.pity ? " · pity" : ""}${logRarityNote(r)}${logPayoutNote(r)}${logStakeNote(r)}${logLateNote(r)}</td>
-        <td>${r.refunded ? status(r.id, r.refunded) : `<button type="button" data-action="refund" data-row="${esc(r.id)}">Refund</button>`}</td>
-      </tr>`;
-    const group = g => {
-      const n = g.rows.length;
-      const newest = g.rows[0];
-      return `<tr class="lc-row--group${g.refunded ? " lc-row--refunded" : ""}">
-        <td>${new Date(newest.at).toLocaleString()}</td><td>${esc(g.actorName)}</td><td>${esc(g.boxName)} (${esc(formatPrice(g.price))})</td>
-        <td class="lc-rarity-none"><span class="lc-dot"></span>${g.refunded ? `<s>${esc(throwsText(n))}</s>` : esc(throwsText(n))}</td>
-        <td>${g.refunded ? status(newest.id, newest.refunded) : `<button type="button" data-action="refund" data-row="${esc(newest.id)}" aria-label="${n === 1 ? "Refund the throw" : `Refund one of ${n} throws`}">${n === 1 ? "Refund" : "Refund one"}</button>`}</td>
-      </tr>`;
-    };
-    // A table round: its header where its newest stake was, its stakes under it.
-    const round = g => `<tr class="lc-row--group">
-        <td>${new Date(g.at).toLocaleString()}</td><td>Round</td><td>${esc(g.boxName)} (${esc(formatPrice(g.staked))} staked)</td>
-        <td class="lc-rarity-none"><span class="lc-dot"></span>${esc(roundLine(g))}</td><td></td>
-      </tr>${g.rows.map(row).join("")}`;
-    const toolbar = misses ? `<div class="lc-toolbar"><button type="button" data-action="toggleMisses" aria-pressed="${this.hideMisses}">${this.hideMisses ? "Show misses" : "Hide misses"}</button><span class="lc-pool__hint">${this.hideMisses ? `${misses} throw${misses === 1 ? "" : "s"} that gave nothing hidden` : `${misses} throw${misses === 1 ? "" : "s"} that gave nothing, folded by day`}</span></div>` : "";
-    return `${toolbar}${shown.length ? `<table class="lc-table"><thead><tr><th>When</th><th>Who</th><th>Box</th><th>Got</th><th></th></tr></thead><tbody>
-      ${shown.map(x => (x.round ? round(x) : x.group ? group(x) : row(x.row))).join("")}</tbody></table>` : `<p class="lc-empty">Only misses so far; show them with the button above.</p>`}`;
+    return logTableHTML({ log: getLog(), rounds: getRounds(), hideMisses: this.hideMisses, esc });
   }
 
   #searchTimer = null;
   #focusRow = null;
+  // The game a New just added: its row's Edit takes focus at the next
+  // render (once), and the row keeps its mark until the next New or close.
+  #focusBox = null;
+  #recentBox = null;
 
   // A full render (a source check landing late, a rename, a refund) keeps
   // focus on the same control when it is drawn again, and the caret in a
@@ -1148,12 +1150,19 @@ export class CrateManager extends ApplicationV2 {
   _replaceHTML(result, content) {
     const active = content.contains(document.activeElement) ? document.activeElement : null;
     const key = active ? focusKey(active) : null;
-    const caret = active?.matches?.("input[type=search]") ? [active.selectionStart, active.selectionEnd] : null;
+    const caret = active?.matches?.('input[type="search"]') ? [active.selectionStart, active.selectionEnd] : null;
     content.replaceChildren(result);
     // The Pools tab read the boxes before awaiting the source check, and a
     // box saved elsewhere in that wait was patched into the page this one
     // replaces (refreshManager), so bring the "In X, Y" lines up to date.
     if (this.tab === "pools") this.patchUsers();
+    // After a New, the row the game landed on: its Edit focused (the next
+    // thing a GM does to a new game) and the row scrolled into view, so
+    // the thing just made is the thing on screen, not the foot of a table.
+    const boxId = this.#focusBox;
+    this.#focusBox = null;
+    const edit = boxId && content.querySelector(`.lc-table [data-action="editBox"][data-box="${CSS.escape(boxId)}"]`);
+    if (edit) { edit.focus({ preventScroll: true }); edit.closest("tr")?.scrollIntoView?.({ block: "nearest" }); return; }
     // After a refund, focus whatever now stands for that log row: its
     // "refunded <date>" status, or its Refund button if the refund failed.
     const row = this.#focusRow;
@@ -1188,42 +1197,6 @@ function focusKey(el) {
   const search = el.classList.contains("lc-pool__search") ? ".lc-pool__search" : "";
   if (!attrs.length && !search) return null;
   return { selector: `${el.tagName.toLowerCase()}${search}${attrs.join("")}`, pool: el.dataset.pool ?? el.closest(".lc-pool__details")?.dataset.pool ?? null };
-}
-
-// "Legendary, set by GM (source Uncommon)" under a log row whose rarity the GM
-// set over its source's. Rows from before this was recorded carry nothing.
-const rarityName = r => RARITY_LABEL[normalizeRarity(r)] ?? String(r);
-export function logRarityNote(row) {
-  if (!Array.isArray(row?.sourceRarity)) return "";
-  const from = row.sourceRarity.length ? `source ${row.sourceRarity.map(rarityName).join(" or ")}` : "source had none";
-  return `<small class="lc-log__rarity">${esc(`${rarityName(row.rarity)}, set by GM (${from})`)}</small>`;
-}
-
-// "Rolled 4, 6, 5 · won 30 gp" under a row of a game that paid coins out
-// (the dice), or "took 20 gp" under one that took coins beyond the stake
-// (the deck's bane): what a refund gives or takes back is on the row, not
-// only in the confirm. A row from before payouts (payoutCp 0 or absent)
-// says nothing; a deck's row names its card's kind.
-export function logPayoutNote(row) {
-  const cp = Math.round(Number(row?.payoutCp) || 0);
-  const faces = Array.isArray(row?.faces) && row.faces.length ? `Rolled ${row.faces.join(", ")}` : "";
-  const card = row?.cardKind && row.cardKind !== "item" ? `${CARD_KIND_LABEL[row.cardKind] ?? row.cardKind} card` : "";
-  const won = cp > 0 ? `won ${formatPrice(cp / 100)}` : cp < 0 ? `took ${formatPrice(-cp / 100)}` : "";
-  const text = [faces, card, won].filter(Boolean).join(" · ");
-  return text ? `<small class="lc-log__rarity">${esc(text)}</small>` : "";
-}
-
-// A table stake still waiting on its spin, or one turned back (round.js stakeNote).
-export function logStakeNote(row) {
-  const text = stakeNote(row);
-  return text ? `<small class="lc-log__rarity">${esc(text)}</small>` : "";
-}
-
-// A pull its buyer called off after the charge (socket.js lateCancel): the
-// sale stood, and the GM's notice sent them here to refund it if wanted.
-export function logLateNote(row) {
-  if (!row?.lateCancel || row.refunded) return "";
-  return `<small class="lc-log__late">Called off by the buyer after the charge. Refund it if the table agrees.</small>`;
 }
 
 const PREVIEW_ROWS = 50;
@@ -1282,13 +1255,43 @@ function readForm(form) {
     else out[k] = v;
   }
   for (const sel of form.querySelectorAll("select[multiple]")) out[sel.name] = [...sel.selectedOptions].map(o => o.value);
-  for (const cb of form.querySelectorAll("input[type=checkbox]")) out[cb.name] = cb.checked;
+  for (const cb of form.querySelectorAll('input[type="checkbox"]')) out[cb.name] = cb.checked;
   return out;
 }
 
-// `onForm(form)` runs once, with the dialog's <form>, when it is first on screen.
-async function promptForm(title, fieldsHtml, { onForm, position } = {}) {
-  return DialogV2.wait({
+// A new game's dialog opens with its name focused (naming it is the first
+// job), or the price when the name came from a pool; an edit's opens on
+// Save as every DialogV2 does. `autofocus` is read by the <dialog>'s
+// show(), the first in tree order winning over the default button's.
+const autofocus = (field, { isNew = false, focus = null } = {}) => (isNew && (focus ?? "name") === field ? " autofocus" : "");
+
+// The default button: "Add to shelf" (or "Add" while the shop is closed)
+// puts a new game where players buy; an edit's reads Save.
+const saveLabel = isNew => (isNew ? addLabel(isShopOpen()) : "Save");
+
+/*
+  The Limits group's Restock (limits.js limitsFieldset): fills the stock to
+  the GM's number at once, through the write queue like a pull, without
+  waiting for Save (which then keeps it: the number wasn't changed). The
+  line beside it says what the shelf holds now, as a status a screen
+  reader hears; the button stays focused, off once the shelf is full.
+*/
+function wireRestock(form, boxId) {
+  const btn = form.querySelector("[data-restock]");
+  const left = form.querySelector(".lc-limits__left");
+  if (!btn || !left) return;
+  btn.addEventListener("click", async () => {
+    if (btn.getAttribute("aria-disabled") === "true") return;
+    btn.setAttribute("aria-disabled", "true");
+    const saved = await updateBox(boxId, fresh => ({ ...fresh, rules: restocked(fresh.rules ?? {}) }));
+    left.textContent = saved ? `Restocked: ${stockText(saved)}` : "This box was deleted.";
+  });
+}
+
+// `onForm(form)` runs once, with the dialog's <form>, when it is first on
+// screen; `okLabel` is the default button's words (Save unless said).
+async function promptForm(title, fieldsHtml, { onForm, position, okLabel = "Save" } = {}) {
+  const result = await DialogV2.wait({
     window: { title },
     classes: ["loot-crates", "lc-dialog"],
     ...(position ? { position } : {}),
@@ -1296,7 +1299,7 @@ async function promptForm(title, fieldsHtml, { onForm, position } = {}) {
     // dropped by the parser, so the editor's fields sit in a div.
     content: `<div class="lc-form">${fieldsHtml}</div>`,
     buttons: [
-      { action: "ok", label: "Save", default: true, callback: (_e, button) => readForm(button.form ?? button.closest("dialog")?.querySelector("form")) },
+      { action: "ok", label: okLabel, default: true, callback: (_e, button) => readForm(button.form ?? button.closest("dialog")?.querySelector("form")) },
       { action: "cancel", label: "Cancel", callback: () => null },
     ],
     rejectClose: false,
@@ -1307,6 +1310,12 @@ async function promptForm(title, fieldsHtml, { onForm, position } = {}) {
       onForm(form);
     } : undefined,
   });
+  // DialogV2 resolves a button whose callback gives nothing to its action
+  // name, so Cancel arrives as the string "cancel", not null (closing the
+  // dialog gives null). Only the form's values are a Save; anything else
+  // writes nothing. Before this a Cancel reached the editors' save path
+  // as a string, which built a record with no fields from it.
+  return result && typeof result === "object" ? result : null;
 }
 
 /*

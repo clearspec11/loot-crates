@@ -496,13 +496,14 @@ describe("the shop mid-purchase, and a Buy that does nothing", () => {
 
   // The log is cloned from the setting on every read: a render reads it
   // once, shared by every game that counts rows (the well's cap, the
-  // deck's streak), and not at all when none of them is on the shelf.
+  // deck's streak, a limit per character), and not at all when none of
+  // them is on the shelf.
   it("reads the pull log once per render, and not at all when no game counts its rows", async () => {
     const app = new CrateShop();
     logReads = 0;
     await draw(app);
     expect(logReads).toBe(1);
-    const counted = Object.entries(boxes).filter(([, b]) => b.kind === "well" || b.kind === "deck");
+    const counted = Object.entries(boxes).filter(([, b]) => b.kind === "well" || b.kind === "deck" || b.rules?.perCharacter);
     expect(counted.length).toBeGreaterThan(1);
     try {
       for (const [id] of counted) delete boxes[id];
