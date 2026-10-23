@@ -92,9 +92,13 @@ export function boxesTableHTML({ boxes, pools, log = [], rounds = {}, recent = n
     roulette: () => rouletteRulesText(b),
   }[kind(b)] ?? (() => [b.rules?.pity ? `${RARITY_LABEL[b.rules.pity.minRarity] ?? b.rules.pity.minRarity} or better after ${b.rules.pity.after} pulls` : "", b.rules?.noDuplicates ? "no dupes" : ""].filter(Boolean).join(", ")))();
   const rules = b => esc([own(b), kind(b) === "roulette" ? "" : limitsText(b)].filter(Boolean).join(", "));
-  // A deck's row reshuffles; a wheel's opens its round (or brings the open one forward).
-  const extra = b => (kind(b) === "deck" ? `<button type="button" data-action="reshuffle" data-box="${esc(b.id)}" aria-label="Reshuffle ${esc(b.name)}">Reshuffle</button> `
-    : kind(b) === "roulette" ? `<button type="button" data-action="openTable" data-box="${esc(b.id)}" aria-label="${liveRoundOf(rounds, b.id) ? "Go to the table" : "Open a round"} at ${esc(b.name)}">${liveRoundOf(rounds, b.id) ? "Go to the table" : "Open a round"}</button> ` : "");
+  // A deck's row reshuffles; a wheel's opens its round (or brings the open one
+  // forward). The text button sits on a line of its own over the icons
+  // (module.css lc-table__extra), so the buttons' cell, the one that never
+  // wraps, is never wider than the three icons and the table fits every
+  // pane down to where its rows stack.
+  const extra = b => (kind(b) === "deck" ? `<button type="button" class="lc-table__extra" data-action="reshuffle" data-box="${esc(b.id)}" aria-label="Reshuffle ${esc(b.name)}">Reshuffle</button> `
+    : kind(b) === "roulette" ? `<button type="button" class="lc-table__extra" data-action="openTable" data-box="${esc(b.id)}" aria-label="${liveRoundOf(rounds, b.id) ? "Go to the table" : "Open a round"} at ${esc(b.name)}">${liveRoundOf(rounds, b.id) ? "Go to the table" : "Open a round"}</button> ` : "");
   const [BOX, PRICE, POOLS, ODDS, RULES, ACT] = BOXES_COLUMNS;
   return tableHTML("lc-table--boxes", BOXES_COLUMNS, boxes.map(b => `<tr${b.id === recent ? ` class="lc-row--new"` : ""} role="row">
           ${cell(BOX, `${esc(b.name)}${tag(b)}`)}${cell(PRICE, esc(formatPrice(b.price)))}

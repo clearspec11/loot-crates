@@ -151,6 +151,17 @@ function panelProblems() {
   const inner = panel.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
   const stacked = getComputedStyle(table.querySelector("tbody tr")).display === "grid";
   if (stacked !== inner <= 560) out.push(stacked ? `rows stacked in a ${Math.round(inner)} px pane` : `rows not stacked in a ${Math.round(inner)} px pane`);
+  // In a wide pane, the table's narrowest layout must fit the pane where the
+  // rows begin to stack, or a pane between the two shows a table wider than
+  // itself with its buttons past the edge (the buttons' cell is the one that
+  // never wraps, so it must stay as narrow as its icons).
+  if (!stacked) {
+    const was = table.style.width;
+    table.style.width = "min-content";
+    const narrowest = table.getBoundingClientRect().width;
+    table.style.width = was;
+    if (narrowest > 560) out.push(`the table's narrowest layout is ${Math.round(narrowest)} px, wider than the 560 px pane where its rows begin to stack`);
+  }
   const thead = table.querySelector("thead");
   if (!thead?.querySelectorAll("th").length) out.push("no header row");
   else if (stacked && thead.getBoundingClientRect().width > 2) out.push("the header row shows over stacked rows");

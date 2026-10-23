@@ -54,6 +54,10 @@ describe("the Boxes table", () => {
     }
     expect(html).toContain('data-action="reshuffle"');
     expect(html).toContain('data-action="openTable"');
+    // Each sits on a line of its own over the icons (module.css lc-table__extra),
+    // so the one cell that never wraps is never wider than the three of them.
+    expect(html).toContain('class="lc-table__extra" data-action="reshuffle"');
+    expect(html).toContain('class="lc-table__extra" data-action="openTable"');
   });
 
   it("escapes a name through the caller's escape, in the tag too", () => {

@@ -884,6 +884,12 @@
 .loot-crates .lc-table td .lc-odds { justify-content: flex-start; }
 .loot-crates .lc-table td .lc-ribbon { margin-bottom: 5px; max-width: 220px; }
 .loot-crates .lc-table td:last-child { white-space: nowrap; text-align: right; }
+/* A row's text button (Reshuffle, Open a round) takes a line of its own over
+   the icons, and a refund's "refunded <when>" may wrap: the buttons' cell is
+   the one that never wraps, so it stays as narrow as the three icons and the
+   table fits every pane wider than the stacked rows' (560 px, below). */
+.loot-crates .lc-table td:last-child .lc-table__extra { display: block; margin: 0 0 4px auto; }
+.loot-crates .lc-table td:last-child .lc-log__status { white-space: normal; }
 .loot-crates .lc-dot { display: inline-block; width: 7px; height: 7px; background: var(--lc-rarity); margin-right: 7px; transform: rotate(45deg); }
 /* A refunded pull reads as withdrawn, as its chat card does. */
 .loot-crates .lc-row--refunded td { color: var(--lc-ink-mute); }
@@ -1044,7 +1050,7 @@
   .loot-crates .lc-table--stack tr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px 12px; padding: 9px 10px; border-top: 1px solid var(--lc-rule-soft); }
   .loot-crates .lc-table--stack tbody tr:first-child { border-top: 0; }
   .loot-crates .lc-table--stack tbody tr:nth-child(even) { background: var(--lc-row-alt); }
-  .loot-crates .lc-table--stack td { display: block; grid-column: 1 / -1; min-width: 0; padding: 0; border-top: 0; white-space: normal; text-align: left; }
+  .loot-crates .lc-table--stack td { display: block; grid-column: 1 / -1; min-width: 0; padding: 0; border-top: 0; white-space: normal; text-align: left; overflow-wrap: anywhere; }
   .loot-crates .lc-table--stack td, .loot-crates .lc-table--stack tbody tr:nth-child(even) td { background: none; }
   .loot-crates .lc-table--stack td:empty { display: none; }
   .loot-crates .lc-table--stack td[data-label]:not([data-label=""])::before {
@@ -1056,6 +1062,7 @@
   .loot-crates .lc-table--boxes td:first-child { font-weight: 700; }
   .loot-crates .lc-table--stack.lc-table--boxes td:first-child::before { display: none; }
   .loot-crates .lc-table--stack td:last-child { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; margin-top: 2px; white-space: normal; }
+  .loot-crates .lc-table--stack td:last-child .lc-table__extra { margin: 0; }
   .loot-crates .lc-table--stack td .lc-ribbon { max-width: none; }
   /* The new row's gold edge and a late sale's amber one move to the card. */
   .loot-crates .lc-table--stack tr.lc-row--new td:first-child, .loot-crates .lc-table--stack tr.lc-row--late td:first-child { box-shadow: none; }
