@@ -15,7 +15,7 @@ import { registerSocket, requestPull, requestStake, isActiveGM } from "./socket.
 import { registerKind, getKind, kindOf } from "./kinds.js";
 import { openShop, refreshShop, registerShopHooks } from "./shop.js";
 import { addDirectoryButtons } from "./route.js";
-import { openManager, refreshManager, CrateManager, makeCrateFromTable, makeCrateMenuEntry } from "./manager.js";
+import { openManager, refreshManager, CrateManager, makeCrateFromTable, makeCrateMenuEntry, addStarterCrates } from "./manager.js";
 import { storeRedraw } from "./redraw.js";
 import { performPull } from "./pull.js";
 import { showReveal, showReplay, sealChatCard, watchAgain, preSealItem, setTableWindow } from "./reveal.js";
@@ -45,7 +45,7 @@ Hooks.once("ready", () => {
   registerSocket();
   const mod = game.modules.get(MODULE_ID);
   // registerKind adds a game of chance that runs on the crate's core (kinds.js).
-  if (mod) mod.api = { openShop, openManager, requestPull, performPull, showReveal, showReplay, draw, oddsTable, buildStrip, seededRng, getPools, getBoxes, getLog, savePool, saveBox, entriesFromCompendium, entryFromItem, registerKind, getKind, kindOf, openRound, closeRound, resolveRound, cancelRound, requestStake, onTable, setTableWindow, getRounds, openTable, openTableFor, makeCrateFromTable };
+  if (mod) mod.api = { openShop, openManager, requestPull, performPull, showReveal, showReplay, draw, oddsTable, buildStrip, seededRng, getPools, getBoxes, getLog, savePool, saveBox, entriesFromCompendium, entryFromItem, registerKind, getKind, kindOf, openRound, closeRound, resolveRound, cancelRound, requestStake, onTable, setTableWindow, getRounds, openTable, openTableFor, makeCrateFromTable, addStarterCrates };
   // Flag dead pool entries once at load, so the shop's odds are honest before
   // anyone buys; each pull sweeps its own box again (socket.js).
   // A table round's open stakes don't outlive their window across a reload

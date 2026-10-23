@@ -172,17 +172,17 @@
 /* A Buy that is off says so with aria-disabled (it keeps focus; boxcard.js),
    and looks exactly like a disabled button. */
 :where(.loot-crates .window-content) button:is(:disabled, [aria-disabled="true"]) { cursor: not-allowed; color: var(--lc-ink-mute); border-style: dashed; }
-.loot-crates .lc-box__buy, .loot-crates .lc-reveal__close, .loot-crates .lc-reveal__again, .loot-crates .lc-table__bet, .loot-crates .lc-table__spin {
+.loot-crates .lc-box__buy, .loot-crates .lc-reveal__close, .loot-crates .lc-reveal__again, .loot-crates .lc-table__bet, .loot-crates .lc-table__spin, .loot-crates .lc-starter__add {
   position: relative; background: var(--lc-btn); color: var(--lc-btn-ink); border: none;
   font-weight: 700; box-shadow: var(--lc-shadow); min-height: 36px; padding: 0 16px;
 }
-.loot-crates .lc-box__buy::after, .loot-crates .lc-reveal__close::after, .loot-crates .lc-reveal__again::after, .loot-crates .lc-table__bet::after, .loot-crates .lc-table__spin::after {
+.loot-crates .lc-box__buy::after, .loot-crates .lc-reveal__close::after, .loot-crates .lc-reveal__again::after, .loot-crates .lc-table__bet::after, .loot-crates .lc-table__spin::after, .loot-crates .lc-starter__add::after {
   content: ""; position: absolute; inset: 3px; border: 1px solid var(--lc-btn-rule); border-radius: 3px; pointer-events: none;
 }
-.loot-crates .lc-box__buy:not([aria-disabled="true"]):hover, .loot-crates .lc-reveal__close:not(:disabled):hover, .loot-crates .lc-reveal__again:not([aria-disabled="true"]):hover, .loot-crates .lc-table__bet:not([aria-disabled="true"]):hover, .loot-crates .lc-table__spin:not([aria-disabled="true"]):hover { color: var(--lc-pin); }
-.loot-crates .lc-box__buy:not([aria-disabled="true"]):hover::after, .loot-crates .lc-reveal__close:not(:disabled):hover::after, .loot-crates .lc-reveal__again:not([aria-disabled="true"]):hover::after, .loot-crates .lc-table__bet:not([aria-disabled="true"]):hover::after, .loot-crates .lc-table__spin:not([aria-disabled="true"]):hover::after { border-color: var(--lc-btn-ink); }
-.loot-crates .lc-box__buy[aria-disabled="true"], .loot-crates .lc-reveal__again[aria-disabled="true"], .loot-crates .lc-table__bet[aria-disabled="true"], .loot-crates .lc-table__spin[aria-disabled="true"] { background: var(--lc-row-alt); color: var(--lc-ink-mute); box-shadow: none; }
-.loot-crates .lc-box__buy[aria-disabled="true"]::after, .loot-crates .lc-reveal__again[aria-disabled="true"]::after, .loot-crates .lc-table__bet[aria-disabled="true"]::after, .loot-crates .lc-table__spin[aria-disabled="true"]::after { border: 1px dashed var(--lc-rule-soft); }
+.loot-crates .lc-box__buy:not([aria-disabled="true"]):hover, .loot-crates .lc-reveal__close:not(:disabled):hover, .loot-crates .lc-reveal__again:not([aria-disabled="true"]):hover, .loot-crates .lc-table__bet:not([aria-disabled="true"]):hover, .loot-crates .lc-table__spin:not([aria-disabled="true"]):hover, .loot-crates .lc-starter__add:not([aria-disabled="true"]):hover { color: var(--lc-pin); }
+.loot-crates .lc-box__buy:not([aria-disabled="true"]):hover::after, .loot-crates .lc-reveal__close:not(:disabled):hover::after, .loot-crates .lc-reveal__again:not([aria-disabled="true"]):hover::after, .loot-crates .lc-table__bet:not([aria-disabled="true"]):hover::after, .loot-crates .lc-table__spin:not([aria-disabled="true"]):hover::after, .loot-crates .lc-starter__add:not([aria-disabled="true"]):hover::after { border-color: var(--lc-btn-ink); }
+.loot-crates .lc-box__buy[aria-disabled="true"], .loot-crates .lc-reveal__again[aria-disabled="true"], .loot-crates .lc-table__bet[aria-disabled="true"], .loot-crates .lc-table__spin[aria-disabled="true"], .loot-crates .lc-starter__add[aria-disabled="true"] { background: var(--lc-row-alt); color: var(--lc-ink-mute); box-shadow: none; }
+.loot-crates .lc-box__buy[aria-disabled="true"]::after, .loot-crates .lc-reveal__again[aria-disabled="true"]::after, .loot-crates .lc-table__bet[aria-disabled="true"]::after, .loot-crates .lc-table__spin[aria-disabled="true"]::after, .loot-crates .lc-starter__add[aria-disabled="true"]::after { border: 1px dashed var(--lc-rule-soft); }
 
 :where(.loot-crates .window-content) :is(input, select) {
   font-family: var(--lc-body); font-size: 13px; min-height: 30px; padding: 0 8px; box-sizing: border-box;
@@ -216,6 +216,11 @@
   content: ""; width: 6px; height: 6px; flex: none; background: var(--lc-rarity); transform: rotate(45deg);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--lc-ink) 25%, transparent);
 }
+
+/* An auction's lot in the Boxes table (auction.js auctionLotHTML) is a name,
+   not a chance: a long one ("A sealed Dragon's hoard chest") wraps inside
+   its pill rather than widening the table past where its rows stack. */
+.loot-crates .lc-odd--lot { white-space: normal; line-height: 1.3; padding-block: 1px; text-align: left; }
 
 /* A table crate's named chances (boxcard.js chanceLinesHTML): one line per
    item, its rarity as the pills' diamond, the chance in tabular figures at
@@ -812,6 +817,17 @@
 /* The Boxes tab's status line takes the rest of the row, or a line of its
    own in a narrow window, and is never cut off. */
 .loot-crates .lc-toolbar--boxes .lc-manager__status { flex: 1 1 14em; min-width: 0; overflow-wrap: anywhere; }
+
+/* An empty Pools or Boxes tab (starter.js starterCallHTML): what the tab
+   holds, then the offer of the starter set on a paper card ruled in gold,
+   its button the window's one gold action. */
+.loot-crates .lc-starter { max-width: 34rem; }
+.loot-crates .lc-starter > .lc-empty { margin: 4px 0 12px; line-height: 1.45; }
+.loot-crates .lc-starter__card {
+  padding: 12px; background: var(--lc-card); border: 1px solid var(--lc-rule); border-radius: var(--lc-radius); box-shadow: var(--lc-shadow);
+}
+.loot-crates .lc-starter__offer { margin: 0 0 12px; line-height: 1.45; color: var(--lc-ink-soft); }
+.loot-crates .lc-starter__add { margin: 0; }
 
 /* A pool is a dnd5e card: its census on the header, its items as rows. */
 .loot-crates .lc-pool {

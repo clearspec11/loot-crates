@@ -93,8 +93,16 @@
   weights, the nested table flattened, what it skipped
   ?nothing=1 (landed: the table crate's pull that found nothing, the strip
   on a blank and "Nothing this time.")
+  ?empty=1 (manager: a new world's empty Pools tab, or with tab=boxes its
+  empty Boxes tab, each offering "Add starter crates", starter.js; the
+  button goes to ?starter=1)
+  ?starter=1 (manager, tab=boxes: the Boxes tab as "Add starter crates"
+  leaves it, its pools picked from a stand-in for the dnd5e indexes
+  (sample.js STARTER_INDEX): every game off the shelf, the first game's
+  Edit focused, the status line naming what came in)
 */
-import { POOLS, BOX, BOXES, TABLE_POOL, TABLE_CRATE, TABLE_PLAN, WELL, DICE, DICE_FACES, DECK, ROULETTE, AUCTION, AUCTION_CRATE, auctionRound, auctionBids, rouletteRound, wheelStakes, deckDraws, wellThrows, limitBuys, sampleLog, MANAGER_POOLS, MANAGER_SOURCES, MANAGER_BOXES } from "./sample.js";
+import { POOLS, BOX, BOXES, TABLE_POOL, TABLE_CRATE, TABLE_PLAN, WELL, DICE, DICE_FACES, DECK, ROULETTE, AUCTION, AUCTION_CRATE, auctionRound, auctionBids, rouletteRound, wheelStakes, deckDraws, wellThrows, limitBuys, sampleLog, MANAGER_POOLS, MANAGER_SOURCES, MANAGER_BOXES, STARTER_INDEX } from "./sample.js";
+import { STARTER_POOLS, pickEntries, buildStarter, starterNotice, starterCallHTML } from "../module/scripts/starter.js";
 import { limitsFieldset, restockPreview, stockField } from "../module/scripts/limits.js";
 import { poolsFieldset, pityRow, syncShares, oddsModeFieldset, tableNoteHTML, nothingRow } from "../module/scripts/editorfields.js";
 import { getKind, kindOf } from "../module/scripts/kinds.js";
@@ -156,7 +164,7 @@ document.getElementById("title").textContent = appTitle;
 const CRATE_ICON = `<svg class="lc-box__icon" viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M3 8.5 12 4l9 4.5v8L12 21l-9-4.5z"/><path d="M3 8.5 12 13l9-4.5M12 13v8"/></svg>`;
 
 const nav = document.getElementById("nav");
-for (const [label, query] of [["shop", "state=shop"], ["spin", "state=spin"], ["landed", "state=landed"], ["landed, buyer", "state=landed&buyer=1"], ["missed", "state=landed&buyer=1&watched=0"], ["replay", "state=replay"], ["well", "state=well&buyer=1"], ["well, coin", "state=well&outcome=coin&buyer=1"], ["well, item", "state=well&outcome=item&buyer=1"], ["dice", "state=dice&buyer=1"], ["dice, lost", "state=dice&outcome=lose&buyer=1"], ["dice, prize", "state=dice&outcome=prize&buyer=1"], ["deck", "state=deck&buyer=1"], ["deck, item", "state=deck&outcome=item&buyer=1"], ["deck, bane", "state=deck&outcome=loss&buyer=1"], ["deck, effect", "state=deck&outcome=effect&buyer=1"], ["table", "state=table"], ["table, GM", "state=table&phase=waiting&gm=1"], ["wheel", "state=table&phase=spinning"], ["wheel, landed", "state=table&phase=landed&duration=0"], ["manager", "state=manager"], ["boxes", "state=manager&tab=boxes&added=1"], ["pull log", "state=manager&tab=log"], ["box editor", "state=editor"], ["table crate", "state=shop&table=1"], ["table editor", "state=editor&odds=weight"], ["table drop", "state=preview"], ["nothing", "state=landed&nothing=1&buyer=1"], ["auction", "state=auction&phase=open"], ["auction, bids", "state=auction&phase=bid"], ["auction, GM", "state=auction&phase=bid&gm=1"], ["auction, hammer", "state=auction&phase=hammer&duration=0"], ["auction, crate", "state=auction&phase=hammer&lot=crate"], ["auction card", "state=shop&auction=1"]]) {
+for (const [label, query] of [["shop", "state=shop"], ["spin", "state=spin"], ["landed", "state=landed"], ["landed, buyer", "state=landed&buyer=1"], ["missed", "state=landed&buyer=1&watched=0"], ["replay", "state=replay"], ["well", "state=well&buyer=1"], ["well, coin", "state=well&outcome=coin&buyer=1"], ["well, item", "state=well&outcome=item&buyer=1"], ["dice", "state=dice&buyer=1"], ["dice, lost", "state=dice&outcome=lose&buyer=1"], ["dice, prize", "state=dice&outcome=prize&buyer=1"], ["deck", "state=deck&buyer=1"], ["deck, item", "state=deck&outcome=item&buyer=1"], ["deck, bane", "state=deck&outcome=loss&buyer=1"], ["deck, effect", "state=deck&outcome=effect&buyer=1"], ["table", "state=table"], ["table, GM", "state=table&phase=waiting&gm=1"], ["wheel", "state=table&phase=spinning"], ["wheel, landed", "state=table&phase=landed&duration=0"], ["manager", "state=manager"], ["empty manager", "state=manager&empty=1"], ["boxes", "state=manager&tab=boxes&added=1"], ["starter", "state=manager&tab=boxes&starter=1"], ["pull log", "state=manager&tab=log"], ["box editor", "state=editor"], ["table crate", "state=shop&table=1"], ["table editor", "state=editor&odds=weight"], ["table drop", "state=preview"], ["nothing", "state=landed&nothing=1&buyer=1"], ["auction", "state=auction&phase=open"], ["auction, bids", "state=auction&phase=bid"], ["auction, GM", "state=auction&phase=bid&gm=1"], ["auction, hammer", "state=auction&phase=hammer&duration=0"], ["auction, crate", "state=auction&phase=hammer&lot=crate"], ["auction card", "state=shop&auction=1"]]) {
   const a = document.createElement("a");
   a.href = `?${query}&seed=${seed}&theme=${theme}`;
   a.textContent = label;
@@ -352,6 +360,18 @@ function chatCard(r, box) {
 // GM who opened it sees it); the 200-entry one keeps its collapsed default.
 function renderManager() {
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+  if (q.get("empty") === "1") {
+    stage.innerHTML = `
+    <div class="lc-manager__body">
+      ${managerNavHTML({ tab: "pools", shopOpen: true })}
+      <section class="lc-tab" role="tabpanel">
+        <div class="lc-toolbar"><button type="button"><i class="fas fa-plus"></i> New pool</button><span class="lc-pool__hint lc-manager__status" role="status"></span></div>
+        ${starterCallHTML("pools", esc)}
+      </section>
+    </div>`;
+    document.body.dataset.ready = "1";
+    return;
+  }
   const srcOf = e => MANAGER_SOURCES.has(e.uuid) ? MANAGER_SOURCES.get(e.uuid) : { name: e.name, img: e.img, rarity: e.sourceRarity || null, rawRarity: e.sourceRarity ?? null };
   const views = new Map(MANAGER_POOLS.map(p => [p.id, { ...defaultView(p), open: p.id === "compendium" ? true : defaultView(p).open }]));
   const rowsOf = p => sortRows(poolRows(p, srcOf), views.get(p.id).recent);
@@ -776,6 +796,7 @@ async function renderAuction() {
 */
 function renderBoxes({ toggled = null } = {}) {
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+  if (q.get("empty") === "1" || q.get("starter") === "1") return renderStarterBoxes(esc);
   const added = q.get("added") === "1" ? BOXES.find(b => b.id === "royal") : null;
   const now = Date.now();
   stage.innerHTML = `
@@ -801,6 +822,34 @@ function renderBoxes({ toggled = null } = {}) {
   }
   document.body.dataset.ready = "1";
 }
+/*
+  The Boxes tab empty (?empty=1), and as "Add starter crates" leaves it
+  (?starter=1, manager.js addStarterCrates): the set built from the stand-in
+  index, the first game's Edit focused, the status line written after the
+  render. Pressing the empty tab's button goes there.
+*/
+function renderStarterBoxes(esc) {
+  let n = 0;
+  const built = q.get("starter") === "1" ? buildStarter({ entries: Object.fromEntries(STARTER_POOLS.map(p => [p.key, pickEntries(p, STARTER_INDEX)])), id: () => `starter${++n}` }) : { pools: [], games: [] };
+  const pools = Object.fromEntries(built.pools.map(p => [p.id, p]));
+  stage.innerHTML = `
+    <div class="lc-manager__body">
+      ${managerNavHTML({ tab: "boxes", shopOpen: true })}
+      <section class="lc-tab" role="tabpanel">
+        ${boxesTabHTML({ boxes: built.games, pools, log: [], rounds: {}, esc })}
+      </section>
+    </div>`;
+  if (built.games.length) {
+    const edit = stage.querySelector(`.lc-table [data-action="editBox"][data-box="${CSS.escape(built.games[0].id)}"]`);
+    edit?.focus({ preventScroll: true });
+    stage.querySelector(".lc-manager__status").textContent = starterNotice(built);
+    window.__lootCrates = { starter: built };
+  }
+  document.body.dataset.ready = "1";
+}
+stage.addEventListener("click", e => {
+  if (state === "manager" && e.target.closest?.('[data-action="starterCrates"]')) location.search = `?state=manager&tab=boxes&starter=1&theme=${theme}`;
+});
 stage.addEventListener("click", e => {
   const btn = e.target.closest?.('[data-action="toggleShelf"]');
   if (!btn || state !== "manager") return;

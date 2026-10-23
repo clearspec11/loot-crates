@@ -110,8 +110,11 @@ describe("the Boxes table", () => {
     expect(boxesTableHTML({ boxes: off, pools: POOLS, recent: "royal", esc })).toContain('<tr class="lc-row--new lc-row--off" role="row">');
   });
 
-  it("says so when there are no boxes", () => {
-    expect(boxesTableHTML({ boxes: [], pools: {}, esc })).toContain("No boxes.");
+  it("says so when there are no boxes, and offers the starter crates (starter.js)", () => {
+    const html = boxesTableHTML({ boxes: [], pools: {}, esc });
+    expect(html).toContain("No games yet.");
+    expect(html).toContain('data-action="starterCrates"');
+    expect(html).toContain("Add starter crates</button>");
   });
 });
 
@@ -122,6 +125,18 @@ describe("the tab", () => {
     for (const [action, label] of NEW_BUTTONS) expect(html).toContain(`data-action="${action}"><i class="fas fa-plus"></i> ${label}</button>`);
     expect(html).toContain('<span class="lc-pool__hint lc-manager__status" role="status">Royal Vault is on the shelf at 1,200 gp.</span>');
     expect(html).toContain('<table class="lc-table lc-table--stack lc-table--boxes"');
+  });
+
+  it("keeps Add starter crates on the toolbar once there are games, apart from the New buttons", () => {
+    const html = boxesTabHTML({ boxes: BOXES, pools: POOLS, esc });
+    expect(html.match(/data-action="starterCrates"/g)).toHaveLength(1);
+    expect(html).toMatch(/<div class="lc-toolbar lc-toolbar--boxes">[^]*data-action="starterCrates"[^]*<\/div>/);
+    expect(NEW_BUTTONS.map(([a]) => a)).not.toContain("starterCrates");
+    // Empty, the offer is in the tab's body alone, and the drop hint is its first line's.
+    const empty = boxesTabHTML({ boxes: [], pools: {}, esc });
+    expect(empty.match(/data-action="starterCrates"/g)).toHaveLength(1);
+    expect(empty).not.toContain("lc-boxes__drop");
+    expect(empty).toContain("drop a roll table here");
   });
 
   it("counts the games players can see in the toolbar", () => {

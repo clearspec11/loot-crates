@@ -170,6 +170,15 @@ const STATES = [
   // The Midnight Lot's card leads the shelf: the lot, the top bid and who
   // holds it, the reserve met, the gavel's countdown, "Join the bidding".
   ["shop-auction", "state=shop&auction=1"],
+  // A new world (starter.js): the empty Pools tab and the empty Boxes tab,
+  // each saying what the tab holds and offering "Add starter crates" as
+  // the window's one gold button; then the Boxes tab as that button leaves
+  // it: eight games, one of every kind, every one off the shelf (dimmed,
+  // "Put on shelf", "0 of 8 on the shelf"), the first game's Edit focused,
+  // the status line naming what came in, the button kept on the toolbar.
+  ["manager-empty", "state=manager&empty=1"],
+  ["manager-boxes-empty", "state=manager&tab=boxes&empty=1"],
+  ["manager-boxes-starter", "state=manager&tab=boxes&starter=1"],
 ];
 
 // The manager's tables at any width, read from the DOM: the pane never
@@ -377,7 +386,7 @@ function navProblems() {
 function priceProblems() {
   const out = [];
   const pane = document.querySelector(".lc-tab")?.getBoundingClientRect();
-  const NAME = { Crate: "Price of", Deck: "First draw at", Wheel: "Lowest bet at", Well: "Stake at", Dice: "Stake at" };
+  const NAME = { Crate: "Price of", Deck: "First draw at", Wheel: "Lowest bet at", Well: "Stake at", Dice: "Stake at", Auction: "Opening bid at" };
   const rows = [...document.querySelectorAll(".lc-table--boxes tbody tr")];
   if (!rows.length) return ["no Boxes rows"];
   for (const r of rows) {
@@ -488,6 +497,72 @@ function boxesProblems(narrow) {
     const order = [...r.lastElementChild.querySelectorAll("[data-action]")].map(b => b.dataset.action).slice(-3).join("|");
     if (order !== "editBox|copyBox|deleteBox") out.push(`${name}'s row actions end ${order}`);
   }
+  return out;
+}
+
+/*
+  An empty tab in a new world (starter.js starterCallHTML): the selected
+  tab, the line saying what it holds, the offer, and one "Add starter
+  crates" as the gold button, whole in the window, in the tab order, at
+  the 11px floor or over; the pane never scrolls sideways.
+*/
+function starterEmptyProblems(where) {
+  const out = [];
+  const app = document.getElementById("app").getBoundingClientRect();
+  const tabs = [...document.querySelectorAll('.lc-tabs [role="tablist"] > [role="tab"]')];
+  const want = where === "pools" ? "Pools" : "Boxes";
+  if (tabs.find(t => t.getAttribute("aria-selected") === "true")?.textContent !== want) out.push(`the ${want} tab is not the selected one`);
+  const block = document.querySelector(".lc-tab .lc-starter");
+  if (!block) return [...out, "no starter offer on the empty tab"];
+  const line = block.querySelector(".lc-empty")?.textContent ?? "";
+  if (!(where === "pools" ? /^No pools yet\. A pool is the set of items a box can give out/ : /^No games yet\. A box prices a pull/).test(line)) out.push(`the empty line reads "${line}"`);
+  const offer = block.querySelector(".lc-starter__offer");
+  if (!/added off the shelf/.test(offer?.textContent ?? "")) out.push("the offer doesn't say the games come off the shelf");
+  if (block.getAttribute("aria-labelledby") !== offer?.id) out.push("the offer doesn't name its group");
+  const buttons = [...document.querySelectorAll('[data-action="starterCrates"]')];
+  if (buttons.length !== 1) out.push(`expected one Add starter crates, got ${buttons.length}`);
+  const b = buttons[0];
+  if (b) {
+    if (b.textContent.trim() !== "Add starter crates") out.push(`the button reads "${b.textContent.trim()}"`);
+    const r = b.getBoundingClientRect();
+    if (r.width < 120 || r.height < 30 || r.right > app.right + 1 || r.left < app.left - 1) out.push("Add starter crates is not whole in the window");
+    if (b.tabIndex !== 0) out.push("Add starter crates is not in the tab order");
+    if (getComputedStyle(b).backgroundColor === getComputedStyle(document.querySelector(".lc-toolbar button")).backgroundColor) out.push("Add starter crates looks like a quiet button");
+  }
+  for (const el of [block.querySelector(".lc-empty"), offer, b].filter(Boolean)) if (parseFloat(getComputedStyle(el).fontSize) < 11) out.push(`"${el.textContent.trim().slice(0, 30)}" is under 11px`);
+  if (document.querySelectorAll('[role="status"]').length !== 1) out.push("expected one role=status");
+  const pane = document.querySelector(".lc-tab");
+  if (pane.scrollWidth > pane.clientWidth + 1) out.push("the pane scrolls sideways");
+  return out;
+}
+
+/*
+  The Boxes tab as "Add starter crates" leaves it (manager.js
+  addStarterCrates): one game of every kind, every one off the shelf, the
+  first game's Edit focused, the status line saying what came in and how
+  to put it out, the button kept on the toolbar.
+*/
+function starterBoxesProblems() {
+  const out = [];
+  const rows = [...document.querySelectorAll(".lc-table tbody tr")];
+  if (rows.length !== 8) out.push(`expected 8 starter games, got ${rows.length}`);
+  const tags = [...document.querySelectorAll(".lc-table .lc-kind:not(.lc-kind--off)")].map(t => t.textContent);
+  if (tags.join("|") !== "Crate|Crate|Crate|Well|Dice|Deck|Wheel|Auction") out.push(`kind tags read ${tags.join(", ")}`);
+  if (rows.some(r => !r.classList.contains("lc-row--off") || r.querySelector('[data-action="toggleShelf"]')?.textContent.trim() !== "Put on shelf")) out.push("a starter game is on the shelf");
+  const count = document.querySelector(".lc-toolbar--boxes .lc-shelf-count")?.textContent;
+  if (count !== "0 of 8 on the shelf") out.push(`the toolbar count reads "${count}"`);
+  const starter = document.querySelectorAll('.lc-toolbar--boxes [data-action="starterCrates"]');
+  if (starter.length !== 1 || starter[0].textContent.trim() !== "Add starter crates") out.push("the toolbar has no Add starter crates");
+  const news = [...document.querySelectorAll('.lc-toolbar--boxes [data-action^="add"]')].map(b => b.textContent.trim());
+  if (news.join("|") !== "New box|New well|New dice game|New deck|New wheel|New auction") out.push(`the New buttons read ${news.join(", ")}`);
+  const status = document.querySelector(".lc-manager__status")?.textContent ?? "";
+  if (status !== "Added 4 starter pools and 8 starter games, all off the shelf. Players can't see them yet: look each one over, then press Put on shelf on its row.") out.push(`status line says "${status}"`);
+  const first = rows[0]?.querySelector('[data-action="editBox"]');
+  if (document.activeElement !== first) out.push("focus is not on the first starter game's Edit");
+  const pools = rows.map(r => r.querySelector('td[data-label="Pools"]')?.textContent.trim());
+  if (pools.slice(0, 6).some(p => !p || /none|missing/.test(p))) out.push(`a starter game draws from no pool: ${pools.join(" / ")}`);
+  if (!/A sealed Dragon's hoard chest/.test(rows[7]?.textContent ?? "")) out.push("the auction's lot isn't the sealed hoard chest");
+  if (document.querySelectorAll('[role="status"]').length !== 1) out.push("expected one role=status");
   return out;
 }
 
@@ -1531,6 +1606,9 @@ try {
       else if (name.startsWith("dice")) problems0.push(...await page.evaluate(diceProblems, { "dice-rolling": "rolling", "dice-won": "win", "dice-lost": "lose" }[name]));
       else if (name.startsWith("deck")) problems0.push(...await page.evaluate(deckProblems, { "deck-held": "held", "deck-boon": "item", "deck-bane": "loss", "deck-effect": "effect" }[name]));
       else if (name === "manager-dropped") problems0.push(...await page.evaluate(droppedProblems));
+      else if (name === "manager-empty") problems0.push(...await page.evaluate(starterEmptyProblems, "pools"));
+      else if (name === "manager-boxes-empty") problems0.push(...await page.evaluate(starterEmptyProblems, "boxes"));
+      else if (name === "manager-boxes-starter") problems0.push(...await page.evaluate(starterBoxesProblems), ...await page.evaluate(panelProblems));
       else if (name === "manager-boxes-shelf") problems0.push(...await page.evaluate(shelfBoxesProblems), ...await page.evaluate(panelProblems));
       else if (name.startsWith("manager-boxes")) problems0.push(...await page.evaluate(boxesProblems, name.endsWith("narrow")), ...await page.evaluate(panelProblems));
       else if (name.startsWith("manager-log")) problems0.push(...await page.evaluate(logProblems, name.endsWith("narrow")), ...await page.evaluate(panelProblems));
@@ -1539,7 +1617,7 @@ try {
       else if (name.startsWith("well")) problems0.push(...await page.evaluate(wellProblems, { "well-missed": "nothing", "well-coin": "coin", "well-won": "item" }[name]));
       else problems0.push(...await page.evaluate(revealProblems, name === "landed-buyer" || name === "landed-missed"));
       if (name.startsWith("manager")) problems0.push(...await page.evaluate(navProblems));
-      if (name.startsWith("manager-boxes")) problems0.push(...await page.evaluate(priceProblems));
+      if (name.startsWith("manager-boxes") && name !== "manager-boxes-empty") problems0.push(...await page.evaluate(priceProblems));
       if (name === "landed-missed") problems0.push(...await page.evaluate(missedProblems));
       if (name === "shop-short") {
         const grid = await page.$(".lc-shop__grid");

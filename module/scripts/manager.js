@@ -110,6 +110,8 @@ import { postRefundCard } from "./chat.js";
 import { changeCount } from "./redraw.js";
 import { limitsFieldset, perCharacterFromForm, restocked, restockPreview, stockAfterRefund, stockField, stockFromForm } from "./limits.js";
 import { onShelf, shelfRules, shelfFieldHTML, shelfNotice } from "./shelf.js";
+import { starterPresent, hasStarter, starterAgainText, starterNotice, starterCallHTML, STARTER_LABEL } from "./starter.js";
+import { addStarterSet } from "./starterbuild.js";
 import { poolsFieldset, poolPicks, syncShares, pityRow, stakeRow, betRangeRow, dragonRow, CARD_FIELDS, renumberCards, oddsModeFieldset, tableNoteHTML, nothingRow } from "./editorfields.js";
 
 const { ApplicationV2, DialogV2 } = foundry.applications.api;
@@ -132,6 +134,7 @@ export class CrateManager extends ApplicationV2 {
       editBox: CrateManager.#editBox, toggleShelf: CrateManager.#toggleShelf, copyBox: CrateManager.#copyBox, deleteBox: CrateManager.#deleteBox, reshuffle: CrateManager.#reshuffle, openTable: CrateManager.#openTable,
       refund: CrateManager.#refund, toggleShop: CrateManager.#toggleShop, openShop: CrateManager.#openShop, toggleMisses: CrateManager.#toggleMisses,
       filterChip: CrateManager.#filterChip, showMore: CrateManager.#showMore,
+      starterCrates: CrateManager.#starterCrates,
     },
   };
 
@@ -606,6 +609,56 @@ export class CrateManager extends ApplicationV2 {
     this.#focusBox = this.#recentBox = saved.id;
     await this.render();
     this.#announce(addedNotice(saved, { shopOpen: isShopOpen() }));
+  }
+
+  /*
+    "Add starter crates" (starter.js, starterbuild.js): on the empty Pools
+    and Boxes tabs, and on the Boxes toolbar after. The four pools are
+    filled from dnd5e's compendiums and the games written in one queued
+    task, every one off the shelf; then the Boxes tab shows them, the
+    first game's Edit focused, and its status line says what came in and
+    how to put a game out. With the set (or part of it) already here, a
+    confirm says so and offers to add the games again as copies drawing
+    from the pools already here; Cancel writes nothing. Reading the packs
+    can take seconds on a cold client, so the button is off meanwhile and
+    a second press is ignored.
+  */
+  #starting = false;
+  static #starterCrates(_e, t) { return this.addStarterCrates(t); }
+  async addStarterCrates(button = null) {
+    if (this.#starting) return null;
+    const present = starterPresent(getPools(), getBoxes());
+    if (hasStarter(present)) {
+      const ok = await DialogV2.confirm({
+        window: { title: STARTER_LABEL },
+        content: `<p>${esc(starterAgainText(present))}</p>`,
+        yes: { label: "Add copies", default: false },
+        no: { label: "Cancel", default: true },
+      });
+      if (!ok) { button?.focus?.(); return null; }
+    }
+    this.#starting = true;
+    const busy = [...(this.element?.querySelectorAll('[data-action="starterCrates"]') ?? [])];
+    for (const b of busy) b.setAttribute("aria-disabled", "true");
+    this.#announce("Reading the dnd5e compendiums for the starter crates…");
+    let report;
+    try {
+      report = await addStarterSet();
+    } catch (err) {
+      console.error("loot-crates | adding the starter crates failed", err);
+      report = { games: [], notes: ["The starter crates couldn't be added; the console has the error."] };
+    } finally {
+      this.#starting = false;
+      for (const b of busy) b.removeAttribute("aria-disabled");
+    }
+    if (report.games.length) {
+      this.tab = "boxes";
+      this.#focusBox = report.games[0].id;
+      this.#recentBox = null;
+    }
+    await this.render({ force: true });
+    this.#announce(starterNotice(report));
+    return report;
   }
 
   // The table's round from the Boxes tab: opened (or brought forward) as
@@ -1318,7 +1371,7 @@ export class CrateManager extends ApplicationV2 {
             <div class="lc-pool__body">${view.open ? poolBody(p, rows, view, esc) : ""}</div>
           </details>
         </article>`;
-      }).join("") : `<p class="lc-empty">No pools. A pool is the set of items a box can give out.</p>`}`;
+      }).join("") : starterCallHTML("pools", esc)}`;
   }
 
   // The Boxes tab (boxestable.js): every New, the tab's status line, and
@@ -1695,6 +1748,14 @@ export function openManager() {
 export function makeCrateFromTable(uuid) {
   manager ??= new CrateManager();
   return manager.makeCrateFromTable(uuid);
+}
+
+// "Add starter crates" from outside the manager (the module API, the GM's
+// welcome): the manager opens on its Boxes tab and presses it.
+export async function addStarterCrates() {
+  manager ??= new CrateManager();
+  if (!manager.rendered) { manager.tab = "boxes"; await manager.render({ force: true }); }
+  return manager.addStarterCrates();
 }
 
 /*

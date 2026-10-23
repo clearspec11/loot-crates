@@ -52,6 +52,7 @@ import { shopOdds, oddsModeOf } from "./odds.js";
 import { formatPrice } from "./currency.js";
 import { limitsText } from "./limits.js";
 import { onShelf, shelfCountText, shelfToggleHTML } from "./shelf.js";
+import { starterCallHTML, STARTER_LABEL } from "./starter.js";
 
 // The New buttons, in the order the kinds arrived; their action names are
 // the manager's (test/actions.test.js keeps them off ApplicationV2's own).
@@ -89,15 +90,17 @@ export function tableHTML(cls, columns, rowsHTML) {
         ${rowsHTML}</tbody></table>`;
 }
 
-// The toolbar: every New, how many games players can see, then the one
-// status line the tab speaks through.
+// The toolbar: every New, "Add starter crates" once there are games (an
+// empty tab offers it in its body, starter.js starterCallHTML), how many
+// games players can see, then the one status line the tab speaks through.
 export function boxesToolbarHTML(status = "", esc = s => String(s ?? ""), boxes = []) {
   const count = shelfCountText(boxes);
-  return `<div class="lc-toolbar lc-toolbar--boxes">${NEW_BUTTONS.map(([action, label]) => `<button type="button" data-action="${action}"><i class="fas fa-plus"></i> ${label}</button>`).join("")}${count ? `<span class="lc-shelf-count">${esc(count)}</span>` : ""}<span class="lc-pool__hint lc-manager__status" role="status">${esc(status)}</span></div>`;
+  const starter = boxes.length ? `<button type="button" class="lc-toolbar__starter" data-action="starterCrates"><i class="fas fa-box-open" inert></i> ${STARTER_LABEL}</button>` : "";
+  return `<div class="lc-toolbar lc-toolbar--boxes">${NEW_BUTTONS.map(([action, label]) => `<button type="button" data-action="${action}"><i class="fas fa-plus"></i> ${label}</button>`).join("")}${starter}${count ? `<span class="lc-shelf-count">${esc(count)}</span>` : ""}<span class="lc-pool__hint lc-manager__status" role="status">${esc(status)}</span></div>`;
 }
 
 export function boxesTableHTML({ boxes, pools, log = [], rounds = {}, recent = null, esc }) {
-  if (!boxes.length) return `<p class="lc-empty">No boxes. A box prices a pull from one or more pools.</p>`;
+  if (!boxes.length) return starterCallHTML("boxes", esc);
   const kind = b => kindOf(b);
   const tag = b => ` <span class="lc-kind">${esc(kindTag(b))}</span>${onShelf(b) ? "" : ` <span class="lc-kind lc-kind--off">Off the shelf</span>`}`;
   const odds = b => ({
@@ -151,7 +154,9 @@ export function priceInputHTML(b, esc = s => String(s ?? "")) {
 // makeCrateFromTable): the tab takes a dropped table, as a pool takes items.
 export const TABLE_DROP_HINT = "Drop a roll table here to make a crate with its items and odds.";
 
-// The whole tab.
+// The whole tab. An empty one says where a dropped table goes in its own
+// first line, so the hint under the table is left out.
 export function boxesTabHTML({ status = "", ...rest }) {
-  return `${boxesToolbarHTML(status, rest.esc, rest.boxes)}${boxesTableHTML(rest)}<p class="lc-form__hint lc-boxes__drop">${TABLE_DROP_HINT}</p>`;
+  const hint = rest.boxes?.length ? `<p class="lc-form__hint lc-boxes__drop">${TABLE_DROP_HINT}</p>` : "";
+  return `${boxesToolbarHTML(status, rest.esc, rest.boxes)}${boxesTableHTML(rest)}${hint}`;
 }

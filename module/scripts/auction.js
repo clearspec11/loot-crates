@@ -677,7 +677,7 @@ export function auctionRulesText(game) {
 export function auctionLotHTML(game, esc = s => String(s ?? "")) {
   const lot = lotOf(game);
   if (!lot) return "<em>no lot</em>";
-  return `<div class="lc-odds"><span class="lc-odd lc-rarity-${esc(lot.rarity)}">${esc(lotName(lot))}</span></div>`;
+  return `<div class="lc-odds"><span class="lc-odd lc-odd--lot lc-rarity-${esc(lot.rarity)}">${esc(lotName(lot))}</span></div>`;
 }
 
 /*

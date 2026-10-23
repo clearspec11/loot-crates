@@ -246,15 +246,18 @@ const entryFromRow = (packId, row) => entryFromItem(row, compendiumUuid(packId, 
   that asks while it is in flight.
 */
 const fetching = new WeakMap();
-const indexReady = pack => {
+const indexReady = (pack, fields = INDEX_FIELDS) => {
   const have = pack.indexFields;
-  return !!(pack.indexed && have?.has && INDEX_FIELDS.every(f => have.has(f)));
+  return !!(pack.indexed && have?.has && fields.every(f => have.has(f)));
 };
-function loadIndex(pack) {
-  if (indexReady(pack)) return Promise.resolve(pack.index);
+// `extra` fields (the starter crates' item subtype) are asked for on top
+// of ours, a superset, so the next plain read is still a cache hit.
+function loadIndex(pack, extra = []) {
+  const fields = extra.length ? [...INDEX_FIELDS, ...extra] : INDEX_FIELDS;
+  if (indexReady(pack, fields)) return Promise.resolve(pack.index);
   let run = fetching.get(pack);
   if (!run) {
-    run = pack.getIndex({ fields: INDEX_FIELDS }).finally(() => fetching.delete(pack));
+    run = pack.getIndex({ fields }).finally(() => fetching.delete(pack));
     fetching.set(pack, run);
   }
   return run;
@@ -269,14 +272,39 @@ function loadIndex(pack) {
   rarity filter would skip it. Only those rows are read from their documents
   (cached once loaded); a row whose rarity is "" or an empty set is known.
 */
-async function indexWithRarity(pack) {
-  const index = await loadIndex(pack);
+async function indexWithRarity(pack, extra = []) {
+  const index = await loadIndex(pack, extra);
   const lost = [...index].filter(r => isLootType(r.type) && rawRarityOf(r.system) === null);
   if (!lost.length) return index;
   const docs = await pack.getDocuments({ _id__in: lost.map(r => r._id) });
   const rarity = new Map(docs.map(d => [d.id, rawRarityOf(d.system) ?? ""]));
   const fixed = new Map(lost.map(r => [r._id, { ...r, system: { ...r.system, rarity: rarity.get(r._id) } }]));
   return [...index].map(r => fixed.get(r._id) ?? r);
+}
+
+// A pack's index rows with their rarity and `extra` fields, for the
+// starter crates' builder (starterbuild.js).
+export const indexRows = async (pack, extra = []) => [...await indexWithRarity(pack, extra)];
+
+/*
+  Adds new pools and games in one queued task (the starter crates): one
+  write of each setting, read fresh, so nothing written meanwhile is lost
+  and every client redraws once. Returns what was written.
+*/
+export function addRecords({ pools = [], boxes = [] } = {}) {
+  return enqueueWrite(async () => {
+    if (pools.length) {
+      const all = getPools();
+      for (const p of pools) all[p.id] = { entries: [], pools: [], ...p };
+      await set(SETTINGS.POOLS, all);
+    }
+    if (boxes.length) {
+      const all = getBoxes();
+      for (const b of boxes) all[b.id] = b;
+      await set(SETTINGS.BOXES, all);
+    }
+    return { pools, boxes };
+  });
 }
 
 /*
