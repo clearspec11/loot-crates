@@ -94,7 +94,7 @@
   ?nothing=1 (landed: the table crate's pull that found nothing, the strip
   on a blank and "Nothing this time.")
 */
-import { POOLS, BOX, BOXES, TABLE_POOL, TABLE_CRATE, TABLE_PLAN, WELL, DICE, DICE_FACES, DECK, ROULETTE, rouletteRound, wheelStakes, deckDraws, wellThrows, limitBuys, sampleLog, MANAGER_POOLS, MANAGER_SOURCES, MANAGER_BOXES } from "./sample.js";
+import { POOLS, BOX, BOXES, TABLE_POOL, TABLE_CRATE, TABLE_PLAN, WELL, DICE, DICE_FACES, DECK, ROULETTE, AUCTION, AUCTION_CRATE, auctionRound, auctionBids, rouletteRound, wheelStakes, deckDraws, wellThrows, limitBuys, sampleLog, MANAGER_POOLS, MANAGER_SOURCES, MANAGER_BOXES } from "./sample.js";
 import { limitsFieldset, restockPreview, stockField } from "../module/scripts/limits.js";
 import { poolsFieldset, pityRow, syncShares, oddsModeFieldset, tableNoteHTML, nothingRow } from "../module/scripts/editorfields.js";
 import { getKind, kindOf } from "../module/scripts/kinds.js";
@@ -103,6 +103,7 @@ import { mountDice, resolve, rollData, parseFormula } from "../module/scripts/di
 import { mountDeck, TONE_OF, CARD_KIND_LABEL, priceAt, deckPlan } from "../module/scripts/deck.js";
 import { resolve as resolveBets, pocketsOf, coloursOf, betName } from "../module/scripts/roulette.js";
 import { tableBodyHTML } from "../module/scripts/tableview.js";
+import { lotOf } from "../module/scripts/auction.js";
 import { poolRows, sortRows, defaultView, poolSummary, poolBody, pinRecent, dropNotice, poolUsers, dropPreviewHTML } from "../module/scripts/poolview.js";
 import { boxesTabHTML } from "../module/scripts/boxestable.js";
 import { managerNavHTML, shopControls, shopEmptyHTML } from "../module/scripts/route.js";
@@ -136,12 +137,14 @@ const theme = q.get("theme") === "light" ? "light" : "dark";
 // shelf; with ?table=1 a crate made from a roll table leads the shelf.
 let GAMES = q.get("shelf") === "off" ? BOXES.map(b => (b.id === "royal" ? { ...b, rules: shelfRules(b.rules, false) } : b)) : BOXES;
 if (q.get("table") === "1") GAMES = [TABLE_CRATE, ...GAMES];
+// With ?auction=1 the Midnight Lot leads the shelf, its auction open.
+if (q.get("auction") === "1") GAMES = [AUCTION, ...GAMES];
 // Every pool the shop's games draw from, the table crate's included.
 const SHOP_POOLS = { ...POOLS, [TABLE_POOL.id]: TABLE_POOL };
 document.body.classList.replace("theme-dark", `theme-${theme}`);
 
 // The window the module would open for this state: its class and title.
-const WINDOWS = { editor: ["lc-dialog", q.get("odds") ? "New box" : "Edit box"], preview: ["lc-dialog", "Add to Goblin's Pockets"], shop: ["lc-shop", "Crate Shop"], manager: ["lc-manager", "Loot Crates"], well: ["lc-reveal", "A coin in the well"], dice: ["lc-reveal", "Dragon's Teeth"], deck: ["lc-reveal", "A card from the deck"], table: ["lc-table", `The wheel at ${ROULETTE.name}`] };
+const WINDOWS = { auction: ["lc-table", `The auction at ${q.get("lot") === "crate" ? AUCTION_CRATE.name : AUCTION.name}`], editor: ["lc-dialog", q.get("odds") ? "New box" : "Edit box"], preview: ["lc-dialog", "Add to Goblin's Pockets"], shop: ["lc-shop", "Crate Shop"], manager: ["lc-manager", "Loot Crates"], well: ["lc-reveal", "A coin in the well"], dice: ["lc-reveal", "Dragon's Teeth"], deck: ["lc-reveal", "A card from the deck"], table: ["lc-table", `The wheel at ${ROULETTE.name}`] };
 const [appClass, appTitle] = WINDOWS[state] ?? ["lc-reveal", "Opening a crate"];
 document.getElementById("app").classList.add(appClass);
 if (Number(q.get("width")) > 0) Object.assign(document.getElementById("app").style, { width: `${Number(q.get("width"))}px`, maxWidth: "100%" });
@@ -153,14 +156,14 @@ document.getElementById("title").textContent = appTitle;
 const CRATE_ICON = `<svg class="lc-box__icon" viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M3 8.5 12 4l9 4.5v8L12 21l-9-4.5z"/><path d="M3 8.5 12 13l9-4.5M12 13v8"/></svg>`;
 
 const nav = document.getElementById("nav");
-for (const [label, query] of [["shop", "state=shop"], ["spin", "state=spin"], ["landed", "state=landed"], ["landed, buyer", "state=landed&buyer=1"], ["missed", "state=landed&buyer=1&watched=0"], ["replay", "state=replay"], ["well", "state=well&buyer=1"], ["well, coin", "state=well&outcome=coin&buyer=1"], ["well, item", "state=well&outcome=item&buyer=1"], ["dice", "state=dice&buyer=1"], ["dice, lost", "state=dice&outcome=lose&buyer=1"], ["dice, prize", "state=dice&outcome=prize&buyer=1"], ["deck", "state=deck&buyer=1"], ["deck, item", "state=deck&outcome=item&buyer=1"], ["deck, bane", "state=deck&outcome=loss&buyer=1"], ["deck, effect", "state=deck&outcome=effect&buyer=1"], ["table", "state=table"], ["table, GM", "state=table&phase=waiting&gm=1"], ["wheel", "state=table&phase=spinning"], ["wheel, landed", "state=table&phase=landed&duration=0"], ["manager", "state=manager"], ["boxes", "state=manager&tab=boxes&added=1"], ["pull log", "state=manager&tab=log"], ["box editor", "state=editor"], ["table crate", "state=shop&table=1"], ["table editor", "state=editor&odds=weight"], ["table drop", "state=preview"], ["nothing", "state=landed&nothing=1&buyer=1"]]) {
+for (const [label, query] of [["shop", "state=shop"], ["spin", "state=spin"], ["landed", "state=landed"], ["landed, buyer", "state=landed&buyer=1"], ["missed", "state=landed&buyer=1&watched=0"], ["replay", "state=replay"], ["well", "state=well&buyer=1"], ["well, coin", "state=well&outcome=coin&buyer=1"], ["well, item", "state=well&outcome=item&buyer=1"], ["dice", "state=dice&buyer=1"], ["dice, lost", "state=dice&outcome=lose&buyer=1"], ["dice, prize", "state=dice&outcome=prize&buyer=1"], ["deck", "state=deck&buyer=1"], ["deck, item", "state=deck&outcome=item&buyer=1"], ["deck, bane", "state=deck&outcome=loss&buyer=1"], ["deck, effect", "state=deck&outcome=effect&buyer=1"], ["table", "state=table"], ["table, GM", "state=table&phase=waiting&gm=1"], ["wheel", "state=table&phase=spinning"], ["wheel, landed", "state=table&phase=landed&duration=0"], ["manager", "state=manager"], ["boxes", "state=manager&tab=boxes&added=1"], ["pull log", "state=manager&tab=log"], ["box editor", "state=editor"], ["table crate", "state=shop&table=1"], ["table editor", "state=editor&odds=weight"], ["table drop", "state=preview"], ["nothing", "state=landed&nothing=1&buyer=1"], ["auction", "state=auction&phase=open"], ["auction, bids", "state=auction&phase=bid"], ["auction, GM", "state=auction&phase=bid&gm=1"], ["auction, hammer", "state=auction&phase=hammer&duration=0"], ["auction, crate", "state=auction&phase=hammer&lot=crate"], ["auction card", "state=shop&auction=1"]]) {
   const a = document.createElement("a");
   a.href = `?${query}&seed=${seed}&theme=${theme}`;
   a.textContent = label;
   if (query === `state=${state}${buyer ? "&buyer=1" : ""}${unwatched ? "&watched=0" : ""}`) a.classList.add("active");
   nav.append(a);
 }
-if (state !== "shop" && state !== "manager" && state !== "well" && state !== "dice" && state !== "deck" && state !== "table" && state !== "editor" && state !== "preview") {
+if (state !== "shop" && state !== "manager" && state !== "well" && state !== "dice" && state !== "deck" && state !== "table" && state !== "auction" && state !== "editor" && state !== "preview") {
   const again = document.createElement("a");
   again.href = `?state=spin&seed=${seed + 1}${q.has("box") ? `&box=${q.get("box")}` : ""}${buyer ? "&buyer=1" : ""}&theme=${theme}`;
   again.textContent = "open another";
@@ -213,9 +216,10 @@ function renderShop(extra = {}) {
     stateOf: id => (pityDue && id === BOX.id ? { sinceRare: BOX.rules.pity.after } : {}),
     // The in-game day and the log the well counts today's throws from, and
     // the deck its draws in a row.
-    today: "y1d1", log: [...deckDraws(Number(q.get("streak")) || 0), ...wellThrows(q.get("well") === "capped" ? WELL.rules.cap : 1), ...wheelStakes(), ...limitBuys(q.get("limit") === "reached" ? 2 : 1)],
-    // The wheel's round, as the card reads it: open on the clock, closed, or none.
-    rounds: q.get("round") === "none" ? {} : { R1: q.get("round") === "closed" ? rouletteRound(Date.now(), { status: "closed", closesAt: Date.now() - 1000 }) : rouletteRound() },
+    today: "y1d1", log: [...deckDraws(Number(q.get("streak")) || 0), ...wellThrows(q.get("well") === "capped" ? WELL.rules.cap : 1), ...wheelStakes(), ...limitBuys(q.get("limit") === "reached" ? 2 : 1), ...(q.get("auction") === "1" ? auctionBids() : [])],
+    // The wheel's round, as the card reads it: open on the clock, closed, or
+    // none; and the auction's, its gavel running.
+    rounds: { ...(q.get("round") === "none" ? {} : { R1: q.get("round") === "closed" ? rouletteRound(Date.now(), { status: "closed", closesAt: Date.now() - 1000 }) : rouletteRound() }), ...(q.get("auction") === "1" ? { A1: auctionRound() } : {}) },
     isGM: q.get("gm") === "1", now: Date.now(),
     ...(waiting ? { busy: true, busyBox: BOXES[0].id, waiting } : {}), ...extra,
   };
@@ -662,6 +666,107 @@ async function renderTable() {
 }
 
 /*
+  The auction (auction.js) in the shared table window, as tablewindow.js
+  opens it: ?phase=open (the lot, the opening bid, no bids yet, the gavel
+  draining, Tam's form reading "Bid 20 gp"); ?phase=bid (four bids, the
+  house's 40 gp on top of Orla's, the reserve met, the status line saying
+  Orla's bid came back; Tam's Bid 45 gp places a bid that resets the
+  gavel and beats the house); &gm=1 (the GM's view: the gavel
+  and Call it off, no form); ?phase=hammer (sold to Tam for 45 gp: the
+  stamp, the verdict in the live region, Close focused); &lot=crate (the
+  Sealed Lot: the Adventurer's Crate's strip runs to Tam's draw).
+*/
+async function renderAuction() {
+  const phase = ["open", "bid", "hammer"].includes(q.get("phase")) ? q.get("phase") : "open";
+  const gm = q.get("gm") === "1";
+  const crateLot = q.get("lot") === "crate";
+  const game = crateLot ? AUCTION_CRATE : AUCTION;
+  const kind = getKind("auction");
+  const view = kind.tableView;
+  const esc = s => String(s ?? "");
+  const now = Date.now();
+  let round = phase === "hammer" ? auctionRound(now, { status: "resolved", closesAt: null, boxId: game.id }) : auctionRound(now, { boxId: game.id });
+  let history = phase === "open" ? [] : auctionBids(now, { tamLast: phase === "hammer", boxId: game.id, boxName: game.name });
+  let stakes = history.filter(r => r.status === "open");
+  let reveal = null;
+  if (phase === "hammer") {
+    const top = stakes[0];
+    let result, strip = null;
+    if (crateLot) {
+      const rng = seededRng(seed);
+      const drawn = draw({ box: BOX, pools: POOLS, rng, state: {} });
+      strip = buildStrip({ result: drawn, box: BOX, pools: POOLS, rng });
+      result = { uuid: drawn.entry.uuid, name: drawn.entry.name, img: drawn.entry.img, rarity: drawn.rarity, pity: false };
+    } else {
+      const lot = lotOf(game);
+      result = { uuid: lot.uuid, name: lot.name, img: lot.img, rarity: lot.rarity, pity: false };
+    }
+    reveal = {
+      type: "round", event: "resolve", roundId: "A1", boxId: game.id, kind: "auction", box: { id: game.id, name: game.name },
+      outcome: { verdict: "sold", lot: lotOf(game), amount: 45, leaderId: top.id, bidder: top.actorName, actorId: top.actorId, house: false, reserve: !!game.auction.reserve, reserveMet: true, bids: history.length, result },
+      ...(strip ? { strip } : {}),
+      stakes: [{ logId: top.id, actorId: top.actorId, actorName: top.actorName, userId: top.userId, price: top.price, stake: top.stake, action: "settle", reason: null, payoutCp: 0, name: result.name, result, itemId: "sample" }],
+    };
+  }
+  const viewer = { isGM: gm, actors: gm ? [] : characters };
+  stage.innerHTML = `<div class="lc-table__body">${tableBodyHTML({ kind, game, round, stakes, history, viewer, phase: reveal ? "spinning" : "betting", now, esc })}</div>`;
+  const host = stage.querySelector(".lc-table__host");
+  const ctrl = view.mount(host, { pockets: reveal ? view.pocketsIn(reveal) : view.pockets(game), esc });
+  const actorIds = gm ? [] : characters.map(a => a.id);
+  const paint = (opts = {}) => ctrl.rail(view.rail(game, stakes, { esc, round, history, actorIds, ...opts }));
+  paint();
+  const live = stage.querySelector(".lc-table__live");
+  if (phase === "bid") live.textContent = view.announce(history[0], { outbid: [history[1]] });
+  const btn = stage.querySelector(".lc-reveal__close");
+  const form = stage.querySelector(".lc-table__form");
+  if (form) {
+    form.addEventListener("input", () => view.onInput(form, { game, stakes }));
+    // Tam's bid lands as the GM's "staked" would: on top, the bid it beat
+    // struck through, the gavel back to full, the form on the next bid.
+    form.addEventListener("submit", e => {
+      e.preventDefault();
+      const why = form.querySelector(".lc-table__why");
+      const values = Object.fromEntries(new FormData(form).entries());
+      try {
+        const { price } = view.readBet(game, values, stakes);
+        const beaten = stakes[0] ?? null;
+        const id = `bid${history.length}`;
+        const row = { id, kind: "auction", boxId: game.id, boxName: game.name, actorId: "tam", actorName: "Tam Thornwick", userId: "tam", price, payoutCp: 0, status: "open", roundId: "A1", at: Date.now(), stake: { label: `Bid ${price} gp`, amount: price }, name: `Bid ${price} gp` };
+        history = [row, ...history.map(r => (r.id === beaten?.id ? { ...r, status: "refunded", refunded: Date.now(), refundReason: "outbid" } : r))];
+        stakes = [row];
+        round = { ...round, closesAt: Date.now() + game.auction.gavelSec * 1000 };
+        paint({ fresh: [id] });
+        stage.querySelector(".lc-table__count").textContent = view.count(history);
+        live.textContent = view.announce(row, { outbid: beaten ? [beaten] : [] });
+        view.syncForm(form, { game, stakes });
+        why.textContent = "";
+      } catch (err) { why.textContent = err.message; }
+    });
+  }
+  if (!reveal) { btn.addEventListener("click", () => { location.search = `?state=shop&auction=1&seed=${seed}&theme=${theme}`; }); window.__lootCrates = { stakes, history }; document.body.dataset.ready = "1"; return; }
+  let landed = false;
+  const spin = ctrl.spin({
+    onTick: null, onDrop: null, duration, reducedMotion: duration === 0 ? true : duration != null ? false : undefined,
+    onLand: () => {
+      landed = true;
+      stage.querySelector(".lc-vault").className = `lc-vault lc-rarity-${view.rarityOf(reveal)}`;
+      stage.querySelector(".lc-table__result").innerHTML = view.result(reveal, { esc });
+      paint({ outcome: reveal.outcome });
+      const state = stage.querySelector(".lc-table__state");
+      state.textContent = "Settled";
+      state.dataset.state = "landed";
+      btn.dataset.action = "dismiss";
+      btn.textContent = "Close";
+      btn.focus({ preventScroll: true });
+    },
+  });
+  btn.addEventListener("click", () => { if (landed) location.search = `?state=shop&auction=1&seed=${seed}&theme=${theme}`; else spin.skip(); });
+  window.__lootCrates = { reveal, stakes, history };
+  await spin.play();
+  document.body.dataset.landed = "1";
+}
+
+/*
   The manager's Boxes tab (boxestable.js) with the sample games, one of
   every kind, and the log and round their rows read. With ?added=1 it is
   the tab as "New box" leaves it once saved as the Royal Vault (manager.js
@@ -832,6 +937,7 @@ else if (state === "manager" && q.get("tab") === "boxes") renderBoxes();
 else if (state === "manager" && q.get("tab") === "log") renderLog();
 else if (state === "manager") renderManager();
 else if (state === "table") renderTable();
+else if (state === "auction") renderAuction();
 else if (state === "well") renderWell();
 else if (state === "dice") renderDice();
 else if (state === "deck") renderDeck();

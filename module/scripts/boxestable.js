@@ -46,6 +46,7 @@ import { wellOdds, wellOddsHTML, wellRulesText } from "./well.js";
 import { diceOdds, diceOddsHTML, diceRulesText } from "./dicegame.js";
 import { deckOdds, deckOddsHTML, deckRulesText } from "./deck.js";
 import { betOdds, rouletteOddsHTML, rouletteRulesText } from "./roulette.js";
+import { auctionLotHTML, auctionRulesText } from "./auction.js";
 import { liveRoundOf } from "./round.js";
 import { shopOdds, oddsModeOf } from "./odds.js";
 import { formatPrice } from "./currency.js";
@@ -54,15 +55,21 @@ import { onShelf, shelfCountText, shelfToggleHTML } from "./shelf.js";
 
 // The New buttons, in the order the kinds arrived; their action names are
 // the manager's (test/actions.test.js keeps them off ApplicationV2's own).
-export const NEW_BUTTONS = [["addBox", "New box"], ["addWell", "New well"], ["addDice", "New dice game"], ["addDeck", "New deck"], ["addWheel", "New wheel"]];
+export const NEW_BUTTONS = [["addBox", "New box"], ["addWell", "New well"], ["addDice", "New dice game"], ["addDeck", "New deck"], ["addWheel", "New wheel"], ["addAuction", "New auction"]];
 
 // The table's columns, as its header reads them and as a stacked row
 // captions them (the last, the buttons, needs no caption; its header is
 // named for a screen reader only, tableHTML).
 export const BOXES_COLUMNS = ["Box", "Price", "Pools", "Odds", "Rules", ""];
 
+// The table kinds' rows open their round ("Open a round", "Go to the
+// table"; an auction's "Open the auction", "Go to the auction").
+const TABLE_KINDS = ["roulette", "auction"];
+const TABLE_WORDS = { roulette: ["Open a round", "Go to the table"], auction: ["Open the auction", "Go to the auction"] };
+export const tableLabel = (b, rounds = {}) => (TABLE_WORDS[kindOf(b)] ?? TABLE_WORDS.roulette)[liveRoundOf(rounds, b.id) ? 1 : 0];
+
 // Each kind's tag in the Box column, the crate's included.
-const KIND_TAG = { crate: "Crate", well: "Well", dice: "Dice", deck: "Deck", roulette: "Wheel" };
+const KIND_TAG = { crate: "Crate", well: "Well", dice: "Dice", deck: "Deck", roulette: "Wheel", auction: "Auction" };
 export const kindTag = record => KIND_TAG[kindOf(record)] ?? kindOf(record);
 
 // A box's odds in the Boxes table: its ribbon over its named pills.
@@ -98,21 +105,23 @@ export function boxesTableHTML({ boxes, pools, log = [], rounds = {}, recent = n
     dice: () => diceOddsHTML(diceOdds(b, pools)) || "<em>unbeatable</em>",
     deck: () => deckOddsHTML(deckOdds(b, pools, log)) || "<em>empty</em>",
     roulette: () => rouletteOddsHTML(betOdds(b), esc) || "<em>no pockets</em>",
+    auction: () => auctionLotHTML(b, esc),
   }[kind(b)] ?? (() => oddsCell(oddsRows(shopOdds(b, pools)))))();
   const own = b => ({
     well: () => wellRulesText(b),
     dice: () => diceRulesText(b),
     deck: () => deckRulesText(b, log),
     roulette: () => rouletteRulesText(b),
+    auction: () => auctionRulesText(b),
   }[kind(b)] ?? (() => [oddsModeOf(b) === "weight" ? (b.fromTable ? "the table's odds" : "by item weight") : "", b.rules?.pity ? `${RARITY_LABEL[b.rules.pity.minRarity] ?? b.rules.pity.minRarity} or better after ${b.rules.pity.after} pulls` : "", b.rules?.noDuplicates ? "no dupes" : ""].filter(Boolean).join(", ")))();
-  const rules = b => esc([own(b), kind(b) === "roulette" ? "" : limitsText(b)].filter(Boolean).join(", "));
+  const rules = b => esc([own(b), TABLE_KINDS.includes(kind(b)) ? "" : limitsText(b)].filter(Boolean).join(", "));
   // A deck's row reshuffles; a wheel's opens its round (or brings the open one
   // forward). The text button sits on a line of its own over the icons
   // (module.css lc-table__extra), so the buttons' cell, the one that never
   // wraps, is never wider than the three icons and the table fits every
   // pane down to where its rows stack.
   const extra = b => (kind(b) === "deck" ? `<button type="button" class="lc-table__extra" data-action="reshuffle" data-box="${esc(b.id)}" aria-label="Reshuffle ${esc(b.name)}">Reshuffle</button> `
-    : kind(b) === "roulette" && (onShelf(b) || liveRoundOf(rounds, b.id)) ? `<button type="button" class="lc-table__extra" data-action="openTable" data-box="${esc(b.id)}" aria-label="${liveRoundOf(rounds, b.id) ? "Go to the table" : "Open a round"} at ${esc(b.name)}">${liveRoundOf(rounds, b.id) ? "Go to the table" : "Open a round"}</button> ` : "");
+    : TABLE_KINDS.includes(kind(b)) && (onShelf(b) || liveRoundOf(rounds, b.id)) ? `<button type="button" class="lc-table__extra" data-action="openTable" data-box="${esc(b.id)}" aria-label="${tableLabel(b, rounds)} at ${esc(b.name)}">${tableLabel(b, rounds)}</button> ` : "");
   const [BOX, PRICE, POOLS, ODDS, RULES, ACT] = BOXES_COLUMNS;
   const rowClass = b => [b.id === recent ? "lc-row--new" : "", onShelf(b) ? "" : "lc-row--off"].filter(Boolean).join(" ");
   return tableHTML("lc-table--boxes", BOXES_COLUMNS, boxes.map(b => `<tr${rowClass(b) ? ` class="${rowClass(b)}"` : ""} role="row">
@@ -132,7 +141,7 @@ export function boxesTableHTML({ boxes, pools, log = [], rounds = {}, recent = n
   says what the price is for the game's kind: a crate's price, a deck's
   first draw, a wheel's lowest bet, a well's or dice game's stake.
 */
-const PRICE_NAME = { deck: "First draw at", roulette: "Lowest bet at", well: "Stake at", dice: "Stake at" };
+const PRICE_NAME = { deck: "First draw at", roulette: "Lowest bet at", well: "Stake at", dice: "Stake at", auction: "Opening bid at" };
 export const priceLabel = b => `${PRICE_NAME[kindOf(b)] ?? "Price of"} ${b.name ?? ""}`.trim();
 export function priceInputHTML(b, esc = s => String(s ?? "")) {
   return `<input type="text" class="lc-price-input" data-box-price="${esc(b.id)}" value="${esc(formatPrice(b.price))}" aria-label="${esc(priceLabel(b))}" autocomplete="off" spellcheck="false">`;

@@ -19,7 +19,7 @@ import { openManager, refreshManager, CrateManager, makeCrateFromTable, makeCrat
 import { storeRedraw } from "./redraw.js";
 import { performPull } from "./pull.js";
 import { showReveal, showReplay, sealChatCard, watchAgain, preSealItem, setTableWindow } from "./reveal.js";
-import { openRound, closeRound, resolveRound, recoverRounds, onTable } from "./table.js";
+import { openRound, closeRound, resolveRound, cancelRound, recoverRounds, onTable, watchTables } from "./table.js";
 // The shared table window registers itself with the round's messages and
 // the core's hold when imported.
 import { openTable, openTableFor, refreshTables } from "./tablewindow.js";
@@ -45,14 +45,18 @@ Hooks.once("ready", () => {
   registerSocket();
   const mod = game.modules.get(MODULE_ID);
   // registerKind adds a game of chance that runs on the crate's core (kinds.js).
-  if (mod) mod.api = { openShop, openManager, requestPull, performPull, showReveal, showReplay, draw, oddsTable, buildStrip, seededRng, getPools, getBoxes, getLog, savePool, saveBox, entriesFromCompendium, entryFromItem, registerKind, getKind, kindOf, openRound, closeRound, resolveRound, requestStake, onTable, setTableWindow, getRounds, openTable, openTableFor, makeCrateFromTable };
+  if (mod) mod.api = { openShop, openManager, requestPull, performPull, showReveal, showReplay, draw, oddsTable, buildStrip, seededRng, getPools, getBoxes, getLog, savePool, saveBox, entriesFromCompendium, entryFromItem, registerKind, getKind, kindOf, openRound, closeRound, resolveRound, cancelRound, requestStake, onTable, setTableWindow, getRounds, openTable, openTableFor, makeCrateFromTable };
   // Flag dead pool entries once at load, so the shop's odds are honest before
   // anyone buys; each pull sweeps its own box again (socket.js).
   // A table round's open stakes don't outlive their window across a reload
   // (table.js recoverRounds): the GM's load refunds them and says how many.
+  // An auction still inside its grace then has its gavel brought down, and
+  // a live one keeps its house bidders (table.js watchTables).
   if (isActiveGM()) {
     sweepAllPools();
-    recoverRounds().catch(err => console.error("loot-crates | refunding stale table stakes failed", err));
+    recoverRounds()
+      .catch(err => console.error("loot-crates | refunding stale table stakes failed", err))
+      .finally(() => watchTables());
   }
 });
 

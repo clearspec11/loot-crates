@@ -110,6 +110,20 @@ const STATES = [
   ["roulette-spinning", "state=table&phase=spinning&duration=100000"],
   ["roulette-won", "state=table&phase=landed&outcome=win&duration=0"],
   ["roulette-lost", "state=table&phase=landed&outcome=lose&duration=0"],
+  // The Auction (auction.js) in the same window: open with no bids yet
+  // (the lot, the opening bid, the gavel draining, Tam's "Bid 20 gp");
+  // bids from players and a house bidder (the house's 40 gp on top,
+  // Orla's struck through and said to have come back), where a bid under
+  // the next legal one is refused on the line and Tam's 50 gp lands on
+  // top, beats the house and fills the gavel again; the GM's view (the
+  // gavel and Call it off, no form); the hammer (Sold to Tam for 45 gp,
+  // the stamp, the verdict in the live region, Close focused); and a
+  // sealed crate's strip landed on Tam's draw.
+  ["auction-open", "state=auction&phase=open"],
+  ["auction-bid", "state=auction&phase=bid"],
+  ["auction-gm", "state=auction&phase=bid&gm=1"],
+  ["auction-hammer", "state=auction&phase=hammer&duration=0"],
+  ["auction-crate", "state=auction&phase=hammer&lot=crate&duration=0"],
   ["manager", "state=manager"],
   // A manager window sized 480 px wide, on any screen: its rows follow the
   // window (a container query), so names wrap in full rather than cut off.
@@ -153,6 +167,9 @@ const STATES = [
   // A pull that found nothing: the strip on a blank, "Nothing this time."
   // and the gold left for the buyer, no Open item.
   ["landed-nothing", "state=landed&nothing=1&buyer=1"],
+  // The Midnight Lot's card leads the shelf: the lot, the top bid and who
+  // holds it, the reserve met, the gavel's countdown, "Join the bidding".
+  ["shop-auction", "state=shop&auction=1"],
 ];
 
 // The manager's tables at any width, read from the DOM: the pane never
@@ -438,7 +455,7 @@ function boxesProblems(narrow) {
   const toolbar = document.querySelector(".lc-toolbar--boxes");
   if (!toolbar) return [...out, "no Boxes toolbar"];
   const news = [...toolbar.querySelectorAll('[data-action^="add"]')].map(b => b.textContent.trim());
-  if (news.join("|") !== "New box|New well|New dice game|New deck|New wheel") out.push(`the New buttons read ${news.join(", ")}`);
+  if (news.join("|") !== "New box|New well|New dice game|New deck|New wheel|New auction") out.push(`the New buttons read ${news.join(", ")}`);
   if (toolbar.scrollWidth > toolbar.clientWidth + 1 || toolbar.getBoundingClientRect().right > app.right + 1) out.push("the Boxes toolbar overflows the window");
   if (document.querySelectorAll('[role="status"]').length !== 1) out.push("expected one role=status");
   const status = document.querySelector(".lc-manager__status");
@@ -1066,6 +1083,136 @@ async function tableProblems({ phase, outcome, gm }) {
   return out;
 }
 
+/*
+  The auction's table window (auction.js on tablewindow.js), read from the
+  DOM: the head's gavel is a timer; the board shows the lot, the top bid
+  and who holds it, whether the reserve is met (never its amount), the
+  last bids with the beaten ones struck through; the gavel's bar is drawn
+  with a transform; the player's one primary action names the next legal
+  bid, refuses one under it on the line and places one that lands on top
+  and fills the gavel again; the GM gets the gavel and Call it off; at the
+  hammer the stamp, the verdict in the live region and a focused Close,
+  and for a sealed crate its strip landed on the draw the verdict names.
+*/
+async function auctionProblems({ phase, gm, crate }) {
+  const out = [];
+  const frames = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const text = sel => document.querySelector(sel)?.textContent.replace(/\s+/g, " ").trim() ?? "";
+  const shown = el => !!el && !el.hidden && el.getBoundingClientRect().height > 0;
+  const name = crate ? "The Sealed Lot" : "The Midnight Lot";
+  if (!text(".lc-table__head").startsWith(name)) out.push(`head reads "${text(".lc-table__head")}"`);
+  const stateEl = document.querySelector(".lc-table__state");
+  const landed = phase === "hammer";
+  if (stateEl?.getAttribute("role") !== (landed ? "status" : "timer")) out.push(`the gavel's state has role "${stateEl?.getAttribute("role")}"`);
+  if (!(landed ? /^Settled$/ : /^The gavel falls in 0:\d\d$/).test(stateEl?.textContent.trim() ?? "")) out.push(`the state reads "${stateEl?.textContent}"`);
+  const lot = text(".lc-auction__lotname strong");
+  if (lot !== (crate ? "A sealed Adventurer's Crate" : "Flame Tongue")) out.push(`the lot reads "${lot}"`);
+  const want = { open: ["Opening bid", "20 gp", "No bids yet"], bid: ["Top bid", "40 gp", "House bidder 1"], hammer: ["Sold for", "45 gp", "Tam Thornwick"] }[phase];
+  const got = [text(".lc-auction__line"), text(".lc-auction__amount"), text(".lc-auction__who")];
+  if (got.join("|") !== want.join("|")) out.push(`the bid block reads ${got.join(" | ")}`);
+  const reserve = text(".lc-auction__reserve");
+  const wantReserve = crate ? "" : phase === "open" ? "Reserve not met yet" : "Reserve met";
+  if (reserve !== wantReserve) out.push(`the reserve line reads "${reserve}"`);
+  if (/40 gp/.test(reserve)) out.push("the reserve's amount is shown");
+  const past = [...document.querySelectorAll(".lc-auction__past")];
+  const wantPast = { open: 0, bid: 4, hammer: 5 }[phase];
+  if (!crate && past.length !== wantPast) out.push(`${past.length} past bids on the board`);
+  if (phase === "bid" && (!past[0]?.classList.contains("lc-auction__past--top") || past.slice(1).some(p => !p.classList.contains("lc-auction__past--beaten")))) out.push("the top bid or the beaten ones aren't marked");
+  if (phase === "bid" && getComputedStyle(past[1].querySelector(".lc-auction__past-amount")).textDecorationLine !== "line-through") out.push("a beaten bid isn't struck through");
+  for (const el of document.querySelectorAll(".lc-auction__board *, .lc-table__state, .lc-table__count, .lc-table__bet, .lc-table__spin, .lc-table__cancel")) {
+    if (el.childElementCount || !el.textContent.trim()) continue;
+    if (parseFloat(getComputedStyle(el).fontSize) < 11) { out.push(`${el.className} is under 11px`); break; }
+  }
+  // The strip's track runs past its viewport by design (spin.js); the viewport itself must fit.
+  for (const el of document.querySelectorAll(".lc-table__body *:not(.lc-spin__track, .lc-spin__track *)")) {
+    const r = el.getBoundingClientRect();
+    if (r.right > document.documentElement.clientWidth + 1) { out.push(`the table overflows: ${el.className}`); break; }
+  }
+  const bar = document.querySelector(".lc-gavel__bar");
+  const scale = bar ? new DOMMatrix(getComputedStyle(bar).transform).a : -1;
+  if (!landed && !(scale > 0.4 && scale < 0.9)) out.push(`the gavel's bar is at ${scale.toFixed(2)}, not draining from 14 s of 20`);
+  const form = document.querySelector(".lc-table__form");
+  const spin = document.querySelector(".lc-table__spin");
+  const cancel = document.querySelector(".lc-table__cancel");
+  const btn = document.querySelector(".lc-reveal__close");
+  if (gm) {
+    if (form) out.push("the GM has a bid form with no character");
+    if (!shown(spin) || spin.textContent.trim() !== "Bring the gavel down") out.push(`the GM's gavel reads "${spin?.textContent.trim()}"`);
+    if (!shown(cancel) || cancel.textContent.trim() !== "Call it off") out.push(`the GM's Call it off reads "${cancel?.textContent.trim()}"`);
+    return out;
+  }
+  if (spin || cancel) out.push("a player sees the GM's buttons");
+  if (!landed) {
+    if (!form) return [...out, "no bid form while bidding"];
+    const input = form.querySelector('input[name="amount"]');
+    const bet = form.querySelector(".lc-table__bet");
+    const next = phase === "open" ? "20" : "45";
+    if (input?.value !== next || input.min !== next) out.push(`the bid field holds ${input?.value} (least ${input?.min})`);
+    if (bet?.textContent.trim() !== `Bid ${next} gp`) out.push(`the primary action reads "${bet?.textContent.trim()}"`);
+    if (btn?.textContent !== "Close") out.push(`the close button reads "${btn?.textContent}" while bidding`);
+    if (phase !== "bid") return out;
+    if (!/^House bidder 1 bids 40 gp, the top bid; Orla Vane's bid came back\.$/.test(text(".lc-table__live"))) out.push(`the status line reads "${text(".lc-table__live")}"`);
+    if (text(".lc-table__list") !== "House bidder 1 bids 40 gp") out.push(`the screen-reader list reads "${text(".lc-table__list")}"`);
+    input.value = "42";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    if (bet.textContent.trim() !== "Bid 45 gp") out.push(`under the least bid the button reads "${bet.textContent.trim()}"`);
+    bet.focus();
+    bet.click();
+    await frames();
+    const why = form.querySelector(".lc-table__why");
+    if (why?.textContent !== "Bid at least 45 gp." || !shown(why)) out.push(`a 42 gp bid is refused with "${why?.textContent}"`);
+    if (document.activeElement !== bet) out.push("focus left the bid button on a refusal");
+    input.value = "50";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    if (bet.textContent.trim() !== "Bid 50 gp") out.push(`a typed 50 gp reads "${bet.textContent.trim()}"`);
+    bet.click();
+    await frames();
+    if (text(".lc-auction__amount") !== "50 gp" || text(".lc-auction__who") !== "Tam Thornwick") out.push(`after Tam's bid the board reads ${text(".lc-auction__amount")} by ${text(".lc-auction__who")}`);
+    if (document.querySelectorAll(".lc-auction__past").length !== 5 || !document.querySelector(".lc-auction__past--new.lc-auction__past--mine")) out.push("Tam's bid isn't on the board as new and his own");
+    if (!document.querySelectorAll(".lc-auction__past")[1]?.classList.contains("lc-auction__past--beaten")) out.push("the house's bid isn't struck once beaten");
+    if (!/^Tam Thornwick bids 50 gp, the top bid; House bidder 1 is outbid\.$/.test(text(".lc-table__live"))) out.push(`after the bid the status line reads "${text(".lc-table__live")}"`);
+    if (bet.textContent.trim() !== "Bid 55 gp" || input.value !== "55") out.push(`after the bid the form offers "${bet.textContent.trim()}" (${input.value})`);
+    if (!document.querySelector(".lc-gavel--reset")) out.push("the gavel doesn't show its reset");
+    await frames();
+    const full = new DOMMatrix(getComputedStyle(bar).transform).a;
+    if (!(full > 0.9)) out.push(`the gavel's bar didn't fill again (${full.toFixed(2)})`);
+    if (why?.textContent) out.push(`a good bid still says "${why.textContent}"`);
+    return out;
+  }
+  const stage = document.querySelector(".lc-table__stage");
+  if (!stage?.classList.contains("lc-table__stage--landed")) out.push("the hammer never landed");
+  if (text(".lc-auction__stamp") !== "Sold") out.push(`the stamp reads "${text(".lc-auction__stamp")}"`);
+  const result = document.querySelector(".lc-table__result");
+  const verdict = result?.innerText.replace(/\s+/g, " ").trim() ?? "";
+  if (!verdict.startsWith("Sold to Tam Thornwick for 45 gp.")) out.push(`the verdict reads "${verdict}"`);
+  if (!result?.closest("[aria-live]")) out.push("the verdict is not in a live region");
+  if (btn?.textContent !== "Close" || document.activeElement !== btn) out.push("the landed auction has no focused Close");
+  if (form) out.push("a bid form after the hammer");
+  if (crate) {
+    const card = document.querySelector(".lc-auction__strip.lc-spin--landed .lc-card--landed .lc-card__name")?.textContent.trim();
+    if (!card) out.push("the sealed crate's strip didn't land");
+    else if (!verdict.includes(`The crate gave ${card}.`)) out.push(`the strip landed on "${card}" but the verdict reads "${verdict}"`);
+  } else if (!document.querySelector(".lc-vault")?.classList.contains("lc-rarity-rare")) out.push("the vault isn't in the lot's rarity");
+  return out;
+}
+
+// The auction's card in the shop (auction.js): the lot, the top bid and its
+// bidder, the reserve met, the gavel's countdown, and "Join the bidding" on,
+// its data-price the next legal bid.
+function auctionCardProblems(on) {
+  const card = document.querySelector('.lc-box[data-box="auction"]');
+  if (!on) return card ? ["an auction card in a shop without one"] : [];
+  if (!card) return ["no auction card in the shop"];
+  const out = [];
+  const text = card.innerText.replace(/\s+/g, " ");
+  for (const bit of ["Flame Tongue", "Rare", "Top bid 40 gp by House bidder 1. Reserve met.", "The gavel falls in 0:"]) if (!text.includes(bit)) out.push(`the auction card doesn't say "${bit}"`);
+  const buy = card.querySelector(".lc-box__buy");
+  if (!/Join the bidding$/.test(buy?.textContent.trim() ?? "") || buy.getAttribute("aria-disabled") === "true") out.push(`the auction's Buy reads "${buy?.textContent.trim()}"`);
+  if (buy?.dataset.price !== "45") out.push(`the auction's data-price is ${buy?.dataset.price}`);
+  if (!card.querySelector(".lc-box__round[data-lc-countdown]")) out.push("the auction card's gavel isn't a countdown");
+  return out;
+}
+
 // The shop's honesty rules, read from the DOM: no "0%" anywhere, every pill
 // names its rarity, every unbuyable Buy (aria-disabled, never disabled, so it
 // keeps focus) points at visible reasons, a shop-wide
@@ -1350,6 +1497,7 @@ try {
       await page.goto(`http://localhost:${PORT}/harness/?${query}`, { waitUntil: "networkidle" });
       if (name.startsWith("landed") || name === "replay" || name.startsWith("well") || (name.startsWith("dice") && name !== "dice-rolling") || (name.startsWith("deck") && name !== "deck-held") || (name.startsWith("roulette") && name !== "roulette-spinning")) await page.waitForSelector("body[data-landed]", { timeout: 10000 });
       if (name.startsWith("table")) await page.waitForSelector("body[data-ready]", { timeout: 10000 });
+      if (name.startsWith("auction")) await page.waitForSelector("body[data-ready], body[data-landed]", { timeout: 10000 });
       // Mid-spin: the disc has turned (reduced motion is off for this state).
       if (name === "roulette-spinning") await page.waitForFunction(() => getComputedStyle(document.querySelector(".lc-wheel__turn")).transform !== "none", null, { timeout: 10000 });
       // Mid-hold: the card is posed face-down (reduced motion is off for
@@ -1372,11 +1520,13 @@ try {
         problems0.push(...await page.evaluate(limitCardProblems, { reached: name === "shop-limit", off: name === "shop-closed" || name === "shop-busy", shelved: name === "shop-shelf" }));
         problems0.push(...await page.evaluate(shelfShopProblems, name === "shop-shelf"));
         problems0.push(...await page.evaluate(tableCardProblems, name === "shop-table"));
+        problems0.push(...await page.evaluate(auctionCardProblems, name === "shop-auction"));
       }
       else if (name === "box-limits") problems0.push(...await page.evaluate(limitsEditorProblems), ...await page.evaluate(shelfEditorProblems));
       else if (name === "box-odds") problems0.push(...await page.evaluate(oddsEditorProblems));
       else if (name === "drop-preview") problems0.push(...await page.evaluate(dropPreviewProblems));
       else if (name === "landed-nothing") problems0.push(...await page.evaluate(nothingRevealProblems));
+      else if (name.startsWith("auction")) problems0.push(...await page.evaluate(auctionProblems, { phase: { "auction-open": "open", "auction-bid": "bid", "auction-gm": "bid", "auction-hammer": "hammer", "auction-crate": "hammer" }[name], gm: name === "auction-gm", crate: name === "auction-crate" }));
       else if (name.startsWith("table") || name.startsWith("roulette")) problems0.push(...await page.evaluate(tableProblems, { phase: { "table-betting": "betting", "table-waiting": "waiting", "table-closed": "closed", "roulette-spinning": "spinning", "roulette-won": "landed", "roulette-lost": "landed" }[name], outcome: name === "roulette-lost" ? "lose" : "win", gm: name === "table-waiting" }));
       else if (name.startsWith("dice")) problems0.push(...await page.evaluate(diceProblems, { "dice-rolling": "rolling", "dice-won": "win", "dice-lost": "lose" }[name]));
       else if (name.startsWith("deck")) problems0.push(...await page.evaluate(deckProblems, { "deck-held": "held", "deck-boon": "item", "deck-bane": "loss", "deck-effect": "effect" }[name]));

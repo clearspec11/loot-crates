@@ -48,6 +48,7 @@ import "./well.js";
 import "./dicegame.js";
 import "./deck.js";
 import "./roulette.js";
+import "./auction.js";
 
 const { ApplicationV2 } = foundry.applications.api;
 const esc = s => foundry.utils.escapeHTML(String(s ?? ""));

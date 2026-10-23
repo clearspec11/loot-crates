@@ -88,6 +88,7 @@ import { WELL_DEFAULTS, stakeCoins, stakeGp, draftWell, wellPreview, wellPreview
 import { DICE_DEFAULTS, FORMULAS, draftDice, dicePreview, dicePreviewHTML, diceSummary } from "./dicegame.js";
 import { CARD_KINDS, CARD_KIND_HINT, cardsOf, stepOf, deckOdds, draftDeck, deckPreview, deckPreviewHTML, deckSummary } from "./deck.js";
 import { ROULETTE_DEFAULTS, BET_TYPES, BET_TYPE_LABEL, pocketsOf, coloursOf, draftRoulette, roulettePreview, roulettePreviewHTML, rouletteSummary, payoutOf, maxStakeOf, maxBetsOf, windowMsOf, itemOnRarity } from "./roulette.js";
+import { MAX_HOUSE, MIN_GAVEL_SEC, HOUSE_TICK_MS, lotOf, lotFromEntry, lotFromCrate, incrementOf, reserveOf, gavelMsOf, houseOf, draftAuction, auctionPreview, auctionPreviewHTML, auctionSummary } from "./auction.js";
 import { newDraft, crateFromPool, crateFromTable, copyOf, editorTitle, addLabel, addedNotice } from "./newgame.js";
 import { boxesTabHTML } from "./boxestable.js";
 import { logTableHTML, logRarityNote, logPayoutNote, logStakeNote, logLateNote } from "./logtable.js";
@@ -127,7 +128,7 @@ export class CrateManager extends ApplicationV2 {
       switchTab: CrateManager.#switchTab,
       addPool: CrateManager.#addPool, editPool: CrateManager.#editPool, deletePool: CrateManager.#deletePool,
       bulkAdd: CrateManager.#bulkAdd, setUnsetRarity: CrateManager.#setUnsetRarity, removeEntry: CrateManager.#removeEntry, updateEntry: CrateManager.#updateEntry, relinkEntry: CrateManager.#relinkEntry,
-      addBox: CrateManager.#addBox, addWell: CrateManager.#addWell, addDice: CrateManager.#addDice, addDeck: CrateManager.#addDeck, addWheel: CrateManager.#addWheel, crateFromPool: CrateManager.#crateFromPool,
+      addBox: CrateManager.#addBox, addWell: CrateManager.#addWell, addDice: CrateManager.#addDice, addDeck: CrateManager.#addDeck, addWheel: CrateManager.#addWheel, addAuction: CrateManager.#addAuction, crateFromPool: CrateManager.#crateFromPool,
       editBox: CrateManager.#editBox, toggleShelf: CrateManager.#toggleShelf, copyBox: CrateManager.#copyBox, deleteBox: CrateManager.#deleteBox, reshuffle: CrateManager.#reshuffle, openTable: CrateManager.#openTable,
       refund: CrateManager.#refund, toggleShop: CrateManager.#toggleShop, openShop: CrateManager.#openShop, toggleMisses: CrateManager.#toggleMisses,
       filterChip: CrateManager.#filterChip, showMore: CrateManager.#showMore,
@@ -523,6 +524,7 @@ export class CrateManager extends ApplicationV2 {
   static #addDice() { return this.#openEditor(newDraft("dice", { id: newId() }), { isNew: true }); }
   static #addDeck() { return this.#openEditor(newDraft("deck", { id: newId() }), { isNew: true }); }
   static #addWheel() { return this.#openEditor(newDraft("roulette", { id: newId() }), { isNew: true }); }
+  static #addAuction() { return this.#openEditor(newDraft("auction", { id: newId() }), { isNew: true }); }
 
   // "New crate from this pool" on a pool's bar: the crate's editor on a
   // draft named for the pool and drawing only from it, the price focused,
@@ -575,7 +577,7 @@ export class CrateManager extends ApplicationV2 {
 
   // The editor for a record's kind, on the record or on a new draft.
   #openEditor(box, opts = {}) {
-    const editor = { well: CrateManager.#editWell, dice: CrateManager.#editDice, deck: CrateManager.#editDeck, roulette: CrateManager.#editWheel }[kindOf(box)] ?? CrateManager.#editCrate;
+    const editor = { well: CrateManager.#editWell, dice: CrateManager.#editDice, deck: CrateManager.#editDeck, roulette: CrateManager.#editWheel, auction: CrateManager.#editAuction }[kindOf(box)] ?? CrateManager.#editCrate;
     return editor.call(this, box, { isNew: false, focus: null, ...opts });
   }
 
@@ -994,6 +996,91 @@ export class CrateManager extends ApplicationV2 {
     }), data);
   }
 
+  /*
+    The auction's editor (auction.js): the lot, picked from the GM's crates
+    (sold sealed, opened for the winner at the hammer) or the items in the
+    pools, or dropped onto the editor from the Items sidebar or a
+    compendium; the opening bid, the least raise, the reserve (players see
+    only whether it is met) and the gavel; the house bidders; what the
+    table will see as a live preview. Nothing is written until Save.
+  */
+  static async #editAuction(box, opts) {
+    const { isNew } = opts;
+    const choices = auctionLotChoices(box);
+    const house = houseOf(box);
+    const data = await promptForm(editorTitle(box, isNew, opts.copy), `
+      <label>Name <input name="name" value="${esc(box.name)}"${autofocus("name", opts)}></label>
+      <fieldset class="lc-auction-lot"><legend>The lot</legend>
+        <label class="lc-field">What is sold <select name="lot" class="lc-auction-lot__pick">${lotOptionsHTML(choices, lotKey(lotOf(box)))}</select></label>
+        <div class="lc-auction-lot__drop" data-lot-drop>Or drop an item here from the Items sidebar or a compendium.</div>
+        <p class="lc-form__hint" data-lot-said role="status"></p>
+      </fieldset>
+      <fieldset><legend>Bids</legend>
+        ${priceFieldHTML("Opening bid", box, opts)}
+        <div class="lc-row lc-row--wrap">Each bid raises the last by at least <input name="increment" type="number" min="0" step="any" value="${esc(incrementOf(box))}" aria-label="Least raise in gp"> gp</div>
+        <div class="lc-row lc-row--wrap">Reserve <input name="reserve" type="number" min="0" step="any" value="${esc(reserveOf(box))}" aria-label="Reserve in gp, 0 for none"> gp, 0 for none</div>
+        <div class="lc-row lc-row--wrap">The gavel falls <input name="gavelSec" type="number" min="${MIN_GAVEL_SEC}" step="1" value="${esc(gavelMsOf(box) / 1000)}" aria-label="Seconds the gavel waits after the last bid"> seconds after the last bid</div>
+        <p class="lc-form__hint">Players see whether the reserve is met, never its amount. Every bid resets the gavel; when it falls, the top bid wins and pays, and every other bid has already come back.</p>
+      </fieldset>
+      <fieldset><legend>House bidders</legend>
+        <div class="lc-row lc-row--wrap"><input name="houseCount" type="number" min="0" max="${MAX_HOUSE}" step="1" value="${esc(house.count)}" aria-label="How many house bidders"> house bidders, each bidding up to <input name="houseBudget" type="number" min="0" step="any" value="${esc(house.budget)}" aria-label="Each house bidder's budget in gp"> gp, with a <input name="houseChance" type="number" min="0" max="100" step="1" value="${esc(house.chance)}" aria-label="Chance a house bidder bids, in percent"> % chance every ${HOUSE_TICK_MS / 1000} s</div>
+        <p class="lc-form__hint">They bid only against a player, never past their budget, and hold no coins: a house win sells nothing and every bid comes back.</p>
+      </fieldset>
+      <div class="lc-form__odds" role="group" aria-labelledby="lc-odds-${esc(box.id)}">
+        <div class="lc-form__label" id="lc-odds-${esc(box.id)}">What the table sees</div>
+        <div class="lc-form__preview"></div>
+        <p class="lc-sr-only" role="status" aria-live="polite"></p>
+      </div>
+      ${shelfFieldHTML(box, opts)}`, {
+      onForm: form => {
+        wireShelf(form, isNew);
+        wirePrice(form);
+        const paint = liveOdds(form, box, [], draft => {
+          const preview = auctionPreview(draft);
+          return { html: auctionPreviewHTML(preview, esc), summary: auctionSummary(preview), held: new Set() };
+        }, (game, values) => draftAuction({ ...game, price: parsePrice(values.price) ?? game.price }, { ...values, price: parsePrice(values.price) ?? game.price }, key => choices.get(key)));
+        // An item dropped on the editor becomes the lot (and a choice of its own).
+        const zone = form.querySelector("[data-lot-drop]");
+        const said = form.querySelector("[data-lot-said]");
+        const pick = form.querySelector(".lc-auction-lot__pick");
+        zone?.addEventListener("dragover", e => { e.preventDefault(); zone.classList.add("lc-auction-lot__drop--over"); });
+        zone?.addEventListener("dragleave", () => zone.classList.remove("lc-auction-lot__drop--over"));
+        zone?.addEventListener("drop", async e => {
+          e.preventDefault();
+          zone.classList.remove("lc-auction-lot__drop--over");
+          let drop;
+          try { drop = dragData(e); } catch { drop = null; }
+          const item = drop?.type === "Item" && drop.uuid ? await fromUuid(drop.uuid).catch(() => null) : null;
+          if (!item || !isLootType(item.type)) { if (said) said.textContent = "Drop an item: a weapon, armour, a potion, a tool or loot."; return; }
+          const lot = lotFromEntry(entryFromItem(item, drop.uuid));
+          const key = lotKey(lot);
+          choices.set(key, lot);
+          if (!pick.querySelector(`option[value="${CSS.escape(key)}"]`)) {
+            let group = pick.querySelector("optgroup[data-dropped]");
+            if (!group) { pick.insertAdjacentHTML("beforeend", `<optgroup label="Dropped here" data-dropped></optgroup>`); group = pick.querySelector("optgroup[data-dropped]"); }
+            group.insertAdjacentHTML("beforeend", `<option value="${esc(key)}">${esc(lot.name)}</option>`);
+          }
+          pick.value = key;
+          if (said) said.textContent = `${lot.name} is the lot.`;
+          paint();
+        });
+      },
+      position: { width: 540 },
+      okLabel: saveLabel(isNew),
+    });
+    if (!data) return;
+    const price = parsePrice(data.price) ?? box.price;
+    const draft = draftAuction({ ...box, price }, { ...data, price }, key => choices.get(key));
+    return this.#saveEditor(box, isNew, fresh => ({
+      ...fresh,
+      kind: "auction",
+      name: data.name || fresh.name,
+      price: draft.price,
+      pools: [],
+      auction: draft.auction,
+    }), data);
+  }
+
   static async #deleteBox(_e, t) {
     const box = getBoxes()[t.dataset.box];
     if (await DialogV2.confirm({ window: { title: "Delete box" }, content: `<p>Delete <strong>${esc(box.name)}</strong>?</p>` })) {
@@ -1341,6 +1428,35 @@ function cardRow(c, n) {
     </div>`;
 }
 
+/*
+  The auction editor's lots, by their choice's value: every crate (sold
+  sealed), every item in the pools (once each, a missing one left out),
+  and the record's own lot when it is neither (an item dropped earlier).
+*/
+const lotKey = lot => (!lot ? "" : lot.type === "crate" ? `crate:${lot.boxId}` : `item:${lot.uuid}`);
+function auctionLotChoices(box) {
+  const out = new Map();
+  for (const b of Object.values(getBoxes())) if (kindOf(b) === "crate") out.set(lotKey(lotFromCrate(b)), lotFromCrate(b));
+  const pools = getPools();
+  for (const p of Object.values(pools)) {
+    for (const e of flattenPool(p.id, pools)) {
+      const lot = lotFromEntry(e);
+      if (!out.has(lotKey(lot))) out.set(lotKey(lot), { ...lot, pool: p.name });
+    }
+  }
+  const own = lotOf(box);
+  if (own && !out.has(lotKey(own))) out.set(lotKey(own), { ...own, dropped: true });
+  return out;
+}
+function lotOptionsHTML(choices, picked = "") {
+  const all = [...choices.entries()];
+  const group = (label, list, attr = "") => (list.length ? `<optgroup label="${esc(label)}"${attr}>${list.map(([k, l]) => `<option value="${esc(k)}"${k === picked ? " selected" : ""}>${esc(l.type === "crate" ? l.name : `${l.name}${l.rarity && l.rarity !== "none" ? `, ${RARITY_LABEL[l.rarity] ?? l.rarity}` : ""}${l.pool ? ` (${l.pool})` : ""}`)}</option>`).join("")}</optgroup>` : "");
+  return `<option value=""${picked ? "" : " selected"}>Pick a lot</option>`
+    + group("Sealed crates", all.filter(([, l]) => l.type === "crate"))
+    + group("Items in your pools", all.filter(([, l]) => l.type === "item" && !l.dropped))
+    + group("Dropped here", all.filter(([, l]) => l.dropped), " data-dropped");
+}
+
 // One pocket of the wheel editor (roulette.js draftRoulette reads these
 // names): its place on the wheel, its colour (named as the GM names them)
 // and its rarity.
@@ -1546,7 +1662,7 @@ export function managerShows(tab, key, boxes = {}) {
   if (key === SETTINGS.SHOP_OPEN) return true;
   const has = kind => Object.values(boxes ?? {}).some(b => kindOf(b) === kind);
   if (key === SETTINGS.LOG) return tab === "log" || (tab === "boxes" && has("deck"));
-  if (key === SETTINGS.ROUNDS) return tab === "log" || (tab === "boxes" && has("roulette"));
+  if (key === SETTINGS.ROUNDS) return tab === "log" || (tab === "boxes" && (has("roulette") || has("auction")));
   if (key === SETTINGS.BOXES || key === SETTINGS.POOLS) return tab === "boxes";
   return false;
 }

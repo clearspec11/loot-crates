@@ -129,7 +129,7 @@ const field = name => dialog.form.querySelector(`[name="${name}"]`);
 const status = app => app.element.querySelector(".lc-manager__status");
 const focused = () => document.activeElement;
 
-const NEWS = [["addBox", "crate", "New box"], ["addWell", "well", "New well"], ["addDice", "dice", "New dice game"], ["addDeck", "deck", "New deck"], ["addWheel", "roulette", "New wheel"]];
+const NEWS = [["addBox", "crate", "New box"], ["addWell", "well", "New well"], ["addDice", "dice", "New dice game"], ["addDeck", "deck", "New deck"], ["addWheel", "roulette", "New wheel"], ["addAuction", "auction", "New auction"]];
 
 describe("New then Cancel", () => {
   for (const [action, kind, title] of NEWS) {
@@ -205,6 +205,31 @@ describe("New then Save", () => {
       expect(status(app).textContent).toBe(newgame.addedNotice(boxes[0], { shopOpen: true }));
     });
   }
+
+  it("addAuction: lists the crates and the pools' items as lots, and saves the one picked with the bids and the house", async () => {
+    await store.saveBox({ id: "crate1", name: "Goblin Crate", price: 50, pools: [{ id: "p", share: 1 }], rules: {} });
+    sets = 0;
+    const app = await manager();
+    const pending = act(app, "addAuction");
+    await settle(2);
+    const options = [...field("lot").querySelectorAll("option")].map(o => o.getAttribute("value"));
+    expect(options).toEqual(["", "crate:crate1", "item:Item.a", "item:Item.b"]);
+    field("name").value = "The Flame Tongue";
+    field("lot").value = "item:Item.b";
+    field("price").value = "20 gp";
+    field("increment").value = "2";
+    field("reserve").value = "40";
+    field("gavelSec").value = "15";
+    field("houseCount").value = "2";
+    field("houseBudget").value = "60";
+    field("houseChance").value = "30";
+    dialog.save();
+    await pending;
+    await settle();
+    const made = Object.values(store.getBoxes()).find(b => b.kind === "auction");
+    expect(made).toMatchObject({ kind: "auction", name: "The Flame Tongue", price: 20, pools: [], auction: { lot: { type: "item", uuid: "Item.b", name: "Flame Tongue", rarity: "rare" }, increment: 2, reserve: 40, gavelSec: 15, house: { count: 2, budget: 60, chance: 30 } } });
+    expect(status(app).textContent).toBe("The Flame Tongue is on the shelf; bids open at 20 gp.");
+  });
 
   it("reads Add, and says the shop is closed, while it is", async () => {
     settings.set("shopOpen", false);

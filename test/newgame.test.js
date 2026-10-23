@@ -17,7 +17,7 @@ import { DECK_DEFAULTS } from "../module/scripts/deck.js";
 import { ROULETTE_DEFAULTS } from "../module/scripts/roulette.js";
 import { kindOf } from "../module/scripts/kinds.js";
 
-const KINDS = ["crate", "well", "dice", "deck", "roulette"];
+const KINDS = ["crate", "well", "dice", "deck", "roulette", "auction"];
 
 describe("the defaults per kind", () => {
   it("cover every kind the Boxes tab offers, each as that kind with the button's name", () => {
@@ -60,7 +60,7 @@ describe("newDraft", () => {
   });
 
   it("refuses a kind with no New", () => {
-    expect(() => newDraft("auction", { id: "x" })).toThrow(/no New/);
+    expect(() => newDraft("raffle", { id: "x" })).toThrow(/no New/);
   });
 });
 
@@ -79,6 +79,7 @@ const SOURCES = {
   well: { id: "w1", kind: "well", name: "Old Well", price: 0.1, pools: [{ id: "p1", share: 1 }], weights: { common: 1, uncommon: 1, rare: 1, veryRare: 0, legendary: 0, artifact: 0 }, odds: { nothing: 90, coin: 8, item: 2 }, rules: { cap: 3, pity: { minRarity: "uncommon", after: 20 }, stock: 0, stockMax: 5 } },
   dice: { id: "d1", kind: "dice", name: "Dragon's Teeth", price: 10, pools: [{ id: "p2", share: 1 }], weights: { common: 1, uncommon: 1, rare: 1, veryRare: 1, legendary: 1, artifact: 1 }, dice: { formula: "2d6", target: 9, multiplier: 2.5 }, rules: { prize: true, perCharacter: { max: 3, per: "ever" }, stock: 1, stockMax: 4 } },
   deck: { id: "k1", kind: "deck", name: "Thornwick Deck", price: 10, pools: [{ id: "p1", share: 1 }], weights: { common: 0, uncommon: 2, rare: 1, veryRare: 0, legendary: 0, artifact: 0 }, deck: { step: 1.5, shuffledAt: 1000, cards: [{ id: "a", label: "Sun", kind: "item", weight: 2, once: true, gp: 0, text: "" }, { id: "b", label: "Ruin", kind: "loss", weight: 1, once: false, gp: 25, text: "" }, { id: "c", label: "Fates", kind: "effect", weight: 1, once: true, gp: 0, text: "Undo one thing." }] }, rules: { stock: 2, stockMax: 2 } },
+  auction: { id: "u1", kind: "auction", name: "The Sling", price: 10, pools: [], weights: { common: 1, uncommon: 1, rare: 1, veryRare: 1, legendary: 1, artifact: 1 }, auction: { lot: { type: "item", uuid: "Item.sling", name: "Sling +2", img: "", rarity: "uncommon" }, increment: 5, reserve: 30, gavelSec: 20, house: { count: 2, budget: 60, chance: 25 } }, rules: {} },
   roulette: { id: "r1", kind: "roulette", name: "Wheel of Fate", price: 5, pools: [{ id: "p2", share: 1 }], weights: { common: 1, uncommon: 1, rare: 1, veryRare: 1, legendary: 1, artifact: 1 }, roulette: { colours: ["red", "black"], pockets: [{ n: 1, colour: 0, rarity: "common" }, { n: 2, colour: 1, rarity: "rare" }, { n: 3, colour: 0, rarity: "legendary" }], payouts: { colour: 1, number: 11, rarity: 3 }, itemOnRarity: true, maxStake: 50, maxBets: 3, windowSec: 45 }, rules: {} },
 };
 // The copy's settings are the source's but for the id, the name and what is reset.
@@ -113,6 +114,7 @@ describe("copyOf", () => {
       if (copy.roulette) { copy.roulette.pockets[0].rarity = "artifact"; copy.roulette.pockets.pop(); copy.roulette.payouts.colour = 99; }
       if (copy.dice) copy.dice.target = 2;
       if (copy.odds) copy.odds.item = 50;
+      if (copy.auction) { copy.auction.lot.name = "Changed"; copy.auction.house.count = 0; }
       expect(source).toEqual(was);
     });
   }
@@ -178,7 +180,7 @@ describe("the dialog's words", () => {
     }
     expect(editorTitle({ name: "Old", price: 5 }, false)).toBe("Edit box");
     expect(editorTitle({ name: "Old", price: 5 }, true, true)).toBe("Copy box");
-    expect(editorTitle({ kind: "auction", name: "Lot" }, true, true)).toBe("Copy game");
+    expect(editorTitle({ kind: "raffle", name: "Lot" }, true, true)).toBe("Copy game");
     expect(NEW_TITLE.dice).toBe("New dice game");
     expect(COPY_TITLE.dice).toBe("Copy dice game");
   });

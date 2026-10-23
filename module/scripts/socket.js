@@ -76,10 +76,10 @@
 import { SOCKET } from "./config.js";
 import { performPull, performStake, PullError } from "./pull.js";
 import { getKind, kindOf, gotText } from "./kinds.js";
-import { getBoxes, getPools, getLog, getActorState, setActorState, appendLog, updateLog, newId, isShopOpen, saveBox, enqueueWrite, refreshMissing, markMissing, reportMissing, todayKey, getRounds } from "./store.js";
+import { getBoxes, getPools, getLog, getActorState, setActorState, appendLog, updateLog, newId, isShopOpen, saveBox, enqueueWrite, refreshMissing, markMissing, reportMissing, todayKey, getRounds, saveRound } from "./store.js";
 import { formatPrice } from "./currency.js";
 import { stakeReason, stakesOf } from "./round.js";
-import { heard as tableHeard, closeStakes } from "./table.js";
+import { heard as tableHeard, closeStakes, watchTables } from "./table.js";
 import { showReveal } from "./reveal.js";
 import { postPullCard } from "./chat.js";
 
@@ -465,7 +465,9 @@ function handleStake(msg) {
   the charge through settle()), and the open log row in the same task, so
   the coins are never without a row. A row that can't be written puts the
   coins back. Stakes the kind says this one displaces (an outbid) are
-  refunded in the same task. Then everyone hears it ("staked").
+  refunded in the same task, and the round's clock is moved when the kind
+  says so (the Auction's gavel, reset by each bid). Then everyone hears it
+  ("staked", carrying the round as it now stands).
 */
 async function doStake(msg, timer, sent, stopWatching) {
   timer.mark("queue");
@@ -478,7 +480,7 @@ async function doStake(msg, timer, sent, stopWatching) {
     if (wasCancelled(msg)) return null;
     const { actor, buyer } = guardBuyer(msg);
     box = getBoxes()[msg.boxId];
-    const round = getRounds()[msg.roundId] ?? null;
+    let round = getRounds()[msg.roundId] ?? null;
     if (round && round.boxId !== msg.boxId) throw new PullError("That round is at another table.");
     const why = stakeReason(round);
     if (why) throw new PullError(why);
@@ -501,10 +503,16 @@ async function doStake(msg, timer, sent, stopWatching) {
     }
     rememberCharge(msg.requestId, { requestId: msg.requestId, userId: msg.userId, buyerName: buyer.name, actorName: actor.name, boxName: box.name, got: `staked ${formatPrice(out.price)}`, logId });
     const displaced = stakes.filter(r => out.outbid.includes(r.id) && r.status === "open");
-    if (displaced.length) await closeStakes(displaced.map(r => ({ row: r, action: game.actors.get(r.actorId) ? "refund" : "void", reason: "outbid", payoutCp: 0 })));
+    if (displaced.length) await closeStakes(displaced.map(r => ({ row: r, action: r.house || game.actors.get(r.actorId) ? "refund" : "void", reason: "outbid", payoutCp: 0 })));
+    // The coins and the row are settled by now: a clock that can't be
+    // moved is reported, never thrown back at the bidder.
+    if (out.closesIn != null) {
+      try { round = await saveRound({ ...round, closesAt: Date.now() + out.closesIn }); } catch (err) { console.error(`loot-crates | moving the clock at ${box.name} after ${actor.name}'s stake failed`, err); }
+    }
+    watchTables();
 
     stopWatching();
-    const staked = { type: "staked", requestId: msg.requestId, userId: msg.userId, roundId: round.id, boxId: box.id, logId, actorId: actor.id, actorName: actor.name, price: out.price, stake: out.stake, purse: out.purse, outbid: displaced.map(r => r.id) };
+    const staked = { type: "staked", requestId: msg.requestId, userId: msg.userId, roundId: round.id, boxId: box.id, logId, actorId: actor.id, actorName: actor.name, price: out.price, stake: out.stake, purse: out.purse, outbid: displaced.map(r => r.id), round };
     game.socket.emit(SOCKET, staked);
     timer.mark("broadcast");
     if (msg.userId !== game.user.id && cancelled.delete(msg.requestId)) lateCancel(charged.get(msg.requestId));

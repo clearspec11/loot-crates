@@ -1072,6 +1072,94 @@
 .loot-crates .lc-chat__replay:hover::after { border-color: var(--lc-btn-ink); }
 .loot-crates.lc-chat--sealed .lc-chat__replay { display: none; }
 
+/* ---------- The auction (auction.js) on the table window ---------- */
+
+/* The board in the vault: the lot on the left with its rarity as the
+   card's edge, the top bid on the right in the display face and the pin's
+   gold (the one number the room watches), the last five bids under them
+   as tags, and the gavel's bar under it all. auction.js drains the bar
+   with one scaleX transform from one animation frame loop; a bid fills it
+   again with a short brighten (lc-gavel--reset). At the hammer the
+   gavel's head swings once (one rotate) and the stamp lands; a sealed
+   crate's strip (spin.js) then runs under the board. */
+.loot-crates .lc-auction-stage { display: block; }
+.loot-crates .lc-auction { display: grid; gap: 10px; width: 100%; }
+.loot-crates .lc-auction__board {
+  display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); grid-template-areas: "lot bid" "bids bids";
+  gap: 12px 18px; align-items: center;
+}
+.loot-crates .lc-auction__lot {
+  grid-area: lot; display: flex; align-items: center; gap: 12px; min-width: 0; padding: 10px 12px; box-sizing: border-box;
+  background: var(--lc-vault-card); border: 1px solid var(--lc-vault-line); border-left: 3px solid var(--lc-rarity, var(--lc-vault-line)); border-radius: var(--lc-radius);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, .45);
+}
+.loot-crates .lc-auction__art {
+  width: 64px; height: 64px; flex: none; display: grid; place-items: center; box-sizing: border-box; border-radius: 4px; color: var(--lc-vault-soft);
+  border: 1px solid var(--lc-pin); background: color-mix(in srgb, var(--lc-rarity, var(--lc-vault)) 14%, var(--lc-vault));
+  box-shadow: 0 0 0 2px var(--lc-vault-card), 0 0 0 3px color-mix(in srgb, var(--lc-pin) 55%, transparent);
+}
+.loot-crates .lc-auction__art img { width: 58px; height: 58px; object-fit: contain; border: 0; }
+.loot-crates .lc-auction__lotname { display: grid; gap: 3px; min-width: 0; }
+.loot-crates .lc-auction__lotname strong { font-family: var(--lc-slab); font-size: 15px; line-height: 1.2; color: var(--lc-vault-ink); overflow-wrap: anywhere; }
+.loot-crates .lc-auction__sub { font-size: 12px; line-height: 1.3; color: var(--lc-vault-soft); }
+.loot-crates .lc-auction__bid { grid-area: bid; position: relative; display: grid; justify-items: start; gap: 2px; min-width: 0; }
+.loot-crates .lc-auction__line { font-family: var(--lc-label); font-size: 12px; font-weight: 700; letter-spacing: .03em; color: var(--lc-vault-soft); }
+.loot-crates .lc-auction__amount { font-family: var(--lc-display); font-size: 40px; font-weight: 700; line-height: 1; color: var(--lc-pin); font-variant-numeric: tabular-nums; text-shadow: 0 2px 10px rgba(0, 0, 0, .6); }
+.loot-crates .lc-auction__who { font-size: 13px; font-weight: 700; color: var(--lc-vault-ink); overflow-wrap: anywhere; }
+.loot-crates .lc-auction__reserve { margin-top: 2px; font-size: 12px; color: var(--lc-vault-soft); }
+.loot-crates .lc-auction__reserve[data-met="true"] { color: var(--lc-pin); }
+.loot-crates .lc-auction__bid[data-state="nosale"] .lc-auction__amount { color: var(--lc-vault-soft); }
+/* The stamp at the hammer: Sold in the pin's gold, No sale in the soft ink. */
+.loot-crates .lc-auction__stamp {
+  position: absolute; right: 0; top: 0; padding: 3px 10px 2px; border: 2px solid var(--lc-pin); border-radius: 4px;
+  font-family: var(--lc-display); font-size: 22px; font-weight: 700; line-height: 1; color: var(--lc-pin);
+  transform: rotate(-8deg); animation: lc-stamp 300ms cubic-bezier(.2, 1.4, .4, 1) both;
+}
+.loot-crates .lc-auction__bid[data-state="nosale"] .lc-auction__stamp { border-color: var(--lc-vault-soft); color: var(--lc-vault-soft); }
+@keyframes lc-stamp { from { transform: rotate(-8deg) scale(1.6); opacity: 0; } to { transform: rotate(-8deg) scale(1); opacity: 1; } }
+.loot-crates .lc-auction__bids { grid-area: bids; display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.loot-crates .lc-auction__bids--empty { display: block; font-size: 12px; color: var(--lc-vault-soft); }
+.loot-crates .lc-auction__past {
+  display: inline-flex; align-items: baseline; gap: 6px; padding: 3px 8px; border-radius: 3px; font-size: 12px; line-height: 1.3;
+  color: var(--lc-vault-ink); background: var(--lc-vault-card); border: 1px solid var(--lc-vault-line);
+}
+.loot-crates .lc-auction__past-amount { font-family: var(--lc-label); font-weight: 700; color: var(--lc-pin); font-variant-numeric: tabular-nums; }
+.loot-crates .lc-auction__past--top { border-color: var(--lc-pin); }
+.loot-crates .lc-auction__past--beaten { color: var(--lc-vault-soft); }
+.loot-crates .lc-auction__past--beaten .lc-auction__past-amount { color: var(--lc-vault-soft); text-decoration: line-through; }
+.loot-crates .lc-auction__past--mine { box-shadow: inset 0 -2px 0 var(--lc-vault-ink); }
+.loot-crates .lc-auction__past--house .lc-auction__past-who { font-style: italic; }
+.loot-crates .lc-auction__past--new { animation: lc-token-land 320ms cubic-bezier(.16, 1, .3, 1) both; }
+/* The gavel's bar and the gavel. */
+.loot-crates .lc-gavel { display: flex; align-items: center; gap: 10px; }
+.loot-crates .lc-gavel__track { flex: 1; height: 6px; border-radius: 3px; overflow: hidden; background: var(--lc-vault-line); }
+.loot-crates .lc-gavel__bar { display: block; width: 100%; height: 100%; background: var(--lc-pin); transform: scaleX(0); transform-origin: left center; will-change: transform; }
+.loot-crates .lc-gavel--reset .lc-gavel__bar { animation: lc-gavel-reset 420ms ease-out; }
+@keyframes lc-gavel-reset { from { filter: brightness(1.7); } to { filter: none; } }
+.loot-crates .lc-gavel--idle .lc-gavel__track { opacity: .5; }
+.loot-crates .lc-gavel__art { flex: none; fill: var(--lc-pin); stroke: var(--lc-pin); stroke-width: 0; }
+.loot-crates .lc-gavel__art path { fill: none; stroke-width: 2.4; }
+.loot-crates .lc-gavel__head { transform-box: view-box; transform-origin: 19px 19px; }
+.loot-crates .lc-table__stage--spinning .lc-gavel__head { will-change: transform; }
+.loot-crates .lc-auction__strip[hidden] { display: none; }
+.loot-crates .lc-auction-stage--crate .lc-auction__bids { display: none; }
+/* The shop card's lot art, the chat card's sealed crate. */
+.loot-crates .lc-box--auction .lc-box__art img { width: 52px; height: 52px; object-fit: contain; border: 0; }
+.loot-crates .lc-auction__icon, .loot-crates .lc-auction__glyph { display: block; }
+.loot-crates .lc-chat__lot { display: grid; place-items: center; width: 36px; height: 36px; flex: none; margin: 0 5px; color: var(--lc-gold-ink); }
+.loot-crates .lc-chat__lot svg { width: 30px; height: 30px; }
+/* The GM's Call it off sits beside the gavel, away from Close. */
+.loot-crates .lc-reveal__actions .lc-table__spin:has(+ .lc-table__cancel) { margin-right: 0; }
+.loot-crates .lc-reveal__actions .lc-table__cancel { margin-right: auto; }
+/* The editor's lot: a select, and a place to drop an item. */
+.loot-crates .lc-auction-lot__pick { max-width: 100%; }
+.loot-crates .lc-auction-lot__drop {
+  margin-top: 6px; padding: 10px; box-sizing: border-box; border: 1px dashed var(--lc-rule-soft); border-radius: var(--lc-radius);
+  font-size: 12px; text-align: center; color: var(--lc-ink-mute);
+}
+.loot-crates .lc-auction-lot__drop--over { border-color: var(--lc-rule); color: var(--lc-ink); background: var(--lc-row-alt); }
+.loot-crates .lc-auction-lot [data-lot-said]:empty { display: none; }
+
 /* ---------- Narrow windows ---------- */
 
 @media (max-width: 520px) {
@@ -1085,6 +1173,8 @@
   .loot-crates .lc-rail__row--numbers { grid-template-columns: repeat(4, 1fr); }
   .loot-crates .lc-rail__row--outside { grid-template-columns: repeat(2, 1fr); }
   .loot-crates .lc-table__state { margin-left: 0; flex: 1 0 100%; }
+  .loot-crates .lc-auction__board { grid-template-columns: minmax(0, 1fr); grid-template-areas: "lot" "bid" "bids"; }
+  .loot-crates .lc-auction__amount { font-size: 34px; }
 }
 
 /* A pool's rows, and the add-items preview's, follow their list's own
@@ -1149,4 +1239,6 @@
   .loot-crates .lc-token--new { animation: none; }
   .loot-crates .lc-spot { transition: none; }
   .loot-crates .lc-wheel__turn, .loot-crates .lc-wheel__orbit { will-change: auto; }
+  .loot-crates .lc-auction__stamp, .loot-crates .lc-auction__past--new, .loot-crates .lc-gavel--reset .lc-gavel__bar { animation: none; }
+  .loot-crates .lc-gavel__bar, .loot-crates .lc-gavel__head { will-change: auto; }
 }

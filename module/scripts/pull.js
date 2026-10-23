@@ -20,6 +20,7 @@ import "./well.js";
 import "./dicegame.js";
 import "./deck.js";
 import "./roulette.js";
+import "./auction.js";
 import { settle, canAfford, formatPrice } from "./currency.js";
 import { limitState, limitRefusal } from "./limits.js";
 import { onShelf, shelfRefusal } from "./shelf.js";
@@ -180,16 +181,18 @@ export async function performPull({ box, pools, actor, state = {}, rng = rollRng
   outbid, kind } (`before` the purse as it was, should the row fail):
   `stake` what the row keeps of the bet ({ bet } when the kind says
   nothing), `outbid` the ids of open rows this stake displaces, which the
-  caller refunds in the same task (the Auction: one open stake per lot).
+  caller refunds in the same task (the Auction: one open stake per lot),
+  and `closesIn` (ms, or null) the round's clock from now, which the caller
+  sets in the same task (the Auction's gavel, reset by every bid).
 */
 export async function performStake({ box, actor, round, bet = null, stakes = [], expectedPrice, log = [], today = null }) {
   const { kind, price, purse } = guardPlay({ box, actor, expectedPrice, log, today, bet });
   if (!kind.table) throw new PullError(`${box.name} isn't played at the table.`);
   if (!(price > 0)) throw new PullError(`A stake at ${box.name} has to be more than nothing.`);
   const checked = kind.stake?.({ game: box, actor, bet, round, stakes, log, price }) ?? {};
-  const { outbid = [], ...stake } = checked;
+  const { outbid = [], closesIn = null, ...stake } = checked;
   const nextPurse = settle(purse, -Math.round(price * 100));
   if (!nextPurse) throw new PullError(`${actor.name} can't afford ${box.name}.`);
   await actor.update({ "system.currency": nextPurse });
-  return { purse: nextPurse, before: purse, price, stake: Object.keys(stake).length ? stake : { bet }, outbid, kind: kind.id };
+  return { purse: nextPurse, before: purse, price, stake: Object.keys(stake).length ? stake : { bet }, outbid, closesIn, kind: kind.id };
 }
