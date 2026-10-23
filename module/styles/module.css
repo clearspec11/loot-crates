@@ -956,6 +956,12 @@
 .loot-crates .lc-form .lc-row { display: flex; align-items: center; gap: 8px; }
 .loot-crates .lc-form .lc-row input[type=number] { width: 76px; }
 .loot-crates .lc-form .lc-form__stake select { width: auto; min-width: 4.5em; }
+/* One control in a label of its own inside a row of words and controls
+   (editorfields.js field): laid out as the row's own items are. */
+.loot-crates .lc-form .lc-field { display: inline-flex; align-items: center; gap: 8px; }
+.loot-crates .lc-form .lc-row--wrap { flex-wrap: wrap; row-gap: 6px; }
+/* A pool's share while the pool is unticked: off, and looks it, as an off button does. */
+.loot-crates .lc-form .lc-pool-pick input[data-share]:disabled { color: var(--lc-ink-mute); border-style: dashed; cursor: not-allowed; }
 .loot-crates .lc-form fieldset { border: 1px solid var(--lc-rule); border-radius: var(--lc-radius); padding: 8px 10px 10px; background: var(--lc-card); }
 .loot-crates .lc-form legend, .loot-crates .lc-form__label { font-family: var(--lc-label); font-weight: 700; font-size: 12px; letter-spacing: .03em; text-transform: uppercase; color: var(--lc-gold-ink); padding: 0 4px; }
 .loot-crates .lc-form p { margin: 0; }

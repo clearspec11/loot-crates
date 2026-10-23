@@ -39,9 +39,11 @@
   per character, so its card reads "Limit reached: 2 of 2 for Tam
   Thornwick" with its Buy off; without it Tam has bought it once: "You can
   buy 1 more")
-  "editor" is the box editor's Rules and Limits groups (limits.js) for the
-  Royal Vault: "3 of 10 left" with Restock, one per character a day, and
-  its "On the shelf" box (shelf.js), ticked.
+  "editor" is the box editor's pools, Rules and Limits groups
+  (editorfields.js, limits.js) for the Royal Vault: Core magic items
+  ticked with a share of 2, Leigh's homebrew unticked with its share off,
+  "3 of 10 left" with Restock, one per character a day, and its "On the
+  shelf" box (shelf.js), ticked.
   ?shelf=off (shop and the Boxes tab: the GM has taken the Royal Vault off
   the shelf, shelf.js. A player's shop leaves it out; with &gm=1 the GM's
   shop shows it with its Buy off and why. The Boxes tab tags and dims its
@@ -83,7 +85,8 @@
   the GM's controls.
 */
 import { POOLS, BOX, BOXES, WELL, DICE, DICE_FACES, DECK, ROULETTE, rouletteRound, wheelStakes, deckDraws, wellThrows, limitBuys, sampleLog, MANAGER_POOLS, MANAGER_SOURCES, MANAGER_BOXES } from "./sample.js";
-import { limitsFieldset, restocked, stockText } from "../module/scripts/limits.js";
+import { limitsFieldset, restockPreview, stockField } from "../module/scripts/limits.js";
+import { poolsFieldset, pityRow, syncShares } from "../module/scripts/editorfields.js";
 import { getKind, kindOf } from "../module/scripts/kinds.js";
 import { mountWell } from "../module/scripts/well.js";
 import { mountDice, resolve, rollData, parseFormula } from "../module/scripts/dicegame.js";
@@ -700,23 +703,25 @@ function renderLog() {
 }
 
 /*
-  The box editor's Rules and Limits groups (manager.js #editBox, limits.js
-  limitsFieldset) as the dialog shows them for the Royal Vault: 3 of its 10
-  left with Restock, one per character a day. Restock fills the shelf here
-  as the manager's does (the line says so, the button goes off and keeps
-  focus); nothing is written.
+  The box editor's pools, Rules and Limits groups (manager.js #editCrate,
+  editorfields.js, limits.js limitsFieldset) as the dialog shows them for
+  the Royal Vault, from the same helpers: one pool ticked and one not (its
+  share off until it is ticked), 3 of its 10 left with Restock, one per
+  character a day. Restock says what Save will leave as the manager's does
+  (the button goes off and keeps focus); nothing is written.
 */
 function renderEditor() {
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   const royal = BOXES.find(b => b.id === "royal");
-  const box = { ...royal, rules: { ...royal.rules, perCharacter: { max: 1, per: "day" } } };
+  const box = { ...royal, pools: [{ id: "core", share: 2 }], rules: { ...royal.rules, perCharacter: { max: 1, per: "day" } } };
   stage.innerHTML = `
     <div class="dialog-form">
       <div class="dialog-content"><div class="lc-form">
         <label>Name <input name="name" value="${esc(box.name)}"></label>
         <label class="lc-form__price">Price <input name="price" type="text" data-price-field value="${esc(formatPrice(box.price))}" placeholder="50 gp, 5 sp or 12 gp 5 sp" autocomplete="off" spellcheck="false"></label>
+        ${poolsFieldset("Pools and their share of pulls", Object.values(POOLS), box.pools, { esc })}
         <fieldset><legend>Rules</legend>
-          <label class="lc-row">Pity: guarantee <select name="pityRarity"><option value="">off</option></select> after <input name="pityAfter" type="number" min="1" step="1" value="10"> pulls</label>
+          ${pityRow(box.rules?.pity, { noun: "pulls", esc })}
           <label class="lc-row"><input type="checkbox" name="noDuplicates"> No duplicates per character</label>
         </fieldset>
         ${limitsFieldset(box, { hasClock: true, esc })}
@@ -728,8 +733,10 @@ function renderEditor() {
   btn?.addEventListener("click", () => {
     if (btn.getAttribute("aria-disabled") === "true") return;
     btn.setAttribute("aria-disabled", "true");
-    stage.querySelector(".lc-limits__left").textContent = `Restocked: ${stockText({ rules: restocked(box.rules) })}`;
+    stage.querySelector('input[name="restock"]').value = "1";
+    stage.querySelector(".lc-limits__left").textContent = restockPreview(stockField(box));
   });
+  stage.addEventListener("change", () => syncShares(stage));
   document.body.dataset.ready = "1";
 }
 

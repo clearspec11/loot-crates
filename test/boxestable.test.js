@@ -6,11 +6,14 @@
   still reads a table.
 */
 import { describe, it, expect } from "vitest";
-import { boxesTableHTML, boxesTabHTML, kindTag, cell, tableHTML, BOXES_COLUMNS, NEW_BUTTONS } from "../module/scripts/boxestable.js";
+import { boxesTableHTML, boxesTabHTML, kindTag, cell, tableHTML, BOXES_COLUMNS, NEW_BUTTONS, UNNAMED_COLUMN } from "../module/scripts/boxestable.js";
 import { BOXES, POOLS, deckDraws, rouletteRound } from "../harness/sample.js";
 
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const rows = html => [...html.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)].map(m => m[0]).filter(tr => !tr.includes("<th"));
+// A header cell's words as a stacked row's caption reads them: the
+// buttons' column is named "Actions" for a screen reader only, its cells uncaptioned.
+const heads = html => [...html.matchAll(/<th role="columnheader">(.*?)<\/th>/g)].map(m => (m[1] === `<span class="lc-sr-only">${UNNAMED_COLUMN}</span>` ? "" : m[1]));
 const tagsOf = html => [...html.matchAll(/<span class="lc-kind">([^<]*)<\/span>/g)].map(m => m[1]);
 
 describe("kindTag", () => {
@@ -37,9 +40,17 @@ describe("the Boxes table", () => {
     for (const tr of rows(html)) expect(tr).toContain('class="lc-kind"');
   });
 
+  it("names every column header, the buttons' one for a screen reader only", () => {
+    const names = [...html.matchAll(/<th role="columnheader">(.*?)<\/th>/g)].map(m => m[1].replace(/<[^>]+>/g, ""));
+    expect(names).toEqual(["Box", "Price", "Pools", "Odds", "Rules", "Actions"]);
+    expect(html).toContain('<th role="columnheader"><span class="lc-sr-only">Actions</span></th>');
+    // Its cells stay uncaptioned: a stacked row draws no "Actions" over its buttons.
+    for (const tr of rows(html)) expect(tr).toMatch(/<td role="cell" data-label="">[\s\S]*data-action="editBox"/);
+  });
+
   it("captions every cell with its column, in the header's order, under the table's roles", () => {
     expect(html).toMatch(/^<table class="lc-table lc-table--stack lc-table--boxes" role="table"><thead role="rowgroup"><tr role="row">/);
-    expect([...html.matchAll(/<th role="columnheader">([^<]*)<\/th>/g)].map(m => m[1])).toEqual(BOXES_COLUMNS);
+    expect(heads(html)).toEqual(BOXES_COLUMNS);
     for (const tr of rows(html)) {
       expect(tr).toMatch(/^<tr( class="[^"]*")? role="row">/);
       expect([...tr.matchAll(/<td role="cell" data-label="([^"]*)"/g)].map(m => m[1])).toEqual(BOXES_COLUMNS);
@@ -129,7 +140,7 @@ describe("the shared table pieces", () => {
 
   it("build a table that stacks, from its columns and rows", () => {
     const html = tableHTML("lc-table--log", ["When", ""], '<tr role="row"><td role="cell" data-label="When">now</td><td role="cell" data-label=""></td></tr>');
-    expect(html).toMatch(/^<table class="lc-table lc-table--stack lc-table--log" role="table"><thead role="rowgroup"><tr role="row"><th role="columnheader">When<\/th><th role="columnheader"><\/th><\/tr><\/thead><tbody role="rowgroup">/);
+    expect(html).toMatch(/^<table class="lc-table lc-table--stack lc-table--log" role="table"><thead role="rowgroup"><tr role="row"><th role="columnheader">When<\/th><th role="columnheader"><span class="lc-sr-only">Actions<\/span><\/th><\/tr><\/thead><tbody role="rowgroup">/);
     expect(html).toMatch(/<\/tbody><\/table>$/);
   });
 });

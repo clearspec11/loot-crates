@@ -1,0 +1,97 @@
+/*
+  The editors' shared fields (manager.js): one copy for every kind, so
+  each control has a name of its own and a new field inherits one.
+
+  A <label> names only the first control inside it, so a row holding two
+  controls in one label left the second unnamed or misnamed (the pity
+  count had no name, every share was "Share", the wheel's largest bet was
+  its placeholder "any"). Here a control is either alone in its label
+  (`field`) or carries an aria-label saying what it sets.
+
+  No Foundry globals: the callers pass `esc`, and the harness and Vitest
+  render these as the manager does.
+*/
+import { RARITIES, RARITY_LABEL } from "./config.js";
+
+const plain = s => String(s ?? "");
+
+// One control in a label of its own: the words before it are its name.
+// The rows that hold one (lc-row--wrap) wrap onto a second line rather
+// than run past a narrow dialog's edge.
+export const field = (labelText, control) => `<label class="lc-field">${labelText} ${control}</label>`;
+
+/*
+  The pools a game draws from, one row each: the checkbox and the pool's
+  name in a label of their own, then (with `share`) the pool's share of
+  pulls, named for its pool and off while the pool is unticked (draftBox
+  reads no share for an unticked pool, so there is nothing to type).
+  `refs` is the game's pools ([{ id, share }]).
+*/
+export function poolPicks(pools, refs = [], { share = true, esc = plain } = {}) {
+  const shares = Object.fromEntries((refs ?? []).map(p => [p.id, p.share ?? 1]));
+  if (!pools.length) return "<p>No pools yet.</p>";
+  return pools.map(p => {
+    const on = p.id in shares;
+    const id = esc(p.id);
+    const shareInput = share ? ` <input name="share.${id}" type="number" min="0" step="1" value="${esc(shares[p.id] ?? 1)}" title="Share" aria-label="Share of pulls from ${esc(p.name)}" data-share="${id}"${on ? "" : " disabled"}>` : "";
+    return `<div class="lc-row lc-pool-pick">${field(`<input type="checkbox" name="pool.${id}"${on ? " checked" : ""}>`, esc(p.name))}${shareInput}</div>`;
+  }).join("");
+}
+
+export const poolsFieldset = (legend, pools, refs, opts = {}) => `<fieldset class="lc-pool-picks"><legend>${legend}</legend>
+        ${poolPicks(pools, refs, opts)}
+      </fieldset>`;
+
+// Each share follows its pool's checkbox (on while ticked); the editors
+// call it on every input and change (manager.js liveOdds).
+export function syncShares(root) {
+  for (const share of root.querySelectorAll("input[data-share]")) {
+    const box = share.closest(".lc-pool-pick")?.querySelector('input[type="checkbox"]');
+    if (box) share.disabled = !box.checked;
+  }
+}
+
+// What the pity count is called, by what a play is called.
+const PITY_COUNT = { pulls: "Pulls before the guarantee", throws: "Throws before the guarantee" };
+
+// "Pity: guarantee [rarity] after [n] pulls": the rarity named by its
+// label, the count by what it counts.
+export function pityRow(pity, { noun = "pulls", esc = plain } = {}) {
+  const select = `<select name="pityRarity"><option value="">off</option>${RARITIES.map(r => `<option value="${r}"${pity?.minRarity === r ? " selected" : ""}>${RARITY_LABEL[r]} or better</option>`).join("")}</select>`;
+  return `<div class="lc-row lc-row--wrap">${field("Pity: guarantee", select)} after <input name="pityAfter" type="number" min="1" step="1" value="${esc(pity?.after ?? 10)}" aria-label="${PITY_COUNT[noun] ?? PITY_COUNT.pulls}"> ${noun}</div>`;
+}
+
+// The well's and the dice game's stake: an amount, then its coin.
+export function stakeRow(stake, esc = plain) {
+  return `<div class="lc-row lc-row--wrap lc-form__stake">${field("Stake", `<input name="stake" type="number" min="0" step="1" value="${esc(stake.amount)}">`)} <select name="coin" aria-label="Coin">${["cp", "sp", "gp"].map(c => `<option value="${c}"${c === stake.coin ? " selected" : ""}>${c}</option>`).join("")}</select></div>`;
+}
+
+// The wheel's "From [least] to [most] gp a bet", each bound named for itself.
+export function betRangeRow(least, most, esc = plain) {
+  return `<div class="lc-row lc-row--wrap">From <input name="price" type="number" min="0" step="1" value="${esc(least)}" aria-label="Smallest bet in gp"> to <input name="maxStake" type="number" min="0" step="1" value="${esc(most ?? "")}" placeholder="any" aria-label="Largest bet in gp, blank for any"> gp a bet</div>`;
+}
+
+// The dice game's "Roll [2d6] over the dragon's [n]".
+export function dragonRow(formulas, dice, esc = plain) {
+  const select = `<select name="formula">${formulas.map(f => `<option value="${esc(f)}"${f === dice.formula ? " selected" : ""}>${esc(f)}</option>`).join("")}</select>`;
+  return `<div class="lc-row lc-row--wrap">${field("Roll", select)} over the dragon's <input name="target" type="number" min="0" step="1" value="${esc(dice.target)}" aria-label="The dragon's number"></div>`;
+}
+
+/*
+  The deck editor's card rows name each field by the card's place in the
+  deck ("Weight of card 2"), so a deck of many cards doesn't read "Weight"
+  a dozen times; `renumberCards` keeps the numbers right after a remove.
+*/
+export const CARD_FIELDS = {
+  label: n => `Name of card ${n}`,
+  kind: n => `What card ${n} does`,
+  gp: n => `Gold pieces for card ${n}`,
+  weight: n => `Weight of card ${n}`,
+  once: n => `Card ${n} once per deck`,
+  text: n => `Effect text of card ${n}`,
+};
+export function renumberCards(rows) {
+  [...rows.children].forEach((row, i) => {
+    for (const [key, name] of Object.entries(CARD_FIELDS)) row.querySelector(`.lc-card-row__${key}${key === "once" ? " input" : ""}`)?.setAttribute("aria-label", name(i + 1));
+  });
+}

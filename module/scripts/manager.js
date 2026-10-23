@@ -73,7 +73,7 @@
   from this pool", a crate named for the pool that draws from it alone.
   Copy on a game's row opens the same editor on an unsaved copy of that
   game (newgame.js copyOf): every setting, none of its history, named
-  "<name> (copy)" for the GM to rename and reprice.
+  "<name> (copy)" (then "(copy 2)" and on) for the GM to rename and reprice.
   The Pull log folds a character's
   misses at a well for one day into one line ("5 throws, nothing") whose
   Refund gives the newest throw back, and "Hide misses" leaves only the
@@ -107,8 +107,9 @@ import { managerNavHTML, MANAGER_TABS } from "./route.js";
 import { describeRefund, refundPull } from "./refund.js";
 import { postRefundCard } from "./chat.js";
 import { changeCount } from "./redraw.js";
-import { limitsFieldset, perCharacterFromForm, restocked, stockAfterRefund, stockField, stockFromForm, stockText } from "./limits.js";
+import { limitsFieldset, perCharacterFromForm, restocked, restockPreview, stockAfterRefund, stockField, stockFromForm } from "./limits.js";
 import { onShelf, shelfRules, shelfFieldHTML, shelfNotice } from "./shelf.js";
+import { poolsFieldset, poolPicks, syncShares, pityRow, stakeRow, betRangeRow, dragonRow, CARD_FIELDS, renumberCards } from "./editorfields.js";
 
 const { ApplicationV2, DialogV2 } = foundry.applications.api;
 const esc = s => foundry.utils.escapeHTML(String(s ?? ""));
@@ -607,7 +608,7 @@ export class CrateManager extends ApplicationV2 {
   static #copyBox(_e, t) {
     const box = getBoxes()[t.dataset.box];
     if (!box) return this.render();
-    return this.#openEditor(copyOf(box, { id: newId(), now: Date.now() }), { isNew: true, copy: true });
+    return this.#openEditor(copyOf(box, { id: newId(), now: Date.now(), names: Object.values(getBoxes()).map(b => b.name) }), { isNew: true, copy: true });
   }
 
   // The crate's editor; on a new draft nothing is written until Save.
@@ -615,13 +616,10 @@ export class CrateManager extends ApplicationV2 {
     const { isNew } = opts;
     const pools = Object.values(getPools());
     const poolIds = pools.map(p => p.id);
-    const shares = Object.fromEntries((box.pools ?? []).map(p => [p.id, p.share ?? 1]));
     const data = await promptForm(editorTitle(box, isNew, opts.copy), `
       <label>Name <input name="name" value="${esc(box.name)}"${autofocus("name", opts)}></label>
       ${priceFieldHTML("Price", box, opts)}
-      <fieldset><legend>Pools and their share of pulls</legend>
-        ${pools.map(p => `<label class="lc-row"><input type="checkbox" name="pool.${esc(p.id)}" ${p.id in shares ? "checked" : ""}> ${esc(p.name)} <input name="share.${esc(p.id)}" type="number" min="0" step="1" value="${esc(shares[p.id] ?? 1)}" title="Share"></label>`).join("") || "<p>No pools yet.</p>"}
-      </fieldset>
+      ${poolsFieldset("Pools and their share of pulls", pools, box.pools, { esc })}
       <fieldset class="lc-form__weights"><legend>Rarity weights</legend>
         ${RARITIES.map(r => `<label class="lc-row">${RARITY_LABEL[r]} <input name="w.${r}" type="number" min="0" step="1" value="${esc(box.weights?.[r] ?? DEFAULT_WEIGHTS[r])}"><span class="lc-form__hint" data-held="${r}"></span></label>`).join("")}
       </fieldset>
@@ -631,20 +629,21 @@ export class CrateManager extends ApplicationV2 {
         <p class="lc-sr-only" role="status" aria-live="polite"></p>
       </div>
       <fieldset><legend>Rules</legend>
-        <label class="lc-row">Pity: guarantee <select name="pityRarity"><option value="">off</option>${RARITIES.map(r => `<option value="${r}" ${box.rules?.pity?.minRarity === r ? "selected" : ""}>${RARITY_LABEL[r]} or better</option>`).join("")}</select> after <input name="pityAfter" type="number" min="1" step="1" value="${esc(box.rules?.pity?.after ?? 10)}"> pulls</label>
+        ${pityRow(box.rules?.pity, { noun: "pulls", esc })}
         <label class="lc-row"><input type="checkbox" name="noDuplicates" ${box.rules?.noDuplicates ? "checked" : ""}> No duplicates per character</label>
       </fieldset>
       ${limitsFieldset(box, { draft: isNew, hasClock: todayKey() != null, esc })}
       ${shelfFieldHTML(box, opts)}`, {
-      // Restock writes to the stored record; a draft has none to fill.
-      onForm: form => { liveOdds(form, box, poolIds); if (!isNew) wireRestock(form, box.id); wireShelf(form, isNew); wirePrice(form); },
+      // Restock fills the stored record at Save; a draft has none to fill.
+      onForm: form => { liveOdds(form, box, poolIds); if (!isNew) wireRestock(form, box); wireShelf(form, isNew); wirePrice(form); },
       position: { width: 460 },
       okLabel: saveLabel(isNew),
     });
     if (!data) return;
     // Stock moves while the dialog is open (each pull takes one, a refund
-    // puts one back, Restock fills it), so the form's number only changes
-    // it if the GM changed that number (limits.js stockFromForm).
+    // puts one back), so the form's number only changes it if the GM
+    // changed that number (limits.js stockFromForm); a Restock pressed in
+    // the dialog then fills it to the number Save leaves.
     const shownStock = stockField(box);
     const draft = draftBox(box, data, poolIds);
     return this.#saveEditor(box, isNew, fresh => {
@@ -659,7 +658,7 @@ export class CrateManager extends ApplicationV2 {
           ...fresh.rules,
           pity: data.pityRarity ? { minRarity: data.pityRarity, after: Math.max(1, Number(data.pityAfter) || 1) } : null,
           noDuplicates: !!data.noDuplicates,
-          ...stockFromForm(fresh.rules ?? {}, { shown: shownStock, value: data.stock }),
+          ...(data.restock === "1" ? restocked : s => s)(stockFromForm(fresh.rules ?? {}, { shown: shownStock, value: data.stock })),
           perCharacter: perCharacterFromForm(data),
         },
       };
@@ -677,18 +676,15 @@ export class CrateManager extends ApplicationV2 {
     const { isNew } = opts;
     const pools = Object.values(getPools());
     const poolIds = pools.map(p => p.id);
-    const shares = Object.fromEntries((box.pools ?? []).map(p => [p.id, p.share ?? 1]));
     const stake = stakeCoins(box.price);
     const odds = { ...WELL_DEFAULTS.odds, ...(box.odds ?? {}) };
     const data = await promptForm(editorTitle(box, isNew, opts.copy), `
       <label>Name <input name="name" value="${esc(box.name)}"${autofocus("name", opts)}></label>
-      <label class="lc-row lc-form__stake">Stake <input name="stake" type="number" min="0" step="1" value="${esc(stake.amount)}"> <select name="coin" aria-label="Coin">${["cp", "sp", "gp"].map(c => `<option value="${c}"${c === stake.coin ? " selected" : ""}>${c}</option>`).join("")}</select></label>
+      ${stakeRow(stake, esc)}
       <fieldset><legend>Outcomes, by weight</legend>
         ${[["nothing", "Nothing"], ["coin", "Coin back"], ["item", "An item from the pools"]].map(([k, l]) => `<label class="lc-row">${l} <input name="o.${k}" type="number" min="0" step="1" value="${esc(odds[k])}"></label>`).join("")}
       </fieldset>
-      <fieldset><legend>Pools the item comes from, and their share</legend>
-        ${pools.map(p => `<label class="lc-row"><input type="checkbox" name="pool.${esc(p.id)}" ${p.id in shares ? "checked" : ""}> ${esc(p.name)} <input name="share.${esc(p.id)}" type="number" min="0" step="1" value="${esc(shares[p.id] ?? 1)}" title="Share"></label>`).join("") || "<p>No pools yet.</p>"}
-      </fieldset>
+      ${poolsFieldset("Pools the item comes from, and their share", pools, box.pools, { esc })}
       <fieldset class="lc-form__weights"><legend>The item's rarity weights</legend>
         ${RARITIES.map(r => `<label class="lc-row">${RARITY_LABEL[r]} <input name="w.${r}" type="number" min="0" step="1" value="${esc(box.weights?.[r] ?? DEFAULT_WEIGHTS[r])}"><span class="lc-form__hint" data-held="${r}"></span></label>`).join("")}
       </fieldset>
@@ -700,7 +696,7 @@ export class CrateManager extends ApplicationV2 {
       <fieldset><legend>Rules</legend>
         <label class="lc-row">Each character may throw <input name="cap" type="number" min="0" step="1" value="${box.rules?.cap ?? ""}"> times a day (blank for no limit; the day is the world's calendar)</label>
         ${noClockNote({ hasClock: todayKey() != null, cap: box.rules?.cap })}
-        <label class="lc-row">Pity: guarantee <select name="pityRarity"><option value="">off</option>${RARITIES.map(r => `<option value="${r}" ${box.rules?.pity?.minRarity === r ? "selected" : ""}>${RARITY_LABEL[r]} or better</option>`).join("")}</select> after <input name="pityAfter" type="number" min="1" step="1" value="${esc(box.rules?.pity?.after ?? 10)}"> throws</label>
+        ${pityRow(box.rules?.pity, { noun: "throws", esc })}
         <label class="lc-row"><input type="checkbox" name="noDuplicates" ${box.rules?.noDuplicates ? "checked" : ""}> No duplicates per character</label>
       </fieldset>
       ${shelfFieldHTML(box, opts)}`, {
@@ -745,14 +741,13 @@ export class CrateManager extends ApplicationV2 {
     const { isNew } = opts;
     const pools = Object.values(getPools());
     const poolIds = pools.map(p => p.id);
-    const shares = Object.fromEntries((box.pools ?? []).map(p => [p.id, p.share ?? 1]));
     const stake = stakeCoins(box.price);
     const dice = { ...DICE_DEFAULTS, ...(box.dice ?? {}) };
     const data = await promptForm(editorTitle(box, isNew, opts.copy), `
       <label>Name <input name="name" value="${esc(box.name)}"${autofocus("name", opts)}></label>
-      <label class="lc-row lc-form__stake">Stake <input name="stake" type="number" min="0" step="1" value="${esc(stake.amount)}"> <select name="coin" aria-label="Coin">${["cp", "sp", "gp"].map(c => `<option value="${c}"${c === stake.coin ? " selected" : ""}>${c}</option>`).join("")}</select></label>
+      ${stakeRow(stake, esc)}
       <fieldset><legend>Beat the dragon</legend>
-        <label class="lc-row">Roll <select name="formula">${FORMULAS.map(f => `<option value="${f}"${f === dice.formula ? " selected" : ""}>${f}</option>`).join("")}</select> over the dragon's <input name="target" type="number" min="0" step="1" value="${esc(dice.target)}"></label>
+        ${dragonRow(FORMULAS, dice, esc)}
         <label class="lc-row">A win pays <input name="multiplier" type="number" min="0" step="0.5" value="${esc(dice.multiplier)}"> times the stake</label>
         <p class="lc-form__hint">A total equal to the dragon's number loses.</p>
       </fieldset>
@@ -764,9 +759,7 @@ export class CrateManager extends ApplicationV2 {
       <fieldset><legend>Prize</legend>
         <label class="lc-row"><input type="checkbox" name="prize" ${box.rules?.prize ? "checked" : ""}> A perfect roll (every die on its top face) also wins an item from the pools below</label>
       </fieldset>
-      <fieldset><legend>Pools the prize comes from, and their share</legend>
-        ${pools.map(p => `<label class="lc-row"><input type="checkbox" name="pool.${esc(p.id)}" ${p.id in shares ? "checked" : ""}> ${esc(p.name)} <input name="share.${esc(p.id)}" type="number" min="0" step="1" value="${esc(shares[p.id] ?? 1)}" title="Share"></label>`).join("") || "<p>No pools yet.</p>"}
-      </fieldset>
+      ${poolsFieldset("Pools the prize comes from, and their share", pools, box.pools, { esc })}
       <fieldset class="lc-form__weights"><legend>The prize's rarity weights</legend>
         ${RARITIES.map(r => `<label class="lc-row">${RARITY_LABEL[r]} <input name="w.${r}" type="number" min="0" step="1" value="${esc(box.weights?.[r] ?? DEFAULT_WEIGHTS[r])}"><span class="lc-form__hint" data-held="${r}"></span></label>`).join("")}
       </fieldset>
@@ -808,7 +801,6 @@ export class CrateManager extends ApplicationV2 {
     const { isNew } = opts;
     const pools = Object.values(getPools());
     const poolIds = pools.map(p => p.id);
-    const shares = Object.fromEntries((box.pools ?? []).map(p => [p.id, p.share ?? 1]));
     const data = await promptForm(editorTitle(box, isNew, opts.copy), `
       <label>Name <input name="name" value="${esc(box.name)}"${autofocus("name", opts)}></label>
       ${priceFieldHTML("First draw", box, opts)}
@@ -816,13 +808,11 @@ export class CrateManager extends ApplicationV2 {
       <p class="lc-form__hint">A draw within two minutes of the last counts as in a row; the price comes back down after that, and a refund takes a step back.</p>
       <fieldset class="lc-cards"><legend>Cards</legend>
         <div class="lc-cards__head" aria-hidden="true"><span>Card</span><span>Does</span><span>Gold</span><span>Weight</span><span>Once</span><span></span></div>
-        <div class="lc-cards__rows">${cardsOf(box).map(c => cardRow(c)).join("")}</div>
+        <div class="lc-cards__rows">${cardsOf(box).map((c, i) => cardRow(c, i + 1)).join("")}</div>
         <div class="lc-cards__foot"><button type="button" class="lc-cards__add"><i class="fas fa-plus"></i> Add card</button></div>
         <p class="lc-form__hint">A card marked once leaves the deck when drawn, until you reshuffle. Gold is what a coins card pays or a loss card takes; an effect card's text is posted to chat for you to play out. Weight 0 never draws.</p>
       </fieldset>
-      <fieldset><legend>Pools the item cards draw from, and their share</legend>
-        ${pools.map(p => `<label class="lc-row"><input type="checkbox" name="pool.${esc(p.id)}" ${p.id in shares ? "checked" : ""}> ${esc(p.name)} <input name="share.${esc(p.id)}" type="number" min="0" step="1" value="${esc(shares[p.id] ?? 1)}" title="Share"></label>`).join("") || "<p>No pools yet.</p>"}
-      </fieldset>
+      ${poolsFieldset("Pools the item cards draw from, and their share", pools, box.pools, { esc })}
       <fieldset class="lc-form__weights"><legend>The item's rarity weights</legend>
         ${RARITIES.map(r => `<label class="lc-row">${RARITY_LABEL[r]} <input name="w.${r}" type="number" min="0" step="1" value="${esc(box.weights?.[r] ?? DEFAULT_WEIGHTS[r])}"><span class="lc-form__hint" data-held="${r}"></span></label>`).join("")}
       </fieldset>
@@ -844,7 +834,7 @@ export class CrateManager extends ApplicationV2 {
         // Add card: a blank row at the foot, its name focused. Remove: the
         // row goes and focus moves to the next row's name, else Add card.
         form.querySelector(".lc-cards__add")?.addEventListener("click", () => {
-          rows.insertAdjacentHTML("beforeend", cardRow({ id: foundry.utils.randomID(8), label: "", kind: "blank", weight: 1, once: false, gp: 0, text: "" }));
+          rows.insertAdjacentHTML("beforeend", cardRow({ id: foundry.utils.randomID(8), label: "", kind: "blank", weight: 1, once: false, gp: 0, text: "" }, rows.childElementCount + 1));
           rows.lastElementChild.querySelector(".lc-card-row__label").focus();
           paint();
         });
@@ -854,6 +844,7 @@ export class CrateManager extends ApplicationV2 {
           const row = btn.closest(".lc-card-row");
           const next = row.nextElementSibling ?? row.previousElementSibling;
           row.remove();
+          renumberCards(rows);
           (next?.querySelector(".lc-card-row__label") ?? form.querySelector(".lc-cards__add"))?.focus();
           paint();
         });
@@ -893,12 +884,11 @@ export class CrateManager extends ApplicationV2 {
     const { isNew } = opts;
     const pools = Object.values(getPools());
     const poolIds = pools.map(p => p.id);
-    const ticked = new Set((box.pools ?? []).map(p => p.id));
     const colours = coloursOf(box);
     const data = await promptForm(editorTitle(box, isNew, opts.copy), `
       <label>Name <input name="name" value="${esc(box.name)}"${autofocus("name", opts)}></label>
       <fieldset><legend>Bets</legend>
-        <label class="lc-row">From <input name="price" type="number" min="0" step="1" value="${esc(box.price)}"> to <input name="maxStake" type="number" min="0" step="1" value="${esc(maxStakeOf(box) ?? "")}" placeholder="any"> gp a bet</label>
+        ${betRangeRow(box.price, maxStakeOf(box), esc)}
         <label class="lc-row">Each character may place <input name="maxBets" type="number" min="0" step="1" value="${esc(maxBetsOf(box))}"> bets a round (0 for no limit)</label>
         <label class="lc-row">Bets stay open for <input name="windowSec" type="number" min="0" step="5" value="${esc(windowMsOf(box) / 1000)}"> seconds (0: until you press Spin)</label>
       </fieldset>
@@ -913,7 +903,7 @@ export class CrateManager extends ApplicationV2 {
       </fieldset>
       <fieldset><legend>Item on a rarity</legend>
         <label class="lc-row"><input type="checkbox" name="itemOnRarity" ${itemOnRarity(box) ? "checked" : ""}> A winning bet on a rarity band also draws an item of that rarity from the pools below</label>
-        ${pools.map(p => `<label class="lc-row"><input type="checkbox" name="pool.${esc(p.id)}" ${ticked.has(p.id) ? "checked" : ""}> ${esc(p.name)}</label>`).join("") || "<p>No pools yet.</p>"}
+        ${poolPicks(pools, box.pools, { share: false, esc })}
       </fieldset>
       <div class="lc-form__odds" role="group" aria-labelledby="lc-odds-${esc(box.id)}">
         <div class="lc-form__label" id="lc-odds-${esc(box.id)}">Chances a player sees</div>
@@ -1303,18 +1293,20 @@ function describeSkipped({ duplicates = 0, notLoot = {}, notItems = 0 } = {}) {
 const htmlNode = html => { const t = document.createElement("template"); t.innerHTML = html.trim(); return t.content.firstElementChild; };
 
 // One card of the deck editor (deck.js draftDeck reads these names): the
-// row's data-kind decides which of the gold and text fields show.
-function cardRow(c) {
+// row's data-kind decides which of the gold and text fields show. Its
+// fields are named for the card's place in the deck, `n` (editorfields.js).
+function cardRow(c, n) {
   const id = esc(c.id);
+  const name = key => CARD_FIELDS[key](n);
   return `<div class="lc-card-row" data-card="${id}" data-kind="${esc(c.kind)}">
       <input type="hidden" name="cards" value="${id}">
-      <input class="lc-card-row__label" name="c.${id}.label" value="${esc(c.label)}" placeholder="Card name" aria-label="Card name">
-      <select class="lc-card-row__kind" name="c.${id}.kind" aria-label="What the card does">${CARD_KINDS.map(k => `<option value="${k}"${k === c.kind ? " selected" : ""}>${esc(CARD_KIND_HINT[k])}</option>`).join("")}</select>
-      <input class="lc-card-row__gp" name="c.${id}.gp" type="number" min="0" step="1" value="${esc(c.gp ?? 0)}" aria-label="Gold pieces" placeholder="gp">
-      <input class="lc-card-row__weight" name="c.${id}.weight" type="number" min="0" step="1" value="${esc(c.weight ?? 1)}" aria-label="Weight">
-      <label class="lc-card-row__once"><input type="checkbox" name="c.${id}.once"${c.once ? " checked" : ""} aria-label="Once per deck"></label>
+      <input class="lc-card-row__label" name="c.${id}.label" value="${esc(c.label)}" placeholder="Card name" aria-label="${name("label")}">
+      <select class="lc-card-row__kind" name="c.${id}.kind" aria-label="${name("kind")}">${CARD_KINDS.map(k => `<option value="${k}"${k === c.kind ? " selected" : ""}>${esc(CARD_KIND_HINT[k])}</option>`).join("")}</select>
+      <input class="lc-card-row__gp" name="c.${id}.gp" type="number" min="0" step="1" value="${esc(c.gp ?? 0)}" aria-label="${name("gp")}" placeholder="gp">
+      <input class="lc-card-row__weight" name="c.${id}.weight" type="number" min="0" step="1" value="${esc(c.weight ?? 1)}" aria-label="${name("weight")}">
+      <label class="lc-card-row__once"><input type="checkbox" name="c.${id}.once"${c.once ? " checked" : ""} aria-label="${name("once")}"></label>
       <button type="button" class="lc-card-row__remove" aria-label="Remove ${esc(c.label || "this card")}" data-tooltip="Remove"><i class="fas fa-xmark" inert></i></button>
-      <input class="lc-card-row__text" name="c.${id}.text" value="${esc(c.text ?? "")}" placeholder="What happens (posted to chat for you to play out)" aria-label="Effect text">
+      <input class="lc-card-row__text" name="c.${id}.text" value="${esc(c.text ?? "")}" placeholder="What happens (posted to chat for you to play out)" aria-label="${name("text")}">
     </div>`;
 }
 
@@ -1402,21 +1394,24 @@ function wireShelf(form, isNew) {
 }
 
 /*
-  The Limits group's Restock (limits.js limitsFieldset): fills the stock to
-  the GM's number at once, through the write queue like a pull, without
-  waiting for Save (which then keeps it: the number wasn't changed). The
-  line beside it says what the shelf holds now, as a status a screen
-  reader hears; the button stays focused, off once the shelf is full.
+  The Limits group's Restock (limits.js limitsFieldset): marks the form
+  (its hidden "restock" field) so Save fills the stock to the GM's number,
+  and Cancel writes nothing, as for every other field. The line beside it
+  says what Save will leave, as a status a screen reader hears; the button
+  stays focused, off once pressed. The number is the Stock field's if the
+  GM changed it, since Save fills to that.
 */
-function wireRestock(form, boxId) {
+function wireRestock(form, box) {
   const btn = form.querySelector("[data-restock]");
   const left = form.querySelector(".lc-limits__left");
-  if (!btn || !left) return;
-  btn.addEventListener("click", async () => {
+  const mark = form.querySelector('input[name="restock"]');
+  if (!btn || !left || !mark) return;
+  btn.addEventListener("click", () => {
     if (btn.getAttribute("aria-disabled") === "true") return;
     btn.setAttribute("aria-disabled", "true");
-    const saved = await updateBox(boxId, fresh => ({ ...fresh, rules: restocked(fresh.rules ?? {}) }));
-    left.textContent = saved ? `Restocked: ${stockText(saved)}` : "This box was deleted.";
+    mark.value = "1";
+    const typed = form.querySelector('input[name="stock"]')?.value;
+    left.textContent = restockPreview(typed !== "" && Number.isFinite(Number(typed)) ? Math.max(0, Math.floor(Number(typed))) : stockField(box));
   });
 }
 
@@ -1463,6 +1458,7 @@ function liveOdds(form, box, poolIds, previewOf = cratePreview, draftOf = draftB
   let shown = null;
   let announce = null;
   const paint = () => {
+    syncShares(form);
     const draft = draftOf(box, readForm(form), poolIds);
     const preview = previewOf(draft, getPools());
     if (preview.html !== shown) { out.innerHTML = preview.html; shown = preview.html; }

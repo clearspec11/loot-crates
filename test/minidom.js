@@ -88,6 +88,7 @@ class Element extends Node {
   set textContent(v) { this.replaceChildren(...(v ? [new Text(this.ownerDocument, String(v))] : [])); }
   set innerHTML(html) { this.replaceChildren(...parse(this.ownerDocument, html)); }
   get childElementCount() { return this.children.length; }
+  get lastElementChild() { return this.children.at(-1) ?? null; }
   // "beforeend" only: what the manager's Show more uses.
   insertAdjacentHTML(where, html) {
     if (where !== "beforeend") throw new Error(`minidom: insertAdjacentHTML ${where} not supported`);

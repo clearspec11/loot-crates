@@ -88,19 +88,36 @@ export const crateFromPool = (pool, id) => newDraft("crate", { id, name: pool.na
   the limit per character, the dice, the deck's step and cards, the
   wheel's pockets, payouts and rules) as its own copy, so editing one
   never changes the other, under `id` and named "<name> (copy)" for the
-  GM to rename. Nothing of the source's history comes along: the stock is
+  GM to rename (copyName: a copy of a copy is "<name> (copy 2)", and no
+  name in `names`, the games there already, is used twice). Nothing of the source's history comes along: the stock is
   full again (what the GM set, limits.js restocked; a record with a count
   alone keeps it), the deck's shuffle mark is `now` so no card counts as
   drawn, and the log, each character's pity and collection and any live
   round are keyed on the source's id, so the copy starts with none.
 */
-export function copyOf(game, { id, now = 0 } = {}) {
+export function copyOf(game, { id, now = 0, names = [] } = {}) {
   const copy = structuredClone(game);
   copy.id = id;
-  copy.name = `${game?.name || "Game"} (copy)`;
+  copy.name = copyName(game?.name, names);
   copy.rules = restocked(copy.rules ?? {});
   if (copy.deck) copy.deck = { ...copy.deck, shuffledAt: now };
   return copy;
+}
+
+/*
+  A copy's name: "<name> (copy)", then "(copy 2)", "(copy 3)" and so on.
+  A copy of a copy counts on from it ("Crate (copy)" gives "Crate (copy
+  2)", never "Crate (copy) (copy)"), and a name already in `names` is
+  skipped, so copying one game twice gives two names.
+*/
+export function copyName(name, names = []) {
+  const m = String(name || "Game").match(/^(.*) \(copy(?: (\d+))?\)$/);
+  const base = m ? m[1] : String(name || "Game");
+  const taken = new Set(names);
+  let n = m ? (Number(m[2]) || 1) + 1 : 1;
+  const nameAt = k => (k === 1 ? `${base} (copy)` : `${base} (copy ${k})`);
+  while (taken.has(nameAt(n))) n++;
+  return nameAt(n);
 }
 
 // The New dialog's default button: it puts the game where players buy, or,

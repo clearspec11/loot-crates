@@ -57,7 +57,8 @@ import { onShelf, shelfCountText, shelfToggleHTML } from "./shelf.js";
 export const NEW_BUTTONS = [["addBox", "New box"], ["addWell", "New well"], ["addDice", "New dice game"], ["addDeck", "New deck"], ["addWheel", "New wheel"]];
 
 // The table's columns, as its header reads them and as a stacked row
-// captions them (the last, the buttons, needs no caption).
+// captions them (the last, the buttons, needs no caption; its header is
+// named for a screen reader only, tableHTML).
 export const BOXES_COLUMNS = ["Box", "Price", "Pools", "Odds", "Rules", ""];
 
 // Each kind's tag in the Box column, the crate's included.
@@ -73,9 +74,11 @@ export const cell = (label, html, attrs = "") => `<td role="cell" data-label="${
 
 // A manager table: the header row from its columns, then the body rows.
 // The roles say what the display property no longer does once a narrow
-// panel stacks the rows.
+// panel stacks the rows. A column without words (the buttons') is named
+// "Actions" for a screen reader, so every columnheader has a name.
+export const UNNAMED_COLUMN = "Actions";
 export function tableHTML(cls, columns, rowsHTML) {
-  return `<table class="lc-table lc-table--stack ${cls}" role="table"><thead role="rowgroup"><tr role="row">${columns.map(c => `<th role="columnheader">${c}</th>`).join("")}</tr></thead><tbody role="rowgroup">
+  return `<table class="lc-table lc-table--stack ${cls}" role="table"><thead role="rowgroup"><tr role="row">${columns.map(c => `<th role="columnheader">${c || `<span class="lc-sr-only">${UNNAMED_COLUMN}</span>`}</th>`).join("")}</tr></thead><tbody role="rowgroup">
         ${rowsHTML}</tbody></table>`;
 }
 

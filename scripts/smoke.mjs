@@ -181,7 +181,11 @@ function panelProblems() {
   else if (stacked && thead.getBoundingClientRect().width > 2) out.push("the header row shows over stacked rows");
   else if (!stacked && thead.getBoundingClientRect().height < 10) out.push("the header row is hidden in a wide pane");
   if (table.getAttribute("role") !== "table" || [...table.querySelectorAll("tr")].some(tr => tr.getAttribute("role") !== "row") || [...table.querySelectorAll("td")].some(td => td.getAttribute("role") !== "cell")) out.push("the table lost its roles");
-  const heads = [...thead.querySelectorAll("th")].map(th => th.textContent);
+  // The buttons' column is named for a screen reader only (boxestable.js
+  // tableHTML) and its cells carry no caption, so it compares as "".
+  const heads = [...thead.querySelectorAll("th")].map(th => (th.querySelector(".lc-sr-only") ? "" : th.textContent));
+  const unnamed = [...thead.querySelectorAll("th")].filter(th => !th.textContent.trim());
+  if (unnamed.length) out.push(`${unnamed.length} column headers have no name`);
   for (const tr of table.querySelectorAll("tbody tr")) {
     const labels = [...tr.children].map(td => td.dataset.label);
     if (labels.join("|") !== heads.join("|")) { out.push(`a row's captions read ${labels.join(", ")}, not the header's ${heads.join(", ")}`); break; }

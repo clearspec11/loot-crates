@@ -20,7 +20,7 @@ describe("the Pull log table", () => {
 
   it("captions every cell with its column, in the header's order, under the table's roles", () => {
     expect(html).toContain('<table class="lc-table lc-table--stack lc-table--log" role="table"><thead role="rowgroup"><tr role="row">');
-    expect([...html.matchAll(/<th role="columnheader">([^<]*)<\/th>/g)].map(m => m[1])).toEqual(LOG_COLUMNS);
+    expect([...html.matchAll(/<th role="columnheader">(.*?)<\/th>/g)].map(m => m[1])).toEqual([...LOG_COLUMNS.slice(0, -1), '<span class="lc-sr-only">Actions</span>']);
     expect(rows(html)).toHaveLength(13);
     for (const tr of rows(html)) {
       expect(tr).toMatch(/^<tr class="[^"]*" role="row">/);
