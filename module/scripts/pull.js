@@ -22,6 +22,7 @@ import "./deck.js";
 import "./roulette.js";
 import { settle, canAfford, formatPrice } from "./currency.js";
 import { limitState, limitRefusal } from "./limits.js";
+import { onShelf, shelfRefusal } from "./shelf.js";
 
 export { PullError } from "./kinds.js";
 export { sourceRaritiesOf };
@@ -77,7 +78,9 @@ export const PRICE_SKEW_MS = 5000;
 
 /*
   The guards every play passes before anything is charged, pull or stake:
-  the game exists, there is a character, it isn't sold out, this character
+  the game exists and is on the shelf (shelf.js: a game the GM took off
+  it is refused for a shop drawn before that, or a request made by hand),
+  there is a character, it isn't sold out, this character
   hasn't reached its limit (limits.js: counted from `log`, the unrefunded
   rows as they stand in the queue, and for a limit per day `today`; a
   table game has none), the price is
@@ -93,6 +96,7 @@ export const PRICE_SKEW_MS = 5000;
 */
 function guardPlay({ box, actor, state = {}, expectedPrice, log = [], today = null, bet }) {
   if (!box) throw new PullError("That box no longer exists.");
+  if (!onShelf(box)) throw new PullError(shelfRefusal(box));
   if (!actor) throw new PullError("No character to buy with.");
   if (box.rules?.stock != null && box.rules.stock <= 0) throw new PullError(`${box.name} is sold out.`);
   const kind = kindFor(box);

@@ -40,7 +40,12 @@
   Thornwick" with its Buy off; without it Tam has bought it once: "You can
   buy 1 more")
   "editor" is the box editor's Rules and Limits groups (limits.js) for the
-  Royal Vault: "3 of 10 left" with Restock, one per character a day.
+  Royal Vault: "3 of 10 left" with Restock, one per character a day, and
+  its "On the shelf" box (shelf.js), ticked.
+  ?shelf=off (shop and the Boxes tab: the GM has taken the Royal Vault off
+  the shelf, shelf.js. A player's shop leaves it out; with &gm=1 the GM's
+  shop shows it with its Buy off and why. The Boxes tab tags and dims its
+  row, its toggle reads "Put on shelf", and the toolbar counts the rest)
   ?well=capped (shop: Tam has thrown 3 of 3 coins into the Wishing Well
   today, so its card reads "The well is still until tomorrow (3 of 3 today)"
   with its Buy off; without it Tam has thrown once: "1 of 3 throws today")
@@ -85,6 +90,7 @@ import { poolRows, sortRows, defaultView, poolSummary, poolBody, pinRecent, drop
 import { boxesTabHTML } from "../module/scripts/boxestable.js";
 import { logTableHTML } from "../module/scripts/logtable.js";
 import { addedNotice } from "../module/scripts/newgame.js";
+import { onShelf, shelfFor, shelfFieldHTML, shelfRules, shelfNotice } from "../module/scripts/shelf.js";
 import { draw, seededRng } from "../module/scripts/odds.js";
 import { buildStrip } from "../module/scripts/strip.js";
 import { mountSpin } from "../module/scripts/spin.js";
@@ -108,6 +114,8 @@ const characters = q.get("characters") === "2"
   ? [{ id: "tam", name: "Tam Thornwick" }, { id: "orla", name: "Orla Vane" }]
   : [{ id: "tam", name: "Tam Thornwick" }];
 const theme = q.get("theme") === "light" ? "light" : "dark";
+// The games as the GM has them: with ?shelf=off the Royal Vault is off the shelf.
+let GAMES = q.get("shelf") === "off" ? BOXES.map(b => (b.id === "royal" ? { ...b, rules: shelfRules(b.rules, false) } : b)) : BOXES;
 document.body.classList.replace("theme-dark", `theme-${theme}`);
 
 // The window the module would open for this state: its class and title.
@@ -171,7 +179,7 @@ function renderShop(extra = {}) {
   fresh.innerHTML = shopHTML({
     fields: `${actorPicker({ actors: characters, actorId: "tam", busy: !!ctx.busy })}
         <div class="lc-shop__field lc-shop__field--purse"><span class="lc-label">Purse</span><span class="lc-shop__purse">${formatGold(purse)}</span></div>`,
-    cards: BOXES.map(b => cardFor(b, POOLS, ctx)).join(""),
+    cards: shelfFor(GAMES, { isGM: ctx.isGM }).map(b => cardFor(b, POOLS, ctx)).join(""),
     notice,
   });
   patchShop(stage, fresh, notice);
@@ -610,7 +618,7 @@ async function renderTable() {
   and its Edit focused and scrolled into view. The New buttons and Edit
   need Foundry here.
 */
-function renderBoxes() {
+function renderBoxes({ toggled = null } = {}) {
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   const added = q.get("added") === "1" ? BOXES.find(b => b.id === "royal") : null;
   const now = Date.now();
@@ -618,7 +626,7 @@ function renderBoxes() {
     <div class="lc-manager__body">
       <nav class="lc-tabs"><div class="lc-tabs__list" role="tablist" aria-label="Loot Crates sections"><button type="button" role="tab" aria-selected="false" tabindex="-1">Pools</button><button type="button" role="tab" aria-selected="true" tabindex="0" class="active">Boxes</button><button type="button" role="tab" aria-selected="false" tabindex="-1">Pull log</button></div><span class="lc-tabs__spacer"></span><button type="button" class="lc-shop-toggle" data-open="true" aria-pressed="true">Shop open</button></nav>
       <section class="lc-tab" role="tabpanel">
-        ${boxesTabHTML({ boxes: BOXES, pools: POOLS, log: [...deckDraws(1, now), ...limitBuys(1)], rounds: { R1: rouletteRound(now) }, recent: added?.id ?? null, esc })}
+        ${boxesTabHTML({ boxes: GAMES, pools: POOLS, log: [...deckDraws(1, now), ...limitBuys(1)], rounds: { R1: rouletteRound(now) }, recent: added?.id ?? null, esc })}
       </section>
     </div>`;
   if (added) {
@@ -627,8 +635,23 @@ function renderBoxes() {
     edit?.closest("tr")?.scrollIntoView({ block: "nearest" });
     stage.querySelector(".lc-manager__status").textContent = addedNotice(added, { shopOpen: true });
   }
+  // With ?shelf=off, the tab as the Royal Vault's toggle leaves it once
+  // pressed (manager.js #toggleShelf): focus kept on the toggle, the status
+  // line saying what players see. A press here flips the game the same way.
+  const shown = toggled ?? (q.get("shelf") === "off" ? "royal" : null);
+  if (shown) {
+    stage.querySelector(`[data-action="toggleShelf"][data-box="${CSS.escape(shown)}"]`)?.focus({ preventScroll: true });
+    stage.querySelector(".lc-manager__status").textContent = shelfNotice(GAMES.find(b => b.id === shown));
+  }
   document.body.dataset.ready = "1";
 }
+stage.addEventListener("click", e => {
+  const btn = e.target.closest?.('[data-action="toggleShelf"]');
+  if (!btn || state !== "manager") return;
+  const id = btn.dataset.box;
+  GAMES = GAMES.map(b => (b.id === id ? { ...b, rules: shelfRules(b.rules, !onShelf(b)) } : b));
+  renderBoxes({ toggled: id });
+});
 
 /*
   The manager's Pull log (logtable.js) on the sample log, with the wheel's
@@ -668,6 +691,7 @@ function renderEditor() {
           <label class="lc-row"><input type="checkbox" name="noDuplicates"> No duplicates per character</label>
         </fieldset>
         ${limitsFieldset(box, { hasClock: true, esc })}
+        ${shelfFieldHTML(box)}
       </div></div>
       <footer class="form-footer"><button type="button">Save</button><button type="button">Cancel</button></footer>
     </div>`;

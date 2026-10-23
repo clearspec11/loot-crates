@@ -343,6 +343,29 @@ describe("the GM client", () => {
     expect(game.settings.get("loot-crates", "boxes").box.rules.stock).toBe(4);
   });
 
+  it("refuses a pull on a game taken off the shelf after the Buy, moving no coins (shelf.js)", async () => {
+    // The player's shop showed the crate; the GM's toggle is queued ahead
+    // of the pull already on its way, as updateBox puts it in the write queue.
+    const { game, actor, emitted, deliver } = makeWorld({ user: GM });
+    await seed(game, { stock: 5 });
+    const off = updateBox("box", b => ({ ...b, rules: { ...b.rules, shelved: false } }));
+    await deliver({ type: "pull", requestId: "r1", boxId: "box", actorId: "actor1", userId: "p1", price: 10 });
+    await off;
+    expect(emitted).toEqual([{ type: "error", requestId: "r1", userId: "p1", message: "Test Crate is no longer on the shelf. Nothing was charged." }]);
+    expect(actor.system.currency.gp).toBe(500);
+    expect(actor.updates).toBe(0);
+    expect(actor.items).toHaveLength(0);
+    expect(game.settings.get("loot-crates", "pullLog")).toHaveLength(0);
+    expect(game.settings.get("loot-crates", "boxes").box.rules.stock).toBe(5);
+    expect(showReveal).not.toHaveBeenCalled();
+
+    // Back on the shelf (the flag dropped), the same press is served.
+    await updateBox("box", b => ({ ...b, rules: { stock: b.rules.stock } }));
+    await deliver({ type: "pull", requestId: "r2", boxId: "box", actorId: "actor1", userId: "p1", price: 10 });
+    expect(emitted.at(-1)).toMatchObject({ type: "reveal", requestId: "r2" });
+    expect(actor.system.currency.gp).toBe(490);
+  });
+
   it("serves a pull without a price (an older client) at the box's price", async () => {
     const { game, actor, emitted, deliver } = makeWorld({ user: GM });
     await seed(game, {});

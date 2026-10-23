@@ -32,6 +32,7 @@ import { DECK_DEFAULTS } from "./deck.js";
 import { ROULETTE_DEFAULTS } from "./roulette.js";
 import { formatPrice } from "./currency.js";
 import { restocked } from "./limits.js";
+import { onShelf } from "./shelf.js";
 
 const weights = () => ({ ...DEFAULT_WEIGHTS });
 
@@ -103,13 +104,15 @@ export function copyOf(game, { id, now = 0 } = {}) {
 }
 
 // The New dialog's default button: it puts the game where players buy, or,
-// while the shop is closed, only on the GM's list.
-export const addLabel = shopOpen => (shopOpen ? "Add to shelf" : "Add");
+// while the shop is closed or the editor's "On the shelf" is unticked
+// (shelf.js), only on the GM's list.
+export const addLabel = (shopOpen, onShelf = true) => (shopOpen && onShelf ? "Add to shelf" : "Add");
 
 // The Boxes tab's status line after the Save: where the game went and
 // whether players can see it. A table game isn't priced; its bets are.
 export function addedNotice(game, { shopOpen = true } = {}) {
   const name = game?.name || "The game";
+  if (!onShelf(game)) return `${name} added off the shelf. Players can't see it until you put it on the shelf.`;
   if (!shopOpen) return `${name} added. The shop is closed, so players can't see it yet.`;
   const price = formatPrice(Number(game?.price) || 0);
   return getKind(kindOf(game))?.table ? `${name} is on the shelf; bets from ${price}.` : `${name} is on the shelf at ${price}.`;

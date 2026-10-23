@@ -904,6 +904,21 @@
   font-family: var(--lc-label); font-size: 11px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase;
   color: var(--lc-gold-ink); border: 1px solid var(--lc-rule-soft); border-radius: 3px;
 }
+/* On the shelf (shelf.js): each row's switch leads its buttons' cell on a
+   line of its own (as Reshuffle does), in the shop switch's idiom: a dot,
+   green while players can see the game. A game off the shelf is tagged so
+   beside its kind and its row reads as set aside: its words in the muted
+   ink, its odds drained of colour (the pills keep their text), its
+   buttons as they are. */
+.loot-crates .lc-table td:last-child .lc-shelf-toggle { display: flex; margin: 0 0 4px auto; min-height: 26px; padding: 0 9px; font-size: 12px; white-space: nowrap; }
+.loot-crates .lc-shelf-toggle::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--lc-ink-mute); }
+.loot-crates .lc-shelf-toggle[data-on="true"]::before { background: var(--lc-ok); }
+.loot-crates .lc-shelf-toggle[data-on="false"] { border-style: dashed; }
+.loot-crates .lc-kind--off { color: var(--lc-ink-mute); border-style: dashed; }
+.loot-crates .lc-table tr.lc-row--off td:not(:last-child) { color: var(--lc-ink-mute); }
+.loot-crates .lc-table tr.lc-row--off td .lc-ribbon, .loot-crates .lc-table tr.lc-row--off td .lc-odds { filter: grayscale(1); }
+.loot-crates .lc-shelf-count { font-size: 12px; color: var(--lc-ink-mute); white-space: nowrap; }
+.loot-crates .lc-form__shelf { margin-top: 4px; font-weight: 600; }
 /* The row a New just added (manager.js #saveEditor): an edge in the gold
    rule, as a dropped item's row carries its rarity, until the next New. */
 .loot-crates .lc-table tr.lc-row--new td:first-child { box-shadow: inset 3px 0 0 var(--lc-gold-ink); }
@@ -1063,6 +1078,8 @@
   .loot-crates .lc-table--stack.lc-table--boxes td:first-child::before { display: none; }
   .loot-crates .lc-table--stack td:last-child { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; margin-top: 2px; white-space: normal; }
   .loot-crates .lc-table--stack td:last-child .lc-table__extra { margin: 0; }
+  /* In a card, the shelf switch stands apart from the edit buttons, at the left. */
+  .loot-crates .lc-table--stack td:last-child .lc-shelf-toggle { margin: 0 auto 0 0; }
   .loot-crates .lc-table--stack td .lc-ribbon { max-width: none; }
   /* The new row's gold edge and a late sale's amber one move to the card. */
   .loot-crates .lc-table--stack tr.lc-row--new td:first-child, .loot-crates .lc-table--stack tr.lc-row--late td:first-child { box-shadow: none; }

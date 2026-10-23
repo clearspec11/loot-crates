@@ -61,6 +61,8 @@ const STATES = [
   // card reads "Limit reached: 2 of 2 for Tam Thornwick" with the Buy off
   // (the plain shop shows "You can buy 1 more" and "3 of 10 left").
   ["shop-limit", "state=shop&limit=reached"],
+  // The Royal Vault is off the shelf: a player's shop leaves it out.
+  ["shop-shelf", "state=shop&shelf=off"],
   // The box editor's Limits group: the stock with what is left and
   // Restock, then the limit per character, each with its help.
   ["box-limits", "state=editor"],
@@ -115,6 +117,11 @@ const STATES = [
   // wrap in a 480 px window instead of overflowing.
   ["manager-boxes", "state=manager&tab=boxes&added=1"],
   ["manager-boxes-narrow", "state=manager&tab=boxes&added=1&width=480"],
+  // On the shelf (shelf.js): the GM took the Royal Vault off it. Its row is
+  // tagged "Off the shelf" and dimmed, its toggle (focused, as the click
+  // leaves it) reads "Put on shelf", every other row's is pressed, the
+  // wheel keeps its live round's button, the toolbar counts 7 of 8.
+  ["manager-boxes-shelf", "state=manager&tab=boxes&shelf=off"],
   // The Pull log (logtable.js) with one of everything: a refunded pull
   // struck through and muted, a pity pull tracing its rarity, a sale called
   // off too late, a dice win with its faces and payout, a deck draw that
@@ -229,6 +236,61 @@ function logProblems(narrow) {
 }
 
 // The Boxes tab after a New, read from the DOM (manager-boxes states).
+// The player's shop with the Royal Vault off the shelf leaves its card out
+// and keeps every other; the plain shop shows all eight.
+function shelfShopProblems(off) {
+  const ids = [...document.querySelectorAll(".lc-box")].map(c => c.dataset.box);
+  if (off) return [ids.includes("royal") ? "the Royal Vault is off the shelf but on a player's shop" : "", ids.length !== 7 ? `expected 7 cards with one off the shelf, got ${ids.length}` : ""].filter(Boolean);
+  return ids.includes("royal") ? [] : ["the Royal Vault is missing from the shop"];
+}
+
+// The editor's "On the shelf" box (shelf.js): one checkbox, ticked, its
+// words beside it and at the 11px floor or over.
+function shelfEditorProblems() {
+  const out = [];
+  const label = document.querySelector(".lc-form__shelf");
+  const box = label?.querySelector('input[type="checkbox"][name="onShelf"]');
+  if (!box) return ["the editor has no On the shelf box"];
+  if (!box.checked) out.push("the On the shelf box isn't ticked");
+  if (!/^On the shelf/.test(label.textContent.trim())) out.push(`the On the shelf box reads "${label.textContent.trim()}"`);
+  if (parseFloat(getComputedStyle(label).fontSize) < 11) out.push("the On the shelf words are under 11px");
+  const r = box.getBoundingClientRect();
+  if (r.width < 10 || r.height < 10) out.push("the On the shelf box is not visible");
+  return out;
+}
+
+// The Boxes tab with the Royal Vault off the shelf (shelf.js).
+function shelfBoxesProblems() {
+  const out = [];
+  const app = document.getElementById("app").getBoundingClientRect();
+  const count = document.querySelector(".lc-toolbar--boxes .lc-shelf-count");
+  if (count?.textContent !== "7 of 8 on the shelf") out.push(`the toolbar count reads "${count?.textContent}"`);
+  const rows = [...document.querySelectorAll(".lc-table tbody tr")];
+  if (rows.length !== 8) out.push(`expected 8 sample games, got ${rows.length}`);
+  const off = rows.filter(r => r.classList.contains("lc-row--off"));
+  if (off.length !== 1 || !/Royal Vault/.test(off[0]?.textContent ?? "")) out.push("the Royal Vault's row isn't the one marked off the shelf");
+  const tag = off[0]?.querySelector(".lc-kind--off");
+  if (tag?.textContent !== "Off the shelf") out.push("the off-the-shelf row has no tag");
+  for (const r of rows) {
+    const name = r.querySelector(".lc-table__name")?.firstChild?.textContent.trim();
+    const t = r.querySelector('[data-action="toggleShelf"]');
+    if (!t) { out.push(`${name} has no shelf toggle`); continue; }
+    const isOff = r.classList.contains("lc-row--off");
+    const want = isOff ? ["false", "Put on shelf"] : ["true", "On the shelf"];
+    if (t.getAttribute("aria-pressed") !== want[0] || t.textContent.trim() !== want[1]) out.push(`${name}'s toggle is ${t.getAttribute("aria-pressed")} "${t.textContent.trim()}"`);
+    if (t.getAttribute("aria-label") !== `${want[1]}: ${name}`) out.push(`${name}'s toggle is labelled "${t.getAttribute("aria-label")}"`);
+    const tr = t.getBoundingClientRect();
+    if (tr.width < 20 || tr.height < 20 || tr.right > app.right + 1) out.push(`${name}'s toggle is not fully visible`);
+    if (parseFloat(getComputedStyle(t).fontSize) < 11) out.push(`${name}'s toggle is under 11px`);
+  }
+  const royal = document.querySelector('[data-action="toggleShelf"][data-box="royal"]');
+  if (document.activeElement !== royal) out.push("focus is not on the Royal Vault's toggle");
+  const status = document.querySelector(".lc-manager__status");
+  if (status?.textContent !== "Royal Vault is off the shelf; players can't see it.") out.push(`status line says "${status?.textContent}"`);
+  if (!document.querySelector('[data-action="openTable"]')) out.push("the wheel's table button is missing");
+  return out;
+}
+
 function boxesProblems(narrow) {
   const out = [];
   const app = document.getElementById("app").getBoundingClientRect();
@@ -262,7 +324,7 @@ function boxesProblems(narrow) {
   if (!document.querySelector('[data-action="openTable"]') || !document.querySelector('[data-action="reshuffle"]')) out.push("the wheel's Open a round or the deck's Reshuffle is missing");
   // Every row has a visible Copy naming its game, between Edit and Delete.
   for (const r of rows) {
-    const name = r.children[0].firstChild?.textContent.trim();
+    const name = r.querySelector(".lc-table__name")?.firstChild?.textContent.trim();
     const copy = r.querySelector('[data-action="copyBox"]');
     if (!copy) { out.push(`${name} has no Copy`); continue; }
     if (copy.getAttribute("aria-label") !== `Copy ${name}`) out.push(`${name}'s Copy is labelled "${copy.getAttribute("aria-label")}"`);
@@ -873,11 +935,12 @@ async function tableProblems({ phase, outcome, gm }) {
 // The stock and the limit per character on the shop's cards (limits.js):
 // the Royal Vault reads "3 of 10 left"; the Pauper's Box says Tam can buy
 // one more, or once reached, says so as its reason with the Buy off.
-async function limitCardProblems({ reached, off }) {
+async function limitCardProblems({ reached, off, shelved = false }) {
   const out = [];
   const card = id => document.querySelector(`.lc-box[data-box="${id}"]`);
   const stock = card("royal")?.querySelector(".lc-box__stock")?.textContent.trim();
-  if (stock !== "3 of 10 left") out.push(`Royal Vault's stock reads "${stock}"`);
+  // Off the shelf, the Royal Vault isn't on a player's shop (shelfShopProblems).
+  if (!shelved && stock !== "3 of 10 left") out.push(`Royal Vault's stock reads "${stock}"`);
   const pauper = card("common");
   const line = pauper?.querySelector(".lc-box__limit")?.textContent.trim() ?? "";
   const why = pauper?.querySelector(".lc-box__why")?.textContent.trim() ?? "";
@@ -1053,13 +1116,15 @@ try {
         problems0.push(...await page.evaluate(diceCardProblems, { closed: name === "shop-closed", busy: name === "shop-busy" }));
         problems0.push(...await page.evaluate(deckCardProblems, { streak: name === "shop-deck-streak", closed: name === "shop-closed", busy: name === "shop-busy" }));
         problems0.push(...await page.evaluate(rouletteCardProblems, { noRound: name === "shop-no-round", closed: name === "shop-closed", busy: name === "shop-busy" }));
-        problems0.push(...await page.evaluate(limitCardProblems, { reached: name === "shop-limit", off: name === "shop-closed" || name === "shop-busy" }));
+        problems0.push(...await page.evaluate(limitCardProblems, { reached: name === "shop-limit", off: name === "shop-closed" || name === "shop-busy", shelved: name === "shop-shelf" }));
+        problems0.push(...await page.evaluate(shelfShopProblems, name === "shop-shelf"));
       }
-      else if (name === "box-limits") problems0.push(...await page.evaluate(limitsEditorProblems));
+      else if (name === "box-limits") problems0.push(...await page.evaluate(limitsEditorProblems), ...await page.evaluate(shelfEditorProblems));
       else if (name.startsWith("table") || name.startsWith("roulette")) problems0.push(...await page.evaluate(tableProblems, { phase: { "table-betting": "betting", "table-waiting": "waiting", "table-closed": "closed", "roulette-spinning": "spinning", "roulette-won": "landed", "roulette-lost": "landed" }[name], outcome: name === "roulette-lost" ? "lose" : "win", gm: name === "table-waiting" }));
       else if (name.startsWith("dice")) problems0.push(...await page.evaluate(diceProblems, { "dice-rolling": "rolling", "dice-won": "win", "dice-lost": "lose" }[name]));
       else if (name.startsWith("deck")) problems0.push(...await page.evaluate(deckProblems, { "deck-held": "held", "deck-boon": "item", "deck-bane": "loss", "deck-effect": "effect" }[name]));
       else if (name === "manager-dropped") problems0.push(...await page.evaluate(droppedProblems));
+      else if (name === "manager-boxes-shelf") problems0.push(...await page.evaluate(shelfBoxesProblems), ...await page.evaluate(panelProblems));
       else if (name.startsWith("manager-boxes")) problems0.push(...await page.evaluate(boxesProblems, name.endsWith("narrow")), ...await page.evaluate(panelProblems));
       else if (name.startsWith("manager-log")) problems0.push(...await page.evaluate(logProblems, name.endsWith("narrow")), ...await page.evaluate(panelProblems));
       else if (name.startsWith("manager")) problems0.push(...await page.evaluate(managerProblems, name === "manager-narrow"));

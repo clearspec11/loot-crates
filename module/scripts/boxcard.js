@@ -15,6 +15,7 @@ import { RARITIES, RARITY_SHORT, RARITY_LABEL } from "./config.js";
 import { shopOdds, oddsTable, flattenPool, rarityRank } from "./odds.js";
 import { canAfford, formatPrice, shortfall } from "./currency.js";
 import { stockOf, stockText, limitState, limitLine, withLimit } from "./limits.js";
+import { onShelf, OFF_SHELF_REASON } from "./shelf.js";
 
 // "Rare 12%": the rarity's name is on screen, not only its colour.
 export function oddPill(row) {
@@ -299,7 +300,9 @@ export function boxCard(box, pools, ctx) {
   rising draw price): it goes on the Buy as data-price, which the pull
   carries and the GM checks (pull.js expectedPrice). The limit per
   character (limits.js) is added here for every kind, from ctx's log,
-  actorId, actorName and today.
+  actorId, actorName and today. A game off the shelf (shelf.js) reaches
+  only the GM's shop, where its card says so over every other reason: the
+  GM refuses a pull on it from anyone, the GM included.
 */
 export function cardShell(box, ctx, { rarityClass, art = "", middle: lines = [], reason: own = "", label, price: cost = box.price }) {
   const esc = ctx.esc ?? (s => String(s ?? ""));
@@ -308,7 +311,7 @@ export function cardShell(box, ctx, { rarityClass, art = "", middle: lines = [],
   // the card's reason, whatever the kind said.
   const limit = limitState(box, ctx);
   const more = limitLine(limit);
-  const reason = withLimit(box, own, ctx);
+  const reason = onShelf(box) ? withLimit(box, own, ctx) : OFF_SHELF_REASON;
   const middle = more ? [...lines, `<div class="lc-box__limit">${esc(more)}</div>`] : lines;
   const notice = shopNotice(ctx).text;
   const whyId = `lc-why-${box.id}`;

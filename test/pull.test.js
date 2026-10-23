@@ -49,6 +49,19 @@ describe("performPull", () => {
     expect(errors.some(e => e.startsWith("loot-crates |"))).toBe(true);
   });
 
+  it("refuses a game off the shelf with the sentence, charging and granting nothing", async () => {
+    globalThis.fromUuid = async uuid => ({ name: `Item ${uuid}`, img: "", toObject: () => ({ name: `Item ${uuid}`, type: "loot", flags: {} }) });
+    const actor = makeActor();
+    const promise = performPull({ box: { ...BOX, rules: { shelved: false } }, pools: POOLS, actor, state: {}, rng: () => 0.5 });
+    await expect(promise).rejects.toBeInstanceOf(PullError);
+    await expect(promise).rejects.toThrow("Test Crate is no longer on the shelf. Nothing was charged.");
+    expect(actor.writes).toHaveLength(0);
+    expect(actor.items).toHaveLength(0);
+    // A record from before the flag, and one put back on the shelf, sell as ever.
+    await performPull({ box: { ...BOX, rules: { shelved: true } }, pools: POOLS, actor, state: {}, rng: () => 0.5 });
+    expect(actor.writes).toHaveLength(1);
+  });
+
   it("charges nothing when the rolled entry's source is gone from its compendium", async () => {
     globalThis.fromUuid = async () => null;
     const actor = makeActor();

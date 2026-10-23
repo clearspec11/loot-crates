@@ -33,6 +33,7 @@ import { limitState, limitRefusal, withLimit } from "./limits.js";
 import { requestPull } from "./socket.js";
 import { heldState, onRelease } from "./reveal.js";
 import { getKind, kindOf } from "./kinds.js";
+import { onShelf, shelfFor, OFF_SHELF_REASON } from "./shelf.js";
 // A table game's Buy opens the table (tablewindow.js), loaded when it is
 // first pressed: that window imports this file for the characters a player
 // may bet with, and the kinds' tests run the shop without it.
@@ -58,7 +59,20 @@ const cardFor = (game, pools, ctx) => (shopOf(game).card ?? boxCard)(game, pools
 // The game's own reason (the kind's, else the crate's), then the limit per
 // character over it (limits.js), as the card shows it (boxcard.js cardShell).
 const ownReason = (game, pools, ctx) => (shopOf(game).reason ?? ((b, p, c) => buyReason(b, shopOdds(b, p, c.stateOf(b.id)), c)))(game, pools, ctx);
-const reasonFor = (game, pools, ctx) => withLimit(game, ownReason(game, pools, ctx), ctx);
+const reasonFor = (game, pools, ctx) => (onShelf(game) ? withLimit(game, ownReason(game, pools, ctx), ctx) : OFF_SHELF_REASON);
+
+/*
+  The games this client's shop sells, by id: a player sees only those on
+  the shelf (shelf.js), so a game the GM took off it is, to a player's Buy,
+  a game that is gone ("That crate is no longer on the shelf."), the same
+  as one deleted. The GM's shop shows every game, those off the shelf with
+  their Buy off.
+*/
+function forSale() {
+  const all = getBoxes();
+  if (game.user?.isGM) return all;
+  return Object.fromEntries(Object.entries(all).filter(([, b]) => onShelf(b)));
+}
 
 // What a play costs this character now, as the GM will check it (pull.js):
 // the kind's price (the deck's risen draw), else the record's.
@@ -125,7 +139,7 @@ export class CrateShop extends ApplicationV2 {
       return;
     }
     const boxId = target.dataset.box;
-    const box = getBoxes()[boxId];
+    const box = forSale()[boxId];
     const ctx = this.#ctx();
     if (!box || reasonFor(box, getPools(), ctx)) {
       // An aria-disabled Buy already shows its reason; one that looked live
@@ -183,14 +197,14 @@ export class CrateShop extends ApplicationV2 {
       const own = shopOf(box).reason;
       return withLimit(box, own ? own(box, getPools(), now) : crateReason(box, shopOdds(box, getPools(), now.stateOf(boxId)), now), now);
     };
-    const box = getBoxes()[boxId];
+    const box = forSale()[boxId];
     const price = box ? priceNow(box, ctx) : undefined;
     // A limit reached since the card was drawn is said in the GM's own
     // words (limits.js limitRefusal), whichever side caught it.
     const limit = box && !ctx.held(boxId) ? limitState(box, ctx) : null;
     const text = limit?.reached ? limitRefusal(box, limit, ctx.actorName) : refusalLine({ box, reason: box ? reasonNow(box) : "", shown, price, purse: ctx.purse, actorName: ctx.actorName });
     const holds = () => {
-      const now = getBoxes()[boxId];
+      const now = forSale()[boxId];
       if (!box) return !now;
       return !!now && priceNow(now, this.#ctx()) === price && !!reasonNow(now);
     };
@@ -258,7 +272,9 @@ export class CrateShop extends ApplicationV2 {
     const actors = buyableActors();
     this.actorId = this.#resolve(actors);
     const actor = this.actor;
-    const boxes = Object.values(getBoxes());
+    // A player's shelf holds only the games the GM has put out (shelf.js);
+    // with none out it says the shelf is empty, as with none built.
+    const boxes = shelfFor(Object.values(getBoxes()), { isGM: !!game.user?.isGM });
     const pools = getPools();
     const purse = actor?.system?.currency ?? {};
     const ctx = this.#ctx();

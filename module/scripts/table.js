@@ -38,6 +38,7 @@ import { getKind, kindFor, PullError } from "./kinds.js";
 import { settle } from "./currency.js";
 import { rollRng, resolveSource } from "./pull.js";
 import { newRound, liveRoundOf, openStakesOf, staleStakes, staleAt, planResolve, coinsByActor, rowPatch, STATUS } from "./round.js";
+import { onShelf, shelfRoundRefusal } from "./shelf.js";
 // reveal.js imports socket.js, which imports this file; each side reaches
 // the other only inside a function.
 import { showRound } from "./reveal.js";
@@ -85,6 +86,8 @@ export function openRound(boxId, { windowMs = 0 } = {}) {
     if (!kindFor(box).table) throw new PullError(`${box.name} isn't played at the table.`);
     const live = liveRoundOf(getRounds(), boxId);
     if (live) return live;
+    // Off the shelf, no new round; one already open runs to its resolve.
+    if (!onShelf(box)) throw new PullError(shelfRoundRefusal(box));
     const round = await saveRound(newRound({ id: newId(), game: box, windowMs }));
     announce({ type: "round", event: "open", round, boxName: box.name });
     return round;

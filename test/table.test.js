@@ -128,6 +128,29 @@ async function threeStakes() {
   return round;
 }
 
+describe("a table game off the shelf (shelf.js)", () => {
+  it("opens no round, and writes nothing", async () => {
+    await seed(world, { wheel: { ...TABLE, rules: { shelved: false } } });
+    await expect(openRound("wheel")).rejects.toThrow("Wheel is off the shelf. Put it on the shelf to open a round.");
+    expect(getRounds()).toEqual({});
+  });
+
+  it("refuses a stake on a round opened before it went off the shelf, charging nothing; the round still resolves", async () => {
+    const round = await openRound("wheel");
+    await world.deliver(stakeMsg(round, "a1", "p1", "red"));
+    await seed(world, { wheel: { ...TABLE, rules: { shelved: false } } });
+    await world.deliver(stakeMsg(round, "a2", "p2", "red"));
+    expect(world.emitted.find(m => m.type === "error")?.message).toBe("Wheel is no longer on the shelf. Nothing was charged.");
+    expect(gp(world.actors.get("a2"))).toBe(100);
+    expect(world.actors.get("a2").updates).toBe(0);
+    expect(getLog()).toHaveLength(1);
+    // The stake already down is settled by the round's one resolve.
+    await closeRound(round.id);
+    await resolveRound(round.id);
+    expect(gp(world.actors.get("a1"))).toBe(110);
+  });
+});
+
 describe("a table round's stakes", () => {
   it("writes three open rows and charges each character once", async () => {
     const round = await threeStakes();

@@ -70,7 +70,33 @@ describe("the Boxes table", () => {
   it("marks the row a New just added", () => {
     const out = boxesTableHTML({ boxes: BOXES, pools: POOLS, recent: "royal", esc });
     expect((out.match(/class="lc-row--new"/g) ?? []).length).toBe(1);
-    expect(out).toMatch(/<tr class="lc-row--new" role="row">\s*<td role="cell" data-label="Box">Royal Vault/);
+    expect(out).toMatch(/<tr class="lc-row--new" role="row">\s*<td role="cell" data-label="Box"><span class="lc-table__name">Royal Vault/);
+  });
+
+  it("gives every row its On the shelf toggle, pressed while players can see the game", () => {
+    const out = boxesTableHTML({ boxes: BOXES, pools: POOLS, esc });
+    for (const b of BOXES) expect(out).toContain(`data-action="toggleShelf" data-box="${b.id}" data-on="true" aria-pressed="true" aria-label="On the shelf: ${esc(b.name)}"`);
+    expect(out).not.toContain("lc-row--off");
+    expect(out).not.toContain("Off the shelf</span>");
+  });
+
+  it("tags, dims and offers Put on shelf for a game off the shelf; a wheel off it opens no round", () => {
+    const off = BOXES.map(b => ({ ...b, rules: { ...(b.rules ?? {}), shelved: false } }));
+    const out = boxesTableHTML({ boxes: off, pools: POOLS, esc });
+    expect((out.match(/<tr class="lc-row--off" role="row">/g) ?? []).length).toBe(BOXES.length);
+    expect((out.match(/<span class="lc-kind lc-kind--off">Off the shelf<\/span>/g) ?? []).length).toBe(BOXES.length);
+    expect(out).toContain(`data-action="toggleShelf" data-box="royal" data-on="false" aria-pressed="false" aria-label="Put on shelf: Royal Vault"`);
+    expect(out).toMatch(/aria-pressed="false"[^>]*>Put on shelf<\/button>/);
+    expect(out).not.toContain('data-action="openTable"');
+    // A round already open runs to its resolve: its table stays one click away.
+    const wheel = off.find(b => b.kind === "roulette");
+    const live = boxesTableHTML({ boxes: [wheel], pools: POOLS, rounds: { R: { id: "R", boxId: wheel.id, status: "open" } }, esc });
+    expect(live).toContain(`aria-label="Go to the table at ${esc(wheel.name)}">Go to the table</button>`);
+  });
+
+  it("keeps the new row's mark beside the off-the-shelf one", () => {
+    const off = BOXES.map(b => (b.id === "royal" ? { ...b, rules: { ...(b.rules ?? {}), shelved: false } } : b));
+    expect(boxesTableHTML({ boxes: off, pools: POOLS, recent: "royal", esc })).toContain('<tr class="lc-row--new lc-row--off" role="row">');
   });
 
   it("says so when there are no boxes", () => {
@@ -85,6 +111,12 @@ describe("the tab", () => {
     for (const [action, label] of NEW_BUTTONS) expect(html).toContain(`data-action="${action}"><i class="fas fa-plus"></i> ${label}</button>`);
     expect(html).toContain('<span class="lc-pool__hint lc-manager__status" role="status">Royal Vault is on the shelf at 1,200 gp.</span>');
     expect(html).toContain('<table class="lc-table lc-table--stack lc-table--boxes"');
+  });
+
+  it("counts the games players can see in the toolbar", () => {
+    const off = BOXES.map((b, i) => (i < 2 ? { ...b, rules: { ...(b.rules ?? {}), shelved: false } } : b));
+    expect(boxesTabHTML({ boxes: off, pools: POOLS, esc })).toContain(`<span class="lc-shelf-count">${BOXES.length - 2} of ${BOXES.length} on the shelf</span>`);
+    expect(boxesTabHTML({ boxes: [], pools: {}, esc })).not.toContain("lc-shelf-count");
   });
 });
 

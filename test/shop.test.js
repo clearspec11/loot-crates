@@ -250,6 +250,62 @@ describe("the shop's character, picked again each render", () => {
   });
 });
 
+/*
+  On the shelf (shelf.js): a player's shop leaves out every game the GM has
+  taken off the shelf and keeps records from before the flag; with nothing
+  left it says the shelf is empty. The GM's shop shows them all, the ones
+  off the shelf with their Buy off and the reason.
+*/
+describe("the shelf a player sees", () => {
+  beforeEach(() => { globalThis.document = createDocument(); });
+  afterEach(() => { delete globalThis.document; globalThis.game.user.isGM = false; });
+  const draw = async app => { app.render(); return app.last; };
+  const cards = app => [...app.content.querySelectorAll(".lc-box")].map(el => el.dataset.box);
+  const saved = () => Object.fromEntries(Object.entries(boxes).map(([k, v]) => [k, v]));
+  const restore = was => { for (const k of Object.keys(boxes)) delete boxes[k]; Object.assign(boxes, was); };
+
+  it("skips a game off the shelf and keeps a record with no flag", async () => {
+    const was = saved();
+    try {
+      expect(boxes.common.rules?.shelved).toBeUndefined();
+      boxes.royal = { ...was.royal, rules: { ...(was.royal.rules ?? {}), shelved: false } };
+      const app = new CrateShop();
+      await draw(app);
+      const shown = cards(app);
+      expect(shown).not.toContain("royal");
+      expect(shown).toContain("common");
+      expect(shown).toHaveLength(BOXES.length - 1);
+    } finally { restore(was); }
+  });
+
+  it("says the shelf is empty when every game is off it", async () => {
+    const was = saved();
+    try {
+      for (const k of Object.keys(boxes)) boxes[k] = { ...boxes[k], rules: { ...(boxes[k].rules ?? {}), shelved: false } };
+      const app = new CrateShop();
+      await draw(app);
+      expect(cards(app)).toEqual([]);
+      expect(app.content.querySelector(".lc-shop__empty").textContent).toMatch(/^No crates on the shelf yet\./);
+    } finally { restore(was); }
+  });
+
+  it("shows the GM every game, the one off the shelf with its Buy off and why", async () => {
+    const was = saved();
+    try {
+      globalThis.game.user.isGM = true;
+      boxes.common = { ...was.common, rules: { ...(was.common.rules ?? {}), shelved: false } };
+      const app = new CrateShop();
+      await draw(app);
+      expect(cards(app)).toHaveLength(BOXES.length);
+      const buyBtn = app.content.querySelector('.lc-box__buy[data-box="common"]');
+      expect(buyBtn.getAttribute("aria-disabled")).toBe("true");
+      expect(app.content.querySelector('[data-box="common"] .lc-box__why').textContent).toBe("Off the shelf: players can't see it");
+      await CrateShop.DEFAULT_OPTIONS.actions.buy.call(app, {}, { dataset: { box: "common", price: "25" }, getAttribute: () => "true" });
+      expect(requestPull).not.toHaveBeenCalled();
+    } finally { restore(was); }
+  });
+});
+
 describe("what redraws an open shop", () => {
   // A document to render into; the Buy tests above run without one.
   beforeEach(() => { globalThis.document = createDocument(); });
@@ -455,6 +511,25 @@ describe("the shop mid-purchase, and a Buy that does nothing", () => {
       expect(notice(app)).toBe("");
       expect(requestPull).not.toHaveBeenCalled();
     } finally { boxes.common = old; boxes.royal.rules.stock = stock; }
+  });
+
+  it("says the crate is no longer on the shelf for a Buy pressed after the GM took it off, and sends nothing", async () => {
+    const app = new CrateShop();
+    await draw(app);
+    const old = boxes.common;
+    try {
+      boxes.common = { ...old, rules: { ...(old.rules ?? {}), shelved: false } };
+      await press(app, "common", "25");
+      await app.last;
+      expect(notice(app)).toBe("That crate is no longer on the shelf.");
+      expect(app.content.querySelector('[data-box="common"]')).toBeNull();
+      expect(requestPull).not.toHaveBeenCalled();
+      // Put back on the shelf, the line no longer holds and the card returns.
+      boxes.common = old;
+      await draw(app);
+      expect(notice(app)).toBe("");
+      expect(app.content.querySelector('.lc-box__buy[data-box="common"]')).not.toBeNull();
+    } finally { boxes.common = old; }
   });
 
   it("leaves a shop-wide reason to the notice alone", async () => {

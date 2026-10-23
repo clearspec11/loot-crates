@@ -102,6 +102,7 @@ import { describeRefund, refundPull } from "./refund.js";
 import { postRefundCard } from "./chat.js";
 import { changeCount } from "./redraw.js";
 import { limitsFieldset, perCharacterFromForm, restocked, stockAfterRefund, stockField, stockFromForm, stockText } from "./limits.js";
+import { onShelf, shelfRules, shelfFieldHTML, shelfNotice } from "./shelf.js";
 
 const { ApplicationV2, DialogV2 } = foundry.applications.api;
 const esc = s => foundry.utils.escapeHTML(String(s ?? ""));
@@ -120,7 +121,7 @@ export class CrateManager extends ApplicationV2 {
       addPool: CrateManager.#addPool, editPool: CrateManager.#editPool, deletePool: CrateManager.#deletePool,
       bulkAdd: CrateManager.#bulkAdd, setUnsetRarity: CrateManager.#setUnsetRarity, removeEntry: CrateManager.#removeEntry, updateEntry: CrateManager.#updateEntry, relinkEntry: CrateManager.#relinkEntry,
       addBox: CrateManager.#addBox, addWell: CrateManager.#addWell, addDice: CrateManager.#addDice, addDeck: CrateManager.#addDeck, addWheel: CrateManager.#addWheel, crateFromPool: CrateManager.#crateFromPool,
-      editBox: CrateManager.#editBox, copyBox: CrateManager.#copyBox, deleteBox: CrateManager.#deleteBox, reshuffle: CrateManager.#reshuffle, openTable: CrateManager.#openTable,
+      editBox: CrateManager.#editBox, toggleShelf: CrateManager.#toggleShelf, copyBox: CrateManager.#copyBox, deleteBox: CrateManager.#deleteBox, reshuffle: CrateManager.#reshuffle, openTable: CrateManager.#openTable,
       refund: CrateManager.#refund, toggleShop: CrateManager.#toggleShop, toggleMisses: CrateManager.#toggleMisses,
       filterChip: CrateManager.#filterChip, showMore: CrateManager.#showMore,
     },
@@ -514,7 +515,12 @@ export class CrateManager extends ApplicationV2 {
     delete, or a nameless dice game taking stakes while the GM looks for
     its row.
   */
-  static #addBox() { return this.#openEditor(newDraft("crate", { id: newId() }), { isNew: true }); }
+  // With one pool in the world, a new crate draws from it already ticked.
+  static #addBox() {
+    const pools = Object.values(getPools());
+    const only = pools.length === 1 ? { pools: [{ id: pools[0].id, share: 1 }] } : {};
+    return this.#openEditor(newDraft("crate", { id: newId(), ...only }), { isNew: true });
+  }
   static #addWell() { return this.#openEditor(newDraft("well", { id: newId() }), { isNew: true }); }
   static #addDice() { return this.#openEditor(newDraft("dice", { id: newId() }), { isNew: true }); }
   static #addDeck() { return this.#openEditor(newDraft("deck", { id: newId() }), { isNew: true }); }
@@ -539,11 +545,17 @@ export class CrateManager extends ApplicationV2 {
     An editor's Save. A new game is created once, from its draft as the
     form left it, and the GM is shown where it went: the Boxes tab, its
     row's Edit focused and scrolled into view (_replaceHTML), the status
-    line saying it is on the shelf, or that the shop is closed. An edit is
-    applied to the record as it is now (store.js updateBox); only an edit
-    can find its record deleted meanwhile.
+    line saying it is on the shelf, that the shop is closed, or that it
+    was added off the shelf. An edit is applied to the record as it is now
+    (store.js updateBox); only an edit can find its record deleted
+    meanwhile. Every editor's "On the shelf" box (`data.onShelf`, shelf.js)
+    is written here, over whatever the kind's own rules say.
   */
-  async #saveEditor(box, isNew, build) {
+  async #saveEditor(box, isNew, kindBuild, data) {
+    const build = fresh => {
+      const out = kindBuild(fresh);
+      return { ...out, rules: shelfRules(out.rules ?? {}, !!data.onShelf) };
+    };
     if (!isNew) {
       const saved = await updateBox(box.id, build);
       if (!saved) ui.notifications.warn(`${box.name} was deleted while you were editing it.`);
@@ -616,9 +628,10 @@ export class CrateManager extends ApplicationV2 {
         <label class="lc-row">Pity: guarantee <select name="pityRarity"><option value="">off</option>${RARITIES.map(r => `<option value="${r}" ${box.rules?.pity?.minRarity === r ? "selected" : ""}>${RARITY_LABEL[r]} or better</option>`).join("")}</select> after <input name="pityAfter" type="number" min="1" step="1" value="${esc(box.rules?.pity?.after ?? 10)}"> pulls</label>
         <label class="lc-row"><input type="checkbox" name="noDuplicates" ${box.rules?.noDuplicates ? "checked" : ""}> No duplicates per character</label>
       </fieldset>
-      ${limitsFieldset(box, { draft: isNew, hasClock: todayKey() != null, esc })}`, {
+      ${limitsFieldset(box, { draft: isNew, hasClock: todayKey() != null, esc })}
+      ${shelfFieldHTML(box, opts)}`, {
       // Restock writes to the stored record; a draft has none to fill.
-      onForm: form => { liveOdds(form, box, poolIds); if (!isNew) wireRestock(form, box.id); },
+      onForm: form => { liveOdds(form, box, poolIds); if (!isNew) wireRestock(form, box.id); wireShelf(form, isNew); },
       position: { width: 460 },
       okLabel: saveLabel(isNew),
     });
@@ -644,7 +657,7 @@ export class CrateManager extends ApplicationV2 {
           perCharacter: perCharacterFromForm(data),
         },
       };
-    });
+    }, data);
   }
 
   /*
@@ -683,11 +696,15 @@ export class CrateManager extends ApplicationV2 {
         ${noClockNote({ hasClock: todayKey() != null, cap: box.rules?.cap })}
         <label class="lc-row">Pity: guarantee <select name="pityRarity"><option value="">off</option>${RARITIES.map(r => `<option value="${r}" ${box.rules?.pity?.minRarity === r ? "selected" : ""}>${RARITY_LABEL[r]} or better</option>`).join("")}</select> after <input name="pityAfter" type="number" min="1" step="1" value="${esc(box.rules?.pity?.after ?? 10)}"> throws</label>
         <label class="lc-row"><input type="checkbox" name="noDuplicates" ${box.rules?.noDuplicates ? "checked" : ""}> No duplicates per character</label>
-      </fieldset>`, {
-      onForm: form => liveOdds(form, box, poolIds, (draft, live) => {
-        const preview = wellPreview(draft, live);
-        return { html: wellPreviewHTML(preview, esc), summary: wellSummary(preview), held: heldRarities(draft, live) };
-      }, draftWell),
+      </fieldset>
+      ${shelfFieldHTML(box, opts)}`, {
+      onForm: form => {
+        liveOdds(form, box, poolIds, (draft, live) => {
+          const preview = wellPreview(draft, live);
+          return { html: wellPreviewHTML(preview, esc), summary: wellSummary(preview), held: heldRarities(draft, live) };
+        }, draftWell);
+        wireShelf(form, isNew);
+      },
       position: { width: 460 },
       okLabel: saveLabel(isNew),
     });
@@ -707,7 +724,7 @@ export class CrateManager extends ApplicationV2 {
         pity: data.pityRarity ? { minRarity: data.pityRarity, after: Math.max(1, Number(data.pityAfter) || 1) } : null,
         noDuplicates: !!data.noDuplicates,
       },
-    }));
+    }), data);
   }
 
   /*
@@ -747,11 +764,15 @@ export class CrateManager extends ApplicationV2 {
       <fieldset class="lc-form__weights"><legend>The prize's rarity weights</legend>
         ${RARITIES.map(r => `<label class="lc-row">${RARITY_LABEL[r]} <input name="w.${r}" type="number" min="0" step="1" value="${esc(box.weights?.[r] ?? DEFAULT_WEIGHTS[r])}"><span class="lc-form__hint" data-held="${r}"></span></label>`).join("")}
       </fieldset>
-      ${limitsFieldset(box, { stock: false, draft: isNew, hasClock: todayKey() != null, esc })}`, {
-      onForm: form => liveOdds(form, box, poolIds, (draft, live) => {
-        const preview = dicePreview(draft, live);
-        return { html: dicePreviewHTML(preview, esc), summary: diceSummary(preview), held: heldRarities(draft, live) };
-      }, draftDice),
+      ${limitsFieldset(box, { stock: false, draft: isNew, hasClock: todayKey() != null, esc })}
+      ${shelfFieldHTML(box, opts)}`, {
+      onForm: form => {
+        liveOdds(form, box, poolIds, (draft, live) => {
+          const preview = dicePreview(draft, live);
+          return { html: dicePreviewHTML(preview, esc), summary: diceSummary(preview), held: heldRarities(draft, live) };
+        }, draftDice);
+        wireShelf(form, isNew);
+      },
       position: { width: 460 },
       okLabel: saveLabel(isNew),
     });
@@ -766,7 +787,7 @@ export class CrateManager extends ApplicationV2 {
       weights: draft.weights,
       dice: draft.dice,
       rules: { ...fresh.rules, prize: draft.rules.prize, perCharacter: perCharacterFromForm(data) },
-    }));
+    }), data);
   }
 
   /*
@@ -804,8 +825,10 @@ export class CrateManager extends ApplicationV2 {
         <div class="lc-form__preview"></div>
         <p class="lc-sr-only" role="status" aria-live="polite"></p>
       </div>
-      ${limitsFieldset(box, { stock: false, draft: isNew, hasClock: todayKey() != null, esc })}`, {
+      ${limitsFieldset(box, { stock: false, draft: isNew, hasClock: todayKey() != null, esc })}
+      ${shelfFieldHTML(box, opts)}`, {
       onForm: form => {
+        wireShelf(form, isNew);
         const paint = liveOdds(form, box, poolIds, (draft, live) => {
           const preview = deckPreview(draft, live, getLog());
           return { html: deckPreviewHTML(preview, esc), summary: deckSummary(preview), held: heldRarities(draft, live) };
@@ -847,7 +870,7 @@ export class CrateManager extends ApplicationV2 {
       weights: draft.weights,
       deck: { ...(fresh.deck ?? {}), step: draft.deck.step, cards: draft.deck.cards },
       rules: { ...(fresh.rules ?? {}), perCharacter: perCharacterFromForm(data) },
-    }));
+    }), data);
   }
 
   /*
@@ -889,8 +912,10 @@ export class CrateManager extends ApplicationV2 {
         <div class="lc-form__label" id="lc-odds-${esc(box.id)}">Chances a player sees</div>
         <div class="lc-form__preview"></div>
         <p class="lc-sr-only" role="status" aria-live="polite"></p>
-      </div>`, {
+      </div>
+      ${shelfFieldHTML(box, opts)}`, {
       onForm: form => {
+        wireShelf(form, isNew);
         const paint = liveOdds(form, box, poolIds, (draft, live) => {
           const preview = roulettePreview(draft, live);
           return { html: roulettePreviewHTML(preview, esc), summary: rouletteSummary(preview), held: new Set() };
@@ -933,7 +958,7 @@ export class CrateManager extends ApplicationV2 {
       price: draft.price,
       pools: draft.pools.filter(ref => ref.id in getPools()),
       roulette: draft.roulette,
-    }));
+    }), data);
   }
 
   static async #deleteBox(_e, t) {
@@ -991,6 +1016,19 @@ export class CrateManager extends ApplicationV2 {
   }
 
   static async #toggleShop() { await setShopOpen(!isShopOpen()); this.render(); }
+
+  /*
+    A row's On the shelf toggle (shelf.js): one click puts a game out for
+    the players, or takes it back, through the write queue like any edit;
+    every open shop redraws from the write (redraw.js). Focus stays on the
+    toggle (focusKey: its action and data-box) and the status line says
+    what the players can see now.
+  */
+  static async #toggleShelf(_e, t) {
+    const saved = await updateBox(t.dataset.box, fresh => ({ ...fresh, rules: shelfRules(fresh.rules ?? {}, !onShelf(fresh)) }));
+    await this.render();
+    if (saved) this.#announce(shelfNotice(saved));
+  }
 
   // The Pull log without the throws that gave nothing (view state only).
   hideMisses = false;
@@ -1268,6 +1306,19 @@ const autofocus = (field, { isNew = false, focus = null } = {}) => (isNew && (fo
 // The default button: "Add to shelf" (or "Add" while the shop is closed)
 // puts a new game where players buy; an edit's reads Save.
 const saveLabel = isNew => (isNew ? addLabel(isShopOpen()) : "Save");
+
+// A new game's default button follows its "On the shelf" box: "Add to
+// shelf" while ticked (and the shop open), "Add" once unticked, so the
+// words on it are what it will do.
+function wireShelf(form, isNew) {
+  const box = form.querySelector('input[name="onShelf"]');
+  if (!isNew || !box) return;
+  const ok = form.querySelector('button[data-action="ok"]') ?? form.closest(".application, dialog")?.querySelector('button[data-action="ok"]');
+  if (!ok) return;
+  const paint = () => { (ok.querySelector("span") ?? ok).textContent = addLabel(isShopOpen(), box.checked); };
+  box.addEventListener("change", paint);
+  paint();
+}
 
 /*
   The Limits group's Restock (limits.js limitsFieldset): fills the stock to
