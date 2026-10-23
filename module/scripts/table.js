@@ -13,6 +13,9 @@
     row settled or refunded in one log write, then moves the coins, summed
     per character, through currency.js settle(). Marked first, as a refund
     is: a failure after the mark can't pay twice; it is reported for the GM.
+    If the rows can't be marked, the round goes back to closed so Spin can
+    retry (undoResolve); if even that fails, every client hears it called
+    off and the GM's next load refunds it.
   - The guards run again at the resolve: a character deleted since the
     stake has its row closed (the coins went with it), and one whose staking
     user no longer owns it gets the stake back, not the winnings.
@@ -30,6 +33,8 @@
       stakes: [{ logId, actorId, actorName, userId, price, stake, action,
       reason, payoutCp, name, result }], ...the kind's roll extras }
     { type: "round", event: "void", roundIds, refunded }  the load's recovery
+    { type: "round", event: "void", roundIds, refunded: [], onReload: true }
+                                 a spin that failed and couldn't be undone
   onTable(fn) hears each of them on this client (B2's window).
 */
 import { SOCKET } from "./config.js";
@@ -38,9 +43,10 @@ import { getKind, kindFor, PullError } from "./kinds.js";
 import { settle } from "./currency.js";
 import { rollRng, resolveSource } from "./pull.js";
 import { newRound, liveRoundOf, openStakesOf, staleStakes, staleAt, planResolve, coinsByActor, rowPatch, STATUS } from "./round.js";
+import { onShelf, shelfRoundRefusal } from "./shelf.js";
 // reveal.js imports socket.js, which imports this file; each side reaches
 // the other only inside a function.
-import { showRound } from "./reveal.js";
+import { showRound, boxHeld } from "./reveal.js";
 import { postPullCard } from "./chat.js";
 
 const listeners = new Set();
@@ -85,6 +91,11 @@ export function openRound(boxId, { windowMs = 0 } = {}) {
     if (!kindFor(box).table) throw new PullError(`${box.name} isn't played at the table.`);
     const live = liveRoundOf(getRounds(), boxId);
     if (live) return live;
+    // The last round still plays on the GM's screen: the next one opens
+    // once it lands, never under it.
+    if (boxHeld(boxId)) throw new PullError(`The last round at ${box.name} is still playing. Open the next one once it lands.`);
+    // Off the shelf, no new round; one already open runs to its resolve.
+    if (!onShelf(box)) throw new PullError(shelfRoundRefusal(box));
     const round = await saveRound(newRound({ id: newId(), game: box, windowMs }));
     announce({ type: "round", event: "open", round, boxName: box.name });
     return round;
@@ -193,10 +204,18 @@ async function doResolve(roundId, rng) {
     settle: row => kind.settle?.({ game: box, round, outcome, row, stake: row.stake, grants: grants ?? {} }) ?? { payoutCp: 0 },
   });
 
-  const resolved = await saveRound({ ...round, status: STATUS.RESOLVED, closedAt: round.closedAt ?? now, resolvedAt: now, outcome });
-  await closeStakes(plan, now);
-
   const boxName = box?.name ?? rows[0]?.boxName ?? "";
+  const resolved = await saveRound({ ...round, status: STATUS.RESOLVED, closedAt: round.closedAt ?? now, resolvedAt: now, outcome });
+  try {
+    await closeStakes(plan, now);
+  } catch (err) {
+    // The log still holds every stake open: nothing was paid, so the round
+    // goes back to waiting for its spin. Once marked, the coins moved.
+    const marked = new Set(openStakesOf(getLog(), roundId).map(r => r.id));
+    if (rows.every(r => marked.has(r.id))) await undoResolve({ round, plan, boxName, now, err });
+    else console.error(`loot-crates | the spin at ${boxName} was settled, but closing its stakes failed partway`, err);
+  }
+
   const reveal = {
     ...extra,
     type: "round", event: "resolve", roundId, boxId: round.boxId, kind: round.kind,
@@ -208,6 +227,34 @@ async function doResolve(roundId, rng) {
   postPullCard({ ...reveal, logId: roundId }).catch(err => console.error("loot-crates | the round's chat card failed", err));
   guardNotice(plan, boxName);
   return { status: "resolved", round: resolved, reveal, plan };
+}
+
+/*
+  A resolve whose stakes couldn't be closed (the log write failed) never
+  strands the table: items granted at this spin are taken back and the
+  round goes back to closed, so Spin can roll again, and the GM is told in
+  one sentence (the PullError, which the Spin button shows). If that
+  rollback fails too, the round stays marked resolved, so it can't pay
+  twice, and every client is told it was called off: its open stakes are
+  refunded on the GM's next load (recoverRounds, a resolved round's open
+  rows being stale at once). Always throws.
+*/
+async function undoResolve({ round, plan, boxName, now, err }) {
+  console.error(`loot-crates | closing the stakes of the spin at ${boxName} failed; rolling the round back`, err);
+  try {
+    for (const l of plan) {
+      if (!l.itemId) continue;
+      const item = game.actors.get(l.row.actorId)?.items?.get(l.itemId);
+      if (item) await item.delete();
+    }
+    await saveRound({ ...round, status: STATUS.CLOSED, closedAt: round.closedAt ?? now });
+  } catch (undoErr) {
+    const kept = plan.filter(l => l.itemId).map(l => `${l.result?.name ?? "an item"} on ${l.row.actorName}`);
+    console.error(`loot-crates | rolling back the spin at ${boxName} failed; its stakes are refunded on the GM's next load${kept.length ? `. Granted and possibly still on the sheet: ${kept.join(", ")}` : ""}`, undoErr);
+    announce({ type: "round", event: "void", roundIds: [round.id], refunded: [], onReload: true });
+    throw new PullError(`The spin at ${boxName} failed and couldn't be undone: every stake is refunded when you reload Foundry.`);
+  }
+  throw new PullError(`The spin at ${boxName} failed and nothing was paid: press Spin to try again.`);
 }
 
 /*

@@ -34,11 +34,19 @@
 //   4. The GM refunds one settled bet from the Pull log (its tab, Refund,
 //      Yes): the purse follows by that row's stake less its payout, and the
 //      player's rail drops that chip within 2 s.
-//   5. A second round with a 10-second clock: the player places one bet,
-//      the clock runs out and the round goes stale (round.js staleAt), the
-//      GM's page is reloaded and the branch's load-time recovery
-//      (recoverRounds, as main.js runs it) refunds the bet with the GM's
-//      notice, the row reading "Refunded when the GM loaded".
+//      While the wheel turns on the player, their open shop card must read
+//      "Still spinning" (Place a bet off, "The wheel is turning") within
+//      0.5 s of the spin starting, never "No round open yet" until landing.
+//   5. A second round with a clock (CLOCK_SEC, default 50). The player's
+//      page is reloaded after it opened (a late joiner who never heard the
+//      "open"): the shop card's "Bets close in" line must tick within 2 s,
+//      and its Place a bet opens the round's window, where the player places
+//      one bet. The clock runs out; the GM moves the round's close back by
+//      twice its clock (instead of waiting) and the load-time recovery
+//      leaves it (round.js ROUND_GRACE_MS). The GM moves it back past the
+//      grace, the GM's page is reloaded and the load-time recovery
+//      (recoverRounds, as main.js runs it; the installed module's ready hook
+//      may run it first) refunds the bet with the GM's notice.
 //
 // Restored in a finally: the wheel's record as it was (or left seeded when
 // new this run). Nothing is deleted; the settled rows stand, as every
@@ -50,6 +58,8 @@ const MODULE_BASE = process.env.MODULE_BASE || "http://localhost:8766/";
 const PLAYER = process.env.PLAYER || "Player2";
 const WHEEL = process.env.WHEEL || "Live wheel";
 const HIDE_GM = process.env.HIDE_GM !== "0";
+// The second round's clock: long enough for the late joiner's reload and bet.
+const CLOCK_SEC = Number(process.env.CLOCK_SEC) || 50;
 const shot = process.argv.includes("--shot") ? process.argv[process.argv.indexOf("--shot") + 1] : null;
 
 const wait = ms => new Promise(r => setTimeout(r, ms));
@@ -209,9 +219,16 @@ async function placeBet(page, { type, pick, stake }) {
 }
 
 // The GM's Spin, watched on the player: frames to the landing, the chat renders.
-async function spinAndWatch(gm, pl, roundId) {
-  const watching = pl.evaluate(async roundId => {
+async function spinAndWatch(gm, pl, roundId, wheelId) {
+  const watching = pl.evaluate(async ({ roundId, wheelId }) => {
     const win = [...document.querySelectorAll(".application.lc-table")].at(-1);
+    // The player's open shop card for the wheel, every frame of the spin:
+    // it must say the wheel is turning (reveal.js boxHeld), not "No round
+    // open yet", until this client lands.
+    const shopCard = () => [...foundry.applications.instances.values()].find(a => a.options?.id === "loot-crates-shop")?.element?.querySelector(`.lc-box[data-box="${wheelId}"]`) ?? null;
+    const readCard = () => { const c = shopCard(); return c ? { why: c.querySelector(".lc-box__why")?.textContent.trim() ?? "", round: c.querySelector(".lc-box__round")?.textContent.trim() ?? "", off: c.querySelector(".lc-box__buy")?.getAttribute("aria-disabled") === "true" } : null; };
+    const cardStates = [];
+    let spinStart = null;
     const renders = [];
     const t0 = performance.now();
     const hookId = Hooks.on("renderChatMessageHTML", (m, html) => {
@@ -223,7 +240,13 @@ async function spinAndWatch(gm, pl, roundId) {
       if (done) return;
       if (win.querySelector(".lc-table__stage--landed")) { landedMs ??= Math.round(performance.now() - t0); done = true; return; }
       frames++;
-      if (win.querySelector(".lc-table__stage--spinning")) spinningFrames++;
+      if (win.querySelector(".lc-table__stage--spinning")) {
+        spinningFrames++;
+        spinStart ??= performance.now();
+        const c = readCard();
+        const last = cardStates.at(-1);
+        if (c && (!last || last.why !== c.why || last.round !== c.round || last.off !== c.off)) cardStates.push({ ms: Math.round(performance.now() - spinStart), ...c });
+      }
       // This round's card alone: earlier rounds' cards stand in the log.
       const mine = [...document.querySelectorAll("#chat-log .message, #chat .message")].filter(el => game.messages.get(el.dataset.messageId)?.flags?.["loot-crates"]?.logId === roundId);
       if (mine.some(el => [...el.querySelectorAll(".lc-chat__name")].some(n => /lands on/.test(n.textContent) && n.getClientRects().length))) leakFrames++;
@@ -234,8 +257,8 @@ async function spinAndWatch(gm, pl, roundId) {
     done = true;
     await new Promise(r => setTimeout(r, 1200));
     Hooks.off("renderChatMessageHTML", hookId);
-    return { frames, spinningFrames, leakFrames, landedMs, renders };
-  }, roundId);
+    return { frames, spinningFrames, leakFrames, landedMs, renders, cardStates, cardAfterLanding: readCard() };
+  }, { roundId, wheelId });
   await wait(300);
   const pressed = await gm.evaluate(async () => {
     const win = [...document.querySelectorAll(".application.lc-table")].at(-1);
@@ -358,7 +381,7 @@ const freshRows = (gm, before) => gm.evaluate(async ({ base, before }) => {
     out.rowsOpen = await freshRows(gm.page, before);
 
     // 3. The GM spins.
-    out.spin = await spinAndWatch(gm.page, pl.page, out.open.roundId);
+    out.spin = await spinAndWatch(gm.page, pl.page, out.open.roundId, before.wheelId);
     out.playerLanded = await readTable(pl.page);
     out.gmLanded = await readTable(gm.page);
     out.afterSpin = await purseOf(gm.page, before.actorId);
@@ -387,13 +410,15 @@ const freshRows = (gm, before) => gm.evaluate(async ({ base, before }) => {
       for (const app of [...foundry.applications.instances.values()].filter(a => a.options?.classes?.includes("lc-table"))) await app.close();
     });
 
-    // 5. A second round on a 10-second clock, left to go stale; the GM's reload refunds it.
-    before.old2 = await gm.page.evaluate(async ({ base, wheelId }) => {
+    // 5. A second round on a clock. The player reloads after it opened (a
+    // late joiner who never heard the "open"): the shop card's countdown
+    // must tick within 2 s, and its Place a bet opens the round's window.
+    before.old2 = await gm.page.evaluate(async ({ base, wheelId, windowSec }) => {
       const store = await import(base + "scripts/store.js");
       const box = store.getBoxes()[wheelId];
-      await store.saveBox({ ...box, roulette: { ...box.roulette, windowSec: 10 } });
+      await store.saveBox({ ...box, roulette: { ...box.roulette, windowSec } });
       return true;
-    }, { base: MODULE_BASE, wheelId: before.wheelId });
+    }, { base: MODULE_BASE, wheelId: before.wheelId, windowSec: CLOCK_SEC });
     out.open2 = await gm.page.evaluate(async ({ base, wheelId }) => {
       const { openManager } = await import(base + "scripts/manager.js");
       const store = await import(base + "scripts/store.js");
@@ -411,21 +436,70 @@ const freshRows = (gm, before) => gm.evaluate(async ({ base, before }) => {
       await app.close();
       return { roundId: round?.id ?? null, closesAt: round?.closesAt ?? null, clock: round ? round.closesAt - round.opensAt : null };
     }, { base: MODULE_BASE, wheelId: before.wheelId });
-    await pl.page.waitForFunction(() => document.querySelector(".application.lc-table .lc-table__form"), null, { timeout: 10000 }).catch(() => {});
+    await pl.page.reload({ waitUntil: "networkidle" });
+    await pl.page.waitForFunction(() => window.game?.ready, null, { timeout: 120000 });
+    await wire(pl.page);
+    out.lateJoiner = await pl.page.evaluate(async ({ base, wheelId }) => {
+      const { openShop } = await import(base + "scripts/shop.js");
+      const wait = ms => new Promise(r => setTimeout(r, ms));
+      const actor = game.actors.find(a => a.isOwner && a.type === "character");
+      const app = openShop();
+      const card = () => app.element?.querySelector(`.lc-box[data-box="${wheelId}"]`);
+      for (let i = 0; i < 100 && !card(); i++) await wait(50);
+      const pick = app.element?.querySelector(".lc-shop__actor");
+      if (pick && pick.value !== actor?.id) { pick.value = actor.id; pick.dispatchEvent(new Event("change")); await wait(600); }
+      const line = () => card()?.querySelector(".lc-box__round")?.textContent.trim() ?? "";
+      const first = line();
+      const t0 = performance.now();
+      let moved = null, ms = null;
+      for (let i = 0; i < 60; i++) {
+        await wait(50);
+        if (line() !== first) { moved = line(); ms = Math.round(performance.now() - t0); break; }
+      }
+      // Place a bet on the card, as the player would, opens the round's window.
+      const buy = card()?.querySelector(".lc-box__buy");
+      const off = buy?.getAttribute("aria-disabled") === "true";
+      buy?.focus();
+      buy?.click();
+      for (let i = 0; i < 100 && !document.querySelector(".application.lc-table .lc-table__form"); i++) await wait(50);
+      return { first, moved, ms, countdown: !!card()?.querySelector("[data-lc-countdown]"), off, window: !!document.querySelector(".application.lc-table .lc-table__form") };
+    }, { base: MODULE_BASE, wheelId: before.wheelId });
     out.playerTable2 = await readTable(pl.page);
     out.bet3 = await placeBet(pl.page, { type: "parity", pick: "odd", stake: 1 });
     out.afterBet3 = await purseOf(gm.page, before.actorId);
-    // The clock runs out (the player's form goes), then the round goes stale.
-    await pl.page.waitForFunction(() => !document.querySelector(".application.lc-table .lc-table__form"), null, { timeout: 20000 }).catch(() => {});
+    // The clock runs out (the player's form goes).
+    await pl.page.waitForFunction(() => !document.querySelector(".application.lc-table .lc-table__form"), null, { timeout: (CLOCK_SEC + 15) * 1000 }).catch(() => {});
     out.playerTableClosed = await readTable(pl.page);
-    const staleAt = await gm.page.evaluate(async ({ base, roundId }) => {
+    // The grace window (round.js ROUND_GRACE_MS): the GM moves the round's
+    // close back by twice its clock (stale under the old rule of one clock
+    // length) instead of waiting; the load-time recovery leaves it alone.
+    const moveClose = (ms) => gm.page.evaluate(async ({ base, roundId, ms }) => {
       const store = await import(base + "scripts/store.js");
-      const { staleAt } = await import(base + "scripts/round.js");
-      return staleAt(store.getRounds()[roundId]);
+      const { staleAt, ROUND_GRACE_MS } = await import(base + "scripts/round.js");
+      const closedAt = Date.now() - (ms ?? ROUND_GRACE_MS + 1000);
+      await store.enqueueWrite(() => store.saveRound({ ...store.getRounds()[roundId], closedAt }));
+      const round = store.getRounds()[roundId];
+      return { closedAt, staleAt: staleAt(round), now: Date.now(), grace: ROUND_GRACE_MS };
+    }, { base: MODULE_BASE, roundId: out.open2.roundId, ms });
+    out.inGrace = await moveClose(CLOCK_SEC * 2000);
+    out.recoveredInGrace = await gm.page.evaluate(async ({ base, roundId }) => {
+      const { recoverRounds } = await import(base + "scripts/table.js");
+      const store = await import(base + "scripts/store.js");
+      const out = await recoverRounds();
+      const row = store.getLog().find(r => r.roundId === roundId);
+      return { ...out, round: store.getRounds()[roundId]?.status ?? null, row: row && { status: row.status, refunded: !!row.refunded } };
     }, { base: MODULE_BASE, roundId: out.open2.roundId });
-    await wait(Math.max(0, staleAt - Date.now() + 1500));
+    // Past the grace: the GM's reload refunds it.
+    out.pastGrace = await moveClose(null);
     await gm.page.reload({ waitUntil: "networkidle" });
     await gm.page.waitForFunction(() => window.game?.ready, null, { timeout: 120000 });
+    // The installed module's ready hook runs the same load-time recovery
+    // before the branch is wired: read its notice from the page too.
+    const shownNotices = () => gm.page.evaluate(() => [...document.querySelectorAll("#notifications li, #notifications .notification")].map(n => n.textContent.trim()));
+    const earlyNotices = await shownNotices().catch(() => []);
+    // Let the installed copy's recovery finish before the branch's runs, so
+    // two copies never refund the same row at once.
+    await wait(3000);
     await wire(gm.page);
     out.recovered = await gm.page.evaluate(async ({ base, roundId }) => {
       const { recoverRounds } = await import(base + "scripts/table.js");
@@ -438,6 +512,7 @@ const freshRows = (gm, before) => gm.evaluate(async ({ base, before }) => {
       const row = store.getLog().find(r => r.roundId === roundId);
       return { ...out, notice: said, round: store.getRounds()[roundId]?.status ?? null, voided: !!store.getRounds()[roundId]?.voided, row: row && { status: row.status, refundReason: row.refundReason ?? null } };
     }, { base: MODULE_BASE, roundId: out.open2.roundId });
+    out.recovered.notice.push(...earlyNotices, ...await shownNotices().catch(() => []));
     out.afterRecover = await purseOf(gm.page, before.actorId);
     // The player's window follows the rounds setting within the redraw's delay.
     await pl.page.waitForFunction(() => document.querySelector('.application.lc-table .lc-table__state[data-state="void"]'), null, { timeout: 5000 }).catch(() => {});
@@ -445,6 +520,7 @@ const freshRows = (gm, before) => gm.evaluate(async ({ base, before }) => {
 
     const r1 = out.rowsSettled.find(r => r.name === "Red"), r2 = out.rowsSettled.find(r => r.name === "7");
     const net = r => Math.round(r.price * 100) - Math.round(r.payoutCp || 0);
+    const stillAt = out.spin.cardStates.find(c => c.why === "Still spinning") ?? null;
     const sealedUntilLanding = out.spin.renders.filter(x => x.ms < out.spin.landedMs).every(x => x.sealed && !x.itemShown && x.opening) && out.spin.renders.length > 0;
     out.checks = {
       cardOffWithNoRound: out.shopBefore.found && out.shopBefore.buy === `${WHEEL}: Place a bet` && out.shopBefore.off && out.shopBefore.why === "No round open yet" && out.shopBefore.pills.join(", ") === "Common 42%, Uncommon 33%, Rare 17%, Legendary 8%",
@@ -460,9 +536,12 @@ const freshRows = (gm, before) => gm.evaluate(async ({ base, before }) => {
       purseChangedByNet: !!r1 && !!r2 && out.afterSpin.purseCp === before.purseCp - net(r1) - net(r2) && out.afterSpin.items === before.items && out.rowsSettled.every(r => r.status === "settled"),
       refundFollowed: out.refund.refunded != null && out.afterRefund.purseCp === out.afterSpin.purseCp + net(r2) && /Crate Tester/.test(out.refund.dialogText ?? "") && /refunded/.test(out.refund.rowAfter ?? ""),
       railDroppedChip: out.railAfterRefund.ms != null && out.railAfterRefund.ms <= 2000 && out.railAfterRefund.chips === 1,
-      secondRoundOnClock: out.open2.clock === 10000 && /^Bets close in 0:\d\d$/.test(out.playerTable2?.state ?? "") && out.bet3.landed && out.afterBet3.purseCp === out.afterRefund.purseCp - 100,
+      stillSpinningOnCard: !!stillAt && stillAt.ms <= 500 && stillAt.off && stillAt.round === "The wheel is turning" && !out.spin.cardStates.slice(out.spin.cardStates.indexOf(stillAt)).some(c => c.why === "No round open yet") && out.spin.cardAfterLanding?.why === "No round open yet",
+      lateJoinerCountdownMoves: /^Bets close in 0:\d\d$/.test(out.lateJoiner.first) && /^Bets close in 0:\d\d$/.test(out.lateJoiner.moved ?? "") && out.lateJoiner.ms != null && out.lateJoiner.ms <= 2000 && !out.lateJoiner.off && out.lateJoiner.window,
+      secondRoundOnClock: out.open2.clock === CLOCK_SEC * 1000 && /^Bets close in \d:\d\d$/.test(out.playerTable2?.state ?? "") && out.bet3.landed && out.afterBet3.purseCp === out.afterRefund.purseCp - 100,
       formGoneWhenClosed: out.playerTableClosed && !out.playerTableClosed.form && /Bets are closed/.test(out.playerTableClosed.state ?? ""),
-      staleBetRefundedOnLoad: out.recovered.refunded === 1 && out.recovered.voided && out.recovered.row?.status === "refunded" && out.recovered.row.refundReason === "stale" && out.recovered.notice.some(s => /1 open stake from a round that never spun was refunded/.test(s)) && out.afterRecover.purseCp === out.afterRefund.purseCp,
+      keptInGrace: out.inGrace.staleAt === out.inGrace.closedAt + out.inGrace.grace && out.recoveredInGrace.refunded === 0 && out.recoveredInGrace.voided === 0 && out.recoveredInGrace.round !== "resolved" && out.recoveredInGrace.row?.status === "open",
+      staleBetRefundedOnLoad: out.recovered.round === "resolved" && out.recovered.voided && out.recovered.row?.status === "refunded" && out.recovered.row.refundReason === "stale" && out.recovered.notice.some(s => /1 open stake from a round that never spun was refunded/.test(s)) && out.afterRecover.purseCp === out.afterRefund.purseCp,
       gmHiddenLandedAtOnce: !HIDE_GM || (out.gmLanded?.landed && out.gmLanded.button === "Close"),
       calledOffOnPlayer: /called off; every stake came back/.test(out.playerTableVoid?.state ?? "") && out.playerTableVoid.chips === 0 && !out.playerTableVoid.form,
     };

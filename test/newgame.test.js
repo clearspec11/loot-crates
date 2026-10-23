@@ -6,7 +6,7 @@
   none of its history. Nothing here writes.
 */
 import { describe, it, expect } from "vitest";
-import { NEW_DEFAULTS, NEW_TITLE, EDIT_TITLE, COPY_TITLE, editorTitle, newDraft, crateFromPool, copyOf, addLabel, addedNotice } from "../module/scripts/newgame.js";
+import { NEW_DEFAULTS, NEW_TITLE, EDIT_TITLE, COPY_TITLE, editorTitle, newDraft, crateFromPool, copyOf, copyName, addLabel, addedNotice } from "../module/scripts/newgame.js";
 import { drawnIds, deckOdds } from "../module/scripts/deck.js";
 import { liveRoundOf, newRound } from "../module/scripts/round.js";
 import { stockOf } from "../module/scripts/limits.js";
@@ -149,9 +149,23 @@ describe("copyOf", () => {
     expect(JSON.stringify(copy)).not.toContain("R1");
   });
 
-  it("names an unnamed game, and stacks on an earlier copy", () => {
+  it("names an unnamed game, and counts on from an earlier copy", () => {
     expect(copyOf({ price: 1 }, { id: "x" }).name).toBe("Game (copy)");
-    expect(copyOf({ name: "Goblin Crate (copy)", price: 1 }, { id: "y" }).name).toBe("Goblin Crate (copy) (copy)");
+    expect(copyOf({ name: "Goblin Crate (copy)", price: 1 }, { id: "y" }).name).toBe("Goblin Crate (copy 2)");
+    expect(copyOf({ name: "Goblin Crate (copy 2)", price: 1 }, { id: "z" }).name).toBe("Goblin Crate (copy 3)");
+  });
+
+  it("numbers copies in sequence, never '(copy) (copy)', and skips a name already taken", () => {
+    const seq = ["Goblin Crate"];
+    for (let i = 0; i < 4; i++) seq.push(copyName(seq.at(-1)));
+    expect(seq).toEqual(["Goblin Crate", "Goblin Crate (copy)", "Goblin Crate (copy 2)", "Goblin Crate (copy 3)", "Goblin Crate (copy 4)"]);
+    // Copying the original twice: the second copy doesn't reuse the first's name.
+    expect(copyName("Goblin Crate", ["Goblin Crate", "Goblin Crate (copy)"])).toBe("Goblin Crate (copy 2)");
+    expect(copyName("Goblin Crate (copy)", ["Goblin Crate (copy 2)", "Goblin Crate (copy 3)"])).toBe("Goblin Crate (copy 4)");
+    expect(copyOf({ name: "Old Well", price: 1 }, { id: "w", names: ["Old Well", "Old Well (copy)"] }).name).toBe("Old Well (copy 2)");
+    // A name that only looks like a copy in the middle is a plain name.
+    expect(copyName("Crate (copy) of doom")).toBe("Crate (copy) of doom (copy)");
+    expect(copyName("")).toBe("Game (copy)");
   });
 });
 

@@ -20,6 +20,7 @@
   No Foundry globals: the callers pass the log and the day's key.
 */
 import { getKind, kindOf } from "./kinds.js";
+import { field } from "./editorfields.js";
 
 export const PER = ["ever", "day"];
 const PER_LABEL = { ever: "in all", day: "a day" };
@@ -60,8 +61,8 @@ export function stockAfterRefund(game) {
   The stock the editor's Save writes, from the record as it is now
   (`fresh`), the number the form opened with (`shown`) and the number in
   it at Save (`value`, the GM's "Stock", blank for unlimited). Unchanged:
-  the stock is the record's, since pulls, refunds and Restock move it
-  while the dialog is open. Changed: the new number is the GM's, and what
+  the stock is the record's, since pulls and refunds move it while the
+  dialog is open (the editor's Restock is applied after this, at Save). Changed: the new number is the GM's, and what
   is left moves by the same amount (raising 10 to 12 puts two more on the
   shelf), never below 0 or past the new number; from unlimited, the shelf
   starts full. Returns { stock, stockMax }.
@@ -76,6 +77,10 @@ export function stockFromForm(fresh = {}, { shown, value }) {
   const now = before == null || left == null ? next : Math.min(next, Math.max(0, left + (next - before)));
   return { stock: now, stockMax: next };
 }
+
+// The editor's line once Restock is pressed: nothing is written until Save,
+// so it says what Save will leave ("10 of 10 left once you save").
+export const restockPreview = max => `${max} of ${max} left once you save`;
 
 // The number the editor's "Stock" opens with: the GM's, or the count
 // alone on a record from before it.
@@ -168,7 +173,9 @@ export const limitsText = game => [stockText(game), perCharacterText(game)].filt
   Restock (`stock: true`, the crate), then the limit per character, each
   with its help in plain words. Restock is shown when the GM has a number
   to fill to, aria-disabled (never disabled, so it keeps focus) while the
-  shelf is full; the manager wires it (data-restock). A `draft` (a New,
+  shelf is full; the manager wires it (data-restock): pressing it sets the
+  hidden `restock` field and the line beside it, and only Save writes it,
+  so Cancel leaves the stock as it was. A `draft` (a New,
   or a copy of a game) has no record to fill, so it gets no Restock.
   `hasClock` false warns that a limit per day won't apply. `esc` escapes
   text and values.
@@ -184,13 +191,13 @@ export function limitsFieldset(game, { stock = true, draft = false, hasClock = t
         <label class="lc-row">Stock <input name="stock" type="number" min="0" step="1" value="${esc(stockField(game) ?? "")}" aria-describedby="${id}-stock"></label>
         <div class="lc-row lc-limits__stock">
           <span class="lc-limits__left" role="status">${esc(s ? stockText(game) : "Unlimited")}</span>
-          ${s?.max != null && !draft ? `<button type="button" class="lc-limits__restock" data-restock${full ? ` aria-disabled="true"` : ""}><i class="fas fa-rotate-left" inert></i> Restock</button>` : ""}
+          ${s?.max != null && !draft ? `<button type="button" class="lc-limits__restock" data-restock${full ? ` aria-disabled="true"` : ""}><i class="fas fa-rotate-left" inert></i> Restock</button><input type="hidden" name="restock" value="">` : ""}
         </div>
         <p class="lc-form__hint" id="${id}-stock">How many there are in all; blank for unlimited. Each sale takes one, a refund puts one back, and Restock fills it to this number again.</p>` : "";
   const warn = !hasClock ? `<p class="lc-form__hint${per === "day" && max ? " lc-form__hint--warn" : ""}">No calendar: a limit per day will not apply.</p>` : "";
   return `
       <fieldset class="lc-limits"><legend>Limits</legend>${stockPart}
-        <label class="lc-row">Each character may buy <input name="limitMax" type="number" min="0" step="1" value="${esc(max ?? "")}" aria-describedby="${id}-each"> <select name="limitPer" aria-label="How often">${PER.map(p => `<option value="${p}"${p === per ? " selected" : ""}>${PER_LABEL[p]}</option>`).join("")}</select></label>
+        <div class="lc-row lc-row--wrap">${field("Each character may buy", `<input name="limitMax" type="number" min="0" step="1" value="${esc(max ?? "")}" aria-describedby="${id}-each">`)} <select name="limitPer" aria-label="How often">${PER.map(p => `<option value="${p}"${p === per ? " selected" : ""}>${PER_LABEL[p]}</option>`).join("")}</select></div>
         <p class="lc-form__hint" id="${id}-each">Blank for no limit. Counted for each character from the Pull log, so a refund gives the purchase back; a day is the world's calendar.</p>
         ${warn}
       </fieldset>`;

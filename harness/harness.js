@@ -39,8 +39,15 @@
   per character, so its card reads "Limit reached: 2 of 2 for Tam
   Thornwick" with its Buy off; without it Tam has bought it once: "You can
   buy 1 more")
-  "editor" is the box editor's Rules and Limits groups (limits.js) for the
-  Royal Vault: "3 of 10 left" with Restock, one per character a day.
+  "editor" is the box editor's pools, Rules and Limits groups
+  (editorfields.js, limits.js) for the Royal Vault: Core magic items
+  ticked with a share of 2, Leigh's homebrew unticked with its share off,
+  "3 of 10 left" with Restock, one per character a day, and its "On the
+  shelf" box (shelf.js), ticked.
+  ?shelf=off (shop and the Boxes tab: the GM has taken the Royal Vault off
+  the shelf, shelf.js. A player's shop leaves it out; with &gm=1 the GM's
+  shop shows it with its Buy off and why. The Boxes tab tags and dims its
+  row, its toggle reads "Put on shelf", and the toolbar counts the rest)
   ?well=capped (shop: Tam has thrown 3 of 3 coins into the Wishing Well
   today, so its card reads "The well is still until tomorrow (3 of 3 today)"
   with its Buy off; without it Tam has thrown once: "1 of 3 throws today")
@@ -59,6 +66,10 @@
   reading Skip; ?streak=2 makes it the third draw in a row (the head says
   so, and Draw again names the risen price); buyer=1 as for landed, and
   also shows Draw again, as the buyer alone sees it.
+  ?gm=1 (shop: the GM's shop, every game on it, with "Manage crates" in the
+  window's header controls, their menu drawn open; route.js)
+  ?empty=1 (shop: nothing on the shelf; a player is told the GM hasn't put
+  anything out, a GM (with gm=1) is pointed at Manage crates)
   ?streak=1 (shop: Tam drew from the deck a moment ago, so its card prices
   the next draw at 15 gp and says so)
   ?round=none | closed (shop: the Wheel of Fate has no round open, or its
@@ -74,7 +85,8 @@
   the GM's controls.
 */
 import { POOLS, BOX, BOXES, WELL, DICE, DICE_FACES, DECK, ROULETTE, rouletteRound, wheelStakes, deckDraws, wellThrows, limitBuys, sampleLog, MANAGER_POOLS, MANAGER_SOURCES, MANAGER_BOXES } from "./sample.js";
-import { limitsFieldset, restocked, stockText } from "../module/scripts/limits.js";
+import { limitsFieldset, restockPreview, stockField } from "../module/scripts/limits.js";
+import { poolsFieldset, pityRow, syncShares } from "../module/scripts/editorfields.js";
 import { getKind, kindOf } from "../module/scripts/kinds.js";
 import { mountWell } from "../module/scripts/well.js";
 import { mountDice, resolve, rollData, parseFormula } from "../module/scripts/dicegame.js";
@@ -83,8 +95,10 @@ import { resolve as resolveBets, pocketsOf, coloursOf, betName } from "../module
 import { tableBodyHTML } from "../module/scripts/tableview.js";
 import { poolRows, sortRows, defaultView, poolSummary, poolBody, pinRecent, dropNotice, poolUsers } from "../module/scripts/poolview.js";
 import { boxesTabHTML } from "../module/scripts/boxestable.js";
+import { managerNavHTML, shopControls, shopEmptyHTML } from "../module/scripts/route.js";
 import { logTableHTML } from "../module/scripts/logtable.js";
 import { addedNotice } from "../module/scripts/newgame.js";
+import { onShelf, shelfFor, shelfFieldHTML, shelfRules, shelfNotice } from "../module/scripts/shelf.js";
 import { draw, seededRng } from "../module/scripts/odds.js";
 import { buildStrip } from "../module/scripts/strip.js";
 import { mountSpin } from "../module/scripts/spin.js";
@@ -108,6 +122,8 @@ const characters = q.get("characters") === "2"
   ? [{ id: "tam", name: "Tam Thornwick" }, { id: "orla", name: "Orla Vane" }]
   : [{ id: "tam", name: "Tam Thornwick" }];
 const theme = q.get("theme") === "light" ? "light" : "dark";
+// The games as the GM has them: with ?shelf=off the Royal Vault is off the shelf.
+let GAMES = q.get("shelf") === "off" ? BOXES.map(b => (b.id === "royal" ? { ...b, rules: shelfRules(b.rules, false) } : b)) : BOXES;
 document.body.classList.replace("theme-dark", `theme-${theme}`);
 
 // The window the module would open for this state: its class and title.
@@ -147,6 +163,30 @@ if (state !== "shop" && state !== "manager" && state !== "well" && state !== "di
 
 const stage = document.getElementById("stage");
 
+/*
+  The shop window's header controls as Foundry draws them for a GM
+  (shop.js _getHeaderControls, route.js shopControls): the ellipsis beside
+  the title, and its menu, shown open here, holding "Manage crates". A
+  player's shop has none of the module's, so none are drawn (Foundry's
+  own, such as v14's Detach Window, aren't drawn here for anyone). Font
+  Awesome isn't loaded, so a character stands in for the icon. "Manage
+  crates" goes to the manager's Boxes tab, and the manager's "View shop"
+  back to the GM's shop.
+*/
+if (state === "shop") {
+  const controls = shopControls(q.get("gm") === "1");
+  if (controls.length) {
+    const header = document.querySelector("#app .window-header");
+    header.insertAdjacentHTML("beforeend", `<button type="button" class="header-control lc-harness-toggle" aria-label="Toggle Controls" aria-expanded="true">\u22EE</button>
+      <menu class="lc-harness-controls" aria-label="Window controls">${controls.map(c => `<li class="header-control" data-action="${c.action}"><button type="button" class="control"><span class="control-label">${c.label}</span></button></li>`).join("")}</menu>`);
+    header.querySelector('[data-action="openManager"] button')?.addEventListener("click", () => { location.search = `?state=manager&tab=boxes&theme=${theme}`; });
+  }
+}
+document.getElementById("app").addEventListener("click", e => {
+  if (e.target.closest?.('[data-action="openShop"]')) location.search = `?state=shop&gm=1&theme=${theme}`;
+  else if (state === "shop" && e.target.closest?.('.lc-shop__manage')) location.search = `?state=manager&tab=boxes&theme=${theme}`;
+});
+
 // The shop as shop.js draws it: one notice in the header (a live region kept
 // across renders by patchShop), the cards pointing at it. window.__lootCrates
 // .renderShop(extra) re-renders with extra ctx, as the shop does on each
@@ -171,7 +211,7 @@ function renderShop(extra = {}) {
   fresh.innerHTML = shopHTML({
     fields: `${actorPicker({ actors: characters, actorId: "tam", busy: !!ctx.busy })}
         <div class="lc-shop__field lc-shop__field--purse"><span class="lc-label">Purse</span><span class="lc-shop__purse">${formatGold(purse)}</span></div>`,
-    cards: BOXES.map(b => cardFor(b, POOLS, ctx)).join(""),
+    cards: q.get("empty") === "1" ? shopEmptyHTML(ctx.isGM) : shelfFor(GAMES, { isGM: ctx.isGM }).map(b => cardFor(b, POOLS, ctx)).join(""),
     notice,
   });
   patchShop(stage, fresh, notice);
@@ -304,7 +344,7 @@ function renderManager() {
   }
   stage.innerHTML = `
     <div class="lc-manager__body">
-      <nav class="lc-tabs"><div class="lc-tabs__list" role="tablist" aria-label="Loot Crates sections"><button type="button" role="tab" aria-selected="true" tabindex="0" class="active">Pools</button><button type="button" role="tab" aria-selected="false" tabindex="-1">Boxes</button><button type="button" role="tab" aria-selected="false" tabindex="-1">Pull log</button></div><span class="lc-tabs__spacer"></span><button type="button" class="lc-shop-toggle" data-open="true" aria-pressed="true">Shop open</button></nav>
+      ${managerNavHTML({ tab: "pools", shopOpen: true })}
       <section class="lc-tab" role="tabpanel">
         <div class="lc-toolbar"><button type="button"><i class="fas fa-plus"></i> New pool</button><span class="lc-pool__hint lc-manager__status" role="status">${esc(status)}</span></div>
         ${MANAGER_POOLS.map(p => `
@@ -610,15 +650,15 @@ async function renderTable() {
   and its Edit focused and scrolled into view. The New buttons and Edit
   need Foundry here.
 */
-function renderBoxes() {
+function renderBoxes({ toggled = null } = {}) {
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   const added = q.get("added") === "1" ? BOXES.find(b => b.id === "royal") : null;
   const now = Date.now();
   stage.innerHTML = `
     <div class="lc-manager__body">
-      <nav class="lc-tabs"><div class="lc-tabs__list" role="tablist" aria-label="Loot Crates sections"><button type="button" role="tab" aria-selected="false" tabindex="-1">Pools</button><button type="button" role="tab" aria-selected="true" tabindex="0" class="active">Boxes</button><button type="button" role="tab" aria-selected="false" tabindex="-1">Pull log</button></div><span class="lc-tabs__spacer"></span><button type="button" class="lc-shop-toggle" data-open="true" aria-pressed="true">Shop open</button></nav>
+      ${managerNavHTML({ tab: "boxes", shopOpen: true })}
       <section class="lc-tab" role="tabpanel">
-        ${boxesTabHTML({ boxes: BOXES, pools: POOLS, log: [...deckDraws(1, now), ...limitBuys(1)], rounds: { R1: rouletteRound(now) }, recent: added?.id ?? null, esc })}
+        ${boxesTabHTML({ boxes: GAMES, pools: POOLS, log: [...deckDraws(1, now), ...limitBuys(1)], rounds: { R1: rouletteRound(now) }, recent: added?.id ?? null, esc })}
       </section>
     </div>`;
   if (added) {
@@ -627,8 +667,23 @@ function renderBoxes() {
     edit?.closest("tr")?.scrollIntoView({ block: "nearest" });
     stage.querySelector(".lc-manager__status").textContent = addedNotice(added, { shopOpen: true });
   }
+  // With ?shelf=off, the tab as the Royal Vault's toggle leaves it once
+  // pressed (manager.js #toggleShelf): focus kept on the toggle, the status
+  // line saying what players see. A press here flips the game the same way.
+  const shown = toggled ?? (q.get("shelf") === "off" ? "royal" : null);
+  if (shown) {
+    stage.querySelector(`[data-action="toggleShelf"][data-box="${CSS.escape(shown)}"]`)?.focus({ preventScroll: true });
+    stage.querySelector(".lc-manager__status").textContent = shelfNotice(GAMES.find(b => b.id === shown));
+  }
   document.body.dataset.ready = "1";
 }
+stage.addEventListener("click", e => {
+  const btn = e.target.closest?.('[data-action="toggleShelf"]');
+  if (!btn || state !== "manager") return;
+  const id = btn.dataset.box;
+  GAMES = GAMES.map(b => (b.id === id ? { ...b, rules: shelfRules(b.rules, !onShelf(b)) } : b));
+  renderBoxes({ toggled: id });
+});
 
 /*
   The manager's Pull log (logtable.js) on the sample log, with the wheel's
@@ -639,7 +694,7 @@ function renderLog() {
   const now = Date.now();
   stage.innerHTML = `
     <div class="lc-manager__body">
-      <nav class="lc-tabs"><div class="lc-tabs__list" role="tablist" aria-label="Loot Crates sections"><button type="button" role="tab" aria-selected="false" tabindex="-1">Pools</button><button type="button" role="tab" aria-selected="false" tabindex="-1">Boxes</button><button type="button" role="tab" aria-selected="true" tabindex="0" class="active">Pull log</button></div><span class="lc-tabs__spacer"></span><button type="button" class="lc-shop-toggle" data-open="true" aria-pressed="true">Shop open</button></nav>
+      ${managerNavHTML({ tab: "log", shopOpen: true })}
       <section class="lc-tab" role="tabpanel">
         ${logTableHTML({ log: sampleLog(now), rounds: { R1: rouletteRound(now - 400000, { status: "resolved", closesAt: now - 380000 }) }, esc })}
       </section>
@@ -648,26 +703,29 @@ function renderLog() {
 }
 
 /*
-  The box editor's Rules and Limits groups (manager.js #editBox, limits.js
-  limitsFieldset) as the dialog shows them for the Royal Vault: 3 of its 10
-  left with Restock, one per character a day. Restock fills the shelf here
-  as the manager's does (the line says so, the button goes off and keeps
-  focus); nothing is written.
+  The box editor's pools, Rules and Limits groups (manager.js #editCrate,
+  editorfields.js, limits.js limitsFieldset) as the dialog shows them for
+  the Royal Vault, from the same helpers: one pool ticked and one not (its
+  share off until it is ticked), 3 of its 10 left with Restock, one per
+  character a day. Restock says what Save will leave as the manager's does
+  (the button goes off and keeps focus); nothing is written.
 */
 function renderEditor() {
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   const royal = BOXES.find(b => b.id === "royal");
-  const box = { ...royal, rules: { ...royal.rules, perCharacter: { max: 1, per: "day" } } };
+  const box = { ...royal, pools: [{ id: "core", share: 2 }], rules: { ...royal.rules, perCharacter: { max: 1, per: "day" } } };
   stage.innerHTML = `
     <div class="dialog-form">
       <div class="dialog-content"><div class="lc-form">
         <label>Name <input name="name" value="${esc(box.name)}"></label>
-        <label>Price (gp) <input name="price" type="number" min="0" step="1" value="${esc(box.price)}"></label>
+        <label class="lc-form__price">Price <input name="price" type="text" data-price-field value="${esc(formatPrice(box.price))}" placeholder="50 gp, 5 sp or 12 gp 5 sp" autocomplete="off" spellcheck="false"></label>
+        ${poolsFieldset("Pools and their share of pulls", Object.values(POOLS), box.pools, { esc })}
         <fieldset><legend>Rules</legend>
-          <label class="lc-row">Pity: guarantee <select name="pityRarity"><option value="">off</option></select> after <input name="pityAfter" type="number" min="1" step="1" value="10"> pulls</label>
+          ${pityRow(box.rules?.pity, { noun: "pulls", esc })}
           <label class="lc-row"><input type="checkbox" name="noDuplicates"> No duplicates per character</label>
         </fieldset>
         ${limitsFieldset(box, { hasClock: true, esc })}
+        ${shelfFieldHTML(box)}
       </div></div>
       <footer class="form-footer"><button type="button">Save</button><button type="button">Cancel</button></footer>
     </div>`;
@@ -675,8 +733,10 @@ function renderEditor() {
   btn?.addEventListener("click", () => {
     if (btn.getAttribute("aria-disabled") === "true") return;
     btn.setAttribute("aria-disabled", "true");
-    stage.querySelector(".lc-limits__left").textContent = `Restocked: ${stockText({ rules: restocked(box.rules) })}`;
+    stage.querySelector('input[name="restock"]').value = "1";
+    stage.querySelector(".lc-limits__left").textContent = restockPreview(stockField(box));
   });
+  stage.addEventListener("change", () => syncShares(stage));
   document.body.dataset.ready = "1";
 }
 

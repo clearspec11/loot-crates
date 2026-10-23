@@ -7,7 +7,7 @@
 */
 import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from "vitest";
 
-vi.mock("../module/scripts/reveal.js", () => ({ showReveal: vi.fn(async () => ({ landed: Promise.resolve() })), showRound: vi.fn(() => ({ landed: Promise.resolve(), instant: true })) }));
+vi.mock("../module/scripts/reveal.js", () => ({ showReveal: vi.fn(async () => ({ landed: Promise.resolve() })), showRound: vi.fn(() => ({ landed: Promise.resolve(), instant: true })), boxHeld: vi.fn(() => false) }));
 vi.mock("../module/scripts/chat.js", () => ({ postPullCard: vi.fn(async () => null) }));
 
 const { registerSocket, requestStake } = await import("../module/scripts/socket.js");
@@ -16,8 +16,8 @@ const { openRound, closeRound, resolveRound, recoverRounds, onTable } = await im
 const { refundPull, describeRefund } = await import("../module/scripts/refund.js");
 const { performPull, PullError } = await import("../module/scripts/pull.js");
 const { registerKind, kindIds, _resetKinds } = await import("../module/scripts/kinds.js");
-const { rowStatus, stakesOf, staleStakes, groupRounds, roundLine, stakeNote, ROUND_WINDOW_MS } = await import("../module/scripts/round.js");
-const { showRound } = await import("../module/scripts/reveal.js");
+const { rowStatus, stakesOf, staleStakes, staleAt, groupRounds, roundLine, stakeNote, ROUND_WINDOW_MS, ROUND_GRACE_MS } = await import("../module/scripts/round.js");
+const { showRound, boxHeld } = await import("../module/scripts/reveal.js");
 const { toCopper } = await import("../module/scripts/currency.js");
 
 const tick = () => new Promise(r => setTimeout(r, 0));
@@ -109,6 +109,8 @@ beforeEach(async () => {
   nextOutcome = "red";
   STUB.roll.mockClear();
   showRound.mockClear();
+  boxHeld.mockReset();
+  boxHeld.mockReturnValue(false);
 });
 
 afterAll(() => _resetKinds(BUILT_IN));
@@ -127,6 +129,29 @@ async function threeStakes() {
   await world.deliver(stakeMsg(round, "a3", "p3", "red"));
   return round;
 }
+
+describe("a table game off the shelf (shelf.js)", () => {
+  it("opens no round, and writes nothing", async () => {
+    await seed(world, { wheel: { ...TABLE, rules: { shelved: false } } });
+    await expect(openRound("wheel")).rejects.toThrow("Wheel is off the shelf. Put it on the shelf to open a round.");
+    expect(getRounds()).toEqual({});
+  });
+
+  it("refuses a stake on a round opened before it went off the shelf, charging nothing; the round still resolves", async () => {
+    const round = await openRound("wheel");
+    await world.deliver(stakeMsg(round, "a1", "p1", "red"));
+    await seed(world, { wheel: { ...TABLE, rules: { shelved: false } } });
+    await world.deliver(stakeMsg(round, "a2", "p2", "red"));
+    expect(world.emitted.find(m => m.type === "error")?.message).toBe("Wheel is no longer on the shelf. Nothing was charged.");
+    expect(gp(world.actors.get("a2"))).toBe(100);
+    expect(world.actors.get("a2").updates).toBe(0);
+    expect(getLog()).toHaveLength(1);
+    // The stake already down is settled by the round's one resolve.
+    await closeRound(round.id);
+    await resolveRound(round.id);
+    expect(gp(world.actors.get("a1"))).toBe(110);
+  });
+});
 
 describe("a table round's stakes", () => {
   it("writes three open rows and charges each character once", async () => {
@@ -162,6 +187,21 @@ describe("a table round's stakes", () => {
     await world.deliver(stakeMsg(round, "a1", "p1", "red"));
     expect(world.emitted.find(m => m.type === "error")?.message).toBe("Bets are closed for this round.");
     expect(gp(world.actors.get("a1"))).toBe(100);
+  });
+
+  it("refuses to open the next round while the last one still plays on the GM's screen, writing nothing", async () => {
+    const first = await openRound("wheel");
+    await closeRound(first.id);
+    await resolveRound(first.id);
+    const rounds = getRounds();
+    boxHeld.mockImplementation(id => id === "wheel");
+    await expect(openRound("wheel")).rejects.toThrow("The last round at Wheel is still playing. Open the next one once it lands.");
+    expect(getRounds()).toEqual(rounds);
+    expect(world.emitted.filter(m => m.event === "open")).toHaveLength(1);
+    // Landed: the next round opens.
+    boxHeld.mockImplementation(() => false);
+    const next = await openRound("wheel");
+    expect(next.id).not.toBe(first.id);
   });
 
   it("opens one round per game at a time", async () => {
@@ -275,6 +315,58 @@ describe("a table round's resolve", () => {
     expect((await resolveRound(round.id)).status).toBe("resolved");
   });
 
+  // The log write that closes the stakes fails after the round was marked
+  // resolved: nothing was paid, so the round goes back to closed and Spin
+  // works again, rather than the table sitting at "waiting" until a reload.
+  it("rolls the round back to closed when its stakes can't be closed, so Spin can try again", async () => {
+    const round = await threeStakes();
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const set = world.game.settings.set;
+    let failLog = true;
+    world.game.settings.set = async (ns, key, value) => {
+      if (key === "pullLog" && failLog) { failLog = false; throw new Error("disk full"); }
+      return set.call(world.game.settings, ns, key, value);
+    };
+    await expect(resolveRound(round.id)).rejects.toThrow("The spin at Wheel failed and nothing was paid: press Spin to try again.");
+    expect(getRounds()[round.id]).toMatchObject({ status: "closed", closedAt: expect.any(Number) });
+    expect(getRounds()[round.id].resolvedAt).toBeUndefined();
+    expect(getLog().every(r => r.status === "open")).toBe(true);
+    for (const a of world.actors.values()) expect(gp(a)).toBe(90);
+    expect(world.emitted.filter(m => m.event === "resolve" || m.event === "void")).toHaveLength(0);
+    expect(showRound).not.toHaveBeenCalled();
+    // A second Spin rolls and pays, once.
+    const again = await resolveRound(round.id);
+    expect(again.status).toBe("resolved");
+    expect([...world.actors.values()].map(gp)).toEqual([110, 90, 110]);
+    expect(world.emitted.filter(m => m.event === "resolve")).toHaveLength(1);
+    error.mockRestore();
+  });
+
+  it("calls the round off on every client when the rollback fails too, and the GM's next load refunds it", async () => {
+    const round = await threeStakes();
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const set = world.game.settings.set;
+    let roundWrites = 0;
+    world.game.settings.set = async (ns, key, value) => {
+      if (key === "pullLog") throw new Error("disk full");
+      if (key === "tableRounds" && ++roundWrites > 1) throw new Error("disk full");
+      return set.call(world.game.settings, ns, key, value);
+    };
+    await expect(resolveRound(round.id)).rejects.toThrow("The spin at Wheel failed and couldn't be undone: every stake is refunded when you reload Foundry.");
+    // Marked resolved, so it can't pay twice; every client hears the void.
+    expect(getRounds()[round.id].status).toBe("resolved");
+    expect(world.emitted.filter(m => m.type === "round" && m.event === "void")).toEqual([{ type: "round", event: "void", roundIds: [round.id], refunded: [], onReload: true }]);
+    expect((await resolveRound(round.id)).status).toBe("already");
+    for (const a of world.actors.values()) expect(gp(a)).toBe(90);
+    // The GM reloads: the resolved round's open rows are refunded at once.
+    world.game.settings.set = set;
+    const out = await recoverRounds();
+    expect(out.refunded).toBe(3);
+    for (const a of world.actors.values()) expect(gp(a)).toBe(100);
+    expect(getLog().every(r => r.refundReason === "stale")).toBe(true);
+    error.mockRestore();
+  });
+
   it("refunds every stake when the game was deleted before the spin", async () => {
     const round = await threeStakes();
     await world.game.settings.set("loot-crates", "boxes", {});
@@ -332,6 +424,33 @@ describe("the GM's load", () => {
     expect(await recoverRounds()).toEqual({ refunded: 0, gone: 0, voided: 0 });
     expect(getLog().filter(r => rowStatus(r) === "open")).toHaveLength(3);
     expect(world.notes.warn).not.toHaveBeenCalled();
+  });
+
+  // A short clock doesn't make a short grace: a GM who reloads a minute
+  // after a 10-second round closed still gets to spin it.
+  it("keeps a timed round for ROUND_GRACE_MS after its clock runs out, then refunds it", async () => {
+    const round = await openRound("wheel", { windowMs: 10000 });
+    await world.deliver(stakeMsg(round, "a1", "p1", "red"));
+    expect(ROUND_GRACE_MS).toBe(10 * 60 * 1000);
+    expect(staleAt(getRounds()[round.id])).toBe(round.closesAt + ROUND_GRACE_MS);
+    const clock = vi.spyOn(Date, "now").mockReturnValue(round.closesAt + 60000);
+    expect(await recoverRounds()).toEqual({ refunded: 0, gone: 0, voided: 0 });
+    expect(gp(world.actors.get("a1"))).toBe(90);
+    clock.mockReturnValue(round.closesAt + ROUND_GRACE_MS);
+    expect(await recoverRounds()).toEqual({ refunded: 1, gone: 0, voided: 1 });
+    expect(gp(world.actors.get("a1"))).toBe(100);
+  });
+
+  it("counts the grace from whichever came first, the GM's close or the clock", async () => {
+    const round = await openRound("wheel", { windowMs: 60000 });
+    const closed = await closeRound(round.id);
+    expect(closed.closedAt).toBeLessThan(round.closesAt);
+    expect(staleAt(closed)).toBe(closed.closedAt + ROUND_GRACE_MS);
+    expect(staleAt({ ...closed, closedAt: round.closesAt + 5000 })).toBe(round.closesAt + ROUND_GRACE_MS);
+    // A round with no clock: the window from its opening while open, the grace once closed.
+    expect(staleAt({ status: "open", opensAt: 1000, closesAt: null })).toBe(1000 + ROUND_WINDOW_MS);
+    expect(staleAt({ status: "closed", opensAt: 1000, closesAt: null, closedAt: 5000 })).toBe(5000 + ROUND_GRACE_MS);
+    expect(staleAt({ status: "resolved", resolvedAt: 7 })).toBe(7);
   });
 
   it("refunds open rows whose round record is gone", async () => {

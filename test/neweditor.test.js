@@ -255,7 +255,7 @@ describe("Copy", () => {
       expect(copy.getAttribute("data-tooltip")).toBe("Copy");
       const cell = copy.closest("td");
       const actions = [...cell.querySelectorAll("[data-action]")].map(b => b.getAttribute("data-action"));
-      expect(actions).toEqual(["editBox", "copyBox", "deleteBox"]);
+      expect(actions).toEqual(["toggleShelf", "editBox", "copyBox", "deleteBox"]);
     }
   });
 
@@ -273,7 +273,8 @@ describe("Copy", () => {
       expect(dialog.buttons.find(b => b.action === "ok").label).toBe("Add to shelf");
       expect(field("name").value).toBe("Goblin Crate (copy)");
       expect(field("name").hasAttribute("autofocus")).toBe(true);
-      expect(field("price").value).toBe("50");
+      // The price as the shop says it, in the same words the field reads back.
+      expect(field("price").value).toBe("50 gp");
       expect(field("pool.p").checked).toBe(true);
       expect(field("share.p").value).toBe("2");
       expect(field("w.common").value).toBe("10");
@@ -452,6 +453,99 @@ describe("New crate from this pool", () => {
     const app = await manager("pools");
     await act(app, "crateFromPool", { dataset: { pool: "nope" } });
     expect(dialog).toBeNull();
+    expect(store.getBoxes()).toEqual({});
+  });
+});
+
+/*
+  On the shelf (shelf.js): every editor has the box, ticked for a New so its
+  "Add to shelf" keeps its word; unticked, the game is added for the GM
+  alone. Each Boxes row's toggle puts a game out or takes it back in one
+  click, keeping focus on itself, and the toolbar counts what players see.
+*/
+describe("On the shelf", () => {
+  for (const [action, kind, title] of NEWS) {
+    it(`${action}: the box is ticked; unticked, the ${kind} is added off the shelf and the status line says so`, async () => {
+      const app = await manager();
+      const pending = act(app, action);
+      await settle(2);
+      expect(dialog.title).toBe(title);
+      expect(field("onShelf").checked).toBe(true);
+      field("onShelf").checked = false;
+      dialog.save();
+      await pending;
+      await settle();
+      const [game] = Object.values(store.getBoxes());
+      expect(game.rules.shelved).toBe(false);
+      expect(status(app).textContent).toBe(`${title} added off the shelf. Players can't see it until you put it on the shelf.`);
+      const row = app.element.querySelector(`.lc-table [data-action="editBox"][data-box="${game.id}"]`).closest("tr");
+      expect(row.classList.contains("lc-row--off")).toBe(true);
+      expect(app.element.querySelector(".lc-shelf-count").textContent).toBe("0 of 1 on the shelf");
+    });
+  }
+
+  it("a New left ticked writes no flag, as every record before it", async () => {
+    const app = await manager();
+    const pending = act(app, "addBox");
+    await settle(2);
+    dialog.save();
+    await pending;
+    await settle();
+    const [game] = Object.values(store.getBoxes());
+    expect("shelved" in game.rules).toBe(false);
+    expect(app.element.querySelector(".lc-shelf-count").textContent).toBe("1 of 1 on the shelf");
+  });
+
+  it("an edit shows the record's state and Save writes the box as left", async () => {
+    await store.saveBox({ id: "b1", name: "Hidden Crate", price: 50, pools: [{ id: "p", share: 1 }], weights: {}, rules: { shelved: false, stock: 2, stockMax: 5 } });
+    const app = await manager();
+    let pending = act(app, "editBox", { dataset: { box: "b1" } });
+    await settle(2);
+    expect(field("onShelf").checked).toBe(false);
+    field("onShelf").checked = true;
+    dialog.save();
+    await pending;
+    await settle();
+    expect(store.getBoxes().b1.rules).toEqual({ stock: 2, stockMax: 5, pity: null, noDuplicates: false, perCharacter: null });
+    pending = act(app, "editBox", { dataset: { box: "b1" } });
+    await settle(2);
+    expect(field("onShelf").checked).toBe(true);
+    dialog.cancel();
+    await pending;
+  });
+
+  it("the row's toggle flips the flag in one click, keeps focus on itself and says what players see", async () => {
+    await store.saveBox({ id: "b1", name: "Gilded Crate", price: 50, pools: [{ id: "p", share: 1 }], weights: {}, rules: {} });
+    await store.saveBox({ id: "w1", kind: "well", name: "Old Well", price: 0.1, pools: [], weights: {}, odds: { nothing: 90, coin: 8, item: 2 }, rules: { cap: 3 } });
+    const app = await manager();
+    const toggle = () => app.element.querySelector('.lc-table [data-action="toggleShelf"][data-box="b1"]');
+    expect(toggle().getAttribute("aria-pressed")).toBe("true");
+    expect(app.element.querySelector(".lc-shelf-count").textContent).toBe("2 of 2 on the shelf");
+    toggle().focus();
+    await act(app, "toggleShelf", toggle());
+    await settle();
+    expect(store.getBoxes().b1.rules.shelved).toBe(false);
+    expect(store.getBoxes().w1.rules).toEqual({ cap: 3 });
+    expect(toggle().getAttribute("aria-pressed")).toBe("false");
+    expect(toggle().textContent).toBe("Put on shelf");
+    expect(focused()).toBe(toggle());
+    expect(status(app).textContent).toBe("Gilded Crate is off the shelf; players can't see it.");
+    expect(app.element.querySelector(".lc-shelf-count").textContent).toBe("1 of 2 on the shelf");
+    await act(app, "toggleShelf", toggle());
+    await settle();
+    expect("shelved" in store.getBoxes().b1.rules).toBe(false);
+    expect(toggle().getAttribute("aria-pressed")).toBe("true");
+    expect(focused()).toBe(toggle());
+    expect(status(app).textContent).toBe("Gilded Crate is on the shelf; players can see it.");
+  });
+
+  it("a new crate draws from the world's one pool, already ticked", async () => {
+    const app = await manager();
+    const pending = act(app, "addBox");
+    await settle(2);
+    expect(field("pool.p").checked).toBe(true);
+    dialog.cancel();
+    await pending;
     expect(store.getBoxes()).toEqual({});
   });
 });

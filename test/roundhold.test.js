@@ -14,7 +14,7 @@ vi.mock("../module/scripts/socket.js", () => ({ requestPull: vi.fn(async () => (
 class FakeApp {}
 vi.stubGlobal("foundry", { applications: { api: { ApplicationV2: FakeApp }, instances: new Map() }, utils: { escapeHTML: s => String(s) } });
 
-const { showRound, setTableWindow, sealChatCard, onRelease, _resetHolds } = await import("../module/scripts/reveal.js");
+const { showRound, setTableWindow, sealChatCard, onRelease, onHold, boxHeld, heldState, _resetHolds } = await import("../module/scripts/reveal.js");
 
 let doc;
 let reduced = false;
@@ -67,6 +67,35 @@ describe("a table round's reveal", () => {
     expect(card.classes.has("lc-chat--sealed")).toBe(false);
     expect(released).toHaveBeenCalledWith({ actorId: null, boxId: "wheel", itemId: null });
     stop();
+  });
+
+  // The table's hold has no buyer (actorId null), so heldState(actor, box)
+  // never sees it: boxHeld is the shop's word that the wheel still turns.
+  it("says the game is held (boxHeld) from the reveal until this client lands, and tells the shop at once", async () => {
+    let land;
+    setTableWindow((_reveal, ctx) => { land = ctx.land; });
+    const started = vi.fn();
+    const stop = onHold(started);
+    expect(boxHeld("wheel")).toBe(false);
+    const shown = showRound(round("R6"));
+    expect(started).toHaveBeenCalledWith({ boxId: "wheel" });
+    expect(boxHeld("wheel")).toBe(true);
+    expect(boxHeld("other")).toBe(false);
+    expect(boxHeld(null)).toBe(false);
+    expect(heldState("a1", "wheel")).toBeNull();
+    land();
+    await shown.landed;
+    await flush();
+    expect(boxHeld("wheel")).toBe(false);
+    stop();
+  });
+
+  it("holds nothing past an instant landing", async () => {
+    reduced = true;
+    const shown = showRound(round("R7"));
+    await shown.landed;
+    await flush();
+    expect(boxHeld("wheel")).toBe(false);
   });
 
   it("lands at once with no table window", async () => {

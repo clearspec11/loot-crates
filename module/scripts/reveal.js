@@ -85,6 +85,8 @@
   - heldState(actorId, boxId) gives the shop the buyer's state from before
     the pull (the reveal's stateBefore), and onRelease tells the shop to
     redraw when it lands, so the new pity line arrives with the result.
+  - boxHeld(boxId) says a table game's round is still playing here (its
+    hold has no buyer), so the shop reads "Still spinning" for everyone.
   Landing, Skip and Close release it; a hidden page or reduced motion lands
   at once, so nothing is held there. A replay holds nothing. Display only:
   nothing is written.
@@ -211,6 +213,26 @@ export function heldState(actorId, boxId) {
   return null;
 }
 
+/*
+  Whether a table game's round is still playing here (showRound's one hold
+  for the whole table, which has no buyer): the shop's card says "Still
+  spinning" and the GM's Open a round waits for it (table.js openRound),
+  so the next round never opens under a turning wheel.
+*/
+export function boxHeld(boxId) {
+  if (!boxId) return false;
+  for (const h of held.values()) if (h.table && h.boxId === boxId) return true;
+  return false;
+}
+
+// Called with { boxId } each time a table round's hold starts here, so the
+// shop can say "Still spinning" at once. Returns the function that stops it.
+const holdListeners = new Set();
+export function onHold(fn) {
+  holdListeners.add(fn);
+  return () => holdListeners.delete(fn);
+}
+
 // Called with { actorId, boxId, itemId } each time a held pull lands here.
 // Returns the function that stops listening.
 export function onRelease(fn) {
@@ -243,7 +265,7 @@ function hold(reveal, landed) {
     clearTimeout(preSealed.get(itemId));
     preSealed.delete(itemId);
   }
-  const entry = { actorId: reveal.actorId ?? null, boxId: reveal.box?.id ?? null, itemId, stateBefore: reveal.stateBefore ?? null };
+  const entry = { actorId: reveal.actorId ?? null, boxId: reveal.box?.id ?? null, itemId, stateBefore: reveal.stateBefore ?? null, table: !!reveal.table };
   held.set(key, entry);
   syncSealStyle();
   landed.then(() => {
@@ -741,11 +763,15 @@ export function showRound(reveal) {
     const spin = { landed, hide: !!getKind(kindOf(reveal))?.chat?.conditional };
     spinning.set(id, spin);
     landed.then(() => { if (spinning.get(id) === spin) spinning.delete(id); });
-    hold({ requestId: `round.${id}`, actorId: null, box: { id: reveal.boxId ?? reveal.box?.id ?? null }, itemId: null, stateBefore: null }, landed);
+    const boxId = reveal.boxId ?? reveal.box?.id ?? null;
+    hold({ requestId: `round.${id}`, actorId: null, box: { id: boxId }, itemId: null, stateBefore: null, table: true }, landed);
     // An item a stake won at the spin (the wheel's rarity band) is on the
     // sheet already: hidden there, as a crate's is, until this client lands.
     for (const s of reveal.stakes ?? []) {
       if (s?.itemId) hold({ requestId: `round.${id}.${s.logId}`, actorId: s.actorId ?? null, box: { id: reveal.boxId ?? null }, itemId: s.itemId, stateBefore: null }, landed);
+    }
+    for (const fn of holdListeners) {
+      try { fn({ boxId }); } catch (err) { console.error("loot-crates | a hold listener failed", err); }
     }
   }
   const instant = !tableWindow || globalThis.document?.visibilityState === "hidden" || prefersReducedMotion();

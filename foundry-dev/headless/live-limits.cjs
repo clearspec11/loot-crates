@@ -26,8 +26,9 @@
 //   3. The GM opens the manager's Boxes tab by clicking it, reads the row's
 //      rules cell ("2 of 3 left, 1 per character"), presses the crate's Edit,
 //      reads the Limits group ("2 of 3 left"), presses Restock (the line
-//      reads "Restocked: 3 of 3 left" and the stored stock is 3 of 3), then
-//      Save. The player's card must read "3 of 3 left" within 2 s.
+//      reads "3 of 3 left once you save" and nothing is stored yet: the
+//      stock is still 2 of 3), then Save, which stores 3 of 3. The player's
+//      card must read "3 of 3 left" within 2 s.
 //   4. The GM opens the Pull log by its tab and presses the row's Refund and
 //      Yes: the confirm says the crate goes back to 3 in stock (never past
 //      the GM's 3), the purse comes back, and within 2 s the player's card
@@ -233,7 +234,7 @@ const untilCard = (pl, pred, since) => pl.evaluate(async ({ pred, since }) => {
       btn.focus();
       const at = Date.now();
       click(btn);
-      await until(() => /^Restocked/.test(group.querySelector(".lc-limits__left").textContent));
+      await until(() => /once you save$/.test(group.querySelector(".lc-limits__left").textContent));
       const leftAfter = group.querySelector(".lc-limits__left").textContent.trim();
       const stored = structuredClone(store.getBoxes()[before.boxId].rules);
       const focusKept = document.activeElement === btn;
@@ -288,7 +289,7 @@ const untilCard = (pl, pred, since) => pl.evaluate(async ({ pred, since }) => {
       staleRefused: out.stale.refused && out.stale.message === sentence && out.afterStale.rows.length === 1 && out.afterStale.rules?.stock === 2,
       boxesRow: r.rulesCell === `2 of 3 left, ${before.max} per character`,
       limitsGroup: r.legend === "Limits" && r.leftBefore === "2 of 3 left" && r.stockField === "3" && r.limitField.max === String(before.max) && r.limitField.per === "ever" && !r.offBefore,
-      restock: r.leftAfter === "Restocked: 3 of 3 left" && r.stored.stock === 3 && r.stored.stockMax === 3 && r.focusKept && r.offAfter,
+      restock: r.leftAfter === "3 of 3 left once you save" && r.stored.stock === 2 && r.stored.stockMax === 3 && r.saved.stock === 3 && r.saved.stockMax === 3 && r.focusKept && r.offAfter,
       saveKeepsIt: r.saved.stock === 3 && r.saved.stockMax === 3 && r.saved.perCharacter?.max === before.max && r.rulesAfter === `3 of 3 left, ${before.max} per character`,
       cardAfterRestock: out.cardAfterRestock.ms != null && out.cardAfterRestock.ms <= 2000 && out.cardAfterRestock.off,
       refund: /Return <?1 gp/.test(out.refund.dialogText ?? "") && /goes back to 3 in stock/.test(out.refund.dialogText ?? "") && out.refund.purseCp === before.purseCp && out.refund.items === before.items && out.refund.rules.stock === 3,

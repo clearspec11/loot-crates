@@ -74,8 +74,10 @@
 // between the click and the landing (leakFrames, must be 0), at reveal +1 s
 // (row hidden, the shop card's pity text and odds unchanged from before the
 // click, and the crate's Buy off with "Still spinning") and at landed +0.5 s
-// (row visible, the pity text now what the new state says, the pity text or
-// odds changed, and "Still spinning" gone). reveal.js holds both until
+// (row visible, the pity text now what the new state says, and "Still
+// spinning" gone; whether the pity text or odds changed is reported as
+// changedAfterPull, a fact that depends on what the character owns, not a
+// pass condition). reveal.js holds both until
 // this client's spin lands. longTasks and sheetRenders show what kept the
 // player's page busy: on this VM an open dnd5e sheet takes ~0.9 s to
 // re-render, once for the charge and once for the item, and the reveal
@@ -488,9 +490,12 @@ async function gmWatchCheck(page) {
             const { mid, after } = snaps;
             const ok = !!itemId && sheetOpen && leakFrames === 0 && frames > 0
               && mid && !mid.rowVisible && mid.pity === before.pity && mid.odds === before.odds && mid.buyOff && mid.why === "Still spinning"
-              && after && after.rows > 0 && after.rowVisible && after.pity === after.expectedPity && after.why !== "Still spinning"
-              && (after.pity !== before.pity || after.odds !== before.odds);
-            return { ok, itemId, sheetOpen, frames, leakFrames, leakAt, before, mid, after, createdMs: createdAt && Math.round(createdAt - t0), sheetRenders, longTasks };
+              && after && after.rows > 0 && after.rowVisible && after.pity === after.expectedPity && after.why !== "Still spinning";
+            // A fact, not a pass condition: whether the card's pity line or
+            // odds differ after the pull depends on what the character
+            // already owns (owning every Rare leaves both as they were).
+            const changedAfterPull = !!after && (after.pity !== before.pity || after.odds !== before.odds);
+            return { ok, changedAfterPull, itemId, sheetOpen, frames, leakFrames, leakAt, before, mid, after, createdMs: createdAt && Math.round(createdAt - t0), sheetRenders, longTasks };
           },
         };
       }

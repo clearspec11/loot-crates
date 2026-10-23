@@ -18,7 +18,10 @@
 // card's pity line and pills must stay as they were before the click on
 // every frame from that write until this pull's card is under the marker
 // (.lc-card--landed), then change to what the new state says within 1 s of
-// the landing. It also checks the reveal's odds were the shop's.
+// the landing. A pull of the pool's one high-rarity entry leaves Crate
+// Tester owning it, so the card then has no pity line and the low rarity
+// alone (branch "owns-every-high"); either branch passes on the module.
+// It also checks the reveal's odds were the shop's.
 //
 //   FOUNDRY_URL=http://192.168.0.57:30000 MODULE_BASE=http://192.168.0.190:8766/ \
 //     NODE_PATH=$(npm root -g) node foundry-dev/headless/run.cjs foundry-dev/checks/live-shop-pity.js --shot /tmp/pity.png
@@ -179,7 +182,12 @@ while (performance.now() < deadline) {
 }
 const after = store.getActorState(actor.id, box.id);
 const row = store.getLog().find(r => r.boxId === box.id && r.actorId === actor.id);
-const wantLine = after.sinceRare >= 2 ? `${what} guaranteed this pull` : `${what} within ${2 - after.sinceRare + 1} pulls`;
+// The pull may drop the pool's only high-rarity entry: Crate Tester then
+// owns every one of that rarity (noDuplicates), so the card has no pity
+// line and shows the low rarity alone. Otherwise the pity line counts on.
+const ownsEveryHigh = entries.filter(e => e.rarity === high.rarity).every(e => (after.owned ?? []).includes(e.uuid));
+const branch = ownsEveryHigh ? "owns-every-high" : "pity-counting";
+const wantLine = ownsEveryHigh ? null : after.sinceRare >= 2 ? `${what} guaranteed this pull` : `${what} within ${2 - after.sinceRare + 1} pulls`;
 if (stateMs == null) problems.push("the pull's state was never written");
 if (revealMs == null) problems.push("no reveal opened for the pull");
 else if (landedMs == null) problems.push("the reveal never landed (.lc-card--landed)");
@@ -188,8 +196,9 @@ if (early.length) problems.push(`the card changed during the spin, before the la
 if (landedMs != null && lineMs == null) problems.push("the open shop's pity line never changed after the landing");
 else if (lineMs != null && lineMs - landedMs > 1000) problems.push(`pity line redrew ${Math.round(lineMs - landedMs)} ms after the landing (> 1 s)`);
 if (lineMs != null) await frames();
-cases.afterPull = { ...read(), state: after, got: row?.name, rarity: row?.rarity };
+cases.afterPull = { ...read(), state: after, got: row?.name, rarity: row?.rarity, branch };
 if (cases.afterPull.pity !== wantLine) problems.push(`after the pull the line reads "${cases.afterPull.pity}", want "${wantLine}"`);
+if (ownsEveryHigh && (cases.afterPull.pills.length !== 1 || !cases.afterPull.pills[0].startsWith(RARITY_SHORT[low[0].rarity]))) problems.push(`owning every ${high.rarity}, the card should show ${low[0].rarity} alone: ${cases.afterPull.pills}`);
 if (JSON.stringify(cases.afterPull.pills) !== JSON.stringify(expectPills(after))) problems.push(`after-pull pills ${cases.afterPull.pills} != ${expectPills(after)}`);
 // The reveal's ribbon is the odds the shop showed before the click.
 const ribbon = [...(revealEl?.querySelectorAll(".lc-ribbon__seg") ?? [])].map(s => s.getAttribute("title"));

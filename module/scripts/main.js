@@ -2,7 +2,8 @@
   Loot Crates, Foundry VTT entry point.
 
   Players: a "Crates" button in the Items sidebar opens the Crate Shop.
-  GM: Game Settings, Loot Crates opens the manager (pools, boxes, pull log).
+  GM: "Manage crates" beside it opens the manager (pools, boxes, pull log),
+  as does Game Settings, Loot Crates (route.js has every way between them).
   Purchases go over the module socket to the active GM, who grants the item
   and broadcasts the reveal (socket.js). This file uses Foundry globals and is
   exercised in a world, not by the Vitest suite; the pure parts (odds.js,
@@ -13,6 +14,7 @@ import { registerSettings, setStoreListener, registerIndexFields, getPools, getB
 import { registerSocket, requestPull, requestStake, isActiveGM } from "./socket.js";
 import { registerKind, getKind, kindOf } from "./kinds.js";
 import { openShop, refreshShop, registerShopHooks } from "./shop.js";
+import { addDirectoryButtons } from "./route.js";
 import { openManager, refreshManager, CrateManager } from "./manager.js";
 import { storeRedraw } from "./redraw.js";
 import { performPull } from "./pull.js";
@@ -54,17 +56,11 @@ Hooks.once("ready", () => {
   }
 });
 
+// "Crates" for everyone, and "Manage crates" for a GM, once each however
+// often the directory renders.
 Hooks.on("renderItemDirectory", (_app, html) => {
   const root = html instanceof HTMLElement ? html : html?.[0];
-  if (!root || root.querySelector(`.${MODULE_ID}-open`)) return;
-  const header = root.querySelector(".directory-header .header-actions") || root.querySelector(".directory-header");
-  if (!header) return;
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = `${MODULE_ID}-open`;
-  button.innerHTML = `<i class="fas fa-box-open"></i> Crates`;
-  button.addEventListener("click", () => openShop());
-  header.appendChild(button);
+  if (root) addDirectoryButtons(root, { isGM: !!game.user?.isGM, open: { shop: () => openShop(), manager: () => openManager() } });
 });
 
 // Purse and ownership changes show in the shop without reopening it.

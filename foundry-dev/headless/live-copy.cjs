@@ -114,6 +114,7 @@ const READ_SHOP = `globalThis.__lcCards = () => [...document.querySelectorAll("#
     out.before = await gm.page.evaluate(async ({ base, name }) => {
       const store = await import(base + "scripts/store.js");
       const { toCopper } = await import(base + "scripts/currency.js");
+      const { copyName } = await import(base + "scripts/newgame.js");
       const source = Object.values(store.getBoxes()).find(b => b.name === name);
       if (!source) throw new Error(`no ${name}: run live-ui.js first`);
       if (!(source.pools ?? []).some(r => store.getPools()[r.id])) throw new Error(`${name} draws from no live pool: run live-ui.js first`);
@@ -122,6 +123,7 @@ const READ_SHOP = `globalThis.__lcCards = () => [...document.querySelectorAll("#
       // A purse short of the price is topped up, as the brief allows.
       if (toCopper(actor.system.currency) < Math.ceil(Number(source.price) || 0) * 100) await actor.update({ "system.currency.gp": 1000 });
       return {
+        copyName: copyName(source.name, Object.values(store.getBoxes()).map(b => b.name)),
         source: structuredClone(source), boxIds: Object.keys(store.getBoxes()), shopOpen: store.isShopOpen(), actorId: actor.id,
         sourceState: structuredClone(store.getActorState(actor.id, source.id)), sourceRows: store.getLog().filter(r => r.boxId === source.id).length,
         logIds: store.getLog().map(r => r.id), purseCp: toCopper(actor.system.currency), items: actor.items.filter(i => !i.flags?.dnd5e?.cachedFor).length,
@@ -129,7 +131,8 @@ const READ_SHOP = `globalThis.__lcCards = () => [...document.querySelectorAll("#
     }, { base: MODULE_BASE, name: BOX });
     const source = out.before.source;
     const addLabel = out.before.shopOpen ? "Add to shelf" : "Add";
-    const copyName = `${BOX} (copy)`;
+    // "<name> (copy)", or the next free "(copy N)" if an earlier run left one.
+    const copyName = out.before.copyName;
 
     // The player's shop, open on Crate Tester.
     out.shop = await pl.page.evaluate(async ({ base, read }) => {

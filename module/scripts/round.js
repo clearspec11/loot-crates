@@ -28,11 +28,15 @@
   kind puts it in its own voice (kinds.js tableView.words).
 */
 
-// How long an "until the GM spins" round may sit before a GM's load
-// refunds its stakes. A timed round goes stale one clock's length after
-// it closes (staleAt). A reload mid-round keeps the round; one left for
+// How long an "until the GM spins" round may sit open before a GM's load
+// refunds its stakes. A reload mid-round keeps the round; one left for
 // longer than that does not.
 export const ROUND_WINDOW_MS = 10 * 60 * 1000;
+// How long a closed round (by the GM, or its clock running out) waits for
+// its spin before a GM's load refunds its stakes. One constant, so the
+// grace is easy to change: a GM who reloads a minute after a short round
+// closed still gets to spin it.
+export const ROUND_GRACE_MS = 10 * 60 * 1000;
 // Resolved rounds kept for the log's group headers; open ones are never dropped.
 export const ROUNDS_KEPT = 50;
 
@@ -73,16 +77,16 @@ export function stakeReason(round, now = Date.now()) {
   return "";
 }
 
-// When a round's open stakes become the GM's load's to refund: a window
-// after it closed (by the GM, or its clock), or a window after it opened
-// for a round with no clock. A resolved round's open rows are orphans (the
-// resolve marked the round and stopped): stale at once.
+// When a round's open stakes become the GM's load's to refund: the grace
+// after it closed (by the GM, or its clock, whichever came first), or the
+// window after it opened for a round with no clock still open. A resolved
+// round's open rows are orphans (the resolve marked the round and stopped):
+// stale at once.
 export function staleAt(round) {
   if (!round) return -Infinity;
   if (round.status === STATUS.RESOLVED) return round.resolvedAt ?? -Infinity;
-  const window = round.closesAt != null ? Math.max(0, round.closesAt - round.opensAt) : ROUND_WINDOW_MS;
-  const from = round.closedAt ?? round.closesAt ?? round.opensAt;
-  return from + Math.max(window, 0);
+  const closed = Math.min(round.closedAt ?? Infinity, round.closesAt ?? Infinity);
+  return Number.isFinite(closed) ? closed + ROUND_GRACE_MS : (round.opensAt ?? 0) + ROUND_WINDOW_MS;
 }
 
 // The open stakes a GM's load refunds: every open row whose round is gone

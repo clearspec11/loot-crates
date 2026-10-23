@@ -13,7 +13,7 @@ vi.mock("../module/scripts/sound.js", () => ({ playTick: vi.fn(), playSlow: vi.f
 
 const R = await import("../module/scripts/roulette.js");
 const { ROULETTE, ROULETTE_DEFAULTS, BET_TYPES, pocketsOf, coloursOf, optionsOf, betOdds, resolve, betWins, normalizeBet, betName, stakeCheck, readBet, pickOptions, betFields, verdictText, netByActor, netText, netLines, wheelPose, pocketUnder, mountWheel, railHTML, roundState, clockText, drawOfRarity, draftRoulette, rouletteRulesText, roulettePreview, betLines, wheelSVG } = R;
-const { tableBodyHTML, phaseOf, stateText, countText, stakeSentence } = await import("../module/scripts/tableview.js");
+const { tableBodyHTML, phaseOf, stateText, countText, stakeSentence, countdownText } = await import("../module/scripts/tableview.js");
 const { PullError } = await import("../module/scripts/kinds.js");
 const { seededRng } = await import("../module/scripts/odds.js");
 
@@ -220,6 +220,13 @@ describe("the words", () => {
     expect(roundState({ status: "open", closesAt: null }, { now }).text).toBe("Bets are open until the GM spins");
     expect(roundState({ status: "open" }, { now, held: true }).text).toBe("The wheel is turning");
     expect(clockText(125000)).toBe("2:05");
+    // The shop card's ticking line in the kind's own clock words.
+    expect(countdownText(ROULETTE, now + 42000, now)).toEqual({ text: "Bets close in 0:42", done: false });
+    expect(countdownText(ROULETTE, now, now)).toEqual({ text: "Bets are closed", done: true });
+    const auction = { tableView: { words: { clock: left => `Bidding ends in ${clockText(left)}`, closed: "Bidding is over" } } };
+    expect(countdownText(auction, now + 61000, now)).toEqual({ text: "Bidding ends in 1:01", done: false });
+    expect(countdownText(auction, now - 1, now)).toEqual({ text: "Bidding is over", done: true });
+    expect(countdownText(null, now + 1000, now).text).toBe("Bets close in 0:01");
     expect(clockText(-5)).toBe("0:00");
   });
 });
@@ -252,6 +259,26 @@ describe("the shop card", () => {
     expect(ROULETTE.shop.card(GAME, POOLS, { ...base, isGM: true, rounds: {} })).not.toContain('aria-disabled="true"');
     expect(ROULETTE.shop.card(GAME, POOLS, { ...base, isGM: true, rounds: { R: round } })).toContain("Go to the table");
     expect(ROULETTE.shop.reason(GAME, POOLS, { ...base, isGM: true, rounds: {} })).toBe("");
+  });
+
+  // The wheel still turning here (reveal.js boxHeld: the round is resolved,
+  // so there is no live round) reads "Still spinning", not "No round open
+  // yet", and the GM's Open a round is off until it lands.
+  it("says Still spinning while the last round turns, for players and for the GM's Open a round", () => {
+    const spun = { R: { ...round, status: "resolved" } };
+    const held = id => id === "wheel";
+    expect(ROULETTE.shop.reason(GAME, POOLS, { ...base, rounds: spun })).toBe("No round open yet");
+    expect(ROULETTE.shop.reason(GAME, POOLS, { ...base, rounds: spun, held })).toBe("Still spinning");
+    const player = ROULETTE.shop.card(GAME, POOLS, { ...base, rounds: spun, held });
+    expect(player).toContain("The wheel is turning");
+    expect(player).toContain('aria-disabled="true"');
+    const gm = ROULETTE.shop.card(GAME, POOLS, { ...base, isGM: true, rounds: spun, held });
+    expect(gm).toContain("Open a round");
+    expect(gm).toContain('aria-disabled="true"');
+    expect(gm).toContain("Still spinning");
+    expect(ROULETTE.shop.reason(GAME, POOLS, { ...base, isGM: true, rounds: spun, held })).toBe("Still spinning");
+    // Once it lands, the GM's Open a round is on again.
+    expect(ROULETTE.shop.reason(GAME, POOLS, { ...base, isGM: true, rounds: spun })).toBe("");
   });
 });
 
@@ -409,6 +436,12 @@ describe("the rail and the table's body", () => {
     expect(phaseOf(null, { now })).toBe("void");
     expect(phaseOf({ status: "resolved", voided: 1 }, { now })).toBe("void");
     expect(stateText(null, "void").text).toBe("The round was called off; every stake came back");
+    // A spin that failed and couldn't be undone (table.js undoResolve): the
+    // window is told by the void message, the round record still says resolved.
+    expect(phaseOf({ status: "resolved" }, { now, voided: true })).toBe("void");
+    expect(stateText({ status: "resolved" }, "void", { onReload: true }).text).toBe("The spin failed and the round was called off; every stake comes back when the GM reloads");
+    expect(tableBodyHTML({ kind: ROULETTE, game: GAME, round: { status: "resolved" }, phase: "void", viewer: { isGM: true, actors: [] }, onReload: true })).toContain("every stake comes back when the GM reloads");
+    expect(tableBodyHTML({ kind: ROULETTE, game: GAME, round: { status: "resolved" }, phase: "void", viewer: { isGM: true, actors: [] }, onReload: true })).not.toContain("lc-table__spin");
     expect(stateText(null, "landed")).toEqual({ key: "landed", text: "Settled" });
     expect(countText([])).toBe("No bets yet");
     expect(countText([rows[2]])).toBe("1 bet");

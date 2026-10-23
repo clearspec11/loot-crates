@@ -259,6 +259,9 @@
   flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 4px; margin: -4px;
 }
 .loot-crates .lc-shop__empty, .loot-crates .lc-empty { color: var(--lc-ink-mute); margin: 8px 0; }
+.loot-crates .lc-shop__grid > .lc-shop__empty { grid-column: 1 / -1; line-height: 2; }
+/* A GM's empty shelf points at the manager with a button in the sentence. */
+.loot-crates .lc-shop__manage { display: inline-flex; width: auto; align-items: center; gap: 6px; margin: 0 0 0 2px; vertical-align: middle; color: var(--lc-ink); }
 
 /* A crate is a dnd5e card: its name on a maroon band, a paper body. */
 .loot-crates .lc-box {
@@ -764,7 +767,9 @@
 .loot-crates .lc-manager__body { display: grid; grid-template-rows: auto 1fr; gap: 12px; height: 100%; }
 /* Tabs as dnd5e's sheet tabs: upper-case labels, the active one underlined
    in gold. The shop switch sits at the end with its state in words. */
-.loot-crates .lc-tabs { display: flex; gap: 4px; align-items: center; border-bottom: 1px solid var(--lc-rule); padding-bottom: 0; }
+/* The nav wraps upward: in a narrow window "View shop" and the shop's toggle
+   take a line above the tabs, so the tabs stay on the rule they underline. */
+.loot-crates .lc-tabs { display: flex; flex-wrap: wrap-reverse; gap: 4px; align-items: center; border-bottom: 1px solid var(--lc-rule); padding-bottom: 0; }
 .loot-crates .lc-tabs__list { display: contents; }
 .loot-crates .lc-tabs [role="tab"] {
   background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0; margin-bottom: -1px;
@@ -775,7 +780,9 @@
 .loot-crates .lc-tabs [role="tab"]:hover { color: var(--lc-ink); border-bottom-color: var(--lc-rule-soft); }
 .loot-crates .lc-tabs [role="tab"][aria-selected="true"] { color: var(--lc-ink); border-bottom-color: var(--lc-rule); }
 .loot-crates .lc-tabs__spacer { flex: 1; }
-.loot-crates .lc-shop-toggle { margin-bottom: 6px; }
+.loot-crates .lc-tabs__shop { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; margin: 0 0 6px auto; }
+.loot-crates .lc-tabs__shop button { margin: 0; white-space: nowrap; }
+.loot-crates .lc-view-shop { flex: none; }
 .loot-crates .lc-shop-toggle::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--lc-ink-mute); }
 .loot-crates .lc-shop-toggle[data-open="true"]::before { background: var(--lc-ok); }
 /* The tab's pane is a container: the Boxes and Pull log tables follow its
@@ -904,6 +911,29 @@
   font-family: var(--lc-label); font-size: 11px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase;
   color: var(--lc-gold-ink); border: 1px solid var(--lc-rule-soft); border-radius: 3px;
 }
+/* On the shelf (shelf.js): each row's switch leads its buttons' cell on a
+   line of its own (as Reshuffle does), in the shop switch's idiom: a dot,
+   green while players can see the game. A game off the shelf is tagged so
+   beside its kind and its row reads as set aside: its words in the muted
+   ink, its odds drained of colour (the pills keep their text), its
+   buttons as they are. */
+.loot-crates .lc-table td:last-child .lc-shelf-toggle { display: flex; margin: 0 0 4px auto; min-height: 26px; padding: 0 9px; font-size: 12px; white-space: nowrap; }
+/* A Boxes row's price, typed in place (boxestable.js priceInputHTML), the
+   figures in columns: wide enough for "120 gp 5 sp" whole. The Boxes
+   table's cells pad 6px a side, not 8, and the price's 4px, so with it the
+   table's narrowest layout still fits the 560 px pane where its rows
+   begin to stack (smoke panelProblems). */
+.loot-crates .lc-table input.lc-price-input { width: 6.2em; max-width: 100%; min-height: 28px; padding: 0 4px; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--lc-ink); }
+.loot-crates .lc-table--boxes td { padding-left: 6px; padding-right: 6px; }
+.loot-crates .lc-table--boxes td[data-label="Price"] { padding-left: 4px; padding-right: 4px; }
+.loot-crates .lc-shelf-toggle::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--lc-ink-mute); }
+.loot-crates .lc-shelf-toggle[data-on="true"]::before { background: var(--lc-ok); }
+.loot-crates .lc-shelf-toggle[data-on="false"] { border-style: dashed; }
+.loot-crates .lc-kind--off { color: var(--lc-ink-mute); border-style: dashed; }
+.loot-crates .lc-table tr.lc-row--off td:not(:last-child) { color: var(--lc-ink-mute); }
+.loot-crates .lc-table tr.lc-row--off td .lc-ribbon, .loot-crates .lc-table tr.lc-row--off td .lc-odds { filter: grayscale(1); }
+.loot-crates .lc-shelf-count { font-size: 12px; color: var(--lc-ink-mute); white-space: nowrap; }
+.loot-crates .lc-form__shelf { margin-top: 4px; font-weight: 600; }
 /* The row a New just added (manager.js #saveEditor): an edge in the gold
    rule, as a dropped item's row carries its rarity, until the next New. */
 .loot-crates .lc-table tr.lc-row--new td:first-child { box-shadow: inset 3px 0 0 var(--lc-gold-ink); }
@@ -926,6 +956,12 @@
 .loot-crates .lc-form .lc-row { display: flex; align-items: center; gap: 8px; }
 .loot-crates .lc-form .lc-row input[type=number] { width: 76px; }
 .loot-crates .lc-form .lc-form__stake select { width: auto; min-width: 4.5em; }
+/* One control in a label of its own inside a row of words and controls
+   (editorfields.js field): laid out as the row's own items are. */
+.loot-crates .lc-form .lc-field { display: inline-flex; align-items: center; gap: 8px; }
+.loot-crates .lc-form .lc-row--wrap { flex-wrap: wrap; row-gap: 6px; }
+/* A pool's share while the pool is unticked: off, and looks it, as an off button does. */
+.loot-crates .lc-form .lc-pool-pick input[data-share]:disabled { color: var(--lc-ink-mute); border-style: dashed; cursor: not-allowed; }
 .loot-crates .lc-form fieldset { border: 1px solid var(--lc-rule); border-radius: var(--lc-radius); padding: 8px 10px 10px; background: var(--lc-card); }
 .loot-crates .lc-form legend, .loot-crates .lc-form__label { font-family: var(--lc-label); font-weight: 700; font-size: 12px; letter-spacing: .03em; text-transform: uppercase; color: var(--lc-gold-ink); padding: 0 4px; }
 .loot-crates .lc-form p { margin: 0; }
@@ -1061,8 +1097,11 @@
   /* The game's name is the card's title; it needs no caption. */
   .loot-crates .lc-table--boxes td:first-child { font-weight: 700; }
   .loot-crates .lc-table--stack.lc-table--boxes td:first-child::before { display: none; }
+  .loot-crates .lc-table--stack.lc-table--boxes td[data-label="Price"] { padding: 0; }
   .loot-crates .lc-table--stack td:last-child { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; margin-top: 2px; white-space: normal; }
   .loot-crates .lc-table--stack td:last-child .lc-table__extra { margin: 0; }
+  /* In a card, the shelf switch stands apart from the edit buttons, at the left. */
+  .loot-crates .lc-table--stack td:last-child .lc-shelf-toggle { margin: 0 auto 0 0; }
   .loot-crates .lc-table--stack td .lc-ribbon { max-width: none; }
   /* The new row's gold edge and a late sale's amber one move to the card. */
   .loot-crates .lc-table--stack tr.lc-row--new td:first-child, .loot-crates .lc-table--stack tr.lc-row--late td:first-child { box-shadow: none; }

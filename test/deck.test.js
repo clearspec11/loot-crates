@@ -15,7 +15,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createDocument } from "./minidom.js";
 
-vi.mock("../module/scripts/reveal.js", () => ({ showReveal: vi.fn(async () => ({ landed: Promise.resolve() })), heldState: () => null, onRelease: () => () => {} }));
+vi.mock("../module/scripts/reveal.js", () => ({ showReveal: vi.fn(async () => ({ landed: Promise.resolve() })), heldState: () => null, boxHeld: () => false, onHold: () => () => {}, onRelease: () => () => {} }));
 vi.mock("../module/scripts/sound.js", () => ({ playTick: vi.fn(), playSlow: vi.fn(), playReveal: vi.fn(), playPlop: vi.fn(), playPlink: vi.fn(), playCoinBack: vi.fn(), playBane: vi.fn() }));
 
 const { DECK, DECK_DEFAULTS, DECK_TIMING, STREAK_MS, cardsOf, drawnIds, deckPlan, deckOdds, streakOf, priceAt, nextPrice, ordinal, mountDeck, deckLandTime, cardsLeftText, streakLine, deckRulesText, draftDeck, deckPreview, deckPreviewHTML, deckSummary, deckOddsHTML } = await import("../module/scripts/deck.js");
