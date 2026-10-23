@@ -10,7 +10,7 @@
 */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-vi.mock("../module/scripts/reveal.js", () => ({ showReveal: vi.fn(async () => ({ landed: Promise.resolve() })), showRound: vi.fn(() => ({ landed: Promise.resolve(), instant: true })) }));
+vi.mock("../module/scripts/reveal.js", () => ({ showReveal: vi.fn(async () => ({ landed: Promise.resolve() })), showRound: vi.fn(() => ({ landed: Promise.resolve(), instant: true })), boxHeld: vi.fn(() => false) }));
 vi.mock("../module/scripts/chat.js", () => ({ postPullCard: vi.fn(async () => null) }));
 vi.mock("../module/scripts/sound.js", () => ({ playTick: vi.fn(), playSlow: vi.fn(), playReveal: vi.fn(), playPlop: vi.fn(), playPlink: vi.fn(), playCoinBack: vi.fn(), playBane: vi.fn(), playDrop: vi.fn() }));
 
@@ -198,6 +198,28 @@ describe("the spin", () => {
     expect(by.a2).toMatchObject({ status: "settled", payoutCp: 3000 });
     expect(getLog().filter(r => rowStatus(r) === "open")).toHaveLength(0);
     expect(world.notes.warn).toHaveBeenCalledWith(expect.stringContaining("1 stake was refunded, not paid"));
+  });
+
+  // The band's item goes on the sheet before the log write; if that write
+  // fails, the rollback takes it back, so the retried spin grants it once.
+  it("takes back the band's item when the spin rolls back, and the retry grants it once", async () => {
+    const round = await threeBets();
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const set = world.game.settings.set;
+    let failLog = true;
+    world.game.settings.set = async (ns, key, value) => {
+      if (key === "pullLog" && failLog) { failLog = false; throw new Error("disk full"); }
+      return set.call(world.game.settings, ns, key, value);
+    };
+    await expect(resolveRound(round.id)).rejects.toThrow("nothing was paid: press Spin to try again");
+    const bo = world.actors.get("a2");
+    expect(bo.items.size).toBe(0);
+    expect(getRounds()[round.id].status).toBe("closed");
+    await resolveRound(round.id);
+    expect(bo.items.size).toBe(1);
+    expect(getLog().find(r => r.actorId === "a2")).toMatchObject({ status: "settled", itemId: "a2-item2" });
+    expect(gp(bo)).toBe(120);
+    error.mockRestore();
   });
 
   it("pays coins only when the item can't be put on the sheet", async () => {

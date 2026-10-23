@@ -40,26 +40,43 @@ export function countText(stakes = []) {
 }
 
 /*
+  The shop card's ticking line (data-lc-countdown, tablewindow.js tick) in
+  the kind's own words (tableView.words, else round.js ROUND_WORDS): the
+  clock while time is left, then the closed words. { text, done }.
+*/
+export function countdownText(kind, closesAt, now = Date.now()) {
+  const w = { ...ROUND_WORDS, ...(kind?.tableView?.words ?? {}) };
+  const left = Number(closesAt) - now;
+  return left > 0 ? { text: w.clock(left), done: false } : { text: w.closed, done: true };
+}
+
+/*
   Which controls the viewer gets: the bet form while the round takes bets
   and they have a character to bet with; Spin for the GM until the round
   resolves. `phase` is "betting" | "waiting" (closed, not spun) | "spinning"
   | "landed" | "void".
 */
-export function phaseOf(round, { reveal = null, landed = false, now = Date.now() } = {}) {
+export function phaseOf(round, { reveal = null, landed = false, now = Date.now(), voided = false } = {}) {
   if (landed) return "landed";
   if (reveal) return "spinning";
-  if (!round || round.voided) return "void";
+  if (!round || round.voided || voided) return "void";
   if (round.status === "resolved") return "spinning";
   return stakeReason(round, now) ? "waiting" : "betting";
 }
 
 // The head's state words: the round's (round.js roundState, in the kind's
-// own words, tableView.words), or while the stage plays, that.
-export function stateText(round, phase, { now = Date.now(), kind = null } = {}) {
+// own words, tableView.words), or while the stage plays, that. `onReload`:
+// the spin failed and couldn't be undone (table.js undoResolve), so the
+// stakes come back on the GM's next load, not now.
+export const VOID_WORDS = {
+  now: "The round was called off; every stake came back",
+  onReload: "The spin failed and the round was called off; every stake comes back when the GM reloads",
+};
+export function stateText(round, phase, { now = Date.now(), kind = null, onReload = false } = {}) {
   const words = kind?.tableView?.words ?? {};
   if (phase === "spinning") return roundState(round, { held: true, words });
   if (phase === "landed") return { key: "landed", text: "Settled" };
-  if (phase === "void") return { key: "void", text: "The round was called off; every stake came back" };
+  if (phase === "void") return { key: "void", text: onReload ? VOID_WORDS.onReload : VOID_WORDS.now };
   if (phase === "waiting") return { key: "closed", text: words.waiting ?? ROUND_WORDS.waiting };
   return roundState(round, { now, words });
 }
@@ -69,9 +86,9 @@ export function stateText(round, phase, { now = Date.now(), kind = null } = {}) 
   characters this user may bet with), actorIds }. `values` are the form's
   last values, kept across a redraw. `esc` escapes for the page.
 */
-export function tableBodyHTML({ kind, game, round, stakes = [], viewer = {}, phase = "betting", now = Date.now(), esc = s => String(s ?? ""), values = {} }) {
+export function tableBodyHTML({ kind, game, round, stakes = [], viewer = {}, phase = "betting", now = Date.now(), esc = s => String(s ?? ""), values = {}, onReload = false }) {
   const view = kind.tableView;
-  const state = stateText(round, phase, { now, kind });
+  const state = stateText(round, phase, { now, kind, onReload });
   const actors = viewer.actors ?? [];
   const canBet = phase === "betting" && actors.length > 0;
   const who = actors.length > 1

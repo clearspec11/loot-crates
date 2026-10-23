@@ -14,7 +14,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { createDocument } from "./minidom.js";
 
-vi.mock("../module/scripts/reveal.js", () => ({ showReveal: vi.fn(async () => ({ landed: Promise.resolve() })), heldState: () => null, onRelease: () => () => {} }));
+vi.mock("../module/scripts/reveal.js", () => ({ showReveal: vi.fn(async () => ({ landed: Promise.resolve() })), heldState: () => null, boxHeld: () => false, onHold: () => () => {}, onRelease: () => () => {} }));
 vi.mock("../module/scripts/sound.js", () => ({ playTick: vi.fn(), playSlow: vi.fn(), playReveal: vi.fn(), playPlop: vi.fn(), playPlink: vi.fn(), playCoinBack: vi.fn() }));
 
 const { DICE, parseFormula, winChance, resolve, facesOf, rollData, rollFaces, diceOdds, mountDice, landTime, DICE_TIMING, verdictText, diceRulesText, draftDice, dicePreview, dicePreviewHTML, diceSummary, setDice3D } = await import("../module/scripts/dicegame.js");

@@ -599,18 +599,19 @@ export function railHTML(game, stakes = [], { esc = s => String(s ?? ""), outcom
       <div class="lc-rail__row lc-rail__row--bands">${bands.join("")}</div>`;
 }
 
-// Why this player can't bet now, or "": no round, bets closed, the wheel
-// still turning here, the cap reached; being short of the least stake is
-// the card's last word, as for every kind. The GM's card is never off for
-// the round (they open it), only for a wheel with no pockets.
+// Why this player can't bet now, or "": the wheel still turning here, no
+// round, bets closed, the cap reached; being short of the least stake is
+// the card's last word, as for every kind. The GM's card is off only for a
+// wheel with no pockets and while the last round still turns here: Open a
+// round waits for it (table.js openRound refuses it too).
 function wheelState(game, odds, ctx) {
   if (!odds.pockets || odds.pockets < 2) return "The wheel has no pockets";
   const round = liveRoundOf(ctx.rounds ?? {}, game.id);
-  if (ctx.isGM) return "";
   const state = roundState(round, { now: ctx.now ?? Date.now(), held: !!ctx.held?.(game.id) });
+  if (state.key === "spinning") return "Still spinning";
+  if (ctx.isGM) return "";
   if (state.key === "none") return "No round open yet";
   if (state.key === "closed") return "Bets are closed";
-  if (state.key === "spinning") return "Still spinning";
   const cap = maxBetsOf(game);
   const mine = betsPlaced(ctx.log?.filter?.(r => r.roundId === round?.id) ?? [], ctx.actorId);
   if (cap && mine >= cap) return `${mine} of ${cap} bets placed`;

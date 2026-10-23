@@ -9,7 +9,7 @@
 */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-vi.mock("../module/scripts/reveal.js", () => ({ showReveal: vi.fn(async () => ({ landed: Promise.resolve() })), heldState: () => null, onRelease: () => () => {} }));
+vi.mock("../module/scripts/reveal.js", () => ({ showReveal: vi.fn(async () => ({ landed: Promise.resolve() })), heldState: () => null, boxHeld: () => false, onHold: () => () => {}, onRelease: () => () => {} }));
 
 const { registerKind, getKind, kindOf, kindIds, kindFor, gotText, PullError, _resetKinds } = await import("../module/scripts/kinds.js");
 const { performPull } = await import("../module/scripts/pull.js");

@@ -31,7 +31,7 @@ import { actorPicker, boxCard, buyReason, changedCharacterLine, crateReason, ref
 import { shopOdds } from "./odds.js";
 import { limitState, limitRefusal, withLimit } from "./limits.js";
 import { requestPull } from "./socket.js";
-import { heldState, onRelease } from "./reveal.js";
+import { heldState, boxHeld, onHold, onRelease } from "./reveal.js";
 import { getKind, kindOf } from "./kinds.js";
 import { onShelf, shelfFor, OFF_SHELF_REASON } from "./shelf.js";
 import { shopControls, shopEmptyHTML } from "./route.js";
@@ -276,7 +276,9 @@ export class CrateShop extends ApplicationV2 {
       today: todayKey(), get log() { return (log ??= getLog()); },
       // A table game's card says what its round is doing (roulette.js).
       get rounds() { return (rounds ??= getRounds()); }, isGM: !!game.user.isGM, now: Date.now(),
-      held: boxId => !!(actor && heldState(actor.id, boxId)),
+      // This character's pull still spinning here, or a table game's round
+      // still playing here (it has no buyer: the whole table watches it).
+      held: boxId => !!(actor && heldState(actor.id, boxId)) || boxHeld(boxId),
       busy: this.busy, busyBox: this.busyBox, waiting: this.waiting, art: `<i class="fas fa-box-open"></i>`, esc,
     };
   }
@@ -362,5 +364,7 @@ export function registerShopHooks(hooks = globalThis.Hooks) {
   // time): a well's throws today start again (well.js).
   hooks.on("updateWorldTime", () => refreshShop());
 }
-// A held pity line and odds change when the spin lands.
+// A held pity line and odds change when the spin lands; a table game's
+// card says "Still spinning" as soon as its round starts playing here.
 onRelease(() => refreshShop());
+onHold(() => refreshShop());

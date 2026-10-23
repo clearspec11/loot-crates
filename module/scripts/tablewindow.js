@@ -17,12 +17,12 @@
 import { MODULE_ID, SETTINGS } from "./config.js";
 import { getBoxes, getLog, getRounds } from "./store.js";
 import { getKind, kindOf, PullError } from "./kinds.js";
-import { stakesOf, liveRoundOf, STATUS, clockText } from "./round.js";
+import { stakesOf, liveRoundOf, STATUS } from "./round.js";
 import { onTable, openRound, resolveRound } from "./table.js";
 import { requestStake, isActiveGM } from "./socket.js";
 import { setTableWindow } from "./reveal.js";
 import { buyableActors } from "./shop.js";
-import { tableBodyHTML, phaseOf, stateText, stakeSentence, countText } from "./tableview.js";
+import { tableBodyHTML, phaseOf, stateText, stakeSentence, countText, countdownText } from "./tableview.js";
 import { cascadeOffset } from "./revealcard.js";
 import "./roulette.js";
 
@@ -63,6 +63,9 @@ export class TableWindow extends ApplicationV2 {
   #drawn = null;
   reveal = null;
   landed = false;
+  // The round was called off without a write here (table.js undoResolve's
+  // void, { onReload }): its stakes come back on the GM's next load.
+  voided = null;
 
   constructor(roundId, boxId, options = {}) {
     super({ id: `loot-crates-table-${roundId}`, position: { height: "auto", ...cascadeOffset(0, { width: window.innerWidth, height: window.innerHeight }, { width: 760, height: 560 }) }, ...options });
@@ -74,7 +77,8 @@ export class TableWindow extends ApplicationV2 {
   get game() { return getBoxes()[this.round?.boxId ?? this.boxId] ?? null; }
   get kind() { return getKind(kindOf(this.game ?? this.reveal ?? {})) ?? null; }
   get title() { return this.kind?.tableView?.title?.(this.game) ?? "The table"; }
-  get phase() { return phaseOf(this.round, { reveal: this.reveal, landed: this.landed }); }
+  get phase() { return phaseOf(this.round, { reveal: this.reveal, landed: this.landed, voided: !!this.voided }); }
+  get stateOpts() { return { kind: this.kind, onReload: !!this.voided?.onReload }; }
 
   // The round's stakes as this client knows them. Before the spin: the
   // log's live rows, plus the ones the GM's "staked" broadcast named before
@@ -130,10 +134,10 @@ export class TableWindow extends ApplicationV2 {
     const root = this.element;
     if (!root) return;
     if (!this.reveal && this.phase !== this.#drawn) {
-      this.render().then(() => this.#say(stateText(this.round, this.phase, { kind: this.kind }).text)).catch(() => {});
+      this.render().then(() => this.#say(stateText(this.round, this.phase, this.stateOpts).text)).catch(() => {});
       return;
     }
-    const state = stateText(this.round, this.phase, { kind: this.kind });
+    const state = stateText(this.round, this.phase, this.stateOpts);
     const el = root.querySelector(".lc-table__state");
     if (el && el.textContent !== state.text) { el.textContent = state.text; el.dataset.state = state.key; }
     const count = root.querySelector(".lc-table__count");
@@ -146,7 +150,7 @@ export class TableWindow extends ApplicationV2 {
     root.className = "lc-table__body";
     const kind = this.kind;
     if (!kind?.tableView) { root.innerHTML = `<p class="lc-empty">This client can't show this table.</p>`; return root; }
-    root.innerHTML = tableBodyHTML({ kind, game: this.game ?? { id: this.boxId, name: this.reveal?.box?.name ?? "" }, round: this.round, stakes: this.stakes(), viewer: { isGM: game.user.isGM, actors: viewerActors().map(a => ({ id: a.id, name: a.name })) }, phase: this.phase, esc, values: this.#values });
+    root.innerHTML = tableBodyHTML({ kind, game: this.game ?? { id: this.boxId, name: this.reveal?.box?.name ?? "" }, round: this.round, stakes: this.stakes(), viewer: { isGM: game.user.isGM, actors: viewerActors().map(a => ({ id: a.id, name: a.name })) }, phase: this.phase, esc, values: this.#values, onReload: !!this.voided?.onReload });
     const form = root.querySelector(".lc-table__form");
     if (form) {
       form.addEventListener("submit", e => { e.preventDefault(); this.#placeBet(form); });
@@ -248,6 +252,14 @@ export class TableWindow extends ApplicationV2 {
   }
 
   static #skip() { this.#spinning?.skip(); }
+
+  // The round was called off (a void message naming it): the form and Spin
+  // go, and the head says where the stakes went.
+  heardVoid(msg) {
+    if (this.reveal) return;
+    this.voided = { onReload: !!msg?.onReload };
+    this.refresh();
+  }
 
   // The resolve arrived: one render mounts the stage, which plays once and
   // lands with the hold (a closed window is opened for it).
@@ -387,9 +399,11 @@ function tick() {
   for (const win of windows.values()) if (win.rendered) win.refreshHead();
   let crossed = false;
   for (const el of document.querySelectorAll(".lc-shop [data-lc-countdown]")) {
-    const left = Number(el.dataset.lcCountdown) - now;
-    if (left > 0) el.textContent = `Bets close in ${clockText(left)}`;
-    else { crossed = true; el.textContent = "Bets are closed"; delete el.dataset.lcCountdown; }
+    // In the card's game's own words (its kind's tableView.words).
+    const box = getBoxes()[el.closest("[data-box]")?.dataset.box];
+    const { text, done } = countdownText(box ? getKind(kindOf(box)) : null, el.dataset.lcCountdown, now);
+    el.textContent = text;
+    if (done) { crossed = true; delete el.dataset.lcCountdown; }
   }
   if (crossed) import("./shop.js").then(m => m.refreshShop()).catch(() => {});
   const live = Object.values(getRounds()).some(r => r && r.status !== STATUS.RESOLVED && r.closesAt != null && r.closesAt > now);
@@ -409,7 +423,14 @@ onTable(msg => {
   // The resolve's one render mounts the stage that plays (a second would
   // leave the spin on a stage no longer in the page).
   if (msg.event === "resolve") return tableFor(msg.roundId, msg.boxId).play(msg);
-  if (msg.event === "void") { for (const id of msg.roundIds ?? []) windows.get(id)?.refresh(); return; }
+  if (msg.event === "void") {
+    for (const id of msg.roundIds ?? []) {
+      const win = windows.get(id);
+      if (!win) continue;
+      if (msg.onReload) win.heardVoid(msg); else win.refresh();
+    }
+    return;
+  }
   windows.get(msg.round?.id)?.refresh();
 });
 
