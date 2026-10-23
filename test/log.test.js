@@ -87,7 +87,7 @@ describe("a well's throws that gave nothing", () => {
     expect(html).toContain("Wishing Well (1 sp)");
     expect(html).toContain('data-action="toggleMisses" aria-pressed="false">Hide misses</button>');
     expect(html).toContain("3 throws that gave nothing, folded by day");
-    expect((html.match(/<tr /g) ?? []).length).toBe(3);
+    expect((html.match(/<tr class=/g) ?? []).length).toBe(3);
   });
 
   it("a refunded group reads as withdrawn, and Hide misses leaves only the pulls that gave something", () => {

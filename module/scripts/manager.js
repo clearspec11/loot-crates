@@ -82,23 +82,24 @@
 import { RARITIES, RARITY_LABEL, DEFAULT_WEIGHTS, SETTINGS } from "./config.js";
 import { draftBox, boxPreview, boxPreviewHTML, oddsSummary, quietAnnouncer, refundRulesLine } from "./boxcard.js";
 import { kindOf } from "./kinds.js";
-import { WELL_DEFAULTS, stakeCoins, stakeGp, draftWell, wellPreview, wellPreviewHTML, wellSummary, collapseMisses, throwsText, noClockNote } from "./well.js";
+import { WELL_DEFAULTS, stakeCoins, stakeGp, draftWell, wellPreview, wellPreviewHTML, wellSummary, noClockNote } from "./well.js";
 import { DICE_DEFAULTS, FORMULAS, draftDice, dicePreview, dicePreviewHTML, diceSummary } from "./dicegame.js";
-import { CARD_KINDS, CARD_KIND_LABEL, CARD_KIND_HINT, cardsOf, stepOf, deckOdds, draftDeck, deckPreview, deckPreviewHTML, deckSummary } from "./deck.js";
+import { CARD_KINDS, CARD_KIND_HINT, cardsOf, stepOf, deckOdds, draftDeck, deckPreview, deckPreviewHTML, deckSummary } from "./deck.js";
 import { ROULETTE_DEFAULTS, BET_TYPES, BET_TYPE_LABEL, pocketsOf, coloursOf, draftRoulette, roulettePreview, roulettePreviewHTML, rouletteSummary, payoutOf, maxStakeOf, maxBetsOf, windowMsOf, itemOnRarity } from "./roulette.js";
 import { newDraft, crateFromPool, copyOf, editorTitle, addLabel, addedNotice } from "./newgame.js";
 import { boxesTabHTML } from "./boxestable.js";
+import { logTableHTML, logRarityNote, logPayoutNote, logStakeNote, logLateNote } from "./logtable.js";
+// The log's notes stay reachable here for the checks that import them from the manager.
+export { logRarityNote, logPayoutNote, logStakeNote, logLateNote };
 // The table window (tablewindow.js), loaded when a wheel's round is opened
 // from here: it is Foundry's, and the editors' tests run this file without it.
 const openTableFor = boxId => import("./tablewindow.js").then(m => m.openTableFor(boxId));
-import { groupRounds, roundLine, stakeNote } from "./round.js";
 import { getRounds, getPools, getBoxes, getLog, todayKey, newId, createPool, updatePool, removePool, createBox, updateBox, removeBox, entryFromItem, entriesFromDrop, addEntries, packHasLoot, LOOT_TYPES, isLootType, isShopOpen, setShopOpen, checkSources, sweepPools, removeEntry, patchEntry } from "./store.js";
 import { normalizeRarity, flattenPool, withSources, entryWeight, curateEntries } from "./odds.js";
 import { PAGE_ROWS, FALLBACK_IMG, defaultView, poolRows, sortRows, filterRows, pageRows, nextRows, poolCount, poolSummary, poolBody, chipsHTML, unsetButton, footHTML, entryRow, entryParts, pinRecent, dropNotice, poolUsers, usersText, deleteImpact, removeImpact, deletePoolText, removeEntryText } from "./poolview.js";
 import { formatPrice } from "./currency.js";
 import { describeRefund, refundPull } from "./refund.js";
 import { postRefundCard } from "./chat.js";
-import { refundTime } from "./chatcard.js";
 import { changeCount } from "./redraw.js";
 import { limitsFieldset, perCharacterFromForm, restocked, stockAfterRefund, stockField, stockFromForm, stockText } from "./limits.js";
 
@@ -1130,42 +1131,10 @@ export class CrateManager extends ApplicationV2 {
     return boxesTabHTML({ boxes, pools, log: getLog(), rounds: getRounds(), recent: this.#recentBox, esc });
   }
 
-  /*
-    The log newest first, a well's misses folded per character and day
-    (well.js collapseMisses): one line for "5 throws, nothing" whose Refund
-    gives the newest of them back, so the log stays readable at a table that
-    throws a lot and every throw is still refundable. "Hide misses" leaves
-    only the pulls that gave something (the throws stay in the setting).
-  */
+  // The Pull log (logtable.js): newest first, a well's misses folded per
+  // character and day, a table round's stakes under its line, "Hide misses".
   _log() {
-    const log = getLog();
-    if (!log.length) return `<p class="lc-empty">No pulls yet.</p>`;
-    const items = groupRounds(collapseMisses(log), getRounds());
-    const misses = items.filter(x => x.group).reduce((n, g) => n + g.rows.length, 0);
-    const shown = this.hideMisses ? items.filter(x => !x.group) : items;
-    const status = (id, at) => `<span class="lc-log__status" tabindex="-1" data-row="${esc(id)}">refunded ${esc(refundTime(at))}</span>`;
-    const row = r => `<tr class="${r.refunded ? "lc-row--refunded" : r.lateCancel ? "lc-row--late" : ""}">
-        <td>${new Date(r.at).toLocaleString()}</td><td>${esc(r.actorName)}</td><td>${esc(r.boxName)} (${esc(formatPrice(r.price))})</td>
-        <td class="lc-rarity-${esc(r.rarity ?? r.swatch ?? r.stake?.swatch ?? (r.win ? "coin" : "none"))}"><span class="lc-dot"></span>${r.refunded ? `<s>${esc(r.name)}</s>` : esc(r.name)}${r.pity ? " · pity" : ""}${logRarityNote(r)}${logPayoutNote(r)}${logStakeNote(r)}${logLateNote(r)}</td>
-        <td>${r.refunded ? status(r.id, r.refunded) : `<button type="button" data-action="refund" data-row="${esc(r.id)}">Refund</button>`}</td>
-      </tr>`;
-    const group = g => {
-      const n = g.rows.length;
-      const newest = g.rows[0];
-      return `<tr class="lc-row--group${g.refunded ? " lc-row--refunded" : ""}">
-        <td>${new Date(newest.at).toLocaleString()}</td><td>${esc(g.actorName)}</td><td>${esc(g.boxName)} (${esc(formatPrice(g.price))})</td>
-        <td class="lc-rarity-none"><span class="lc-dot"></span>${g.refunded ? `<s>${esc(throwsText(n))}</s>` : esc(throwsText(n))}</td>
-        <td>${g.refunded ? status(newest.id, newest.refunded) : `<button type="button" data-action="refund" data-row="${esc(newest.id)}" aria-label="${n === 1 ? "Refund the throw" : `Refund one of ${n} throws`}">${n === 1 ? "Refund" : "Refund one"}</button>`}</td>
-      </tr>`;
-    };
-    // A table round: its header where its newest stake was, its stakes under it.
-    const round = g => `<tr class="lc-row--group">
-        <td>${new Date(g.at).toLocaleString()}</td><td>Round</td><td>${esc(g.boxName)} (${esc(formatPrice(g.staked))} staked)</td>
-        <td class="lc-rarity-none"><span class="lc-dot"></span>${esc(roundLine(g))}</td><td></td>
-      </tr>${g.rows.map(row).join("")}`;
-    const toolbar = misses ? `<div class="lc-toolbar"><button type="button" data-action="toggleMisses" aria-pressed="${this.hideMisses}">${this.hideMisses ? "Show misses" : "Hide misses"}</button><span class="lc-pool__hint">${this.hideMisses ? `${misses} throw${misses === 1 ? "" : "s"} that gave nothing hidden` : `${misses} throw${misses === 1 ? "" : "s"} that gave nothing, folded by day`}</span></div>` : "";
-    return `${toolbar}${shown.length ? `<table class="lc-table"><thead><tr><th>When</th><th>Who</th><th>Box</th><th>Got</th><th></th></tr></thead><tbody>
-      ${shown.map(x => (x.round ? round(x) : x.group ? group(x) : row(x.row))).join("")}</tbody></table>` : `<p class="lc-empty">Only misses so far; show them with the button above.</p>`}`;
+    return logTableHTML({ log: getLog(), rounds: getRounds(), hideMisses: this.hideMisses, esc });
   }
 
   #searchTimer = null;
@@ -1228,42 +1197,6 @@ function focusKey(el) {
   const search = el.classList.contains("lc-pool__search") ? ".lc-pool__search" : "";
   if (!attrs.length && !search) return null;
   return { selector: `${el.tagName.toLowerCase()}${search}${attrs.join("")}`, pool: el.dataset.pool ?? el.closest(".lc-pool__details")?.dataset.pool ?? null };
-}
-
-// "Legendary, set by GM (source Uncommon)" under a log row whose rarity the GM
-// set over its source's. Rows from before this was recorded carry nothing.
-const rarityName = r => RARITY_LABEL[normalizeRarity(r)] ?? String(r);
-export function logRarityNote(row) {
-  if (!Array.isArray(row?.sourceRarity)) return "";
-  const from = row.sourceRarity.length ? `source ${row.sourceRarity.map(rarityName).join(" or ")}` : "source had none";
-  return `<small class="lc-log__rarity">${esc(`${rarityName(row.rarity)}, set by GM (${from})`)}</small>`;
-}
-
-// "Rolled 4, 6, 5 · won 30 gp" under a row of a game that paid coins out
-// (the dice), or "took 20 gp" under one that took coins beyond the stake
-// (the deck's bane): what a refund gives or takes back is on the row, not
-// only in the confirm. A row from before payouts (payoutCp 0 or absent)
-// says nothing; a deck's row names its card's kind.
-export function logPayoutNote(row) {
-  const cp = Math.round(Number(row?.payoutCp) || 0);
-  const faces = Array.isArray(row?.faces) && row.faces.length ? `Rolled ${row.faces.join(", ")}` : "";
-  const card = row?.cardKind && row.cardKind !== "item" ? `${CARD_KIND_LABEL[row.cardKind] ?? row.cardKind} card` : "";
-  const won = cp > 0 ? `won ${formatPrice(cp / 100)}` : cp < 0 ? `took ${formatPrice(-cp / 100)}` : "";
-  const text = [faces, card, won].filter(Boolean).join(" · ");
-  return text ? `<small class="lc-log__rarity">${esc(text)}</small>` : "";
-}
-
-// A table stake still waiting on its spin, or one turned back (round.js stakeNote).
-export function logStakeNote(row) {
-  const text = stakeNote(row);
-  return text ? `<small class="lc-log__rarity">${esc(text)}</small>` : "";
-}
-
-// A pull its buyer called off after the charge (socket.js lateCancel): the
-// sale stood, and the GM's notice sent them here to refund it if wanted.
-export function logLateNote(row) {
-  if (!row?.lateCancel || row.refunded) return "";
-  return `<small class="lc-log__late">Called off by the buyer after the charge. Refund it if the table agrees.</small>`;
 }
 
 const PREVIEW_ROWS = 50;

@@ -142,6 +142,24 @@ export const wheelStakes = (now = Date.now(), n = WHEEL_BETS.length) => WHEEL_BE
   stake: { label, type: bet.type, pick: bet.pick, swatch: bet.type === "rarity" ? bet.pick : "coin", stake: price }, name: label,
 }));
 
+// The Pull log's sample (logtable.js), newest first: Orla's Royal Vault
+// pull refunded a moment later; Tam's pity pull whose rarity the GM set
+// over the source's; Bo's Pauper's Box sale called off after the charge; a
+// dice win with its faces and payout; a deck draw that took coins (the
+// bane); the wheel's settled round with its five stakes under it (Tam's
+// two won, 30 gp back on 7 and 40 gp on red); then, days ago, Tam's five
+// throws at the well that gave nothing and her Pauper's Box buy.
+export const sampleLog = (now = Date.now()) => [
+  { id: "p1", kind: "crate", boxId: "royal", boxName: "Royal Vault", actorId: "orla", actorName: "Orla Vane", at: now - 60000, price: 1200, payoutCp: 0, name: "Staff of Power", rarity: "veryRare", refunded: now - 30000 },
+  { id: "p2", kind: "crate", boxId: BOX.id, boxName: BOX.name, actorId: "tam", actorName: "Tam Thornwick", at: now - 120000, price: BOX.price, payoutCp: 0, name: "Cloak of Elvenkind", rarity: "rare", pity: true, sourceRarity: ["uncommon"] },
+  { id: "p3", kind: "crate", boxId: "common", boxName: "Pauper's Box", actorId: "bo", actorName: "Bo Marrow", at: now - 180000, price: 25, payoutCp: 0, name: "Club", rarity: "common", lateCancel: 1 },
+  { id: "d1", kind: "dice", boxId: DICE.id, boxName: DICE.name, actorId: "tam", actorName: "Tam Thornwick", at: now - 240000, price: DICE.price, payoutCp: 3000, win: true, faces: DICE_FACES.win, name: "Beat the dragon" },
+  { id: "k1", kind: "deck", boxId: DECK.id, boxName: DECK.name, actorId: "orla", actorName: "Orla Vane", at: now - 300000, price: DECK.price, payoutCp: -2000, cardId: "flames", card: "The Flames", cardKind: "loss", swatch: "bane", name: "The Flames" },
+  ...wheelStakes(now - 400000).map(s => ({ ...s, status: "settled", payoutCp: s.actorId === "tam" ? (s.stake.type === "number" ? 3000 : 4000) : 0 })),
+  ...wellThrows(5),
+  ...limitBuys(1),
+];
+
 export const BOXES = [
   BOX,
   // Two to a character (limits.js): Tam has one (limitBuys), so the card says one more.

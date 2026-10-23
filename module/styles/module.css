@@ -778,7 +778,9 @@
 .loot-crates .lc-shop-toggle { margin-bottom: 6px; }
 .loot-crates .lc-shop-toggle::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--lc-ink-mute); }
 .loot-crates .lc-shop-toggle[data-open="true"]::before { background: var(--lc-ok); }
-.loot-crates .lc-tab { overflow: auto; padding-right: 2px; }
+/* The tab's pane is a container: the Boxes and Pull log tables follow its
+   width, not the screen's (the stacked rows under "Narrow windows"). */
+.loot-crates .lc-tab { overflow: auto; padding-right: 2px; container: lc-tab / inline-size; }
 .loot-crates .lc-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-bottom: 10px; }
 /* The Boxes tab's status line takes the rest of the row, or a line of its
    own in a narrow window, and is never cut off. */
@@ -889,7 +891,8 @@
 .loot-crates .lc-log__rarity { display: block; margin-left: 14px; font-size: 12px; color: var(--lc-ink-mute); }
 /* A day's misses at a well, folded into one line (well.js collapseMisses). */
 .loot-crates .lc-row--group td { color: var(--lc-ink-soft); }
-/* The Boxes table names a game that isn't a crate, in the label voice. */
+/* The Boxes table names each game's kind beside its name (Crate, Well,
+   Dice, Deck, Wheel), in the label voice, so the six read alike. */
 .loot-crates .lc-kind {
   display: inline-block; vertical-align: middle; margin-left: 6px; padding: 0 5px; line-height: 16px;
   font-family: var(--lc-label); font-size: 11px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase;
@@ -1023,6 +1026,41 @@
   .loot-crates .lc-entry__name, .loot-crates .lc-entry__text { flex: 1 1 calc(100% - 50px); }
   .loot-crates .lc-entry__name, .loot-crates .lc-entry__status { white-space: normal; overflow-wrap: anywhere; }
   .loot-crates .lc-entry select.lc-entry__rarity { margin-left: 41px; }
+}
+
+/* The Boxes and Pull log tables follow their pane's width (the lc-tab
+   container): at a phone's width, or in a manager window sized down on a
+   desktop, a row stacks as a card instead of pushing Edit, Copy, Delete
+   and Refund off the right edge behind a sideways scroll. The header row
+   goes out of sight but stays for a screen reader (the roles on the table
+   keep it one); each cell is captioned with its column's name instead
+   (data-label, boxestable.js cell). A game's name and tag lead, its price
+   and pools share the next line, then the odds, the rules, and the
+   buttons on a line of their own, wrapped and kept to the right. The
+   log's row: when and who, then the box, what it gave, and Refund. */
+@container lc-tab (max-width: 560px) {
+  .loot-crates .lc-table--stack, .loot-crates .lc-table--stack tbody { display: block; }
+  .loot-crates .lc-table--stack thead { display: block; position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+  .loot-crates .lc-table--stack tr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px 12px; padding: 9px 10px; border-top: 1px solid var(--lc-rule-soft); }
+  .loot-crates .lc-table--stack tbody tr:first-child { border-top: 0; }
+  .loot-crates .lc-table--stack tbody tr:nth-child(even) { background: var(--lc-row-alt); }
+  .loot-crates .lc-table--stack td { display: block; grid-column: 1 / -1; min-width: 0; padding: 0; border-top: 0; white-space: normal; text-align: left; }
+  .loot-crates .lc-table--stack td, .loot-crates .lc-table--stack tbody tr:nth-child(even) td { background: none; }
+  .loot-crates .lc-table--stack td:empty { display: none; }
+  .loot-crates .lc-table--stack td[data-label]:not([data-label=""])::before {
+    content: attr(data-label); display: block; margin-bottom: 2px;
+    font-family: var(--lc-label); font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--lc-ink-mute);
+  }
+  .loot-crates .lc-table--boxes td:nth-child(2), .loot-crates .lc-table--boxes td:nth-child(3), .loot-crates .lc-table--log td:nth-child(1), .loot-crates .lc-table--log td:nth-child(2) { grid-column: auto; }
+  /* The game's name is the card's title; it needs no caption. */
+  .loot-crates .lc-table--boxes td:first-child { font-weight: 700; }
+  .loot-crates .lc-table--stack.lc-table--boxes td:first-child::before { display: none; }
+  .loot-crates .lc-table--stack td:last-child { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; margin-top: 2px; white-space: normal; }
+  .loot-crates .lc-table--stack td .lc-ribbon { max-width: none; }
+  /* The new row's gold edge and a late sale's amber one move to the card. */
+  .loot-crates .lc-table--stack tr.lc-row--new td:first-child, .loot-crates .lc-table--stack tr.lc-row--late td:first-child { box-shadow: none; }
+  .loot-crates .lc-table--stack tr.lc-row--new { box-shadow: inset 3px 0 0 var(--lc-gold-ink); }
+  .loot-crates .lc-table--stack tr.lc-row--late { box-shadow: inset 3px 0 var(--lc-warn); }
 }
 
 @media (prefers-reduced-motion: reduce) {

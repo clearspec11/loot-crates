@@ -115,7 +115,107 @@ const STATES = [
   // wrap in a 480 px window instead of overflowing.
   ["manager-boxes", "state=manager&tab=boxes&added=1"],
   ["manager-boxes-narrow", "state=manager&tab=boxes&added=1&width=480"],
+  // The Pull log (logtable.js) with one of everything: a refunded pull
+  // struck through and muted, a pity pull tracing its rarity, a sale called
+  // off too late, a dice win with its faces and payout, a deck draw that
+  // took coins, five throws at the well folded into one line with "Refund
+  // one", and the wheel's settled round with its stakes under it. In a 480
+  // px window (and at 390) the rows stack as cards with every Refund in view.
+  ["manager-log", "state=manager&tab=log"],
+  ["manager-log-narrow", "state=manager&tab=log&width=480"],
 ];
+
+// The manager's tables at any width, read from the DOM: the pane never
+// scrolls sideways, the toolbar fits it, every button (Edit, Copy, Delete,
+// Reshuffle, Open a round, Refund) sits inside the pane and the window, and
+// the rows stack as cards exactly when the pane is narrow, with the header
+// row out of sight but kept, the table's roles and every cell's caption in
+// place, and nothing under the 11px floor. The next column added to the
+// Boxes table fails here before anyone reads a screenshot.
+function panelProblems() {
+  const out = [];
+  const panel = document.querySelector(".lc-tab");
+  if (!panel) return ["no tab panel"];
+  const pr = panel.getBoundingClientRect();
+  if (panel.scrollWidth > panel.clientWidth + 1) out.push(`the pane scrolls sideways by ${panel.scrollWidth - panel.clientWidth} px`);
+  for (const bar of panel.querySelectorAll(".lc-toolbar")) if (bar.scrollWidth > bar.clientWidth + 1 || bar.getBoundingClientRect().right > pr.right + 1) out.push("a toolbar overflows the pane");
+  const label = b => b.getAttribute("aria-label") ?? b.textContent.trim();
+  const off = [...panel.querySelectorAll("button")].filter(b => { const r = b.getBoundingClientRect(); return r.width > 0 && (r.right > pr.right + 1 || r.left < pr.left - 1); });
+  if (off.length) out.push(`${off.length} buttons past the pane's edge, e.g. "${label(off[0])}"`);
+  const win = document.getElementById("app").getBoundingClientRect();
+  const outside = [...panel.querySelectorAll('[data-action="editBox"], [data-action="refund"]')].filter(b => { const r = b.getBoundingClientRect(); return r.left < win.left - 1 || r.right > win.right + 1; });
+  if (outside.length) out.push(`${outside.length} Edit or Refund buttons outside the window, e.g. "${label(outside[0])}"`);
+  const table = panel.querySelector(".lc-table--stack");
+  if (!table) return [...out, "no stacking table"];
+  const style = getComputedStyle(panel);
+  const inner = panel.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+  const stacked = getComputedStyle(table.querySelector("tbody tr")).display === "grid";
+  if (stacked !== inner <= 560) out.push(stacked ? `rows stacked in a ${Math.round(inner)} px pane` : `rows not stacked in a ${Math.round(inner)} px pane`);
+  const thead = table.querySelector("thead");
+  if (!thead?.querySelectorAll("th").length) out.push("no header row");
+  else if (stacked && thead.getBoundingClientRect().width > 2) out.push("the header row shows over stacked rows");
+  else if (!stacked && thead.getBoundingClientRect().height < 10) out.push("the header row is hidden in a wide pane");
+  if (table.getAttribute("role") !== "table" || [...table.querySelectorAll("tr")].some(tr => tr.getAttribute("role") !== "row") || [...table.querySelectorAll("td")].some(td => td.getAttribute("role") !== "cell")) out.push("the table lost its roles");
+  const heads = [...thead.querySelectorAll("th")].map(th => th.textContent);
+  for (const tr of table.querySelectorAll("tbody tr")) {
+    const labels = [...tr.children].map(td => td.dataset.label);
+    if (labels.join("|") !== heads.join("|")) { out.push(`a row's captions read ${labels.join(", ")}, not the header's ${heads.join(", ")}`); break; }
+  }
+  if (stacked) {
+    // Each caption is drawn (the name's and the buttons' are not), and the
+    // buttons sit on a line of their own after everything else.
+    const captioned = [...table.querySelectorAll("tbody td[data-label]")].filter(td => td.dataset.label && getComputedStyle(td, "::before").content !== "none" && getComputedStyle(td, "::before").content !== "normal");
+    if (!captioned.length) out.push("no cell shows its caption");
+    for (const tr of table.querySelectorAll("tbody tr")) {
+      const last = tr.lastElementChild;
+      if (!last.querySelector("button")) continue;
+      const above = [...tr.children].slice(0, -1).filter(td => getComputedStyle(td).display !== "none").map(td => td.getBoundingClientRect().bottom);
+      if (above.length && last.getBoundingClientRect().top < Math.max(...above) - 1) { out.push("a row's buttons overlap its text"); break; }
+    }
+  }
+  const small = [...table.querySelectorAll("td, td *")].filter(el => el.childNodes.length && [...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim()) && parseFloat(getComputedStyle(el).fontSize) < 11);
+  if (small.length) out.push(`${small.length} texts under 11px, e.g. "${small[0].textContent.trim().slice(0, 30)}"`);
+  return out;
+}
+
+// The Pull log sample (harness sample.js sampleLog), read from the DOM.
+function logProblems(narrow) {
+  const out = [];
+  const app = document.getElementById("app").getBoundingClientRect();
+  if (narrow && app.width > 484) out.push(`narrow manager is ${Math.round(app.width)} px wide`);
+  const tabs = [...document.querySelectorAll('.lc-tabs [role="tablist"] > [role="tab"]')];
+  if (tabs.find(t => t.getAttribute("aria-selected") === "true")?.textContent !== "Pull log") out.push("the Pull log tab is not the selected one");
+  const toggle = document.querySelector('[data-action="toggleMisses"]');
+  if (toggle?.textContent !== "Hide misses" || toggle.getAttribute("aria-pressed") !== "false") out.push("no Hide misses button");
+  if (!/^5 throws that gave nothing, folded by day$/.test(document.querySelector(".lc-toolbar .lc-pool__hint")?.textContent ?? "")) out.push(`the misses line reads "${document.querySelector(".lc-toolbar .lc-pool__hint")?.textContent}"`);
+  const rows = [...document.querySelectorAll(".lc-table tbody tr")];
+  if (rows.length !== 13) out.push(`expected 13 rows, got ${rows.length}`);
+  const plain = rows.find(r => !r.className);
+  const refunded = document.querySelector(".lc-row--refunded");
+  if (!refunded || !refunded.querySelector("s") || !/^refunded \S/.test(refunded.querySelector(".lc-log__status")?.textContent ?? "")) out.push("no refunded row reading as withdrawn");
+  else if (refunded.querySelector('[data-action="refund"]')) out.push("the refunded row still offers Refund");
+  else if (plain && getComputedStyle(refunded.querySelector("td")).color === getComputedStyle(plain.querySelector("td")).color) out.push("the refunded row isn't muted");
+  const groups = [...document.querySelectorAll(".lc-row--group")];
+  const misses = groups.find(tr => /5 throws, nothing/.test(tr.textContent));
+  if (!misses) out.push("no folded misses row");
+  else if (misses.querySelector('[data-action="refund"]')?.textContent !== "Refund one") out.push("the folded row has no Refund one");
+  const round = groups.find(tr => /^Round$/.test(tr.children[1].textContent.trim()));
+  if (!round || !/5 stakes, settled/.test(round.textContent) || !/45 gp staked/.test(round.textContent)) out.push(`no settled round line: "${round?.textContent.replace(/\s+/g, " ").trim()}"`);
+  else if (round.querySelector("button")) out.push("the round's line has a button");
+  const late = document.querySelector(".lc-row--late");
+  if (!late || !/Called off by the buyer after the charge/.test(late.textContent)) out.push("the late sale isn't explained");
+  else if (getComputedStyle(late.querySelector("td")).boxShadow === "none" && getComputedStyle(late).boxShadow === "none") out.push("the late sale has no edge");
+  const text = document.querySelector(".lc-table").textContent;
+  if (!/Rolled 4, 6, 5 · won 30 gp/.test(text)) out.push("the dice row has no faces and payout");
+  if (!/Loss card · took 20 gp/.test(text)) out.push("the deck's bane row doesn't say what it took");
+  if (!/Rare, set by GM \(source Uncommon\)/.test(text)) out.push("the pity row doesn't trace its rarity");
+  if (!/· pity/.test(text)) out.push("the pity row isn't marked");
+  if (!/Lost at the spin\./.test(text)) out.push("a losing stake doesn't say so");
+  const refunds = [...document.querySelectorAll('[data-action="refund"]')];
+  if (refunds.length !== 11) out.push(`expected 11 Refund buttons (one per live row, one per folded group), got ${refunds.length}`);
+  for (const b of refunds) { const r = b.getBoundingClientRect(); if (r.width < 20 || r.height < 20) { out.push(`"${b.textContent}" is not visible`); break; } }
+  return out;
+}
 
 // The Boxes tab after a New, read from the DOM (manager-boxes states).
 function boxesProblems(narrow) {
@@ -136,10 +236,11 @@ function boxesProblems(narrow) {
   const rows = [...document.querySelectorAll(".lc-table tbody tr")];
   if (rows.length !== 8) out.push(`expected 8 sample games, got ${rows.length}`);
   const tags = [...document.querySelectorAll(".lc-table .lc-kind")].map(t => t.textContent);
-  if (tags.join("|") !== "Well|Dice|Deck|Wheel") out.push(`kind tags read ${tags.join(", ")}`);
+  if (tags.join("|") !== "Crate|Crate|Crate|Crate|Well|Dice|Deck|Wheel") out.push(`kind tags read ${tags.join(", ")}`);
   const row = document.querySelector(".lc-table tr.lc-row--new");
   if (!row || !/Royal Vault/.test(row.textContent)) out.push("the new row isn't marked");
-  if (row && getComputedStyle(row.children[0]).boxShadow === "none") out.push("the new row has no edge");
+  // The gold edge sits on the first cell, or on the row once it stacks as a card.
+  if (row && getComputedStyle(row.children[0]).boxShadow === "none" && getComputedStyle(row).boxShadow === "none") out.push("the new row has no edge");
   if (document.querySelectorAll(".lc-table tr.lc-row--new").length > 1) out.push("more than one row marked new");
   const edit = row?.querySelector('[data-action="editBox"]');
   if (!edit || edit.getAttribute("aria-label") !== "Edit Royal Vault") out.push("the new row has no Edit Royal Vault");
@@ -948,7 +1049,8 @@ try {
       else if (name.startsWith("dice")) problems0.push(...await page.evaluate(diceProblems, { "dice-rolling": "rolling", "dice-won": "win", "dice-lost": "lose" }[name]));
       else if (name.startsWith("deck")) problems0.push(...await page.evaluate(deckProblems, { "deck-held": "held", "deck-boon": "item", "deck-bane": "loss", "deck-effect": "effect" }[name]));
       else if (name === "manager-dropped") problems0.push(...await page.evaluate(droppedProblems));
-      else if (name.startsWith("manager-boxes")) problems0.push(...await page.evaluate(boxesProblems, name.endsWith("narrow")));
+      else if (name.startsWith("manager-boxes")) problems0.push(...await page.evaluate(boxesProblems, name.endsWith("narrow")), ...await page.evaluate(panelProblems));
+      else if (name.startsWith("manager-log")) problems0.push(...await page.evaluate(logProblems, name.endsWith("narrow")), ...await page.evaluate(panelProblems));
       else if (name.startsWith("manager")) problems0.push(...await page.evaluate(managerProblems, name === "manager-narrow"));
       else if (name === "replay") problems0.push(...await page.evaluate(replayProblems));
       else if (name.startsWith("well")) problems0.push(...await page.evaluate(wellProblems, { "well-missed": "nothing", "well-coin": "coin", "well-won": "item" }[name]));

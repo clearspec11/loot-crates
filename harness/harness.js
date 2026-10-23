@@ -29,6 +29,9 @@
   one table; &added=1 shows it the moment "New box" was saved as the Royal
   Vault: the status line says it is on the shelf, the row carries the new
   edge and its Edit has focus, as manager.js #saveEditor leaves it)
+  ?tab=log (manager: the Pull log, logtable.js, with sample.js sampleLog:
+  a refunded pull, a pity pull, a late sale, a dice win, a deck loss, five
+  folded throws at the well and the wheel's settled round)
   ?dropped=1 (manager: the GM had the 200-entry pool filtered to Rare, then
   dropped its last item, a Very rare one, on it: the pool opens, the chip
   clears, the row is pinned at the top and focused, and the status line says so)
@@ -70,7 +73,7 @@
   where Orla and Bo have theirs; ?duration=0 lands at once); gm=1 shows
   the GM's controls.
 */
-import { POOLS, BOX, BOXES, WELL, DICE, DICE_FACES, DECK, ROULETTE, rouletteRound, wheelStakes, deckDraws, wellThrows, limitBuys, MANAGER_POOLS, MANAGER_SOURCES, MANAGER_BOXES } from "./sample.js";
+import { POOLS, BOX, BOXES, WELL, DICE, DICE_FACES, DECK, ROULETTE, rouletteRound, wheelStakes, deckDraws, wellThrows, limitBuys, sampleLog, MANAGER_POOLS, MANAGER_SOURCES, MANAGER_BOXES } from "./sample.js";
 import { limitsFieldset, restocked, stockText } from "../module/scripts/limits.js";
 import { getKind, kindOf } from "../module/scripts/kinds.js";
 import { mountWell } from "../module/scripts/well.js";
@@ -80,6 +83,7 @@ import { resolve as resolveBets, pocketsOf, coloursOf, betName } from "../module
 import { tableBodyHTML } from "../module/scripts/tableview.js";
 import { poolRows, sortRows, defaultView, poolSummary, poolBody, pinRecent, dropNotice, poolUsers } from "../module/scripts/poolview.js";
 import { boxesTabHTML } from "../module/scripts/boxestable.js";
+import { logTableHTML } from "../module/scripts/logtable.js";
 import { addedNotice } from "../module/scripts/newgame.js";
 import { draw, seededRng } from "../module/scripts/odds.js";
 import { buildStrip } from "../module/scripts/strip.js";
@@ -119,7 +123,7 @@ document.getElementById("title").textContent = appTitle;
 const CRATE_ICON = `<svg class="lc-box__icon" viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M3 8.5 12 4l9 4.5v8L12 21l-9-4.5z"/><path d="M3 8.5 12 13l9-4.5M12 13v8"/></svg>`;
 
 const nav = document.getElementById("nav");
-for (const [label, query] of [["shop", "state=shop"], ["spin", "state=spin"], ["landed", "state=landed"], ["landed, buyer", "state=landed&buyer=1"], ["missed", "state=landed&buyer=1&watched=0"], ["replay", "state=replay"], ["well", "state=well&buyer=1"], ["well, coin", "state=well&outcome=coin&buyer=1"], ["well, item", "state=well&outcome=item&buyer=1"], ["dice", "state=dice&buyer=1"], ["dice, lost", "state=dice&outcome=lose&buyer=1"], ["dice, prize", "state=dice&outcome=prize&buyer=1"], ["deck", "state=deck&buyer=1"], ["deck, item", "state=deck&outcome=item&buyer=1"], ["deck, bane", "state=deck&outcome=loss&buyer=1"], ["deck, effect", "state=deck&outcome=effect&buyer=1"], ["table", "state=table"], ["table, GM", "state=table&phase=waiting&gm=1"], ["wheel", "state=table&phase=spinning"], ["wheel, landed", "state=table&phase=landed&duration=0"], ["manager", "state=manager"], ["boxes", "state=manager&tab=boxes&added=1"], ["box editor", "state=editor"]]) {
+for (const [label, query] of [["shop", "state=shop"], ["spin", "state=spin"], ["landed", "state=landed"], ["landed, buyer", "state=landed&buyer=1"], ["missed", "state=landed&buyer=1&watched=0"], ["replay", "state=replay"], ["well", "state=well&buyer=1"], ["well, coin", "state=well&outcome=coin&buyer=1"], ["well, item", "state=well&outcome=item&buyer=1"], ["dice", "state=dice&buyer=1"], ["dice, lost", "state=dice&outcome=lose&buyer=1"], ["dice, prize", "state=dice&outcome=prize&buyer=1"], ["deck", "state=deck&buyer=1"], ["deck, item", "state=deck&outcome=item&buyer=1"], ["deck, bane", "state=deck&outcome=loss&buyer=1"], ["deck, effect", "state=deck&outcome=effect&buyer=1"], ["table", "state=table"], ["table, GM", "state=table&phase=waiting&gm=1"], ["wheel", "state=table&phase=spinning"], ["wheel, landed", "state=table&phase=landed&duration=0"], ["manager", "state=manager"], ["boxes", "state=manager&tab=boxes&added=1"], ["pull log", "state=manager&tab=log"], ["box editor", "state=editor"]]) {
   const a = document.createElement("a");
   a.href = `?${query}&seed=${seed}&theme=${theme}`;
   a.textContent = label;
@@ -627,6 +631,23 @@ function renderBoxes() {
 }
 
 /*
+  The manager's Pull log (logtable.js) on the sample log, with the wheel's
+  round settled. Refund and Hide misses need Foundry here.
+*/
+function renderLog() {
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+  const now = Date.now();
+  stage.innerHTML = `
+    <div class="lc-manager__body">
+      <nav class="lc-tabs"><div class="lc-tabs__list" role="tablist" aria-label="Loot Crates sections"><button type="button" role="tab" aria-selected="false" tabindex="-1">Pools</button><button type="button" role="tab" aria-selected="false" tabindex="-1">Boxes</button><button type="button" role="tab" aria-selected="true" tabindex="0" class="active">Pull log</button></div><span class="lc-tabs__spacer"></span><button type="button" class="lc-shop-toggle" data-open="true" aria-pressed="true">Shop open</button></nav>
+      <section class="lc-tab" role="tabpanel">
+        ${logTableHTML({ log: sampleLog(now), rounds: { R1: rouletteRound(now - 400000, { status: "resolved", closesAt: now - 380000 }) }, esc })}
+      </section>
+    </div>`;
+  document.body.dataset.ready = "1";
+}
+
+/*
   The box editor's Rules and Limits groups (manager.js #editBox, limits.js
   limitsFieldset) as the dialog shows them for the Royal Vault: 3 of its 10
   left with Restock, one per character a day. Restock fills the shelf here
@@ -662,6 +683,7 @@ function renderEditor() {
 if (state === "shop") renderShop();
 else if (state === "editor") renderEditor();
 else if (state === "manager" && q.get("tab") === "boxes") renderBoxes();
+else if (state === "manager" && q.get("tab") === "log") renderLog();
 else if (state === "manager") renderManager();
 else if (state === "table") renderTable();
 else if (state === "well") renderWell();
