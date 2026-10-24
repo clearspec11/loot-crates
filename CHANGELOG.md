@@ -12,6 +12,7 @@ Ready for a first public release.
 - A welcome window on a GM's first load says where Crates and Manage crates are and what to do first. After an update, a short "What's new" note says what changed. Show the welcome, in Game Settings under Loot Crates, brings it back.
 - A price, weight or rarity saved in place says so in the tab's status line ("Saved: Goblin Crate, 12 gp 5 sp.").
 - The deck's "draws in a row" window is a field in the deck editor instead of a fixed two minutes.
+- Deleting a wheel or an auction with a round open calls the round off first. The confirm says how many stakes it holds and how much gold, and every stake comes back at once instead of on a later reload.
 - Smaller fixes: a table window no longer offers a bet on a wheel or lot taken off the shelf mid-round; the Restock line follows a later change to Stock; Hide misses folds a crate's "Nothing" pulls the way it folds the well's throws.
 - A README for GMs and players, with install steps, a quick start and screenshots.
 

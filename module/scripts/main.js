@@ -9,7 +9,7 @@
   exercised in a world, not by the Vitest suite; the pure parts (odds.js,
   currency.js, strip.js, spin.js) are.
 */
-import { MODULE_ID } from "./config.js";
+import { MODULE_ID, SETTINGS } from "./config.js";
 import { registerSettings, setStoreListener, registerIndexFields, getPools, getBoxes, getLog, getRounds, savePool, saveBox, entriesFromCompendium, entryFromItem, sweepAllPools } from "./store.js";
 import { registerSocket, requestPull, requestStake, isActiveGM } from "./socket.js";
 import { registerKind, getKind, kindOf } from "./kinds.js";
@@ -19,7 +19,7 @@ import { openManager, refreshManager, CrateManager, makeCrateFromTable, makeCrat
 import { storeRedraw } from "./redraw.js";
 import { performPull } from "./pull.js";
 import { showReveal, showReplay, sealChatCard, watchAgain, preSealItem, setTableWindow } from "./reveal.js";
-import { openRound, closeRound, resolveRound, cancelRound, recoverRounds, onTable, watchTables } from "./table.js";
+import { openRound, closeRound, resolveRound, cancelRound, recoverRounds, refundOrphanRounds, onTable, watchTables } from "./table.js";
 // The shared table window registers itself with the round's messages and
 // the core's hold when imported.
 import { openTable, openTableFor, refreshTables } from "./tablewindow.js";
@@ -31,7 +31,13 @@ Hooks.once("init", () => {
   registerSettings();
   registerWelcome();
   // Open windows follow the world settings as any client writes them.
-  setStoreListener(storeRedraw({ refreshShop, refreshManager, refreshTables }));
+  // A round whose game was deleted is called off on the active GM
+  // (table.js refundOrphanRounds), so its stakes never wait for a reload.
+  const redraw = storeRedraw({ refreshShop, refreshManager, refreshTables });
+  setStoreListener(key => {
+    redraw(key);
+    if (key === SETTINGS.BOXES) refundOrphanRounds().catch(err => console.error("loot-crates | refunding the round of a deleted game failed", err));
+  });
   registerIndexFields();
   game.settings.registerMenu(MODULE_ID, "manager", {
     name: "Pools, boxes and pulls",
@@ -58,6 +64,8 @@ Hooks.once("ready", () => {
     sweepAllPools();
     recoverRounds()
       .catch(err => console.error("loot-crates | refunding stale table stakes failed", err))
+      .then(() => refundOrphanRounds())
+      .catch(err => console.error("loot-crates | refunding the round of a deleted game failed", err))
       .finally(() => watchTables());
   }
   // A GM's welcome once per world, then a short note once per newer

@@ -12,11 +12,11 @@ vi.mock("../module/scripts/chat.js", () => ({ postPullCard: vi.fn(async () => nu
 
 const { registerSocket, requestStake } = await import("../module/scripts/socket.js");
 const { registerSettings, getLog, getRounds, enqueueWrite } = await import("../module/scripts/store.js");
-const { openRound, closeRound, resolveRound, recoverRounds, onTable } = await import("../module/scripts/table.js");
+const { openRound, closeRound, resolveRound, recoverRounds, refundOrphanRounds, onTable } = await import("../module/scripts/table.js");
 const { refundPull, describeRefund } = await import("../module/scripts/refund.js");
 const { performPull, PullError } = await import("../module/scripts/pull.js");
 const { registerKind, kindIds, _resetKinds } = await import("../module/scripts/kinds.js");
-const { rowStatus, stakesOf, staleStakes, staleAt, groupRounds, roundLine, stakeNote, ROUND_WINDOW_MS, ROUND_GRACE_MS } = await import("../module/scripts/round.js");
+const { rowStatus, stakesOf, staleStakes, staleAt, groupRounds, roundLine, stakeNote, orphanRounds, heldBy, ROUND_WINDOW_MS, ROUND_GRACE_MS } = await import("../module/scripts/round.js");
 const { showRound, boxHeld } = await import("../module/scripts/reveal.js");
 const { toCopper } = await import("../module/scripts/currency.js");
 
@@ -499,5 +499,81 @@ describe("rows and the log", () => {
     expect(stakeNote({ id: "x" })).toBe("");
     expect(stakeNote({ roundId: "R", status: "open" })).toBe("Open: waiting on the spin.");
     expect(stakeNote({ roundId: "R", refunded: 1, refundReason: "owner" })).toBe("Refunded at the spin: the character changed hands.");
+  });
+});
+
+/*
+  A game deleted with its round open (P13): the round is called off and
+  every stake comes back at once, on the active GM, not after a reload
+  late enough for the round to be stale. orphanRounds decides which rounds
+  have lost their game; refundOrphanRounds (heard on every change of the
+  boxes) calls each off through cancelRound and says so once.
+*/
+describe("a round whose game is deleted", () => {
+  it("orphanRounds names only unresolved rounds whose game is gone", () => {
+    const rounds = {
+      a: { id: "a", boxId: "gone", status: "open" },
+      b: { id: "b", boxId: "gone", status: "closed" },
+      c: { id: "c", boxId: "gone", status: "resolved" },
+      d: { id: "d", boxId: "wheel", status: "open" },
+      e: null,
+    };
+    expect(orphanRounds(rounds, { wheel: TABLE }).map(r => r.id)).toEqual(["a", "b"]);
+    expect(orphanRounds(rounds, { wheel: TABLE, gone: { id: "gone" } })).toEqual([]);
+    expect(orphanRounds({}, {})).toEqual([]);
+    expect(orphanRounds(undefined, undefined)).toEqual([]);
+  });
+
+  it("heldBy counts a round's open stakes and their gold, not a house bid or a refunded one", () => {
+    const log = [
+      { id: "1", roundId: "R", status: "open", price: 10 },
+      { id: "2", roundId: "R", status: "open", price: 25.5 },
+      { id: "3", roundId: "R", status: "open", price: 0, house: true },
+      { id: "4", roundId: "R", status: "open", price: 40, refunded: 1 },
+      { id: "5", roundId: "R", status: "settled", price: 5 },
+      { id: "6", roundId: "S", status: "open", price: 7 },
+    ];
+    expect(heldBy(log, "R")).toEqual({ count: 2, gp: 35.5 });
+    expect(heldBy([], "R")).toEqual({ count: 0, gp: 0 });
+  });
+
+  it("refunds every stake at once when the game goes, voids the round and tells the GM once", async () => {
+    const round = await threeStakes();
+    world.actors.delete("a3");
+    await seed(world, {});
+    const out = await refundOrphanRounds();
+    expect(out).toEqual([{ roundId: round.id, name: "Wheel", status: "cancelled", refunded: 2, gone: 1 }]);
+    expect(gp(world.actors.get("a1"))).toBe(100);
+    expect(gp(world.actors.get("a2"))).toBe(100);
+    expect(getLog().filter(r => rowStatus(r) === "open")).toHaveLength(0);
+    expect(getRounds()[round.id]).toMatchObject({ status: "resolved", voided: expect.any(Number), cancelled: true });
+    expect(world.emitted.find(m => m.event === "void")).toMatchObject({ roundIds: [round.id], cancelled: true });
+    expect(world.notes.warn).toHaveBeenCalledTimes(1);
+    expect(world.notes.warn).toHaveBeenCalledWith("Loot Crates: Wheel was deleted with its round open; 2 stakes were refunded; 1 belonged to a character that is gone.");
+    // Heard again (another change of the boxes): nothing more moves or is said.
+    expect(await refundOrphanRounds()).toEqual([]);
+    expect(gp(world.actors.get("a1"))).toBe(100);
+    expect(world.notes.warn).toHaveBeenCalledTimes(1);
+    // The voided round never spins and pays.
+    expect((await resolveRound(round.id)).status).toBe("already");
+  });
+
+  it("leaves a round whose game is still there, and does nothing on a client that isn't the active GM", async () => {
+    const round = await threeStakes();
+    expect(await refundOrphanRounds()).toEqual([]);
+    await seed(world, {});
+    world.game.users.activeGM = { id: "other-gm" };
+    expect(await refundOrphanRounds()).toEqual([]);
+    expect(getLog().filter(r => rowStatus(r) === "open")).toHaveLength(3);
+    expect(getRounds()[round.id].status).toBe("open");
+  });
+
+  it("calls off a round with no stakes yet without a word", async () => {
+    const round = await openRound("wheel");
+    await seed(world, {});
+    const out = await refundOrphanRounds();
+    expect(out).toEqual([{ roundId: round.id, name: "A deleted game", status: "cancelled", refunded: 0, gone: 0 }]);
+    expect(world.notes.warn).not.toHaveBeenCalled();
+    expect(getRounds()[round.id].status).toBe("resolved");
   });
 });

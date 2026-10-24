@@ -70,6 +70,39 @@ export const NEW_DEFAULTS = {
 export const NEW_TITLE = { crate: "New box", well: "New well", dice: "New dice game", deck: "New deck", roulette: "New wheel", auction: "New auction" };
 export const EDIT_TITLE = { crate: "Edit box", well: "Edit well", dice: "Edit dice game", deck: "Edit deck", roulette: "Edit wheel", auction: "Edit auction" };
 export const COPY_TITLE = { crate: "Copy box", well: "Copy well", dice: "Copy dice game", deck: "Copy deck", roulette: "Copy wheel", auction: "Copy auction" };
+export const DELETE_TITLE = { crate: "Delete box", well: "Delete well", dice: "Delete dice game", deck: "Delete deck", roulette: "Delete wheel", auction: "Delete auction" };
+export const deleteTitle = game => DELETE_TITLE[kindOf(game)] ?? "Delete game";
+
+/*
+  Delete's confirm. A table game with a round not yet settled names what
+  that round still holds (round.js heldBy: { count, gp }), so the GM sees
+  the coins before acting: they are refunded first (table.js cancelRound),
+  then the game goes. A bid is the Auction's word, a stake every other's.
+*/
+const heldWords = game => (kindOf(game) === "auction" ? { what: "auction", one: "bid" } : { what: "round", one: "stake" });
+const nOf = (n, one) => `${n} ${one}${n === 1 ? "" : "s"}`;
+
+export function deleteGameText(game, held, esc) {
+  const ask = `Delete <strong>${esc(game.name)}</strong>?`;
+  if (!held) return `<p>${ask}</p>`;
+  const { what, one } = heldWords(game);
+  if (!held.count) return `<p>${ask} Its ${what} is still open, with no ${one}s yet; it is called off first.</p>`;
+  return `<p>${ask} Its ${what} still holds ${nOf(held.count, one)} (${esc(formatPrice(held.gp))}); ${held.count === 1 ? "it is" : "they are"} refunded first.</p>`;
+}
+
+// The Boxes tab's status line once the game is gone, saying the refund
+// once: cancelRound's { refunded, gone } when a round was called off.
+export function deletedNotice(game, cancelled = null) {
+  const done = `Deleted ${game.name}.`;
+  if (!cancelled) return done;
+  const { what, one } = heldWords(game);
+  const { refunded = 0, gone = 0 } = cancelled;
+  if (!refunded && !gone) return `${done} Its ${what} was called off.`;
+  const parts = [];
+  if (refunded) parts.push(`${nOf(refunded, one)} ${refunded === 1 ? "was" : "were"} refunded`);
+  if (gone) parts.push(`${nOf(gone, one)} belonged to a character that is gone`);
+  return `${done} Its ${what} was called off: ${parts.join("; ")}.`;
+}
 export function editorTitle(game, isNew, copy = false) {
   const [titles, fallback] = copy ? [COPY_TITLE, "Copy game"] : isNew ? [NEW_TITLE, "New game"] : [EDIT_TITLE, "Edit game"];
   return titles[kindOf(game)] ?? fallback;

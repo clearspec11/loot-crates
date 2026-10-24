@@ -87,7 +87,15 @@ export class TableWindow extends ApplicationV2 {
     if (!h || (r && (r.status !== h.status || (r.closesAt ?? 0) >= (h.closesAt ?? 0)))) return r;
     return { ...(r ?? {}), ...h };
   }
-  get game() { return getBoxes()[this.round?.boxId ?? this.boxId] ?? null; }
+  // The game as last seen: one deleted mid-round (its round called off
+  // first, manager.js Delete) still names the window and speaks in its
+  // kind's words, so the players read that the round was called off.
+  #lastGame = null;
+  get game() {
+    const game = getBoxes()[this.round?.boxId ?? this.boxId] ?? null;
+    if (game) this.#lastGame = game;
+    return game ?? this.#lastGame;
+  }
   get kind() { return getKind(kindOf(this.game ?? this.reveal ?? {})) ?? null; }
   get title() { return this.kind?.tableView?.title?.(this.game) ?? "The table"; }
   get phase() { return phaseOf(this.round, { reveal: this.reveal, landed: this.landed, voided: !!this.voided }); }

@@ -6,7 +6,7 @@
   none of its history. Nothing here writes.
 */
 import { describe, it, expect } from "vitest";
-import { NEW_DEFAULTS, NEW_TITLE, EDIT_TITLE, COPY_TITLE, editorTitle, newDraft, crateFromPool, copyOf, copyName, addLabel, addedNotice } from "../module/scripts/newgame.js";
+import { NEW_DEFAULTS, NEW_TITLE, EDIT_TITLE, COPY_TITLE, DELETE_TITLE, editorTitle, deleteTitle, deleteGameText, deletedNotice, newDraft, crateFromPool, copyOf, copyName, addLabel, addedNotice } from "../module/scripts/newgame.js";
 import { drawnIds, deckOdds } from "../module/scripts/deck.js";
 import { liveRoundOf, newRound } from "../module/scripts/round.js";
 import { stockOf } from "../module/scripts/limits.js";
@@ -203,5 +203,41 @@ describe("addedNotice", () => {
 
   it("says the shop is closed when players can't see it yet", () => {
     expect(addedNotice({ name: "Gilded Crate", price: 250 }, { shopOpen: false })).toBe("Gilded Crate added. The shop is closed, so players can't see it yet.");
+  });
+});
+
+// Delete's confirm and the status line after it (manager.js #deleteBox): the
+// kind's own word in the title, and a table game's open round named with
+// what it holds before the GM acts, the refund said once after.
+describe("Delete's words", () => {
+  const esc = s => String(s).replace(/</g, "&lt;");
+  it("titles the confirm with the kind's word, as New, Edit and Copy do", () => {
+    expect(Object.keys(DELETE_TITLE)).toEqual(KINDS);
+    expect(deleteTitle({ name: "Goblin Crate" })).toBe("Delete box");
+    expect(deleteTitle({ kind: "roulette" })).toBe("Delete wheel");
+    expect(deleteTitle({ kind: "auction" })).toBe("Delete auction");
+    expect(deleteTitle({ kind: "dice" })).toBe("Delete dice game");
+    expect(deleteTitle({ kind: "someone-elses" })).toBe("Delete game");
+  });
+
+  it("asks only the name when no round is live", () => {
+    expect(deleteGameText({ name: "Goblin <Crate>" }, null, esc)).toBe("<p>Delete <strong>Goblin &lt;Crate></strong>?</p>");
+  });
+
+  it("names the stakes and their gold a live round holds, and says they are refunded first", () => {
+    const wheel = { kind: "roulette", name: "Wheel of Fate" };
+    expect(deleteGameText(wheel, { count: 3, gp: 35 }, esc)).toBe("<p>Delete <strong>Wheel of Fate</strong>? Its round still holds 3 stakes (35 gp); they are refunded first.</p>");
+    expect(deleteGameText(wheel, { count: 1, gp: 5.5 }, esc)).toBe("<p>Delete <strong>Wheel of Fate</strong>? Its round still holds 1 stake (5 gp 5 sp); it is refunded first.</p>");
+    expect(deleteGameText(wheel, { count: 0, gp: 0 }, esc)).toBe("<p>Delete <strong>Wheel of Fate</strong>? Its round is still open, with no stakes yet; it is called off first.</p>");
+    expect(deleteGameText({ kind: "auction", name: "Ruby" }, { count: 1, gp: 40 }, esc)).toBe("<p>Delete <strong>Ruby</strong>? Its auction still holds 1 bid (40 gp); it is refunded first.</p>");
+  });
+
+  it("says the delete, and the refund once when a round was called off", () => {
+    const wheel = { kind: "roulette", name: "Wheel of Fate" };
+    expect(deletedNotice({ name: "Goblin Crate" })).toBe("Deleted Goblin Crate.");
+    expect(deletedNotice(wheel, { refunded: 3, gone: 0 })).toBe("Deleted Wheel of Fate. Its round was called off: 3 stakes were refunded.");
+    expect(deletedNotice(wheel, { refunded: 1, gone: 1 })).toBe("Deleted Wheel of Fate. Its round was called off: 1 stake was refunded; 1 stake belonged to a character that is gone.");
+    expect(deletedNotice(wheel, { refunded: 0, gone: 0 })).toBe("Deleted Wheel of Fate. Its round was called off.");
+    expect(deletedNotice({ kind: "auction", name: "Ruby" }, { refunded: 2, gone: 0 })).toBe("Deleted Ruby. Its auction was called off: 2 bids were refunded.");
   });
 });

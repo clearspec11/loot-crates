@@ -26,6 +26,12 @@
     rounds, telling the GM how many.
   - cancelRound, the GM calling a round off (the Auction's Call it off):
     the round is voided first, then every open stake refunded in one task.
+    The manager's Delete calls a game's round off this way before the game
+    goes.
+  - refundOrphanRounds, on the active GM whenever the boxes change and at
+    load: a round whose game is gone some other way (the module API,
+    another GM's client) is called off through cancelRound, so no stake
+    waits in escrow for a game that can't be spun.
   - A kind that runs itself (the Auction) is watched on the GM's client
     (watchTables): its round resolves through the same resolveRound once
     its clock runs out (`hammer`), and its `tick` (the house bidders) is
@@ -54,7 +60,7 @@ import { getBoxes, getPools, getLog, getRounds, saveRound, saveRounds, updateLog
 import { getKind, kindFor, PullError } from "./kinds.js";
 import { settle } from "./currency.js";
 import { rollRng, resolveSource } from "./pull.js";
-import { newRound, liveRoundOf, openStakesOf, stakesOf, staleStakes, staleAt, stakeReason, planResolve, coinsByActor, rowPatch, tableDue, STATUS } from "./round.js";
+import { newRound, liveRoundOf, openStakesOf, stakesOf, staleStakes, staleAt, stakeReason, planResolve, coinsByActor, rowPatch, tableDue, orphanRounds, STATUS } from "./round.js";
 import { onShelf, shelfRoundRefusal } from "./shelf.js";
 // reveal.js imports socket.js, which imports this file; each side reaches
 // the other only inside a function.
@@ -343,6 +349,32 @@ export function cancelRound(roundId) {
     const said = plan.filter(l => !l.row.house);
     return { status: "cancelled", refunded: said.filter(l => l.action === "refund").length, gone: said.filter(l => l.action === "void").length };
   });
+}
+
+/*
+  The safety net under Delete, on the active GM only: every round not yet
+  settled whose game is no longer in the boxes (round.js orphanRounds) is
+  called off through cancelRound, and the GM is told once per game how
+  many stakes came back. The manager's Delete has already called its round
+  off, so this finds nothing then. Heard on every change of the boxes
+  setting (main.js) and at load; cancelRound's own check makes a second
+  call for the same round do nothing. Returns cancelRound's results.
+*/
+export async function refundOrphanRounds() {
+  if (!globalThis.game?.user || game.users?.activeGM?.id !== game.user.id) return [];
+  const orphans = orphanRounds(getRounds(), getBoxes());
+  const out = [];
+  for (const round of orphans) {
+    const name = getLog().find(r => r?.roundId === round.id)?.boxName || "A deleted game";
+    const result = await cancelRound(round.id);
+    if (result.status !== "cancelled") continue;
+    out.push({ roundId: round.id, name, ...result });
+    const { refunded, gone } = result;
+    if (!refunded && !gone) continue;
+    const back = [refunded ? `${refunded} stake${refunded === 1 ? " was" : "s were"} refunded` : "", gone ? `${gone} belonged to a character that is gone` : ""].filter(Boolean).join("; ");
+    globalThis.ui?.notifications?.warn(`Loot Crates: ${name} was deleted with its round open; ${back}.`);
+  }
+  return out;
 }
 
 /*

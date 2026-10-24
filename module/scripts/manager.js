@@ -84,13 +84,14 @@
 */
 import { RARITIES, RARITY_LABEL, DEFAULT_WEIGHTS, SETTINGS } from "./config.js";
 import { draftBox, oddsRules, boxPreview, boxPreviewHTML, oddsSummary, quietAnnouncer, refundRulesLine } from "./boxcard.js";
-import { kindOf } from "./kinds.js";
+import { kindOf, PullError } from "./kinds.js";
+import { liveRoundOf, heldBy } from "./round.js";
 import { WELL_DEFAULTS, stakeCoins, stakeGp, draftWell, wellPreview, wellPreviewHTML, wellSummary, noClockNote } from "./well.js";
 import { DICE_DEFAULTS, FORMULAS, draftDice, dicePreview, dicePreviewHTML, diceSummary } from "./dicegame.js";
 import { CARD_KINDS, CARD_KIND_HINT, cardsOf, streakMinutesOf, deckRiseFieldsHTML, deckOdds, draftDeck, deckPreview, deckPreviewHTML, deckSummary } from "./deck.js";
 import { ROULETTE_DEFAULTS, BET_TYPES, BET_TYPE_LABEL, pocketsOf, coloursOf, draftRoulette, roulettePreview, roulettePreviewHTML, rouletteSummary, payoutOf, maxStakeOf, maxBetsOf, windowMsOf, itemOnRarity } from "./roulette.js";
 import { MAX_HOUSE, MIN_GAVEL_SEC, HOUSE_TICK_MS, lotOf, lotFromEntry, lotFromCrate, incrementOf, reserveOf, gavelMsOf, houseOf, draftAuction, auctionPreview, auctionPreviewHTML, auctionSummary } from "./auction.js";
-import { newDraft, crateFromPool, crateFromTable, copyOf, editorTitle, addLabel, addedNotice } from "./newgame.js";
+import { newDraft, crateFromPool, crateFromTable, copyOf, editorTitle, addLabel, addedNotice, deleteTitle, deleteGameText, deletedNotice } from "./newgame.js";
 import { boxesTabHTML } from "./boxestable.js";
 import { logTableHTML, logRarityNote, logPayoutNote, logStakeNote, logLateNote } from "./logtable.js";
 // The log's notes stay reachable here for the checks that import them from the manager.
@@ -98,6 +99,8 @@ export { logRarityNote, logPayoutNote, logStakeNote, logLateNote };
 // The table window (tablewindow.js), loaded when a wheel's round is opened
 // from here: it is Foundry's, and the editors' tests run this file without it.
 const openTableFor = boxId => import("./tablewindow.js").then(m => m.openTableFor(boxId));
+// A round called off before its game is deleted (table.js), loaded the same way.
+const cancelTableRound = roundId => import("./table.js").then(m => m.cancelRound(roundId));
 // The shop, opened from the nav's "View shop"; loaded when pressed, as the
 // table is (shop.js reaches back here for its own "Manage crates").
 const openShopWindow = () => import("./shop.js").then(m => m.openShop());
@@ -1138,11 +1141,32 @@ export class CrateManager extends ApplicationV2 {
     }), data);
   }
 
+  /*
+    Delete, confirmed in the kind's own word. A table game's round not yet
+    settled is called off first (table.js cancelRound: every open stake
+    refunded), then the game goes, so no stake is left in escrow with no
+    Spin and no Call it off; the confirm names what the round holds and the
+    status line says the refund once. A call-off that fails deletes nothing.
+  */
   static async #deleteBox(_e, t) {
     const box = getBoxes()[t.dataset.box];
-    if (await DialogV2.confirm({ window: { title: "Delete box" }, content: `<p>Delete <strong>${esc(box.name)}</strong>?</p>` })) {
-      await removeBox(box.id); this.render();
+    if (!box) return this.render();
+    const round = liveRoundOf(getRounds(), box.id);
+    const content = deleteGameText(box, round ? heldBy(getLog(), round.id) : null, esc);
+    if (!await DialogV2.confirm({ window: { title: deleteTitle(box) }, content })) return t.focus?.();
+    let cancelled = null;
+    if (round) {
+      try {
+        cancelled = await cancelTableRound(round.id);
+      } catch (err) {
+        if (!(err instanceof PullError)) console.error(`loot-crates | calling off the round at ${box.name} failed; the game is kept`, err);
+        ui.notifications.warn(err instanceof PullError ? `${err.message} ${box.name} was not deleted.` : `The round at ${box.name} couldn't be called off, so it was not deleted. Check the console.`);
+        return t.focus?.();
+      }
     }
+    await removeBox(box.id);
+    await this.render();
+    this.#announce(deletedNotice(box, cancelled));
   }
 
   static async #refund(_e, t) {
