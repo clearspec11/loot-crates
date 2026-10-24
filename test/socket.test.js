@@ -12,7 +12,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 vi.mock("../module/scripts/reveal.js", () => ({ showReveal: vi.fn(async () => ({ landed: Promise.resolve() })) }));
 vi.mock("../module/scripts/chat.js", () => ({ postPullCard: vi.fn(async () => null) }));
 
-const { registerSocket, requestPull, restCompleted, owedRests, settleOwedRests, GM_TIMEOUT_MS, WAIT_NOTICE_MS, TIMED_OUT, SLOW_PULL_MS, _resetSlowWarning } = await import("../module/scripts/socket.js");
+const { registerSocket, requestPull, restCompleted, owedRests, settleOwedRests, _resetOwedSent, OWED_RESEND_MS, GM_TIMEOUT_MS, WAIT_NOTICE_MS, TIMED_OUT, SLOW_PULL_MS, _resetSlowWarning } = await import("../module/scripts/socket.js");
 const { registerSettings, setStoreListener, appendLog, sweepAllPools, enqueueWrite, updateBox, INDEX_FIELDS, todayKey } = await import("../module/scripts/store.js");
 const { storeRedraw, REDRAW_DELAY_MS } = await import("../module/scripts/redraw.js");
 const { refundPull } = await import("../module/scripts/refund.js");
@@ -1237,6 +1237,7 @@ describe("a day with dnd5e's calendar on", () => {
 describe("a long rest taken while no GM is online", () => {
   let stored;
   beforeEach(() => {
+    _resetOwedSent();
     stored = new Map();
     vi.stubGlobal("localStorage", { getItem: k => stored.get(k) ?? null, setItem: (k, v) => stored.set(k, String(v)), removeItem: k => stored.delete(k) });
   });
@@ -1280,6 +1281,32 @@ describe("a long rest taken while no GM is online", () => {
     game.users.activeGM = GM;
     expect(settleOwedRests()).toBe(1);
     expect(emitted).toEqual([{ type: "newDay", actorId: "actor1", userId: "p1", at: 86400 * 5, owed: true }]);
+  });
+
+  it("sends a rest once when its own load and the GM's ask fall together, and again only once unanswered for a while", async () => {
+    vi.useFakeTimers();
+    const { game, actor, emitted, deliver } = playerWorld();
+    restCompleted(actor, { newDay: true }, { newDay: true });
+    game.users.activeGM = GM;
+    // Both clients loading at a session's start: the player's own load
+    // sends, and the GM's ask moments later must not make the GM hear the
+    // same rest twice (it would end two days).
+    expect(settleOwedRests()).toBe(1);
+    await deliver({ type: "owedRests" });
+    expect(emitted).toEqual([{ type: "newDay", actorId: "actor1", userId: "p1", at: 86400 * 5, owed: true }]);
+    // A GM that dropped it asks again later and hears it again.
+    vi.advanceTimersByTime(OWED_RESEND_MS);
+    await deliver({ type: "owedRests" });
+    expect(emitted.length).toBe(2);
+    // Once answered and forgotten, a new rest for the character is sent at once.
+    await deliver({ type: "newDayCounted", userId: "p1", actorId: "actor1", at: 86400 * 5 });
+    expect(owedRests()).toEqual({});
+    game.users.activeGM = null;
+    game.time = { components: { year: 1, day: 6 }, worldTime: 86400 * 6 };
+    restCompleted(actor, { newDay: true }, { newDay: true });
+    game.users.activeGM = GM;
+    expect(settleOwedRests()).toBe(1);
+    expect(emitted.at(-1)).toEqual({ type: "newDay", actorId: "actor1", userId: "p1", at: 86400 * 6, owed: true });
   });
 
   it("on the GM: asks at its load, counts an owed rest as any rest and answers it, even for a character it can't count", async () => {

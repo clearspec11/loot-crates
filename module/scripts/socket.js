@@ -538,18 +538,35 @@ function oweRest(actorId, at) {
   saveOwed(owed);
 }
 
-// Sends every owed rest to the active GM. Returns how many went.
+/*
+  Sends every owed rest to the active GM. Returns how many went. A rest sent
+  and not yet answered isn't sent again within OWED_RESEND_MS: this client's
+  own load and the GM's ask at its load can fall moments apart (both joining
+  at a session's start), and the GM would hear one rest twice and end two
+  days. A GM that dropped it still hears it again at its next ask.
+*/
+export const OWED_RESEND_MS = 30_000;
+const owedSent = new Map(); // actorId -> { at, sentAt }
+export function _resetOwedSent() { owedSent.clear(); }
 export function sendOwedRests() {
   if (!game.users.activeGM || isActiveGM()) return 0;
-  const owed = Object.entries(owedRests());
-  for (const [actorId, { at = null } = {}] of owed) game.socket.emit(SOCKET, { type: "newDay", actorId, userId: game.user.id, at, owed: true });
-  return owed.length;
+  const now = Date.now();
+  let sent = 0;
+  for (const [actorId, { at = null } = {}] of Object.entries(owedRests())) {
+    const last = owedSent.get(actorId);
+    if (last && last.at === at && now - last.sentAt < OWED_RESEND_MS) continue;
+    owedSent.set(actorId, { at, sentAt: now });
+    game.socket.emit(SOCKET, { type: "newDay", actorId, userId: game.user.id, at, owed: true });
+    sent++;
+  }
+  return sent;
 }
 
 function forgetOwedRest(msg) {
   const owed = owedRests();
   if (!owed[msg.actorId] || (owed[msg.actorId].at ?? null) !== (msg.at ?? null)) return;
   delete owed[msg.actorId];
+  owedSent.delete(msg.actorId);
   saveOwed(owed);
 }
 
