@@ -41,8 +41,8 @@
 //      from their own client: dnd5e can't move the clock there, so the
 //      world time stays, yet the card's Throw comes back on within 3 s.
 //   4. The player throws to the cap a third time; the GM then moves the
-//      clock eight hours over that night (game.time.advance): the card
-//      stays shut, since the player's rest already ended that day.
+//      clock over midnight into the next day's morning (game.time.advance):
+//      the card stays shut, since the player's rest already ended that day.
 //   Crate Tester's count of rests (the calendar-off day) is not touched.
 //
 // In a finally: the calendar setting, the world time, the well's record
@@ -266,10 +266,17 @@ const daysOf = (gm, actorId) => gm.evaluate(id => game.settings.get("loot-crates
     const plRest = await longRest(pl.page, before.actorId, CALENDAR);
     out.playerRest = { ...plRest, card: await cardUntil(pl.page, false, plRest.at), days: await daysOf(gm.page, before.actorId), rested: await restedOf(gm.page, before.actorId) };
     // 4. With the calendar on: a third throw to the cap, then the GM moves
-    // the clock over that night; the card must stay shut.
+    // the clock over midnight into the next day's morning (whatever the
+    // hour now; a move inside the same day would prove nothing); the card
+    // must stay shut.
     if (CALENDAR) {
       out.third = await pl.page.evaluate(() => globalThis.__lcThrow());
-      const moved = await gm.page.evaluate(async night => { await game.time.advance(night); return { at: Date.now(), worldTime: game.time.worldTime }; }, NIGHT);
+      const moved = await gm.page.evaluate(async () => {
+        const DAY = 86400;
+        const was = { worldTime: game.time.worldTime, day: game.time.components?.day ?? null };
+        await game.time.advance((Math.floor(was.worldTime / DAY) + 1) * DAY + 6 * 3600 - was.worldTime);
+        return { at: Date.now(), was, worldTime: game.time.worldTime, day: game.time.components?.day ?? null };
+      });
       await new Promise(r => setTimeout(r, 3000));
       out.clockMoved = { ...moved, card: await pl.page.evaluate(() => globalThis.__lcWell()), rested: await restedOf(gm.page, before.actorId) };
     }
@@ -288,7 +295,7 @@ const daysOf = (gm, actorId) => gm.evaluate(id => game.settings.get("loot-crates
       // The player's rest from their own client: the clock stays, the day ends.
       playerRestReopens: cardBack(out.playerRest) && plRest.worldTime === gmRest.worldTime && JSON.stringify(out.playerRest.rested) !== JSON.stringify(out.gmRest.rested),
       thirdCapped: capped(out.third),
-      clockCatchesUp: out.clockMoved.worldTime === gmRest.worldTime + NIGHT && out.clockMoved.card.off && out.clockMoved.card.why === still,
+      clockCatchesUp: out.clockMoved.day === out.clockMoved.was.day + 1 && out.clockMoved.worldTime > gmRest.worldTime && out.clockMoved.card.off && out.clockMoved.card.why === still,
       restCountUntouched: out.gmRest.days === before.days && out.playerRest.days === before.days,
       errors: [...pl.logs, ...gm.logs].filter(t => /pageerror|failed/i.test(t)),
     } : {
