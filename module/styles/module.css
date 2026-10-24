@@ -172,15 +172,15 @@
 /* A Buy that is off says so with aria-disabled (it keeps focus; boxcard.js),
    and looks exactly like a disabled button. */
 :where(.loot-crates .window-content) button:is(:disabled, [aria-disabled="true"]) { cursor: not-allowed; color: var(--lc-ink-mute); border-style: dashed; }
-.loot-crates .lc-box__buy, .loot-crates .lc-reveal__close, .loot-crates .lc-reveal__again, .loot-crates .lc-table__bet, .loot-crates .lc-table__spin, .loot-crates .lc-starter__add {
+.loot-crates .lc-box__buy, .loot-crates .lc-reveal__close, .loot-crates .lc-reveal__again, .loot-crates .lc-table__bet, .loot-crates .lc-table__spin, .loot-crates .lc-starter__add, .loot-crates .lc-welcome__primary {
   position: relative; background: var(--lc-btn); color: var(--lc-btn-ink); border: none;
   font-weight: 700; box-shadow: var(--lc-shadow); min-height: 36px; padding: 0 16px;
 }
-.loot-crates .lc-box__buy::after, .loot-crates .lc-reveal__close::after, .loot-crates .lc-reveal__again::after, .loot-crates .lc-table__bet::after, .loot-crates .lc-table__spin::after, .loot-crates .lc-starter__add::after {
+.loot-crates .lc-box__buy::after, .loot-crates .lc-reveal__close::after, .loot-crates .lc-reveal__again::after, .loot-crates .lc-table__bet::after, .loot-crates .lc-table__spin::after, .loot-crates .lc-starter__add::after, .loot-crates .lc-welcome__primary::after {
   content: ""; position: absolute; inset: 3px; border: 1px solid var(--lc-btn-rule); border-radius: 3px; pointer-events: none;
 }
-.loot-crates .lc-box__buy:not([aria-disabled="true"]):hover, .loot-crates .lc-reveal__close:not(:disabled):hover, .loot-crates .lc-reveal__again:not([aria-disabled="true"]):hover, .loot-crates .lc-table__bet:not([aria-disabled="true"]):hover, .loot-crates .lc-table__spin:not([aria-disabled="true"]):hover, .loot-crates .lc-starter__add:not([aria-disabled="true"]):hover { color: var(--lc-pin); }
-.loot-crates .lc-box__buy:not([aria-disabled="true"]):hover::after, .loot-crates .lc-reveal__close:not(:disabled):hover::after, .loot-crates .lc-reveal__again:not([aria-disabled="true"]):hover::after, .loot-crates .lc-table__bet:not([aria-disabled="true"]):hover::after, .loot-crates .lc-table__spin:not([aria-disabled="true"]):hover::after, .loot-crates .lc-starter__add:not([aria-disabled="true"]):hover::after { border-color: var(--lc-btn-ink); }
+.loot-crates .lc-box__buy:not([aria-disabled="true"]):hover, .loot-crates .lc-reveal__close:not(:disabled):hover, .loot-crates .lc-reveal__again:not([aria-disabled="true"]):hover, .loot-crates .lc-table__bet:not([aria-disabled="true"]):hover, .loot-crates .lc-table__spin:not([aria-disabled="true"]):hover, .loot-crates .lc-starter__add:not([aria-disabled="true"]):hover, .loot-crates .lc-welcome__primary:hover { color: var(--lc-pin); }
+.loot-crates .lc-box__buy:not([aria-disabled="true"]):hover::after, .loot-crates .lc-reveal__close:not(:disabled):hover::after, .loot-crates .lc-reveal__again:not([aria-disabled="true"]):hover::after, .loot-crates .lc-table__bet:not([aria-disabled="true"]):hover::after, .loot-crates .lc-table__spin:not([aria-disabled="true"]):hover::after, .loot-crates .lc-starter__add:not([aria-disabled="true"]):hover::after, .loot-crates .lc-welcome__primary:hover::after { border-color: var(--lc-btn-ink); }
 .loot-crates .lc-box__buy[aria-disabled="true"], .loot-crates .lc-reveal__again[aria-disabled="true"], .loot-crates .lc-table__bet[aria-disabled="true"], .loot-crates .lc-table__spin[aria-disabled="true"], .loot-crates .lc-starter__add[aria-disabled="true"] { background: var(--lc-row-alt); color: var(--lc-ink-mute); box-shadow: none; }
 .loot-crates .lc-box__buy[aria-disabled="true"]::after, .loot-crates .lc-reveal__again[aria-disabled="true"]::after, .loot-crates .lc-table__bet[aria-disabled="true"]::after, .loot-crates .lc-table__spin[aria-disabled="true"]::after, .loot-crates .lc-starter__add[aria-disabled="true"]::after { border: 1px dashed var(--lc-rule-soft); }
 
@@ -828,6 +828,45 @@
 }
 .loot-crates .lc-starter__offer { margin: 0 0 12px; line-height: 1.45; color: var(--lc-ink-soft); }
 .loot-crates .lc-starter__add { margin: 0; }
+
+/* The GM's welcome and the note after an update (welcome.js): a slab
+   heading and a plain lede on the window's ground, the lists on a paper
+   card ruled in gold, then the actions: the primary (dnd5e's black button)
+   first, a quiet button and the guide link after; under a soft rule, a
+   12px foot saying how it comes back, with Don't show again beside it. */
+/* Foundry's window content clips: on a short screen the welcome scrolls
+   inside it rather than losing its buttons. */
+.loot-crates .lc-welcome { display: flex; flex-direction: column; gap: 10px; line-height: 1.45; flex: 1 1 auto; min-height: 0; overflow-y: auto;
+  /* Room inside the scroller for the card's shadow and the focus ring. */
+  margin: -6px; padding: 6px; }
+.loot-crates .lc-welcome__heading {
+  margin: 0; padding: 0; border: none; font-family: var(--lc-slab); font-size: 17px; font-weight: 700; line-height: 1.2; color: var(--lc-ink);
+}
+.loot-crates .lc-welcome__lede { margin: 0; color: var(--lc-ink-soft); }
+.loot-crates .lc-welcome__card {
+  padding: 12px; background: var(--lc-card); border: 1px solid var(--lc-rule); border-radius: var(--lc-radius); box-shadow: var(--lc-shadow);
+}
+.loot-crates .lc-welcome__sub {
+  margin: 0 0 4px; padding: 0; border: none; font-family: var(--lc-slab); font-size: 14px; font-weight: 700; line-height: 1.3; color: var(--lc-ink);
+}
+.loot-crates .lc-welcome__sub:not(:first-child) { margin-top: 12px; }
+.loot-crates .lc-welcome__list { margin: 0; padding-left: 1.4em; }
+.loot-crates .lc-welcome__list li { margin: 4px 0 0; }
+.loot-crates .lc-welcome__list li::marker { color: var(--lc-gold-ink); font-family: var(--lc-label); font-weight: 700; }
+.loot-crates .lc-welcome__list strong { font-weight: 700; }
+.loot-crates .lc-welcome__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 4px; }
+.loot-crates .lc-welcome__primary { margin: 0; }
+.loot-crates .lc-welcome__end { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding-top: 10px; border-top: 1px solid var(--lc-rule-soft); }
+.loot-crates .lc-welcome__end .lc-welcome__foot { flex: 1 1 16em; }
+.loot-crates .lc-welcome__link {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 12px; box-sizing: border-box;
+  font-family: var(--lc-body); font-size: 13px; line-height: 1.1; text-decoration: none;
+  background: var(--lc-field); color: var(--lc-ink); border: 1px solid var(--lc-rule-soft); border-radius: var(--lc-radius);
+  transition: border-color 120ms ease;
+}
+.loot-crates .lc-welcome__link:hover { border-color: var(--lc-rule); color: var(--lc-ink); text-shadow: none; }
+.loot-crates .lc-welcome__quiet { color: var(--lc-ink-soft); }
+.loot-crates .lc-welcome__foot { margin: 0; font-size: 12px; color: var(--lc-ink-mute); }
 
 /* A pool is a dnd5e card: its census on the header, its items as rows. */
 .loot-crates .lc-pool {

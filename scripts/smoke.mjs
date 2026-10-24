@@ -179,6 +179,14 @@ const STATES = [
   ["manager-empty", "state=manager&empty=1"],
   ["manager-boxes-empty", "state=manager&tab=boxes&empty=1"],
   ["manager-boxes-starter", "state=manager&tab=boxes&starter=1"],
+  // The GM's welcome (welcome.js): in a world with games, Open the manager
+  // is the primary and has focus; in a new world, Add starter crates is;
+  // after an update, "What's new in 0.14.0" with Close. Each has one
+  // labelled heading, the guide or changelog link, Don't show again beside
+  // the line saying how it comes back, nothing under 11px, no caps.
+  ["welcome", "state=welcome"],
+  ["welcome-empty", "state=welcome&empty=1"],
+  ["welcome-news", "state=welcome&view=news"],
 ];
 
 // The manager's tables at any width, read from the DOM: the pane never
@@ -533,6 +541,54 @@ function starterEmptyProblems(where) {
   if (document.querySelectorAll('[role="status"]').length !== 1) out.push("expected one role=status");
   const pane = document.querySelector(".lc-tab");
   if (pane.scrollWidth > pane.clientWidth + 1) out.push("the pane scrolls sideways");
+  return out;
+}
+
+/*
+  The GM's welcome and the note after an update (welcome.js): one heading
+  that names the section, one primary (dnd5e's black button) holding focus,
+  the buttons and link whole in the window, Don't show again, nothing under
+  the 11px floor, no upper-case text, no emoji, no sideways scroll.
+*/
+function welcomeProblems({ view, empty }) {
+  const out = [];
+  const app = document.getElementById("app").getBoundingClientRect();
+  const section = document.querySelector(".lc-welcome");
+  if (!section) return ["no welcome window"];
+  const h = document.getElementById(section.getAttribute("aria-labelledby") ?? "");
+  const wantHead = view === "news" ? /^What's new in \d+\.\d+\.\d+$/ : /^Welcome to Loot Crates$/;
+  if (!h || h.tagName !== "H2" || !wantHead.test(h.textContent.trim())) out.push(`the heading reads "${h?.textContent}"`);
+  const primary = [...document.querySelectorAll("[data-primary]")];
+  const want = view === "news" ? "Close" : empty ? "Add starter crates" : "Open the manager";
+  if (primary.length !== 1 || primary[0].textContent.trim() !== want) out.push(`the primary is ${primary.map(b => `"${b.textContent.trim()}"`).join(", ") || "missing"}, not "${want}"`);
+  if (document.activeElement !== primary[0]) out.push(`focus is on ${document.activeElement?.tagName} "${document.activeElement?.textContent?.trim().slice(0, 30)}", not the primary`);
+  const quiet = document.querySelector('[data-action="welcomeQuiet"]');
+  if (quiet?.textContent.trim() !== "Don't show again") out.push("no Don't show again");
+  if (primary[0] && quiet && getComputedStyle(primary[0]).backgroundColor === getComputedStyle(quiet).backgroundColor) out.push("the primary looks like a quiet button");
+  const link = section.querySelector("a.lc-welcome__link");
+  const linkWant = view === "news" ? "Read the full changelog" : "Read the guide";
+  if (link?.textContent.trim() !== linkWant || link.target !== "_blank" || !/noopener/.test(link.rel) || !/^https:\/\//.test(link.href)) out.push(`the link is not "${linkWant}" opening safely in a new tab`);
+  if (view === "news") {
+    const n = section.querySelectorAll(".lc-welcome__news li").length;
+    if (n < 3 || n > 5) out.push(`What's new has ${n} lines`);
+  } else {
+    if (section.querySelectorAll(".lc-welcome__steps li").length !== 3) out.push("not three first steps");
+    if (!/Items sidebar/.test(section.textContent) || !/Manage crates/.test(section.textContent)) out.push("doesn't say where the shop and the manager are");
+    for (const a of ["welcomeStarter", "welcomeManager"]) if (!section.querySelector(`[data-action="${a}"]`)) out.push(`no ${a} button`);
+  }
+  for (const b of section.querySelectorAll("button, a")) {
+    const r = b.getBoundingClientRect();
+    if (r.left < app.left - 1 || r.right > app.right + 1 || r.height < 28) out.push(`"${b.textContent.trim()}" is not whole in the window`);
+    if (b.tabIndex !== 0) out.push(`"${b.textContent.trim()}" is not in the tab order`);
+  }
+  for (const el of section.querySelectorAll("*")) {
+    if (!el.textContent.trim() || el.children.length && [...el.childNodes].every(n => n.nodeType !== 3 || !n.textContent.trim())) continue;
+    const cs = getComputedStyle(el);
+    if (parseFloat(cs.fontSize) < 11) out.push(`"${el.textContent.trim().slice(0, 30)}" is under 11px`);
+    if (cs.textTransform === "uppercase") out.push(`"${el.textContent.trim().slice(0, 30)}" is set in capitals`);
+  }
+  if (/\p{Extended_Pictographic}/u.test(section.textContent)) out.push("emoji in the text");
+  if (section.scrollWidth > section.clientWidth + 1) out.push("the welcome scrolls sideways");
   return out;
 }
 
@@ -1581,6 +1637,7 @@ try {
       // Mid-roll: the dice are tumbling (reduced motion is off for this
       // state); two frames in, they have faces to show.
       if (name === "dice-rolling") await page.waitForFunction(() => [...document.querySelectorAll(".lc-dice__tray .lc-dice__face")].every(f => f.textContent.trim()), null, { timeout: 10000 });
+      if (name.startsWith("welcome")) await page.waitForSelector("body[data-ready]", { timeout: 10000 });
       if (name.startsWith("manager") || name === "box-limits" || name === "box-odds" || name === "drop-preview") await page.waitForSelector("body[data-ready]", { timeout: 10000 });
       await page.waitForTimeout(500);
       const wide = await page.evaluate(() => document.scrollingElement.scrollWidth > document.scrollingElement.clientWidth + 1);
@@ -1597,6 +1654,7 @@ try {
         problems0.push(...await page.evaluate(tableCardProblems, name === "shop-table"));
         problems0.push(...await page.evaluate(auctionCardProblems, name === "shop-auction"));
       }
+      else if (name.startsWith("welcome")) problems0.push(...await page.evaluate(welcomeProblems, { view: name === "welcome-news" ? "news" : "welcome", empty: name === "welcome-empty" }));
       else if (name === "box-limits") problems0.push(...await page.evaluate(limitsEditorProblems), ...await page.evaluate(shelfEditorProblems));
       else if (name === "box-odds") problems0.push(...await page.evaluate(oddsEditorProblems));
       else if (name === "drop-preview") problems0.push(...await page.evaluate(dropPreviewProblems));

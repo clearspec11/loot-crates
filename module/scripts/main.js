@@ -24,10 +24,12 @@ import { openRound, closeRound, resolveRound, cancelRound, recoverRounds, onTabl
 // the core's hold when imported.
 import { openTable, openTableFor, refreshTables } from "./tablewindow.js";
 import { draw, oddsTable, seededRng } from "./odds.js";
+import { registerWelcome, welcomeAtLoad, openWelcome } from "./welcomewindow.js";
 import { buildStrip } from "./strip.js";
 
 Hooks.once("init", () => {
   registerSettings();
+  registerWelcome();
   // Open windows follow the world settings as any client writes them.
   setStoreListener(storeRedraw({ refreshShop, refreshManager, refreshTables }));
   registerIndexFields();
@@ -45,7 +47,7 @@ Hooks.once("ready", () => {
   registerSocket();
   const mod = game.modules.get(MODULE_ID);
   // registerKind adds a game of chance that runs on the crate's core (kinds.js).
-  if (mod) mod.api = { openShop, openManager, requestPull, performPull, showReveal, showReplay, draw, oddsTable, buildStrip, seededRng, getPools, getBoxes, getLog, savePool, saveBox, entriesFromCompendium, entryFromItem, registerKind, getKind, kindOf, openRound, closeRound, resolveRound, cancelRound, requestStake, onTable, setTableWindow, getRounds, openTable, openTableFor, makeCrateFromTable, addStarterCrates };
+  if (mod) mod.api = { openShop, openManager, requestPull, performPull, showReveal, showReplay, draw, oddsTable, buildStrip, seededRng, getPools, getBoxes, getLog, savePool, saveBox, entriesFromCompendium, entryFromItem, registerKind, getKind, kindOf, openRound, closeRound, resolveRound, cancelRound, requestStake, onTable, setTableWindow, getRounds, openTable, openTableFor, makeCrateFromTable, addStarterCrates, openWelcome };
   // Flag dead pool entries once at load, so the shop's odds are honest before
   // anyone buys; each pull sweeps its own box again (socket.js).
   // A table round's open stakes don't outlive their window across a reload
@@ -58,6 +60,9 @@ Hooks.once("ready", () => {
       .catch(err => console.error("loot-crates | refunding stale table stakes failed", err))
       .finally(() => watchTables());
   }
+  // A GM's welcome once per world, then a short note once per newer
+  // version (welcome.js); a player gets neither.
+  try { welcomeAtLoad(); } catch (err) { console.error("loot-crates | the welcome failed to open", err); }
 });
 
 // "Crates" for everyone, and "Manage crates" for a GM, once each however
