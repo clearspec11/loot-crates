@@ -13,7 +13,7 @@ vi.mock("../module/scripts/sound.js", () => ({ playTick: vi.fn(), playSlow: vi.f
 
 const R = await import("../module/scripts/roulette.js");
 const { ROULETTE, ROULETTE_DEFAULTS, BET_TYPES, pocketsOf, coloursOf, optionsOf, betOdds, resolve, betWins, normalizeBet, betName, stakeCheck, readBet, pickOptions, betFields, verdictText, netByActor, netText, netLines, wheelPose, pocketUnder, mountWheel, railHTML, roundState, clockText, drawOfRarity, draftRoulette, rouletteRulesText, roulettePreview, betLines, wheelSVG } = R;
-const { tableBodyHTML, phaseOf, stateText, countText, stakeSentence, countdownText } = await import("../module/scripts/tableview.js");
+const { tableBodyHTML, phaseOf, stateText, countText, stakeSentence, countdownText, betClosedText, gateBet } = await import("../module/scripts/tableview.js");
 const { PullError } = await import("../module/scripts/kinds.js");
 const { seededRng } = await import("../module/scripts/odds.js");
 
@@ -423,6 +423,43 @@ describe("the rail and the table's body", () => {
     expect(spinning).toContain("The wheel is turning");
     expect(spinning).not.toContain("lc-table__form");
     expect(spinning).toContain('aria-live="polite"');
+  });
+
+  it("never offers a bet on a wheel taken off the shelf mid-round, and offers it again once it is back", () => {
+    const esc = s => String(s ?? "");
+    const now = 1000000;
+    const round = { id: "R", boxId: "wheel", status: "open", opensAt: now - 3000, closesAt: now + 42000 };
+    const player = { isGM: false, actors: [{ id: "tam", name: "Tam Thornwick" }] };
+    const off = { ...GAME, rules: { shelved: false } };
+    const sentence = "Live wheel is off the shelf: no bets until the GM puts it back.";
+    expect(betClosedText(GAME, ROULETTE.tableView)).toBe("");
+    expect(betClosedText(off, ROULETTE.tableView)).toBe(sentence);
+    // A window drawn while it is off: the button is off (aria-disabled, so it
+    // keeps focus) and the form's status line says why.
+    const html = tableBodyHTML({ kind: ROULETTE, game: off, round, stakes: [], viewer: player, phase: "betting", now, esc });
+    expect(html).toMatch(/<button type="submit" class="lc-table__bet" data-action="placeBet" aria-disabled="true"[^>]*>Place a bet<\/button>/);
+    expect(html).toContain(`<span class="lc-table__why" role="status">${sentence}</span>`);
+    expect(tableBodyHTML({ kind: ROULETTE, game: GAME, round, stakes: [], viewer: player, phase: "betting", now, esc })).not.toContain("aria-disabled");
+    // A window open on it when the GM takes it off, then puts it back.
+    const doc = createDocument();
+    const host = doc.createElement("div");
+    host.innerHTML = tableBodyHTML({ kind: ROULETTE, game: GAME, round, stakes: [], viewer: player, phase: "betting", now, esc });
+    const form = host.querySelector(".lc-table__form");
+    const btn = form.querySelector(".lc-table__bet");
+    const why = form.querySelector(".lc-table__why");
+    expect(gateBet(form, GAME, ROULETTE.tableView)).toBe("");
+    expect(btn.getAttribute("aria-disabled")).toBeNull();
+    expect(gateBet(form, off, ROULETTE.tableView)).toBe(sentence);
+    expect(btn.getAttribute("aria-disabled")).toBe("true");
+    expect(why.textContent).toBe(sentence);
+    expect(btn.textContent).toBe("Place a bet");
+    gateBet(form, GAME, ROULETTE.tableView);
+    expect(btn.getAttribute("aria-disabled")).toBeNull();
+    expect(why.textContent).toBe("");
+    // A bet's own refusal on the line is left as it was by a gate that has nothing to say.
+    why.textContent = "Pick a number.";
+    gateBet(form, GAME, ROULETTE.tableView);
+    expect(why.textContent).toBe("Pick a number.");
   });
 
   it("knows the phase from the round and the reveal", () => {

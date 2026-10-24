@@ -275,6 +275,7 @@ Small, square-ish corners: 4px cards, buttons, fields and strip cards; 3px pills
 - **Crate card:** paper card in a 1px gold rule, 4px corners, card shadow; a maroon band with the Modesto name; a centred body with the peek (up to three real items), the ribbon, the odds pills, stock and a full-width primary button.
 - **Pool card:** the same card; its summary row carries a gold chevron, the slab name and the census, tinted 10% maroon.
 - **Chat card:** a small card with a gold rule; the buyer line, then the item in a 42px portrait underlined 3px in its rarity, its slab name and the rarity named beside a diamond. A refunded card drops the shadow, greys the portrait and mutes the rarity.
+- **Welcome window:** a 540px window on the theme ground: the slab heading (17px, an h2 that labels the section), a 13px lede in soft ink, then the lists on a paper card in a gold rule (slab subheads at 14px in sentence case, never capitals; list markers in gold ink), then the actions with one primary (dnd5e's black button, focused when the window opens), quiet buttons and the guide as a link drawn like a quiet button; under a soft rule, the 12px foot in mute ink saying how it comes back, with Don't show again beside it. The note after an update is the same window with its lines on the card and Close as the primary.
 
 ### Inputs / Fields
 - **Style:** field ground, 1px soft rule, 4px corners, 30px, 13px Roboto; placeholder in mute ink. Hover darkens the border to the gold rule.

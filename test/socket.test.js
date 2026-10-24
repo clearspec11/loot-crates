@@ -12,8 +12,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 vi.mock("../module/scripts/reveal.js", () => ({ showReveal: vi.fn(async () => ({ landed: Promise.resolve() })) }));
 vi.mock("../module/scripts/chat.js", () => ({ postPullCard: vi.fn(async () => null) }));
 
-const { registerSocket, requestPull, GM_TIMEOUT_MS, WAIT_NOTICE_MS, TIMED_OUT, SLOW_PULL_MS, _resetSlowWarning } = await import("../module/scripts/socket.js");
-const { registerSettings, setStoreListener, appendLog, sweepAllPools, enqueueWrite, updateBox, INDEX_FIELDS } = await import("../module/scripts/store.js");
+const { registerSocket, requestPull, restCompleted, GM_TIMEOUT_MS, WAIT_NOTICE_MS, TIMED_OUT, SLOW_PULL_MS, _resetSlowWarning } = await import("../module/scripts/socket.js");
+const { registerSettings, setStoreListener, appendLog, sweepAllPools, enqueueWrite, updateBox, INDEX_FIELDS, todayKey } = await import("../module/scripts/store.js");
 const { storeRedraw, REDRAW_DELAY_MS } = await import("../module/scripts/redraw.js");
 const { refundPull } = await import("../module/scripts/refund.js");
 const { PullError } = await import("../module/scripts/pull.js");
@@ -1024,5 +1024,104 @@ describe("the reveal's odds", () => {
     await game.settings.set("loot-crates", "actorState", {});
     await deliver({ type: "pull", requestId: "s3", boxId: "box", actorId: "actor1", userId: "p1" });
     expect(emitted.find(m => m.requestId === "s3" && m.type === "reveal").stateBefore).toEqual({ sinceRare: 0, owned: [], pulls: 0 });
+  });
+});
+
+describe("a day that ends at a long rest, with dnd5e's calendar off", () => {
+  const OTHER = { id: "p2", name: "Other player" };
+  const WELL_GAME = { id: "well", kind: "well", name: "Wishing Well", price: 0.1, pools: [{ id: "pool", share: 1 }], weights: { common: 1 }, odds: { nothing: 100, coin: 0, item: 0 }, rules: { cap: 3 } };
+
+  // dnd5e 6's default: the calendar off and no daily recovery chosen, so a
+  // long rest doesn't move game.time, which stays on one day throughout.
+  function restWorld({ user = GM, calendar = { enabled: false, dailyRecovery: "" } } = {}) {
+    const world = makeWorld({ user });
+    world.settings.set("dnd5e.calendarConfig", calendar);
+    world.game.time = { components: { year: 1, day: 5 }, worldTime: 86400 * 5 };
+    world.game.users.get = id => [GM, PLAYER, OTHER].find(u => u.id === id) ?? null;
+    // Only the GM and Player own Crate Tester.
+    world.actor.testUserPermission = u => u.id === GM.id || u.id === PLAYER.id;
+    return world;
+  }
+  const throwAt = (world, requestId) => world.deliver({ type: "pull", requestId, boxId: "well", actorId: "actor1", userId: "p1", price: 0.1 });
+  const errorFor = (world, requestId) => world.emitted.find(m => m.type === "error" && m.requestId === requestId)?.message ?? null;
+  const revealed = world => world.emitted.filter(m => m.type === "reveal").map(m => m.requestId);
+
+  beforeEach(async () => {
+    await import("../module/scripts/well.js");
+    globalThis.CONFIG = { Dice: { randomUniform: () => 0.5 } };
+  });
+  afterEach(() => { delete globalThis.CONFIG; });
+
+  it("caps the well at three throws, opens it again when the GM hears the owner's new day, and ignores a non-owner and a short rest", async () => {
+    const world = restWorld();
+    const { game, deliver } = world;
+    await game.settings.set("loot-crates", "pools", { pool: POOL });
+    await game.settings.set("loot-crates", "boxes", { well: WELL_GAME });
+    for (const id of ["t1", "t2", "t3"]) await throwAt(world, id);
+    await throwAt(world, "t4");
+    expect(revealed(world)).toEqual(["t1", "t2", "t3"]);
+    expect(errorFor(world, "t4")).toBe("The well is still until tomorrow (3 of 3 today).");
+    expect(game.settings.get("loot-crates", "pullLog").map(r => r.day)).toEqual(["r0", "r0", "r0"]);
+
+    // Someone who doesn't own Crate Tester can't end its day.
+    await deliver({ type: "newDay", actorId: "actor1", userId: "p2" });
+    await throwAt(world, "t5");
+    expect(errorFor(world, "t5")).toBe("The well is still until tomorrow (3 of 3 today).");
+    // A short rest isn't a new day.
+    await restCompleted(world.actor, { type: "short", newDay: false }, { type: "short", newDay: false });
+    await throwAt(world, "t6");
+    expect(errorFor(world, "t6")).toBe("The well is still until tomorrow (3 of 3 today).");
+    expect(game.settings.get("loot-crates", "actorState").days).toBeUndefined();
+
+    // The owner's long rest: the fourth throw is taken, with no clock moved.
+    await deliver({ type: "newDay", actorId: "actor1", userId: "p1" });
+    expect(game.settings.get("loot-crates", "actorState").days).toEqual({ actor1: 1 });
+    await throwAt(world, "t7");
+    expect(revealed(world)).toEqual(["t1", "t2", "t3", "t7"]);
+    expect(game.settings.get("loot-crates", "pullLog")[0].day).toBe("r1");
+    expect(game.time.components).toEqual({ year: 1, day: 5 });
+  });
+
+  it("opens a crate's limit of 1 per day again after a long rest, and leaves the pity state alone", async () => {
+    const world = restWorld();
+    const { game, deliver, emitted } = world;
+    await seed(game, { perCharacter: { max: 1, per: "day" } });
+    await deliver({ type: "pull", requestId: "r1", boxId: "box", actorId: "actor1", userId: "p1" });
+    await deliver({ type: "pull", requestId: "r2", boxId: "box", actorId: "actor1", userId: "p1" });
+    expect(emitted.find(m => m.type === "error")?.message).toBe("Test Crate: limit reached, 1 of 1 for Crate Tester until tomorrow. Nothing was charged.");
+    const stateBefore = game.settings.get("loot-crates", "actorState")["actor1.box"];
+    await deliver({ type: "newDay", actorId: "actor1", userId: "p2" });
+    await deliver({ type: "pull", requestId: "r3", boxId: "box", actorId: "actor1", userId: "p1" });
+    expect(emitted.filter(m => m.type === "error")).toHaveLength(2);
+    // The GM's own long rest counts on the GM, no message needed.
+    await restCompleted(world.actor, { type: "long", newDay: true }, { type: "long", newDay: true });
+    expect(game.settings.get("loot-crates", "actorState")).toMatchObject({ days: { actor1: 1 }, "actor1.box": stateBefore });
+    await deliver({ type: "pull", requestId: "r4", boxId: "box", actorId: "actor1", userId: "p1" });
+    expect(emitted.filter(m => m.type === "reveal").map(m => m.requestId)).toEqual(["r1", "r4"]);
+    expect(game.settings.get("loot-crates", "pullLog").map(r => r.day)).toEqual(["r1", "r0"]);
+  });
+
+  it("sends a player's long rest to the GM, and only one that starts a new day", async () => {
+    const { actor, emitted } = restWorld({ user: PLAYER });
+    restCompleted(actor, { type: "long", newDay: true }, { type: "long", newDay: true });
+    restCompleted(actor, { type: "long", newDay: false }, { type: "long", newDay: true });
+    restCompleted(actor, { type: "short", newDay: false }, { type: "short" });
+    expect(emitted).toEqual([{ type: "newDay", actorId: "actor1", userId: "p1" }]);
+  });
+
+  it("counts nothing for a rest when the calendar is on, where the clock is the day", async () => {
+    const { game, actor, deliver } = restWorld({ calendar: { enabled: true, dailyRecovery: "" } });
+    await deliver({ type: "newDay", actorId: "actor1", userId: "p1" });
+    await restCompleted(actor, { newDay: true }, { newDay: true });
+    expect(game.settings.get("loot-crates", "actorState")).toEqual({});
+    expect(todayKey("actor1")).toBe("y1d5");
+  });
+
+  it("counts rests when the calendar is on but dnd5e's daily recovery is manual", async () => {
+    const { game, deliver } = restWorld({ calendar: { enabled: true, dailyRecovery: "manual" } });
+    expect(todayKey("actor1")).toBe("r0");
+    await deliver({ type: "newDay", actorId: "actor1", userId: "p1" });
+    expect(todayKey("actor1")).toBe("r1");
+    expect(game.settings.get("loot-crates", "actorState").days).toEqual({ actor1: 1 });
   });
 });

@@ -18,7 +18,7 @@ import { createDocument } from "./minidom.js";
 vi.mock("../module/scripts/reveal.js", () => ({ showReveal: vi.fn(async () => ({ landed: Promise.resolve() })), heldState: () => null, boxHeld: () => false, onHold: () => () => {}, onRelease: () => () => {} }));
 vi.mock("../module/scripts/sound.js", () => ({ playTick: vi.fn(), playSlow: vi.fn(), playReveal: vi.fn(), playPlop: vi.fn(), playPlink: vi.fn(), playCoinBack: vi.fn(), playBane: vi.fn() }));
 
-const { DECK, DECK_DEFAULTS, DECK_TIMING, STREAK_MS, cardsOf, drawnIds, deckPlan, deckOdds, streakOf, priceAt, nextPrice, ordinal, mountDeck, deckLandTime, cardsLeftText, streakLine, deckRulesText, draftDeck, deckPreview, deckPreviewHTML, deckSummary, deckOddsHTML } = await import("../module/scripts/deck.js");
+const { DECK, DECK_DEFAULTS, DECK_TIMING, STREAK_MS, STREAK_MINUTES, streakMinutesOf, streakWindowMs, streakMinutesFromForm, streakAt, windowText, deckRiseFieldsHTML, cardsOf, drawnIds, deckPlan, deckOdds, streakOf, priceAt, nextPrice, ordinal, mountDeck, deckLandTime, cardsLeftText, streakLine, deckRulesText, draftDeck, deckPreview, deckPreviewHTML, deckSummary, deckOddsHTML } = await import("../module/scripts/deck.js");
 const { getKind } = await import("../module/scripts/kinds.js");
 const { performPull, PullError, PRICE_SKEW_MS } = await import("../module/scripts/pull.js");
 const { registerSocket } = await import("../module/scripts/socket.js");
@@ -149,8 +149,62 @@ describe("the rising price", () => {
     expect(nextPrice(GAME, log, { actorId: "a1", now: NOW })).toBe(22.5);
     expect(nextPrice(GAME, log, { actorId: "a2", now: NOW })).toBe(15);
     expect(ordinal(1)).toBe("1st"); expect(ordinal(2)).toBe("2nd"); expect(ordinal(3)).toBe("3rd"); expect(ordinal(4)).toBe("4th"); expect(ordinal(11)).toBe("11th"); expect(ordinal(22)).toBe("22nd");
-    expect(streakLine(GAME, 1)).toBe("2nd draw in a row: 15 gp (back to 10 gp after two minutes)");
+    expect(streakLine(GAME, 1)).toBe("2nd draw in a row: 15 gp (back to 10 gp after 2 minutes)");
     expect(streakLine(GAME, 0)).toBe("");
+  });
+
+  it("reads the window from the deck's record: 2 minutes when it names none, 0 for no streak at all", () => {
+    expect(STREAK_MINUTES).toBe(2);
+    expect(streakMinutesOf(GAME)).toBe(2);
+    expect(streakMinutesOf({ deck: {} })).toBe(2);
+    expect(streakMinutesOf({ deck: { streakMinutes: null } })).toBe(2);
+    expect(streakMinutesOf({ deck: { streakMinutes: "x" } })).toBe(2);
+    expect(streakMinutesOf({ deck: { streakMinutes: 1 } })).toBe(1);
+    expect(streakMinutesOf({ deck: { streakMinutes: 0 } })).toBe(0);
+    expect(streakMinutesOf({ deck: { streakMinutes: -3 } })).toBe(0);
+    expect(streakWindowMs(GAME)).toBe(STREAK_MS);
+    expect(streakWindowMs({ deck: { streakMinutes: 1.5 } })).toBe(90_000);
+    // The editor's field: blank or 0 is none, a number is that, junk keeps the record's.
+    expect(streakMinutesFromForm("", GAME)).toBe(0);
+    expect(streakMinutesFromForm("0", GAME)).toBe(0);
+    expect(streakMinutesFromForm(" 5 ", GAME)).toBe(5);
+    expect(streakMinutesFromForm("-1", { deck: { streakMinutes: 3 } })).toBe(3);
+    expect(windowText(GAME)).toBe("2 minutes");
+    expect(windowText({ deck: { streakMinutes: 1 } })).toBe("1 minute");
+    expect(windowText({ deck: { streakMinutes: 0.5 } })).toBe("30 seconds");
+  });
+
+  it("counts draws in a row within the deck's own window, and none with a window of 0", () => {
+    const one = { ...GAME, deck: { ...GAME.deck, streakMinutes: 1 } };
+    const none = { ...GAME, deck: { ...GAME.deck, streakMinutes: 0 } };
+    // 50 s and 90 s ago: both in a row by 2 minutes, only the newer by 1.
+    const log = [row({ at: NOW - 50_000 }), row({ at: NOW - 90_000 })];
+    expect(streakAt(GAME, log, { actorId: "a1", now: NOW })).toBe(2);
+    expect(streakAt(one, log, { actorId: "a1", now: NOW })).toBe(2);
+    expect(streakAt(one, log, { actorId: "a1", now: NOW + 15_000 })).toBe(0);
+    expect(streakAt(one, [row({ at: NOW - 50_000 }), row({ at: NOW - 120_000 })], { actorId: "a1", now: NOW })).toBe(1);
+    expect(streakAt(none, log, { actorId: "a1", now: NOW })).toBe(0);
+    expect(streakOf(log, { boxId: "deck", actorId: "a1", now: NOW, within: 0 })).toBe(0);
+    expect(nextPrice(GAME, log, { actorId: "a1", now: NOW + 60_000 })).toBe(22.5);
+    expect(nextPrice(one, log, { actorId: "a1", now: NOW + 60_000 })).toBe(10);
+    expect(nextPrice(none, log, { actorId: "a1", now: NOW })).toBe(10);
+    expect(streakLine(one, 1)).toBe("2nd draw in a row: 15 gp (back to 10 gp after 1 minute)");
+  });
+
+  it("is what the core charges with a window of 1 minute: the second draw past it is a first draw again", async () => {
+    const one = { ...GAME, deck: { ...GAME.deck, streakMinutes: 1 } };
+    const priceOf = DECK.priceOf;
+    expect(priceOf({ game: one, actor: { id: "a1" }, log: [row({ at: NOW - 59_000 })], now: NOW })).toBe(15);
+    expect(priceOf({ game: one, actor: { id: "a1" }, log: [row({ at: NOW - 61_000 })], now: NOW })).toBe(10);
+    expect(priceOf({ game: GAME, actor: { id: "a1" }, log: [row({ at: NOW - 61_000 })], now: NOW })).toBe(15);
+  });
+
+  it("draws the editor's two fields in their sentences, the window's hint named", () => {
+    const html = deckRiseFieldsHTML({ ...GAME, id: "d1" });
+    expect(html).toContain('<input name="step" type="number" min="1" step="0.1" value="1.5">');
+    expect(html).toContain('Draws count as in a row within <input name="streakMinutes" type="number" min="0" step="0.5" value="2" aria-describedby="lc-streak-d1"> minutes');
+    expect(html).toMatch(/id="lc-streak-d1">After that the price comes back down to the first draw's, and a refund takes a step back\. Blank or 0: every draw is a first draw\.</);
+    expect(deckRiseFieldsHTML({ ...GAME, id: "d1", deck: { streakMinutes: 0 } })).toContain('value="0"');
   });
 
   it("is what the core charges: the Buy must name it, and a refund of the last draw takes the step back", async () => {
@@ -665,7 +719,7 @@ describe("the words", () => {
     const again = kind.shop.card(GAME, POOLS, ctx({ log: [row({ at: NOW - 1000 }), row({ at: NOW - 30_000, cardId: "omen" })] }));
     expect(again).toContain("Draw for 22 gp 5 sp");
     expect(again).toContain(`data-price="22.5"`);
-    expect(again).toContain(`<div class="lc-box__rule">3rd draw in a row: 22 gp 5 sp (back to 10 gp after two minutes)</div>`);
+    expect(again).toContain(`<div class="lc-box__rule">3rd draw in a row: 22 gp 5 sp (back to 10 gp after 2 minutes)</div>`);
     expect(again).toContain("4 of 5 cards left");
     expect(why(kind.shop.card(GAME, POOLS, ctx({ held: id => id === "deck" })))).toBe("Still turning");
     expect(why(kind.shop.card(GAME, POOLS, ctx({ purse: { gp: 12 }, log: [row({ at: NOW - 1000 })] })))).toBe("Needs 3 gp more");
@@ -684,6 +738,10 @@ describe("the words", () => {
     expect(deckRulesText(GAME)).toBe("5 cards, ×1.5 a draw in a row");
     expect(deckRulesText(GAME, [row({ cardId: "omen" })])).toBe("5 cards, 1 drawn, ×1.5 a draw in a row");
     expect(deckRulesText({ ...GAME, deck: { step: 2, cards: [CARDS[0]] } })).toBe("1 card, ×2 a draw in a row");
+    // The window, when the GM set one other than the two minutes; none at all.
+    expect(deckRulesText({ ...GAME, deck: { ...GAME.deck, streakMinutes: 5 } })).toBe("5 cards, ×1.5 a draw in a row within 5 minutes");
+    expect(deckRulesText({ ...GAME, deck: { ...GAME.deck, streakMinutes: 2 } })).toBe("5 cards, ×1.5 a draw in a row");
+    expect(deckRulesText({ ...GAME, deck: { ...GAME.deck, streakMinutes: 0 } })).toBe("5 cards, one price every draw");
     const draft = draftDeck(GAME, { name: "x", price: "12", step: "2", cards: ["a", "b"], "c.a.label": "Gift", "c.a.kind": "coins", "c.a.weight": "3", "c.a.once": true, "c.a.gp": "7", "c.a.text": "", "c.b.label": "", "c.b.kind": "effect", "c.b.weight": "", "c.b.once": false, "c.b.gp": "", "c.b.text": " Rains. ", "pool.p": "on", "share.p": "2", "w.uncommon": "1", "w.legendary": "0" }, ["p"]);
     expect(draft.price).toBe(12);
     expect(draft.deck.step).toBe(2);
@@ -696,6 +754,11 @@ describe("the words", () => {
     // One card: the form gives a string, not a list; no step keeps the record's.
     expect(draftDeck(GAME, { cards: "a", "c.a.kind": "blank", step: "" }, []).deck).toMatchObject({ step: 1.5, cards: [{ id: "a", kind: "blank", weight: 1 }] });
     expect(draftDeck(GAME, {}, []).deck.cards).toEqual([]);
+    // The streak window: the form's minutes, blank as none; a form without
+    // the field leaves the record's (absent stays absent, read as 2).
+    expect(draftDeck(GAME, { streakMinutes: "1" }, []).deck.streakMinutes).toBe(1);
+    expect(draftDeck(GAME, { streakMinutes: "" }, []).deck.streakMinutes).toBe(0);
+    expect("streakMinutes" in draftDeck(GAME, {}, []).deck).toBe(false);
     const ok = deckPreview(GAME, POOLS);
     expect(ok.note).toBe("");
     expect(deckPreviewHTML(ok)).toContain("Item 20%");

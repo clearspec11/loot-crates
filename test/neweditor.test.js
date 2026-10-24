@@ -552,7 +552,7 @@ describe("On the shelf", () => {
     expect(store.getBoxes().b1.rules.shelved).toBe(false);
     expect(store.getBoxes().w1.rules).toEqual({ cap: 3 });
     expect(toggle().getAttribute("aria-pressed")).toBe("false");
-    expect(toggle().textContent).toBe("Put on shelf");
+    expect(toggle().textContent).toBe("On the shelf");
     expect(focused()).toBe(toggle());
     expect(status(app).textContent).toBe("Gilded Crate is off the shelf; players can't see it.");
     expect(app.element.querySelector(".lc-shelf-count").textContent).toBe("1 of 2 on the shelf");

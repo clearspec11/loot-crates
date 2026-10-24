@@ -13,9 +13,10 @@
     itself and nothing is reset by hand.
   - The price rises with each draw in a row: the first draw costs the
     record's price, the next base x step, then base x step^2, as long as
-    each draw follows the last within STREAK_MS (two minutes; the moment
-    the table shouts "again"). Waiting longer, or a refund of the last
-    draw, brings it back down. The core charges this price (kinds.js
+    each draw follows the last within the deck's streak window (the GM's
+    "within N minutes", deck.streakMinutes; two minutes, STREAK_MS, on a
+    record without one; 0 makes every draw a first draw). Waiting longer,
+    or a refund of the last draw, brings it back down. The core charges this price (kinds.js
     priceOf), checks the Buy's price against it and writes it to the row,
     so the refund gives back what was paid.
   - A bane takes its coins through the core's one settle(): the roll says
@@ -35,7 +36,7 @@
     price, with the cards left beside it.
 
   Record: { kind: "deck", price (the first draw, gp), pools, weights (the
-  item cards' rarity odds), deck: { step, shuffledAt, cards: [{ id, label,
+  item cards' rarity odds), deck: { step, streakMinutes, shuffledAt, cards: [{ id, label,
   kind: item | coins | loss | effect | blank, weight, once, gp, text }] },
   rules: {} }. The deck keeps no per-buyer state.
 
@@ -60,8 +61,10 @@ export const TONE_OF = { item: "boon", coins: "coin", loss: "bane", effect: "eff
 // The swatch (module.css lc-rarity-*) a non-item card is drawn in: the
 // coin's gold rim, the bane's cold slate, mute ink for the rest.
 const SWATCH_OF = { coins: "coin", loss: "bane", effect: "none", blank: "none" };
-// How long after a draw the next one still counts as "in a row".
+// How long after a draw the next one still counts as "in a row", on a deck
+// whose record names no window (every deck from before the GM could set it).
 export const STREAK_MS = 120000;
+export const STREAK_MINUTES = STREAK_MS / 60000;
 
 // Placeholders, not a published deck: the GM renames or replaces them.
 export const DECK_DEFAULTS = {
@@ -95,6 +98,37 @@ export function cardsOf(game) {
 }
 
 export const stepOf = game => (Number(game?.deck?.step) > 0 ? Number(game.deck.step) : DECK_DEFAULTS.step);
+
+/*
+  The deck's streak window, as the GM set it in the editor ("Draws count as
+  in a row within N minutes"): minutes, 0 when draws never count as in a
+  row (every draw is a first draw, at the record's price). A record with no
+  window (absent, or unreadable) reads STREAK_MINUTES.
+*/
+export function streakMinutesOf(game) {
+  const v = game?.deck?.streakMinutes;
+  if (v === undefined || v === null) return STREAK_MINUTES;
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.max(0, n) : STREAK_MINUTES;
+}
+export const streakWindowMs = game => Math.round(streakMinutesOf(game) * 60000);
+
+// The editor's field to the record's number: blank or 0 is 0 (no streak),
+// a number is that many minutes, anything else keeps what the record had.
+export function streakMinutesFromForm(value, game) {
+  const raw = String(value ?? "").trim();
+  if (raw === "") return 0;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? n : streakMinutesOf(game);
+}
+
+// "2 minutes", "1 minute", "90 seconds" for a window under a minute.
+export function windowText(game) {
+  const m = streakMinutesOf(game);
+  if (m > 0 && m < 1) return `${Math.round(m * 60)} seconds`;
+  const n = +m.toFixed(2);
+  return `${n} minute${n === 1 ? "" : "s"}`;
+}
 export const shuffledAt = game => Math.max(0, Number(game?.deck?.shuffledAt) || 0);
 
 const at = r => Number(r?.at) || 0;
@@ -148,10 +182,12 @@ export function deckOdds(game, pools, log = [], state = {}) {
 
 /*
   How many draws in a row this character has made at this deck, counted
-  back from `now` through the unrefunded rows: each within STREAK_MS of the
-  one after it. A refund of the newest draw takes the streak down with it.
+  back from `now` through the unrefunded rows: each within `within` ms of
+  the one after it (the deck's window, streakWindowMs; 0 counts none). A
+  refund of the newest draw takes the streak down with it.
 */
 export function streakOf(log, { boxId, actorId, now, within = STREAK_MS }) {
+  if (!(within > 0)) return 0;
   const rows = deckRows(log, boxId).filter(r => r.actorId === actorId).sort((a, b) => at(b) - at(a));
   let n = 0, last = now;
   for (const r of rows) {
@@ -168,7 +204,10 @@ export function priceAt(game, n) {
   return Math.round(base * Math.pow(stepOf(game), Math.max(0, n))) / 100;
 }
 
-export const nextPrice = (game, log, { actorId, now = Date.now() }) => priceAt(game, streakOf(log, { boxId: game.id, actorId, now }));
+// This character's streak at this deck now, by the deck's own window.
+export const streakAt = (game, log, { actorId, now = Date.now() }) => streakOf(log, { boxId: game.id, actorId, now, within: streakWindowMs(game) });
+
+export const nextPrice = (game, log, { actorId, now = Date.now() }) => priceAt(game, streakAt(game, log, { actorId, now }));
 
 // kinds.js priceOf: what the core charges for this play.
 const priceOf = ({ game, actor, log = [], now = Date.now() }) => nextPrice(game, log, { actorId: actor?.id, now });
@@ -196,7 +235,7 @@ async function roll(ctx) {
   const plan = deckPlan(game, ctx.pools, log, state);
   if (plan.empty) throw new PullError(plan.reason === "The deck has no cards" ? `${game.name} has no cards. Tell the GM.` : `Nothing is left to draw from ${game.name}.`);
   const card = weightedPick(plan.live, c => c.weight, rng) ?? plan.live[0];
-  const streak = streakOf(log, { boxId: game.id, actorId: actor.id, now }) + 1;
+  const streak = streakAt(game, log, { actorId: actor.id, now }) + 1;
   const common = {
     card: { id: card.id, label: card.label, kind: card.kind, once: card.once },
     tone: TONE_OF[card.kind], cardsLeft: plan.left - (card.once ? 1 : 0), size: plan.size, streak, nextPrice: priceAt(game, streak),
@@ -450,10 +489,11 @@ export function deckOddsHTML(odds) {
   return `<div class="lc-ribbon" aria-hidden="true">${segs}</div><div class="lc-box__odds">${pills}</div>`;
 }
 
-// "2nd draw in a row: 15 gp (back to 10 gp after two minutes)".
+// "2nd draw in a row: 15 gp (back to 10 gp after 2 minutes)", the window
+// the deck's own.
 export function streakLine(game, n) {
   if (n < 1) return "";
-  return `${ordinal(n + 1)} draw in a row: ${formatPrice(priceAt(game, n))} (back to ${formatPrice(game.price)} after two minutes)`;
+  return `${ordinal(n + 1)} draw in a row: ${formatPrice(priceAt(game, n))} (back to ${formatPrice(game.price)} after ${windowText(game)})`;
 }
 
 // Why this deck in particular can't be drawn from now, or "": its last
@@ -470,7 +510,7 @@ function card(game, pools, ctx) {
   const state = ctx.stateOf?.(game.id) ?? {};
   const log = ctx.log ?? [];
   const odds = deckOdds(game, pools, log, state);
-  const n = streakOf(log, { boxId: game.id, actorId: ctx.actorId, now: ctx.now ?? Date.now() });
+  const n = streakAt(game, log, { actorId: ctx.actorId, now: ctx.now ?? Date.now() });
   const price = priceAt(game, n);
   const reason = deckState(game, odds, ctx) || shortReason({ price }, ctx);
   const middle = [
@@ -484,16 +524,34 @@ function card(game, pools, ctx) {
 function reason(game, pools, ctx) {
   const log = ctx.log ?? [];
   const odds = deckOdds(game, pools, log, ctx.stateOf?.(game.id) ?? {});
-  const price = priceAt(game, streakOf(log, { boxId: game.id, actorId: ctx.actorId, now: ctx.now ?? Date.now() }));
+  const price = priceAt(game, streakAt(game, log, { actorId: ctx.actorId, now: ctx.now ?? Date.now() }));
   return deckState(game, odds, ctx) || shopReason(ctx) || shortReason({ price }, ctx);
 }
 
 /* ---------- The manager's words ---------- */
 
-// "5 cards, 1 drawn, x1.5 a draw in a row": the Boxes table's rules cell.
+// "5 cards, 1 drawn, ×1.5 a draw in a row": the Boxes table's rules cell,
+// with the window when the GM set one other than two minutes ("within 5
+// minutes"), and "one price every draw" when draws never count in a row.
 export function deckRulesText(game, log = []) {
   const plan = deckPlan(game, {}, log);
-  return [`${plan.size} card${plan.size === 1 ? "" : "s"}`, plan.drawn ? `${plan.drawn} drawn` : "", `×${+stepOf(game).toFixed(2)} a draw in a row`].filter(Boolean).join(", ");
+  const m = streakMinutesOf(game);
+  const rise = !(m > 0) ? "one price every draw" : `×${+stepOf(game).toFixed(2)} a draw in a row${m === STREAK_MINUTES ? "" : ` within ${windowText(game)}`}`;
+  return [`${plan.size} card${plan.size === 1 ? "" : "s"}`, plan.drawn ? `${plan.drawn} drawn` : "", rise].filter(Boolean).join(", ");
+}
+
+/*
+  The editor's rising price, under the first draw: the step each draw in a
+  row multiplies it by, then the window within which draws count as in a
+  row (streakMinutesOf; blank or 0 for none), with what the window does.
+  The manager's deck editor and the harness draw this one copy.
+*/
+export function deckRiseFieldsHTML(game, esc = s => String(s ?? "")) {
+  const id = `lc-streak-${esc(game?.id ?? "new")}`;
+  return `
+      <label class="lc-row">Each draw in a row costs <input name="step" type="number" min="1" step="0.1" value="${esc(stepOf(game))}"> times the last</label>
+      <label class="lc-row">Draws count as in a row within <input name="streakMinutes" type="number" min="0" step="0.5" value="${esc(streakMinutesOf(game))}" aria-describedby="${id}"> minutes</label>
+      <p class="lc-form__hint" id="${id}">After that the price comes back down to the first draw's, and a refund takes a step back. Blank or 0: every draw is a first draw.</p>`;
 }
 
 /*
@@ -514,7 +572,7 @@ export function draftDeck(game, values, poolIds) {
     // The first draw as the editor's field reads it ("12 gp 5 sp"), as
     // the Boxes row and the shop say it (currency.js parsePrice).
     price: parsePrice(values.price) ?? Math.max(0, Number(values.price) || 0),
-    deck: { ...(game.deck ?? {}), step: step > 0 ? step : stepOf(game), cards },
+    deck: { ...(game.deck ?? {}), step: step > 0 ? step : stepOf(game), ...("streakMinutes" in values ? { streakMinutes: streakMinutesFromForm(values.streakMinutes, game) } : {}), cards },
   };
 }
 

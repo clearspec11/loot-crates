@@ -24,6 +24,7 @@
 */
 import { formatPrice } from "./currency.js";
 import { isOpenStake, stakeReason, roundState, ROUND_WORDS } from "./round.js";
+import { onShelf, shelfBetsClosed } from "./shelf.js";
 
 // "Orla Vane bets 5 gp on Red", for the status line and the list; a kind
 // with its own sentence (the Auction's "Orla Vane bids 55 gp") says it.
@@ -43,6 +44,35 @@ export function countFor(view, stakes = [], history = null) {
 // legal bid), else "Place a bet".
 export function betLabelFor(view, game, { stakes = [], values = {} } = {}) {
   return typeof view?.betLabel === "function" ? view.betLabel(game, { stakes, values }) : "Place a bet";
+}
+
+/*
+  Why the bet button is off, or "": the game was taken off the shelf while
+  its round is open. The GM refuses any stake on it then (pull.js
+  guardPlay), so the window never offers one; the round itself still runs
+  to its resolve. gateBet keeps an open form in step as the shelf changes
+  (tablewindow.js, on every redraw): the button aria-disabled (it keeps
+  focus) with the sentence in the form's status line, and both back once
+  the game is on the shelf again.
+*/
+export const betClosedText = (game, view = null) => (game && !onShelf(game) ? shelfBetsClosed(game, view?.verb ?? "bets") : "");
+
+export function gateBet(form, game, view = null) {
+  const btn = form?.querySelector?.(".lc-table__bet");
+  const why = form?.querySelector?.(".lc-table__why");
+  if (!btn) return "";
+  const text = betClosedText(game, view);
+  const was = btn.dataset.closed ?? "";
+  if (text) {
+    btn.setAttribute("aria-disabled", "true");
+    btn.dataset.closed = text;
+    if (why && why.textContent !== text) why.textContent = text;
+  } else if (was) {
+    btn.removeAttribute("aria-disabled");
+    delete btn.dataset.closed;
+    if (why && why.textContent === was) why.textContent = "";
+  }
+  return text;
 }
 
 // "3 bets from 2 characters", "1 bet", "No bets yet".
@@ -113,12 +143,13 @@ export function tableBodyHTML({ kind, game, round, stakes = [], history = null, 
   const who = actors.length > 1
     ? `<label class="lc-table__field"><span class="lc-label">Character</span><select name="actorId" class="lc-table__actor">${actors.map(a => `<option value="${esc(a.id)}"${a.id === (values.actorId ?? actors[0].id) ? " selected" : ""}>${esc(a.name)}</option>`).join("")}</select></label>`
     : actors.length ? `<input type="hidden" name="actorId" value="${esc(actors[0].id)}">` : "";
+  const closed = betClosedText(game, view);
   const form = canBet ? `
       <form class="lc-table__form" autocomplete="off" novalidate>
         ${who}
         ${view.fields(game, { esc, values, stakes })}
-        <button type="submit" class="lc-table__bet" data-action="placeBet">${esc(betLabelFor(view, game, { stakes, values }))}</button>
-        <span class="lc-table__why" role="status"></span>
+        <button type="submit" class="lc-table__bet" data-action="placeBet"${closed ? ` aria-disabled="true" data-closed="${esc(closed)}"` : ""}>${esc(betLabelFor(view, game, { stakes, values }))}</button>
+        <span class="lc-table__why" role="status">${esc(closed)}</span>
       </form>` : "";
   const gmLive = viewer.isGM && (phase === "betting" || phase === "waiting");
   const spin = gmLive ? `<button type="button" class="lc-table__spin" data-action="spin">${esc(view.spinLabel ?? "Spin")}</button>` : "";

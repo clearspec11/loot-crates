@@ -96,6 +96,22 @@ export function staleStakes(log = [], rounds = {}, now = Date.now()) {
   return log.filter(r => isOpenStake(r) && r.roundId && now >= staleAt(rounds[r.roundId]));
 }
 
+// The unresolved rounds whose game is gone (deleted from the Boxes tab, the
+// module API or another GM's client): their stakes would sit in escrow with
+// no Spin and no Call it off, so the active GM calls each off (table.js
+// refundOrphanRounds). A resolved round is left for the log's headers.
+export function orphanRounds(rounds = {}, boxes = {}) {
+  return Object.values(rounds ?? {}).filter(r => r && r.status !== STATUS.RESOLVED && !(boxes ?? {})[r.boxId]);
+}
+
+// What a round's open stakes hold, for a confirm that names it: how many a
+// character staked and their total in gp. A house stake (the Auction's
+// house bidder) holds nothing and is not counted.
+export function heldBy(log = [], roundId) {
+  const rows = openStakesOf(log, roundId).filter(r => !r.house);
+  return { count: rows.length, gp: Math.round(rows.reduce((t, r) => t + (Number(r.price) || 0), 0) * 100) / 100 };
+}
+
 // The soonest moment an unresolved round goes stale, for the GM's timer;
 // null when none is open.
 export function nextStaleAt(rounds = {}) {

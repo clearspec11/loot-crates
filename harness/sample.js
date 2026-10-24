@@ -261,3 +261,27 @@ export const MANAGER_SOURCES = new Map([
   ["sample.compendium.7", null],
   ["sample.compendium.8", { name: "Cloak of the Elves", img: "", rarity: "uncommon", rawRarity: "uncommon" }],
 ]);
+
+/*
+  A stand-in for the dnd5e packs' indexes, for the starter crates
+  (starter.js): rows as Foundry's index carries them (type, the subtype
+  dnd5e keeps in system.type.value, the rarity), a few of each pool's
+  kind and some that no pool takes (a mundane rope, a spell). Names only;
+  no item text.
+*/
+const row = (_id, name, type, rarity, sub) => ({ _id, name, type, img: ICON, system: { rarity, ...(sub ? { type: { value: sub } } : {}) } });
+export const STARTER_INDEX = [{ id: "dnd5e.items", rows: [
+  row("p1", "Potion of Healing", "consumable", "common", "potion"), row("p2", "Potion of Climbing", "consumable", "common", "potion"),
+  row("p3", "Potion of Greater Healing", "consumable", "uncommon", "potion"), row("p4", "Spell Scroll (1st Level)", "consumable", "common", "scroll"),
+  row("p5", "Spell Scroll (2nd Level)", "consumable", "uncommon", "scroll"), row("p6", "Oil of Slipperiness", "consumable", "uncommon", "potion"),
+  row("t1", "Cloak of Protection", "equipment", "uncommon", "wondrous"), row("t2", "Boots of Elvenkind", "equipment", "uncommon", "wondrous"),
+  row("t3", "Ring of Protection", "equipment", "rare", "ring"), row("t4", "Amulet of Health", "equipment", "rare", "wondrous"),
+  row("t5", "Gloves of Thievery", "equipment", "uncommon", "wondrous"),
+  row("a1", "Longsword +1", "weapon", "uncommon", "martialM"), row("a2", "Shortbow +1", "weapon", "uncommon", "simpleR"),
+  row("a3", "Shield +1", "equipment", "uncommon", "shield"), row("a4", "Breastplate +2", "equipment", "rare", "medium"),
+  row("a5", "Warhammer +2", "weapon", "rare", "martialM"),
+  row("h1", "Flame Tongue", "weapon", "rare", "martialM"), row("h2", "Staff of Power", "weapon", "veryRare", "simpleM"),
+  row("h3", "Cloak of Invisibility", "equipment", "legendary", "wondrous"), row("h4", "Holy Avenger", "weapon", "legendary", "martialM"),
+  row("h5", "Belt of Frost Giant Strength", "equipment", "veryRare", "wondrous"), row("h6", "Ring of Three Wishes", "equipment", "legendary", "ring"),
+  row("m1", "Rope, Hempen (50 feet)", "loot", "", null), row("m2", "Fireball", "spell", "", null),
+] }];

@@ -44,7 +44,7 @@
 // the settings' onChange; redraw.js), which must be within 2 s.
 //
 // CLOSE_SHOP=1 buys nothing: with the player's shop open, the GM clicks the
-// manager's shop toggle (Shop open -> Shop closed) and closeShop reports how
+// manager's shop toggle ("Shop open", pressed -> unpressed) and closeShop reports how
 // long the player's crate took to show it (Buy aria-disabled, the header
 // notice naming the closed shop), within 2 s, then opens the shop again the
 // same way and reports the Buy back on.

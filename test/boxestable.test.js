@@ -91,13 +91,14 @@ describe("the Boxes table", () => {
     expect(out).not.toContain("Off the shelf</span>");
   });
 
-  it("tags, dims and offers Put on shelf for a game off the shelf; a wheel off it opens no round", () => {
+  it("tags, dims and leaves the On the shelf toggle unpressed for a game off the shelf; a wheel off it opens no round", () => {
     const off = BOXES.map(b => ({ ...b, rules: { ...(b.rules ?? {}), shelved: false } }));
     const out = boxesTableHTML({ boxes: off, pools: POOLS, esc });
     expect((out.match(/<tr class="lc-row--off" role="row">/g) ?? []).length).toBe(BOXES.length);
     expect((out.match(/<span class="lc-kind lc-kind--off">Off the shelf<\/span>/g) ?? []).length).toBe(BOXES.length);
-    expect(out).toContain(`data-action="toggleShelf" data-box="royal" data-on="false" aria-pressed="false" aria-label="Put on shelf: Royal Vault"`);
-    expect(out).toMatch(/aria-pressed="false"[^>]*>Put on shelf<\/button>/);
+    expect(out).toContain(`data-action="toggleShelf" data-box="royal" data-on="false" aria-pressed="false" aria-label="On the shelf: Royal Vault"`);
+    expect(out).toMatch(/aria-pressed="false"[^>]*>On the shelf<\/button>/);
+    expect(out).not.toContain("Put on shelf");
     expect(out).not.toContain('data-action="openTable"');
     // A round already open runs to its resolve: its table stays one click away.
     const wheel = off.find(b => b.kind === "roulette");
@@ -110,8 +111,11 @@ describe("the Boxes table", () => {
     expect(boxesTableHTML({ boxes: off, pools: POOLS, recent: "royal", esc })).toContain('<tr class="lc-row--new lc-row--off" role="row">');
   });
 
-  it("says so when there are no boxes", () => {
-    expect(boxesTableHTML({ boxes: [], pools: {}, esc })).toContain("No boxes.");
+  it("says so when there are no boxes, and offers the starter crates (starter.js)", () => {
+    const html = boxesTableHTML({ boxes: [], pools: {}, esc });
+    expect(html).toContain("No games yet.");
+    expect(html).toContain('data-action="starterCrates"');
+    expect(html).toContain("Add starter crates</button>");
   });
 });
 
@@ -122,6 +126,18 @@ describe("the tab", () => {
     for (const [action, label] of NEW_BUTTONS) expect(html).toContain(`data-action="${action}"><i class="fas fa-plus"></i> ${label}</button>`);
     expect(html).toContain('<span class="lc-pool__hint lc-manager__status" role="status">Royal Vault is on the shelf at 1,200 gp.</span>');
     expect(html).toContain('<table class="lc-table lc-table--stack lc-table--boxes"');
+  });
+
+  it("keeps Add starter crates on the toolbar once there are games, apart from the New buttons", () => {
+    const html = boxesTabHTML({ boxes: BOXES, pools: POOLS, esc });
+    expect(html.match(/data-action="starterCrates"/g)).toHaveLength(1);
+    expect(html).toMatch(/<div class="lc-toolbar lc-toolbar--boxes">[^]*data-action="starterCrates"[^]*<\/div>/);
+    expect(NEW_BUTTONS.map(([a]) => a)).not.toContain("starterCrates");
+    // Empty, the offer is in the tab's body alone, and the drop hint is its first line's.
+    const empty = boxesTabHTML({ boxes: [], pools: {}, esc });
+    expect(empty.match(/data-action="starterCrates"/g)).toHaveLength(1);
+    expect(empty).not.toContain("lc-boxes__drop");
+    expect(empty).toContain("drop a roll table here");
   });
 
   it("counts the games players can see in the toolbar", () => {

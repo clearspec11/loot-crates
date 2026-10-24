@@ -26,7 +26,7 @@ import { onTable, openRound, resolveRound, cancelRound } from "./table.js";
 import { requestStake, isActiveGM } from "./socket.js";
 import { setTableWindow } from "./reveal.js";
 import { buyableActors } from "./shop.js";
-import { tableBodyHTML, phaseOf, stateText, stakeSentence, countFor, countdownText, betLabelFor } from "./tableview.js";
+import { tableBodyHTML, phaseOf, stateText, stakeSentence, countFor, countdownText, betLabelFor, gateBet } from "./tableview.js";
 import { cascadeOffset } from "./revealcard.js";
 import "./roulette.js";
 import "./auction.js";
@@ -87,7 +87,15 @@ export class TableWindow extends ApplicationV2 {
     if (!h || (r && (r.status !== h.status || (r.closesAt ?? 0) >= (h.closesAt ?? 0)))) return r;
     return { ...(r ?? {}), ...h };
   }
-  get game() { return getBoxes()[this.round?.boxId ?? this.boxId] ?? null; }
+  // The game as last seen: one deleted mid-round (its round called off
+  // first, manager.js Delete) still names the window and speaks in its
+  // kind's words, so the players read that the round was called off.
+  #lastGame = null;
+  get game() {
+    const game = getBoxes()[this.round?.boxId ?? this.boxId] ?? null;
+    if (game) this.#lastGame = game;
+    return game ?? this.#lastGame;
+  }
   get kind() { return getKind(kindOf(this.game ?? this.reveal ?? {})) ?? null; }
   get title() { return this.kind?.tableView?.title?.(this.game) ?? "The table"; }
   get phase() { return phaseOf(this.round, { reveal: this.reveal, landed: this.landed, voided: !!this.voided }); }
@@ -243,7 +251,11 @@ export class TableWindow extends ApplicationV2 {
     // The form follows the table: the Auction's field and button move to
     // the next legal bid as bids land.
     const form = this.element?.querySelector(".lc-table__form");
-    if (form && !this.#busy) view.syncForm?.(form, { game, stakes });
+    if (form && !this.#busy) {
+      view.syncForm?.(form, { game, stakes });
+      // Taken off the shelf mid-round (or put back): the bet follows.
+      gateBet(form, this.game, view);
+    }
   }
 
   // A player's bet: read, checked here first (so a slip is said before any
@@ -255,6 +267,7 @@ export class TableWindow extends ApplicationV2 {
     const btn = form.querySelector(".lc-table__bet");
     const values = readValues(form);
     this.#values = values;
+    if (gateBet(form, this.game, view)) return;
     let bet;
     try { bet = view.readBet(this.game, values, this.stakes()); } catch (err) { if (why) why.textContent = err.message; return; }
     const actorId = values.actorId ?? viewerActors()[0]?.id;
@@ -275,6 +288,8 @@ export class TableWindow extends ApplicationV2 {
         btn.removeAttribute("aria-disabled");
         btn.textContent = betLabelFor(view, this.game, { stakes: this.stakes(), values: readValues(form) });
         view.syncForm?.(form, { game: this.game, stakes: this.stakes() });
+        // Off again if the game left the shelf while the bet was out.
+        gateBet(form, this.game, view);
       }
     }
   }

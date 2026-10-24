@@ -66,15 +66,19 @@ export function shopEmptyHTML(isGM) {
     : `<p class="lc-shop__empty">No crates on the shelf yet. The GM hasn't put any out.</p>`;
 }
 
+export const SHOP_TOGGLE_LABEL = "Shop open";
+
 export const MANAGER_TABS = [["pools", "Pools"], ["boxes", "Boxes"], ["log", "Pull log"]];
 
 // The manager's nav: the tabs (the ARIA tabs pattern, manager.js), then
-// "View shop" and the shop's open or closed toggle.
+// "View shop" and the shop's toggle: one fixed label, "Shop open", pressed
+// while players can buy (the ARIA toggle-button pattern, as each Boxes
+// row's "On the shelf"); its switch (module.css) shows the state.
 export function managerNavHTML({ tab = "pools", shopOpen = false } = {}) {
   return `<nav class="lc-tabs">
         <div class="lc-tabs__list" role="tablist" aria-label="Loot Crates sections">${MANAGER_TABS.map(([k, l]) => `<button type="button" role="tab" id="lc-manager-tab-${k}" aria-controls="lc-manager-panel" aria-selected="${k === tab}" tabindex="${k === tab ? 0 : -1}" data-action="switchTab" data-tab="${k}" class="${k === tab ? "active" : ""}">${l}</button>`).join("")}</div>
         <span class="lc-tabs__spacer"></span>
         <span class="lc-tabs__shop"><button type="button" data-action="openShop" class="lc-view-shop" title="Open the Crate Shop window"><i class="fas fa-store" inert></i> View shop</button>
-        <button type="button" data-action="toggleShop" class="lc-shop-toggle" data-open="${shopOpen}" aria-pressed="${shopOpen}" title="${shopOpen ? "Players can buy now. Click to close the shop." : "Players can't buy now. Click to open the shop."}">${shopOpen ? "Shop open" : "Shop closed"}</button></span>
+        <button type="button" data-action="toggleShop" class="lc-shop-toggle lc-switch" data-open="${shopOpen}" aria-pressed="${shopOpen}" title="${shopOpen ? "Players can buy now. Click to close the shop." : "Players can't buy now. Click to open the shop."}">${SHOP_TOGGLE_LABEL}</button></span>
       </nav>`;
 }

@@ -5,7 +5,13 @@
 //     NODE_PATH=$(npm root -g) node foundry-dev/headless/live-deck.cjs [--shot out.png]
 //
 // Env: PLAYER (default Player2, must own Crate Tester), DECK (the deck's
-// name, default "Live deck"), HIDE_GM=1 (the GM's tab in the background).
+// name, default "Live deck"), HIDE_GM=1 (the GM's tab in the background),
+// STREAK_MIN (the deck's streak window in minutes, deck.js streakMinutes;
+// unset seeds none, which reads as the two-minute default). With a window
+// set, once the refund is checked the run waits the window out, the
+// player opens the shop again (the Crates button's openShop) and the card
+// must read "Draw for 10 gp" with no streak line: the price back down by
+// the deck's own window, as the GM will charge it.
 //
 // Two headless clients, the Gamemaster and the player, each with the
 // installed module's socket listener removed and the branch's registered
@@ -57,6 +63,7 @@ const MODULE_BASE = process.env.MODULE_BASE || "http://localhost:8766/";
 const PLAYER = process.env.PLAYER || "Player2";
 const DECK = process.env.DECK || "Live deck";
 const HIDE_GM = process.env.HIDE_GM === "1";
+const STREAK_MIN = process.env.STREAK_MIN != null && process.env.STREAK_MIN !== "" ? Number(process.env.STREAK_MIN) : null;
 const shot = process.argv.includes("--shot") ? process.argv[process.argv.indexOf("--shot") + 1] : null;
 
 async function join(browser, user) {
@@ -107,7 +114,7 @@ async function join(browser, user) {
 
 // The GM's side: seed the deck, note what is to be restored.
 async function seed(gm) {
-  return gm.evaluate(async ({ base, name }) => {
+  return gm.evaluate(async ({ base, name, streakMin }) => {
     const store = await import(base + "scripts/store.js");
     const { toCopper } = await import(base + "scripts/currency.js");
     const folder = game.folders.find(f => f.type === "Actor" && f.name === "Loot Crates Test");
@@ -120,25 +127,25 @@ async function seed(gm) {
     const deck = await store.saveBox({
       ...(old ? { id: old.id } : {}), kind: "deck", name, price: 10, pools: [{ id: pool.id, share: 1 }],
       weights: { common: 1, uncommon: 1, rare: 1, veryRare: 1, legendary: 1, artifact: 1 },
-      deck: { step: 1.5, shuffledAt: Date.now(), cards: [
+      deck: { step: 1.5, shuffledAt: Date.now(), ...(streakMin != null ? { streakMinutes: streakMin } : {}), cards: [
         { id: "live-item", label: "Live fortune", kind: "item", weight: 1, once: true },
         { id: "live-loss", label: "Live ruin", kind: "loss", weight: 1, once: true, gp: 5 },
         { id: "live-omen", label: "Live omen", kind: "effect", weight: 1, once: true, text: "The GM decides what the omen means." },
       ] },
       rules: {},
     });
-    // A draw at this deck within the last two minutes would make the first
-    // draw here the second in a row (deck.js STREAK_MS): wait it out.
-    const { STREAK_MS } = await import(base + "scripts/deck.js");
+    // A draw at this deck within its window would make the first draw here
+    // the second in a row (deck.js streakWindowMs): wait it out.
+    const { streakWindowMs } = await import(base + "scripts/deck.js");
     const last = Math.max(0, ...store.getLog().filter(r => r.kind === "deck" && r.boxId === deck.id && r.actorId === actor.id && !r.refunded).map(r => r.at || 0));
-    const waitMs = Math.max(0, last + STREAK_MS + 2000 - Date.now());
+    const waitMs = Math.max(0, last + streakWindowMs(deck) + 2000 - Date.now());
     if (waitMs) await new Promise(r => setTimeout(r, waitMs));
     return {
-      actorId: actor.id, deckId: deck.id, old, waitedMs: waitMs,
+      actorId: actor.id, deckId: deck.id, old, waitedMs: waitMs, windowMs: streakWindowMs(deck), streakMinutes: deck.deck.streakMinutes ?? null,
       purseCp: toCopper(actor.system.currency), items: actor.items.size,
       logIds: store.getLog().map(r => r.id), messages: game.messages.size,
     };
-  }, { base: MODULE_BASE, name: DECK });
+  }, { base: MODULE_BASE, name: DECK, streakMin: STREAK_MIN });
 }
 
 async function restore(gm, before) {
@@ -344,7 +351,7 @@ async function refundFromLog(gm, rowId) {
     if (!gm) throw new Error("the Gamemaster seat is taken; this check needs the headless Gamemaster");
     out.gm = "headless Gamemaster running the branch";
     before = await seed(gm.page);
-    out.before = { purseCp: before.purseCp, items: before.items, rows: before.logIds.length, messages: before.messages, waitedMs: before.waitedMs };
+    out.before = { purseCp: before.purseCp, items: before.items, rows: before.logIds.length, messages: before.messages, waitedMs: before.waitedMs, windowMs: before.windowMs, streakMinutes: before.streakMinutes };
     if (HIDE_GM) {
       out.gmHidden = await gm.page.evaluate(() => {
         Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" });
@@ -406,6 +413,24 @@ async function refundFromLog(gm, rowId) {
     }, out.refund.at);
     if (shot) await pl.page.screenshot({ path: shot });
 
+    // A window set on the deck: wait it out from the first draw (the second
+    // is refunded), then the player opens the shop again and reads the card.
+    if (STREAK_MIN != null) {
+      const firstAt = await gm.page.evaluate(async ({ base, id }) => (await import(base + "scripts/store.js")).getLog().find(r => r.id === id)?.at ?? null, { base: MODULE_BASE, id: rows.rows[0]?.id });
+      const waitMs = Math.max(0, (firstAt ?? Date.now()) + before.windowMs + 2000 - Date.now());
+      await new Promise(r => setTimeout(r, waitMs));
+      out.afterWindow = await pl.page.evaluate(async ({ base, deckId }) => {
+        const { openShop } = await import(base + "scripts/shop.js");
+        const shopApp = [...foundry.applications.instances.values()].find(a => a.options?.id === "loot-crates-shop");
+        if (shopApp) await shopApp.close();
+        const app = openShop();
+        for (let i = 0; i < 100 && !app.element?.querySelector(`.lc-box[data-box="${deckId}"]`); i++) await new Promise(r => setTimeout(r, 50));
+        const card = app.element?.querySelector(`.lc-box[data-box="${deckId}"]`);
+        return { buy: card?.querySelector(".lc-box__buy")?.textContent.trim() ?? null, price: card?.querySelector(".lc-box__buy")?.dataset.price ?? null, rule: card?.querySelector(".lc-box__rule")?.textContent.trim() ?? "" };
+      }, { base: MODULE_BASE, deckId: before.deckId });
+      out.afterWindow.waitedMs = waitMs;
+    }
+
     const f = out.first, s = out.second;
     const [r1, r2] = rows.rows;
     const net = r => Math.round(r.price * 100) - Math.round(r.payoutCp || 0);
@@ -435,6 +460,9 @@ async function refundFromLog(gm, rowId) {
       items: { before: before.items, after: rows.items, granted: [f.row?.item, s.row?.item].filter(Boolean), openItem: [f.reveal?.openItem, s.reveal?.openItem] },
       goldDroppedBaseThenStep: rows.purseCp === before.purseCp - net(r1) - net(r2) && (r1.tone !== "bane" || r1.payoutCp === -500) && (r2.tone !== "bane" || r2.payoutCp === -500),
       cardsLeftDrop: f.cardAfter.left === "2 of 3 cards left" && (s.cardAfter.left === "1 of 3 cards left" || out.cardAfterDraws.left === "1 of 3 cards left") && out.cardAfterDraws.buy === `${DECK}: Draw for 22 gp 5 sp` && /3rd draw in a row: 22 gp 5 sp/.test(out.cardAfterDraws.rule),
+      // The streak line names the deck's own window.
+      windowNamed: out.cardAfterDraws.rule.endsWith(`(back to 10 gp after ${STREAK_MIN == null ? "2 minutes" : `${STREAK_MIN} minute${STREAK_MIN === 1 ? "" : "s"}`})`) && before.windowMs === (STREAK_MIN == null ? 120000 : STREAK_MIN * 60000),
+      priceBackAfterWindow: STREAK_MIN == null || (out.afterWindow?.buy === `${DECK}: Draw for 10 gp` && out.afterWindow.price === "10" && out.afterWindow.rule === ""),
       refund: out.refund.refunded != null && out.afterRefund.purseCp === rows.purseCp + net(r2) && (r2.itemId ? out.afterRefund.items < rows.items : out.afterRefund.items === rows.items) && /Crate Tester/.test(out.refund.dialogText ?? ""),
       cardAfterRefund: out.cardAfterRefund.ms != null && out.cardAfterRefund.ms <= 2000 && out.cardAfterRefund.left === "2 of 3 cards left" && out.cardAfterRefund.buy === `${DECK}: Draw for 15 gp` && /2nd draw in a row: 15 gp/.test(out.cardAfterRefund.rule),
       gmHiddenLandedAtOnce: !HIDE_GM || (out.gmFirst?.landed && out.gmFirst.button === "Close"),

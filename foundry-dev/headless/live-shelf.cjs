@@ -16,9 +16,10 @@
 //      crate's name and a 1 gp price, ticks "Live UI pool", unticks "On the
 //      shelf" (the default button must turn from "Add to shelf" to "Add")
 //      and presses Add. The row must read "Off the shelf" with its toggle
-//      "Put on shelf", the status line say it was added off the shelf, and
+//      "On the shelf" unpressed, the status line say it was added off the
+//      shelf, and
 //      the toolbar count it. The player's open shop must not list it.
-//   2. The GM presses the row's "Put on shelf": focus stays on the toggle,
+//   2. The GM presses the row's "On the shelf" (unpressed): focus stays on the toggle,
 //      now pressed, and the player's open shop shows the crate with its Buy
 //      on within 2 s.
 //   3. The player's hand is on that Buy as the GM presses the toggle again:
@@ -247,7 +248,7 @@ const pressToggle = (gm, boxId) => gm.evaluate(async ({ boxId }) => {
     await pl.page.waitForTimeout(1500);
     out.playerWhileOff = await readCard(pl.page, boxId);
 
-    // 2. Put on shelf: the player's open shop shows it.
+    // 2. On the shelf, pressed: the player's open shop shows it.
     out.putOn = await pressToggle(gm.page, boxId);
     out.playerAfterOn = await untilCard(pl.page, boxId, c => c.listed && !c.off, out.putOn.at);
 
@@ -290,12 +291,12 @@ const pressToggle = (gm, boxId) => gm.evaluate(async ({ boxId }) => {
     out.checks = {
       editorBox: a.tickedAtFirst === true && a.okBefore === "Add to shelf" && a.okAfter === "Add",
       addedOff: a.record?.rules?.shelved === false && a.record?.price === 1 && a.record?.pools?.[0]?.id === before.poolId,
-      rowOff: a.toggle.pressed === "false" && a.toggle.label === "Put on shelf" && a.offTag === "Off the shelf" && a.dimmed,
+      rowOff: a.toggle.pressed === "false" && a.toggle.label === "On the shelf" && a.offTag === "Off the shelf" && a.dimmed,
       saidOff: a.status === `${BOX} added off the shelf. Players can't see it until you put it on the shelf.` && /^\d+ of \d+ on the shelf$/.test(a.count ?? ""),
       playerDoesNotSee: out.playerWhileOff.open && !out.playerWhileOff.listed,
       putOn: on.pressed === "true" && on.label === "On the shelf" && on.focused && on.offTag === "" && !on.dimmed && on.status === `${BOX} is on the shelf; players can see it.`,
       playerSeesWithin2s: out.playerAfterOn.ms != null && out.playerAfterOn.ms <= 2000 && out.playerAfterOn.listed && !out.playerAfterOn.off,
-      takeOff: off.pressed === "false" && off.label === "Put on shelf" && off.focused && off.status === `${BOX} is off the shelf; players can't see it.`,
+      takeOff: off.pressed === "false" && off.label === "On the shelf" && off.focused && off.status === `${BOX} is off the shelf; players can't see it.`,
       staleBuyRefused: s.pressed && s.live && s.notice === "That crate is no longer on the shelf." && !s.listed && !s.busy,
       sentRefused: out.sent.refused && out.sent.message === `${BOX} is no longer on the shelf. Nothing was charged.`,
       nothingCharged: out.after.purseCp === before.purseCp && out.after.items === before.items && out.after.newRows === 0,

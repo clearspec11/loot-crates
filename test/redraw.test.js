@@ -13,7 +13,8 @@ const { registerSettings, setStoreListener, WORLD_KEYS } = await import("../modu
 const { storeRedraw, REDRAW_DELAY_MS } = await import("../module/scripts/redraw.js");
 const { SETTINGS } = await import("../module/scripts/config.js");
 
-const ALL = Object.values(SETTINGS).filter(k => k !== SETTINGS.SOUND);
+// The welcome's record (welcomewindow.js registers it) redraws no window.
+const ALL = Object.values(SETTINGS).filter(k => k !== SETTINGS.SOUND && k !== SETTINGS.WELCOME);
 
 afterEach(() => { setStoreListener(null); vi.useRealTimers(); });
 

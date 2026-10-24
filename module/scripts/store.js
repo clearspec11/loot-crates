@@ -12,7 +12,7 @@
 */
 import { MODULE_ID, SETTINGS } from "./config.js";
 import { normalizeRarity, flattenPool, markEntriesMissing, rawRarityOf, sourceRarityOf, curateEntries } from "./odds.js";
-import { dayKeyOf } from "./clock.js";
+import { dayModeOf, dayKeyFor, byRest } from "./clock.js";
 import { pruneRounds } from "./round.js";
 
 const uid = () => (globalThis.foundry?.utils?.randomID?.(10)) ?? Math.random().toString(36).slice(2, 12);
@@ -85,9 +85,37 @@ export function enqueueWrite(task) {
 const get = key => foundry.utils.deepClone(game.settings.get(MODULE_ID, key));
 const set = (key, value) => game.settings.set(MODULE_ID, key, value);
 
-// The in-game day's key from the world's clock (clock.js), for anything
-// counted per day; null in a world with no clock.
-export const todayKey = () => dayKeyOf(globalThis.game?.time ?? null);
+/*
+  The in-game day (clock.js), for anything counted per day. dayMode() is how
+  this world tells one: from the clock, or (dnd5e's calendar off, its
+  default) at each character's long rest. dnd5e's calendarConfig setting
+  is read the way dnd5e reads it for daily uses; a dnd5e from before that
+  setting counts rests too, and a world with neither has no day (null).
+  todayKey(actorId) is that character's key; null in a world with no day.
+  The rests are counted in the STATE setting under `days` (an actor id to
+  its count), beside the `actorId.boxId` entries, by countRest below.
+*/
+function dnd5eCalendar() {
+  try { return globalThis.game?.settings?.get?.("dnd5e", "calendarConfig") ?? null; } catch { return null; }
+}
+export const dayMode = () => dayModeOf({ config: dnd5eCalendar(), isDnd5e: globalThis.game?.system?.id === "dnd5e", time: globalThis.game?.time ?? null });
+export const restDayOf = actorId => Number(game.settings.get(MODULE_ID, SETTINGS.STATE)?.days?.[actorId]) || 0;
+export function todayKey(actorId) {
+  const rest = byRest(dayMode());
+  return dayKeyFor({ time: globalThis.game?.time ?? null, calendarOn: !rest, restDay: rest && actorId ? restDayOf(actorId) : 0 });
+}
+
+// One more new day for this character, on the GM in the write queue (a
+// pull's read-modify-write of STATE can't lose it). Returns the new count.
+export function countRest(actorId) {
+  return enqueueWrite(async () => {
+    const all = get(SETTINGS.STATE);
+    const days = { ...(all.days ?? {}) };
+    days[actorId] = (Number(days[actorId]) || 0) + 1;
+    await set(SETTINGS.STATE, { ...all, days });
+    return days[actorId];
+  });
+}
 
 export const getPools = () => get(SETTINGS.POOLS);
 export const getBoxes = () => get(SETTINGS.BOXES);
@@ -246,15 +274,18 @@ const entryFromRow = (packId, row) => entryFromItem(row, compendiumUuid(packId, 
   that asks while it is in flight.
 */
 const fetching = new WeakMap();
-const indexReady = pack => {
+const indexReady = (pack, fields = INDEX_FIELDS) => {
   const have = pack.indexFields;
-  return !!(pack.indexed && have?.has && INDEX_FIELDS.every(f => have.has(f)));
+  return !!(pack.indexed && have?.has && fields.every(f => have.has(f)));
 };
-function loadIndex(pack) {
-  if (indexReady(pack)) return Promise.resolve(pack.index);
+// `extra` fields (the starter crates' item subtype) are asked for on top
+// of ours, a superset, so the next plain read is still a cache hit.
+function loadIndex(pack, extra = []) {
+  const fields = extra.length ? [...INDEX_FIELDS, ...extra] : INDEX_FIELDS;
+  if (indexReady(pack, fields)) return Promise.resolve(pack.index);
   let run = fetching.get(pack);
   if (!run) {
-    run = pack.getIndex({ fields: INDEX_FIELDS }).finally(() => fetching.delete(pack));
+    run = pack.getIndex({ fields }).finally(() => fetching.delete(pack));
     fetching.set(pack, run);
   }
   return run;
@@ -269,14 +300,39 @@ function loadIndex(pack) {
   rarity filter would skip it. Only those rows are read from their documents
   (cached once loaded); a row whose rarity is "" or an empty set is known.
 */
-async function indexWithRarity(pack) {
-  const index = await loadIndex(pack);
+async function indexWithRarity(pack, extra = []) {
+  const index = await loadIndex(pack, extra);
   const lost = [...index].filter(r => isLootType(r.type) && rawRarityOf(r.system) === null);
   if (!lost.length) return index;
   const docs = await pack.getDocuments({ _id__in: lost.map(r => r._id) });
   const rarity = new Map(docs.map(d => [d.id, rawRarityOf(d.system) ?? ""]));
   const fixed = new Map(lost.map(r => [r._id, { ...r, system: { ...r.system, rarity: rarity.get(r._id) } }]));
   return [...index].map(r => fixed.get(r._id) ?? r);
+}
+
+// A pack's index rows with their rarity and `extra` fields, for the
+// starter crates' builder (starterbuild.js).
+export const indexRows = async (pack, extra = []) => [...await indexWithRarity(pack, extra)];
+
+/*
+  Adds new pools and games in one queued task (the starter crates): one
+  write of each setting, read fresh, so nothing written meanwhile is lost
+  and every client redraws once. Returns what was written.
+*/
+export function addRecords({ pools = [], boxes = [] } = {}) {
+  return enqueueWrite(async () => {
+    if (pools.length) {
+      const all = getPools();
+      for (const p of pools) all[p.id] = { entries: [], pools: [], ...p };
+      await set(SETTINGS.POOLS, all);
+    }
+    if (boxes.length) {
+      const all = getBoxes();
+      for (const b of boxes) all[b.id] = b;
+      await set(SETTINGS.BOXES, all);
+    }
+    return { pools, boxes };
+  });
 }
 
 /*
@@ -334,7 +390,8 @@ export function packHasLoot(pack) {
                 multiplied through (flattenTable); text results are counted
                 in `text` (their share of the table in textChance), results
                 pointing at other documents in notItems, tables nested too
-                deep or rolling a table above them in tooDeep
+                deep or rolling a table above them in tooDeep, nested tables with
+                no results in emptyTables
   Anything that isn't a physical item type is left out and counted by type;
   so are entries whose uuid is in `known` (already in the pool) or repeats
   within the drop (a table's repeats add their weights together).
@@ -348,7 +405,7 @@ export async function entriesFromDrop(data, { known = [] } = {}) {
   const found = await collectDrop(data);
   if (!found) return null;
   const have = new Set(known);
-  const skipped = { duplicates: 0, notLoot: {}, notItems: found.notItems ?? 0, text: found.text ?? 0, tooDeep: found.tooDeep ?? 0 };
+  const skipped = { duplicates: 0, notLoot: {}, notItems: found.notItems ?? 0, text: found.text ?? 0, tooDeep: found.tooDeep ?? 0, emptyTables: found.emptyTables ?? 0 };
   const byUuid = new Map();
   for (const { type, ...entry } of found.entries) {
     if (type && !isLootType(type)) { skipped.notLoot[type] = (skipped.notLoot[type] ?? 0) + 1; continue; }
@@ -405,7 +462,7 @@ async function collectDrop(data) {
       if (!table) return null;
       const flat = await flattenTable(table, { load: uuid => resolveEntry({ uuid }) });
       const entries = flat.items.map(({ item, weight }) => ({ ...entryFromItem(item), weight, type: item.type }));
-      return { label: table.name, uuid: table.uuid, entries, notItems: flat.notItems, text: flat.text, textWeight: flat.textWeight, tooDeep: flat.tooDeep, flattened: flat.flattened, sumWeights: true };
+      return { label: table.name, uuid: table.uuid, entries, notItems: flat.notItems, text: flat.text, textWeight: flat.textWeight, tooDeep: flat.tooDeep, emptyTables: flat.empty, flattened: flat.flattened, sumWeights: true };
     }
     default: return null;
   }
@@ -430,16 +487,17 @@ const resultWeight = r => Math.max(1, Number(r?.weight) || 1);
   another table brings that table's results in, each weighted by the
   parent result's weight times its own share of its table (its weight over
   that table's total), down to TABLE_DEPTH levels. A table already on the
-  way down (a loop) or past the depth is skipped and counted in tooDeep.
+  way down (a loop) or past the depth is skipped and counted in tooDeep;
+  one with no results is skipped and counted in `empty`.
   Weights stay whole numbers, scaled together so their ratios are exact
   (integerWeights); a table with nothing nested keeps its own weights.
   `load(uuid)` resolves a result's document (fromUuid). Returns { items: [{
-  item, weight }], text, textWeight, notItems, tooDeep, flattened }.
+  item, weight }], text, textWeight, notItems, tooDeep, flattened, empty }.
 */
 export async function flattenTable(root, { load, maxDepth = TABLE_DEPTH } = {}) {
   const items = [];
   const text = [];
-  let notItems = 0, tooDeep = 0, flattened = 0;
+  let notItems = 0, tooDeep = 0, flattened = 0, empty = 0;
   // `num` over `den` is a result's weight in the root table's units; den is
   // the product of the nested tables' totals on the way down (the root's
   // results keep their own weights, so its total never divides).
@@ -454,6 +512,8 @@ export async function flattenTable(root, { load, maxDepth = TABLE_DEPTH } = {}) 
       const doc = await load(uuid);
       if (doc?.documentName === "RollTable") {
         if (depth >= maxDepth || path.includes(doc.uuid)) { tooDeep++; continue; }
+        // A nested table with no results brings nothing in: skipped, not flattened.
+        if (!(doc.results?.size ?? doc.results?.length ?? [...(doc.results ?? [])].length)) { empty++; continue; }
         flattened++;
         await walk(doc, n, d, depth + 1, [...path, doc.uuid]);
       } else if (doc?.documentName === "Item") items.push({ item: doc, n, d });
@@ -466,7 +526,7 @@ export async function flattenTable(root, { load, maxDepth = TABLE_DEPTH } = {}) 
     items: items.map((i, k) => ({ item: i.item, weight: ints[k] })),
     text: text.length,
     textWeight: ints.slice(items.length).reduce((n, w) => n + w, 0),
-    notItems, tooDeep, flattened,
+    notItems, tooDeep, flattened, empty,
   };
 }
 

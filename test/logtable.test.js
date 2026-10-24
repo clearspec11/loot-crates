@@ -53,7 +53,7 @@ describe("the Pull log table", () => {
   it("hides the misses on request and says how many", () => {
     const hidden = logTableHTML({ log: sampleLog(NOW), rounds, hideMisses: true, esc });
     expect(rows(hidden)).toHaveLength(12);
-    expect(hidden).toContain('aria-pressed="true">Show misses</button>');
+    expect(hidden).toContain('aria-pressed="true">Hide misses</button>');
     expect(hidden).toContain("5 throws that gave nothing hidden");
   });
 

@@ -85,7 +85,7 @@ describe("a well's throws that gave nothing", () => {
     expect(html).not.toContain('data-row="n2"');
     expect(html).toContain("Rope");
     expect(html).toContain("Wishing Well (1 sp)");
-    expect(html).toContain('data-action="toggleMisses" aria-pressed="false">Hide misses</button>');
+    expect(html).toContain('class="lc-switch" data-action="toggleMisses" aria-pressed="false">Hide misses</button>');
     expect(html).toContain("3 throws that gave nothing, folded by day");
     expect((html.match(/<tr class=/g) ?? []).length).toBe(3);
   });
@@ -101,10 +101,31 @@ describe("a well's throws that gave nothing", () => {
     html = app._log();
     expect(html).not.toContain("throw, nothing");
     expect(html).toContain("Rope");
-    expect(html).toContain('aria-pressed="true">Show misses</button>');
+    // One label; the pressed state says the misses are hidden.
+    expect(html).toContain('aria-pressed="true">Hide misses</button>');
     expect(html).toContain("2 throws that gave nothing hidden");
     log = [miss("n2", 20)];
     expect(app._log()).toContain("Only misses so far; show them with the button above.");
+  });
+
+  it("folds a crate's Nothing pulls by the same rule, in its own word, and hides them with the well's", () => {
+    const nothing = (id, at, over = {}) => ({ id, at, kind: "crate", outcome: "nothing", boxId: "goblin", boxName: "Goblin's Pockets", actorId: "a1", actorName: "Brinn", day: "y1d7", price: 2, name: "Nothing", itemId: null, ...over });
+    log = [nothing("p1", 40), miss("n1", 30), nothing("p2", 25), row({ id: "c1", at: 10 }), nothing("p3", 5, { day: "y1d6" })];
+    const app = new CrateManager();
+    let html = app._log();
+    expect(html).toContain("2 pulls, nothing");
+    expect(html).toContain("1 pull, nothing");
+    expect(html).toContain("1 throw, nothing");
+    expect(html).toContain('data-action="refund" data-row="p1" aria-label="Refund one of 2 pulls">Refund one</button>');
+    expect(html).toContain('data-action="refund" data-row="p3" aria-label="Refund the pull">Refund</button>');
+    expect(html).not.toContain('data-row="p2"');
+    expect(html).toContain("3 pulls and 1 throw that gave nothing, folded by day");
+    expect((html.match(/<tr class=/g) ?? []).length).toBe(4);
+    app.hideMisses = true;
+    html = app._log();
+    expect(html).not.toContain(", nothing");
+    expect(html).toContain("Rope");
+    expect(html).toContain("3 pulls and 1 throw that gave nothing hidden");
   });
 
   it("leaves a crate's log exactly as it was: no toolbar, no groups", () => {

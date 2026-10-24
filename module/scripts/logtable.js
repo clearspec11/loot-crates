@@ -1,12 +1,13 @@
 /*
   The manager's Pull log as markup (manager.js _log), drawn by the manager
-  and by the harness: the log newest first, a well's misses folded per
-  character and day (well.js collapseMisses) into one line whose Refund
-  gives the newest of them back, so the log stays readable at a table that
-  throws a lot and every throw is still refundable; a table round's stakes
+  and by the harness: the log newest first, every game's misses (a well's
+  quiet throws, a crate's "Nothing") folded per character, game and day
+  (well.js collapseMisses) into one line whose Refund gives the newest of
+  them back, so the log stays readable at a table that plays a lot and
+  every miss is still refundable; a table round's stakes
   folded under the round's own line (round.js groupRounds). "Hide misses"
-  leaves only the pulls that gave something (the throws stay in the
-  setting). Under a row, in small print: where a GM-set rarity came from,
+  (a toggle with one label, pressed while they are hidden) leaves only the
+  pulls that gave something (the misses stay in the setting). Under a row, in small print: where a GM-set rarity came from,
   what a game paid or took, a stake's state, and a sale its buyer called
   off too late. An auction's house bid (auction.js) is a row with no
   character and no coins: it names its bidder and its bid, and has no
@@ -23,7 +24,7 @@
 import { RARITY_LABEL } from "./config.js";
 import { normalizeRarity } from "./odds.js";
 import { CARD_KIND_LABEL } from "./deck.js";
-import { collapseMisses, throwsText } from "./well.js";
+import { collapseMisses, throwsText, missCountText } from "./well.js";
 import { groupRounds, roundLine, stakeNote } from "./round.js";
 import { formatPrice } from "./currency.js";
 import { refundTime } from "./chatcard.js";
@@ -75,7 +76,8 @@ export function logLateNote(row) {
 export function logTableHTML({ log = [], rounds = {}, hideMisses = false, esc = plain }) {
   if (!log.length) return `<p class="lc-empty">No pulls yet.</p>`;
   const items = groupRounds(collapseMisses(log), rounds);
-  const misses = items.filter(x => x.group).reduce((n, g) => n + g.rows.length, 0);
+  const folded = items.filter(x => x.group);
+  const misses = folded.reduce((n, g) => n + g.rows.length, 0);
   const shown = hideMisses ? items.filter(x => !x.group) : items;
   const [WHEN, WHO, BOX, GOT, ACT] = LOG_COLUMNS;
   const status = (id, at) => `<span class="lc-log__status" tabindex="-1" data-row="${esc(id)}">refunded ${esc(refundTime(at))}</span>`;
@@ -95,8 +97,8 @@ export function logTableHTML({ log = [], rounds = {}, hideMisses = false, esc = 
     const newest = g.rows[0];
     return `<tr class="lc-row--group${g.refunded ? " lc-row--refunded" : ""}" role="row">
         ${cell(WHEN, new Date(newest.at).toLocaleString())}${cell(WHO, esc(g.actorName))}${cell(BOX, `${esc(g.boxName)} (${esc(formatPrice(g.price))})`)}
-        ${got("none", g.refunded ? `<s>${esc(throwsText(n))}</s>` : esc(throwsText(n)))}
-        ${cell(ACT, g.refunded ? status(newest.id, newest.refunded) : `<button type="button" data-action="refund" data-row="${esc(newest.id)}" aria-label="${n === 1 ? "Refund the throw" : `Refund one of ${n} throws`}">${n === 1 ? "Refund" : "Refund one"}</button>`)}
+        ${got("none", g.refunded ? `<s>${esc(throwsText(n, g.noun))}</s>` : esc(throwsText(n, g.noun)))}
+        ${cell(ACT, g.refunded ? status(newest.id, newest.refunded) : `<button type="button" data-action="refund" data-row="${esc(newest.id)}" aria-label="${n === 1 ? `Refund the ${g.noun ?? "throw"}` : `Refund one of ${n} ${g.noun ?? "throw"}s`}">${n === 1 ? "Refund" : "Refund one"}</button>`)}
       </tr>`;
   };
   // A table round: its header where its newest stake was, its stakes under it.
@@ -104,6 +106,6 @@ export function logTableHTML({ log = [], rounds = {}, hideMisses = false, esc = 
         ${cell(WHEN, new Date(g.at).toLocaleString())}${cell(WHO, "Round")}${cell(BOX, `${esc(g.boxName)} (${esc(formatPrice(g.staked))} staked)`)}
         ${got("none", esc(roundLine(g)))}${cell(ACT, "")}
       </tr>${g.rows.map(row).join("")}`;
-  const toolbar = misses ? `<div class="lc-toolbar"><button type="button" data-action="toggleMisses" aria-pressed="${hideMisses}">${hideMisses ? "Show misses" : "Hide misses"}</button><span class="lc-pool__hint">${hideMisses ? `${misses} throw${misses === 1 ? "" : "s"} that gave nothing hidden` : `${misses} throw${misses === 1 ? "" : "s"} that gave nothing, folded by day`}</span></div>` : "";
+  const toolbar = misses ? `<div class="lc-toolbar"><button type="button" class="lc-switch" data-action="toggleMisses" aria-pressed="${hideMisses}">Hide misses</button><span class="lc-pool__hint">${esc(missCountText(folded))} that gave nothing${hideMisses ? " hidden" : ", folded by day"}</span></div>` : "";
   return `${toolbar}${shown.length ? tableHTML("lc-table--log", LOG_COLUMNS, shown.map(x => (x.round ? round(x) : x.group ? group(x) : row(x.row))).join("")) : `<p class="lc-empty">Only misses so far; show them with the button above.</p>`}`;
 }
