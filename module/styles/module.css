@@ -821,6 +821,21 @@
   border-color: var(--lc-ok);
   background: radial-gradient(circle at calc(100% - 6px) 50%, var(--lc-ok) 3.5px, transparent 4px), color-mix(in srgb, var(--lc-ok) 22%, transparent);
 }
+/* Forced colours (Windows high contrast) drop gradients and force every
+   colour, which would leave on and off as the same empty track now that
+   the label no longer says the state. The switch keeps its own drawing
+   there, in the system's colours: the knob in the text colour at the
+   left while off, in the highlight colour at the right while on. */
+@media (forced-colors: active) {
+  .loot-crates .lc-switch::before {
+    forced-color-adjust: none; border-color: ButtonText;
+    background: radial-gradient(circle at 6px 50%, ButtonText 3.5px, Canvas 4px);
+  }
+  .loot-crates .lc-switch[aria-pressed="true"]::before {
+    border-color: Highlight;
+    background: radial-gradient(circle at calc(100% - 6px) 50%, Highlight 3.5px, Canvas 4px);
+  }
+}
 /* The tab's pane is a container: the Boxes and Pull log tables follow its
    width, not the screen's (the stacked rows under "Narrow windows"). */
 .loot-crates .lc-tab { overflow: auto; padding-right: 2px; container: lc-tab / inline-size; }
