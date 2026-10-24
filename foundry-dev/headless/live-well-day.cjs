@@ -12,8 +12,12 @@
 // Two headless clients, the Gamemaster and the player, each running the
 // branch's socket and its dnd5e.restCompleted hook from MODULE_BASE (as
 // live-well.cjs does). The GM turns dnd5e's calendar off if the world has
-// it on, and seeds "Live well" (1 sp, odds nothing 100) with a cap of one
-// more throw than Crate Tester has made today, so one throw reaches it.
+// it on, and seeds "Live well" (1 sp, odds nothing 100) under a fresh id
+// with a cap of one more throw than Crate Tester has made at it today, so
+// one throw reaches it. The id is fresh because the days entry is put back
+// at the end while the run's throw rows stay, keyed r1 and r2: on the same
+// id they would count again the next time the character reaches those
+// rest counts, and the card would read "1 of 2" where "0 of 2" is expected.
 // Then, as people do:
 //
 //   1. The player opens the shop, picks Crate Tester and presses Throw; once
@@ -106,7 +110,10 @@ async function seed(gm) {
     const today = store.todayKey(actor.id);
     const base0 = old ? throwsToday(store.getLog(), { boxId: old.id, actorId: actor.id, day: today }) : 0;
     const well = await store.saveBox({
-      ...(old ? { id: old.id } : {}), kind: "well", name, price: 0.1, pools: [{ id: pool.id, share: 1 }],
+      // A fresh id each run: a run's throws stay in the log keyed on rest
+      // counts the finally puts back, so on the old id they would count
+      // again the next time the character reaches those counts.
+      kind: "well", name, price: 0.1, pools: [{ id: pool.id, share: 1 }],
       weights: { uncommon: 75, rare: 25 }, odds: { nothing: 100, coin: 0, item: 0 }, rules: { cap: base0 + 1, pity: null, noDuplicates: false, stock: null },
     });
     const days = game.settings.get("loot-crates", "actorState")?.days ?? {};
@@ -125,7 +132,7 @@ async function restore(gm, before) {
     const step = async (key, fn) => { try { out[key] = await fn(); } catch (err) { out[key] = `failed: ${err?.message ?? err}`; } };
     const store = await import(base + "scripts/store.js");
     await step("well", async () => {
-      if (before.old) { await store.saveBox(before.old); return "restored"; }
+      if (before.old) { await store.removeBox(before.wellId); await store.saveBox(before.old); return "restored (this run's well removed)"; }
       return Object.values(store.getBoxes()).some(b => b.name === name) ? "left seeded (new this run)" : "none";
     });
     await step("days", () => store.enqueueWrite(async () => {
