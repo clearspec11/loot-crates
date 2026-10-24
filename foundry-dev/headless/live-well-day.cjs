@@ -13,8 +13,7 @@
 // branch's socket and its dnd5e.restCompleted hook from MODULE_BASE (as
 // live-well.cjs does). The GM turns dnd5e's calendar off if the world has
 // it on, and seeds "Live well" (1 sp, odds nothing 100) under a fresh id
-// with a cap of one more throw than Crate Tester has made at it today, so
-// one throw reaches it. The id is fresh because the days entry is put back
+// with a cap of one throw, so Crate Tester's first throw reaches it. The id is fresh because the days entry is put back
 // at the end while the run's throw rows stay, keyed r1 and r2: on the same
 // id they would count again the next time the character reaches those
 // rest counts, and the card would read "1 of 2" where "0 of 2" is expected.
@@ -106,9 +105,9 @@ async function seed(gm) {
     const turnOff = store.dayMode() !== "rest";
     if (turnOff) await game.settings.set("dnd5e", "calendarConfig", { ...calendar, enabled: false, dailyRecovery: "" });
     const old = Object.values(store.getBoxes()).find(b => b.name === name) ?? null;
-    const { throwsToday } = await import(base + "scripts/well.js");
     const today = store.todayKey(actor.id);
-    const base0 = old ? throwsToday(store.getLog(), { boxId: old.id, actorId: actor.id, day: today }) : 0;
+    // A well under a fresh id has no throws yet, so the cap is one.
+    const base0 = 0;
     const well = await store.saveBox({
       // A fresh id each run: a run's throws stay in the log keyed on rest
       // counts the finally puts back, so on the old id they would count
