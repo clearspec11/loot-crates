@@ -127,10 +127,13 @@ describe("module.json's store fields", () => {
     }
   });
 
-  it("keeps the author and license for the user to decide (docs/RELEASE.md says so)", () => {
-    expect(manifest.license).toBeUndefined();
-    expect(existsSync(path.join(root, "LICENSE"))).toBe(false);
-    expect(read("docs/RELEASE.md")).toMatch(/TODO: replace it with the name/);
+  it("names the author and ships under the MIT license", () => {
+    expect(manifest.authors).toEqual([{ name: "clearspec11", url: "https://github.com/clearspec11" }]);
+    expect(manifest.license).toBe("LICENSE");
+    const license = read("LICENSE");
+    expect(license).toMatch(/^MIT License/);
+    expect(license).toMatch(/Copyright \(c\) 2026 clearspec11/);
+    expect(read("scripts/build.mjs")).toMatch(/"LICENSE"/);
   });
 });
 

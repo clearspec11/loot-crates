@@ -6,15 +6,20 @@ The newest numbered entry's version is the one in `module/module.json`, and its 
 
 ## Unreleased
 
-Ready for a first public release.
+- Nothing yet.
 
-- Starter crates: in an empty world, **Add starter crates** on the manager's Pools or Boxes tab fills four pools from the dnd5e system's own compendiums and adds one game of every kind, all off the shelf until you put them out.
+## 1.0.0
+
+The first public release: starter crates, a welcome for the GM, and a polish pass.
+
+- Starter crates: in an empty world, Add starter crates on the manager's Pools or Boxes tab fills four pools from the dnd5e system's own compendiums and adds one game of every kind, all off the shelf until you put them out.
 - A welcome window on a GM's first load says where Crates and Manage crates are and what to do first. After an update, a short "What's new" note says what changed. Show the welcome, in Game Settings under Loot Crates, brings it back.
 - A price, weight or rarity saved in place says so in the tab's status line ("Saved: Goblin Crate, 12 gp 5 sp.").
 - The deck's "draws in a row" window is a field in the deck editor instead of a fixed two minutes.
 - Deleting a wheel or an auction with a round open calls the round off first. The confirm says how many stakes it holds and how much gold, and every stake comes back at once instead of on a later reload.
 - Smaller fixes: a table window no longer offers a bet on a wheel or lot taken off the shelf mid-round; the Restock line follows a later change to Stock; Hide misses folds a crate's "Nothing" pulls the way it folds the well's throws.
 - A README for GMs and players, with install steps, a quick start and screenshots.
+- Released under the MIT license.
 - With dnd5e's calendar off (its default), a day now ends at each character's long rest, as it does for dnd5e's own daily uses: the well's daily cap and a limit per day open again after a long rest instead of staying shut until the GM moves the world's time. The editors say so beside the cap. Counts made before this update were keyed on the clock, so the first session after it starts every character's day fresh.
 
 ## 0.14.0

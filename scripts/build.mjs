@@ -4,7 +4,8 @@
      dist/module.zip            module.json at the zip root
      dist/module.json           the manifest, for a release's download URL
    It packs only what package-files.mjs allows (module.json, scripts/*.js,
-   styles/*.css, lang/*.json) and says the zip's size and file count. */
+   styles/*.css, lang/*.json) plus the repository's LICENSE, which MIT
+   requires in every copy, and says the zip's size and file count. */
 import { cp, mkdir, readFile, rm, stat } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
@@ -41,6 +42,7 @@ await rm(dist, { recursive: true, force: true });
 await mkdir(dist, { recursive: true });
 await cp(src, path.join(dist, manifest.id), { recursive: true });
 await cp(path.join(src, "module.json"), path.join(dist, "module.json"));
+try { await cp(path.join(root, "LICENSE"), path.join(dist, manifest.id, "LICENSE")); } catch { fail("LICENSE is missing at the repository root"); }
 execFileSync("zip", ["-qr", path.join(dist, "module.zip"), "."], { cwd: path.join(dist, manifest.id) });
 const { size } = await stat(path.join(dist, "module.zip"));
 console.log(`build: ${manifest.id} ${manifest.version}, ${scripts} scripts parsed, dist/module.zip written (${files.length} files, ${Math.round(size / 1024)} KB)`);

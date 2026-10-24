@@ -23,8 +23,8 @@ styles/module.css
 
 ## Going public (VIB-199)
 
-- [ ] **License.** Pick one and add `LICENSE` at the root, then set `license` in `module/module.json`. Not decided yet: the user's call.
-- [ ] **Author.** `authors` in `module/module.json` reads `{ "name": "Loot Crates" }`. TODO: replace it with the name (and optionally `url` or `discord`) the module should be published under. Not decided yet: the user's call.
+- [x] **License.** MIT (the user's choice, 2026-10-24): `LICENSE` at the root, `"license": "LICENSE"` in `module/module.json`, and the build copies it into every zip.
+- [x] **Author.** `authors` is the user's GitHub handle, `{ "name": "clearspec11", "url": "https://github.com/clearspec11" }` (the user's choice, 2026-10-24).
 - [x] **History check.** Done on 2026-10-24 over all 152 commits on every branch; see below.
 - [ ] **Flip the repository public** on GitHub (Settings, General, Danger Zone, Change visibility).
 - [ ] **Check the README on GitHub**: every image shows and the manifest URL installs on a clean Foundry.
