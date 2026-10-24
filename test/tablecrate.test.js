@@ -281,12 +281,36 @@ describe("nested tables flattened", () => {
     } finally { vi.unstubAllGlobals(); }
   });
 
+  it("skips a nested table with no results, counting it as empty, not flattened", async () => {
+    const empty = table("RollTable.empty", []);
+    const child = table("RollTable.child", [doc("Item.c1", 1)]);
+    const root = table("RollTable.root", [doc("Item.a", 1), doc("RollTable.empty", 5), doc("RollTable.child", 1)]);
+    const docs = new Map([root, empty, child, item("a"), item("c1")].map(d => [d.uuid, d]));
+    const flat = await flattenTable(root, { load: async u => docs.get(u) ?? null });
+    expect(flat.items.map(i => i.item.name)).toEqual(["a", "c1"]);
+    expect(flat).toMatchObject({ flattened: 1, empty: 1, tooDeep: 0, notItems: 0 });
+    // A collection (Foundry's results) with nothing in it is empty too.
+    const sized = table("RollTable.sized", Object.assign([], { size: 0 }));
+    docs.set(sized.uuid, sized);
+    const flat2 = await flattenTable(table("RollTable.r2", [doc("Item.a", 1), doc("RollTable.sized", 1)]), { load: async u => docs.get(u) ?? null });
+    expect(flat2).toMatchObject({ flattened: 0, empty: 1 });
+    vi.stubGlobal("fromUuid", vi.fn(async u => docs.get(u) ?? null));
+    try {
+      const plan = await entriesFromDrop({ type: "RollTable", uuid: "RollTable.root" });
+      expect(plan.flattened).toBe(1);
+      expect(plan.skipped.emptyTables).toBe(1);
+      expect(describeSkipped(plan.skipped, { flattened: plan.flattened })).toEqual(["1 nested table flattened into its items", "1 empty nested table skipped: no results to bring in"]);
+      expect(dropPreviewHTML(plan, "Loot", String)).toContain("1 empty nested table skipped: no results to bring in");
+    } finally { vi.unstubAllGlobals(); }
+  });
+
   it("words what was left out of a deep or looping table", () => {
     expect(describeSkipped({ text: 2, tooDeep: 2, notItems: 1 }, { textAsNothing: true })).toEqual([
       "2 text results counted as nothing",
       "1 table result that isn't an item, skipped",
       "2 nested tables skipped: more than 5 deep, or rolling a table above them",
     ]);
+    expect(describeSkipped({ emptyTables: 2 })).toEqual(["2 empty nested tables skipped: no results to bring in"]);
   });
 });
 

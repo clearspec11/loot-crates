@@ -21,7 +21,7 @@
   cell leads with the On the shelf toggle (aria-pressed, as the shop's own
   switch), on a line of its own as Reshuffle is, so the table is no wider
   for it; a game off the shelf is tagged so beside its kind, its row
-  dimmed, its toggle reading "Put on shelf", and a wheel's "Open a round"
+  dimmed, its toggle unpressed, and a wheel's "Open a round"
   left out (a round already open still offers "Go to the table"). The
   toolbar counts them: "4 of 6 on the shelf".
   The row a New just added carries lc-row--new (an edge in the gold rule,

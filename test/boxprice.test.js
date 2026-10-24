@@ -168,19 +168,31 @@ describe("the Boxes row's price", () => {
     expect(input(app, "x1").getAttribute("aria-label")).toBe("Stake at Dragon's Teeth");
   });
 
-  it("saves a typed price, the one way money is written, and says nothing", async () => {
+  it("saves a typed price, the one way money is written, and says it saved in the status line", async () => {
     const app = await manager();
     const el = type(app, "c1", "7 gp 5 sp");
     await settle();
     expect(store.getBoxes().c1.price).toBe(7.5);
     expect(sets).toBe(1);
     expect(el.value).toBe("7 gp 5 sp");
-    expect(status(app).textContent).toBe("");
+    // One sentence for a screen reader, in the tab's one status line, and
+    // focus still on the row's field.
+    expect(status(app).getAttribute("role")).toBe("status");
+    expect(status(app).textContent).toBe("Saved: Goblin Crate, 7 gp 5 sp.");
+    expect(focused()).toBe(input(app, "c1"));
+    expect(input(app, "c1").value).toBe("7 gp 5 sp");
     // A bare number is gold, written back as the shop will say it.
     type(app, "c1", "12.5");
     await settle();
     expect(store.getBoxes().c1.price).toBe(12.5);
     expect(input(app, "c1").value).toBe("12 gp 5 sp");
+    expect(status(app).textContent).toBe("Saved: Goblin Crate, 12 gp 5 sp.");
+    // The same price again writes nothing and says nothing new.
+    status(app).textContent = "";
+    type(app, "c1", "12 gp 5 sp");
+    await settle();
+    expect(sets).toBe(2);
+    expect(status(app).textContent).toBe("");
   });
 
   it("writes only the price: a pull's stock and pity written in the same burst stay", async () => {
@@ -311,6 +323,66 @@ describe("the editors read money the same way", () => {
     await pending;
     await settle();
     expect(store.getBoxes().d1.price).toBe(0.5);
+  });
+});
+
+describe("the deck's streak window in its editor", () => {
+  async function editDeck(set) {
+    const app = await manager();
+    const pending = act(app, "editBox", { dataset: { box: "d1" } });
+    await settle(2);
+    const shown = field("streakMinutes").value;
+    if (set != null) field("streakMinutes").value = set;
+    dialog.save();
+    await pending;
+    await settle();
+    return shown;
+  }
+
+  it("opens on 2 minutes for a deck saved before it, and keeps 2 when untouched", async () => {
+    expect(store.getBoxes().d1.deck.streakMinutes).toBeUndefined();
+    expect(await editDeck()).toBe("2");
+    expect(store.getBoxes().d1.deck).toMatchObject({ step: 1.5, streakMinutes: 2 });
+  });
+
+  it("stores the GM's minutes on the record, and blank or 0 as no streak", async () => {
+    await editDeck("1");
+    expect(store.getBoxes().d1.deck.streakMinutes).toBe(1);
+    expect(await editDeck("")).toBe("1");
+    expect(store.getBoxes().d1.deck.streakMinutes).toBe(0);
+    expect(await editDeck("0")).toBe("0");
+    expect(store.getBoxes().d1.deck.streakMinutes).toBe(0);
+    await editDeck("5");
+    expect(store.getBoxes().d1.deck.streakMinutes).toBe(5);
+  });
+
+  it("names the field and its hint for a screen reader", async () => {
+    const app = await manager();
+    const pending = act(app, "editBox", { dataset: { box: "d1" } });
+    await settle(2);
+    const input = field("streakMinutes");
+    expect(input.closest("label").textContent.replace(/\s+/g, " ").trim()).toBe("Draws count as in a row within minutes");
+    expect(dialog.form.querySelector(`[id="${input.getAttribute("aria-describedby")}"]`).textContent).toMatch(/Blank or 0: every draw is a first draw\.$/);
+    dialog.cancel();
+    await pending;
+  });
+});
+
+describe("a pool row's weight and rarity", () => {
+  it("say they saved in the tab's status line, as a price does", async () => {
+    const app = await manager("pools");
+    const weight = app.element.querySelector('input[data-curate="weight"][data-uuid="Item.b"]');
+    weight.focus();
+    weight.value = "3";
+    body(app).dispatchEvent({ type: "change", target: weight });
+    await settle();
+    expect(store.getPools().p.entries.find(e => e.uuid === "Item.b").weight).toBe(3);
+    expect(status(app).textContent).toBe("Saved: Flame Tongue, weight 3.");
+    const rarity = app.element.querySelector('select[data-curate="rarity"][data-uuid="Item.b"]');
+    rarity.value = "veryRare";
+    body(app).dispatchEvent({ type: "change", target: rarity });
+    await settle();
+    expect(status(app).textContent).toBe("Saved: Flame Tongue, Very rare.");
   });
 });
 

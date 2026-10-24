@@ -73,6 +73,9 @@ const STATES = [
   // The box editor's Limits group: the stock with what is left and
   // Restock, then the limit per character, each with its help.
   ["box-limits", "state=editor"],
+  // The deck editor's head (deck.js deckRiseFieldsHTML): the step, then
+  // "Draws count as in a row within 2 minutes" with its hint.
+  ["editor-deck", "state=editor&deck=1"],
   // Tam has thrown today's three coins: the well's Buy is off with the
   // "still until tomorrow" line under it.
   ["shop-well-capped", "state=shop&well=capped"],
@@ -140,7 +143,7 @@ const STATES = [
   ["manager-boxes-narrow", "state=manager&tab=boxes&added=1&width=480"],
   // On the shelf (shelf.js): the GM took the Royal Vault off it. Its row is
   // tagged "Off the shelf" and dimmed, its toggle (focused, as the click
-  // leaves it) reads "Put on shelf", every other row's is pressed, the
+  // leaves it) is unpressed, every other row's is pressed, the
   // wheel keeps its live round's button, the toolbar counts 7 of 8.
   ["manager-boxes-shelf", "state=manager&tab=boxes&shelf=off"],
   // The Pull log (logtable.js) with one of everything: a refunded pull
@@ -174,7 +177,7 @@ const STATES = [
   // each saying what the tab holds and offering "Add starter crates" as
   // the window's one gold button; then the Boxes tab as that button leaves
   // it: eight games, one of every kind, every one off the shelf (dimmed,
-  // "Put on shelf", "0 of 8 on the shelf"), the first game's Edit focused,
+  // "On the shelf" unpressed, "0 of 8 on the shelf"), the first game's Edit focused,
   // the status line naming what came in, the button kept on the toolbar.
   ["manager-empty", "state=manager&empty=1"],
   ["manager-boxes-empty", "state=manager&tab=boxes&empty=1"],
@@ -332,17 +335,31 @@ function shelfBoxesProblems() {
   if (off.length !== 1 || !/Royal Vault/.test(off[0]?.textContent ?? "")) out.push("the Royal Vault's row isn't the one marked off the shelf");
   const tag = off[0]?.querySelector(".lc-kind--off");
   if (tag?.textContent !== "Off the shelf") out.push("the off-the-shelf row has no tag");
+  else {
+    // In sentence case, on one line, inside its cell.
+    const cs = getComputedStyle(tag);
+    if (cs.textTransform !== "none") out.push(`the Off the shelf tag is ${cs.textTransform}`);
+    const lines = tag.getClientRects().length;
+    if (lines !== 1 || tag.getBoundingClientRect().height > parseFloat(cs.lineHeight) + 4) out.push("the Off the shelf tag wraps");
+    const cell = tag.closest("td").getBoundingClientRect(), r = tag.getBoundingClientRect();
+    if (r.right > cell.right + 1 || r.left < cell.left - 1) out.push("the Off the shelf tag spills out of its cell");
+    if (parseFloat(cs.fontSize) < 11) out.push("the Off the shelf tag is under 11px");
+  }
   for (const r of rows) {
     const name = r.querySelector(".lc-table__name")?.firstChild?.textContent.trim();
     const t = r.querySelector('[data-action="toggleShelf"]');
     if (!t) { out.push(`${name} has no shelf toggle`); continue; }
     const isOff = r.classList.contains("lc-row--off");
-    const want = isOff ? ["false", "Put on shelf"] : ["true", "On the shelf"];
+    const want = isOff ? ["false", "On the shelf"] : ["true", "On the shelf"];
     if (t.getAttribute("aria-pressed") !== want[0] || t.textContent.trim() !== want[1]) out.push(`${name}'s toggle is ${t.getAttribute("aria-pressed")} "${t.textContent.trim()}"`);
     if (t.getAttribute("aria-label") !== `${want[1]}: ${name}`) out.push(`${name}'s toggle is labelled "${t.getAttribute("aria-label")}"`);
     const tr = t.getBoundingClientRect();
     if (tr.width < 20 || tr.height < 20 || tr.right > app.right + 1) out.push(`${name}'s toggle is not fully visible`);
     if (parseFloat(getComputedStyle(t).fontSize) < 11) out.push(`${name}'s toggle is under 11px`);
+    // Its switch shows the state the label no longer says.
+    const sw = getComputedStyle(t, "::before");
+    if (parseFloat(sw.width) < 20) out.push(`${name}'s toggle has no switch`);
+    else if ((sw.backgroundImage.match(/calc|100%/) != null) !== !isOff) out.push(`${name}'s switch doesn't show ${isOff ? "off" : "on"}`);
   }
   const royal = document.querySelector('[data-action="toggleShelf"][data-box="royal"]');
   if (document.activeElement !== royal) out.push("focus is not on the Royal Vault's toggle");
@@ -368,6 +385,8 @@ function navProblems() {
   const toggle = nav.querySelector('[data-action="toggleShop"]');
   if (!view || view.textContent.trim() !== "View shop") return [...out, `no View shop in the nav (got "${view?.textContent.trim()}")`];
   if (!toggle) return [...out, "no shop toggle in the nav"];
+  if (toggle.textContent.trim() !== "Shop open" || !["true", "false"].includes(toggle.getAttribute("aria-pressed"))) out.push(`the shop toggle reads "${toggle.textContent.trim()}", pressed ${toggle.getAttribute("aria-pressed")}`);
+  if (parseFloat(getComputedStyle(toggle, "::before").width) < 20) out.push("the shop toggle has no switch");
   if (view.hasAttribute("aria-pressed")) out.push("View shop reads as a toggle");
   const rects = [view, toggle].map(b => b.getBoundingClientRect());
   for (const [b, r] of [[view, rects[0]], [toggle, rects[1]]]) {
@@ -604,7 +623,7 @@ function starterBoxesProblems() {
   if (rows.length !== 8) out.push(`expected 8 starter games, got ${rows.length}`);
   const tags = [...document.querySelectorAll(".lc-table .lc-kind:not(.lc-kind--off)")].map(t => t.textContent);
   if (tags.join("|") !== "Crate|Crate|Crate|Well|Dice|Deck|Wheel|Auction") out.push(`kind tags read ${tags.join(", ")}`);
-  if (rows.some(r => !r.classList.contains("lc-row--off") || r.querySelector('[data-action="toggleShelf"]')?.textContent.trim() !== "Put on shelf")) out.push("a starter game is on the shelf");
+  if (rows.some(r => !r.classList.contains("lc-row--off") || r.querySelector('[data-action="toggleShelf"]')?.getAttribute("aria-pressed") !== "false")) out.push("a starter game is on the shelf");
   const count = document.querySelector(".lc-toolbar--boxes .lc-shelf-count")?.textContent;
   if (count !== "0 of 8 on the shelf") out.push(`the toolbar count reads "${count}"`);
   const starter = document.querySelectorAll('.lc-toolbar--boxes [data-action="starterCrates"]');
@@ -612,7 +631,7 @@ function starterBoxesProblems() {
   const news = [...document.querySelectorAll('.lc-toolbar--boxes [data-action^="add"]')].map(b => b.textContent.trim());
   if (news.join("|") !== "New box|New well|New dice game|New deck|New wheel|New auction") out.push(`the New buttons read ${news.join(", ")}`);
   const status = document.querySelector(".lc-manager__status")?.textContent ?? "";
-  if (status !== "Added 4 starter pools and 8 starter games, all off the shelf. Players can't see them yet: look each one over, then press Put on shelf on its row.") out.push(`status line says "${status}"`);
+  if (status !== "Added 4 starter pools and 8 starter games, all off the shelf. Players can't see them yet: look each one over, then press On the shelf on its row.") out.push(`status line says "${status}"`);
   const first = rows[0]?.querySelector('[data-action="editBox"]');
   if (document.activeElement !== first) out.push("focus is not on the first starter game's Edit");
   const pools = rows.map(r => r.querySelector('td[data-label="Pools"]')?.textContent.trim());
@@ -996,7 +1015,7 @@ function deckCardProblems({ streak, closed, busy }) {
   if (streak) {
     if (!buy.textContent.includes("Draw for 15 gp")) out.push(`the second draw's Buy reads "${buy.textContent.trim()}"`);
     if (buy.dataset.price !== "15") out.push(`the second draw's data-price is ${buy.dataset.price}`);
-    if (rule !== "2nd draw in a row: 15 gp (back to 10 gp after two minutes)") out.push(`the streak line reads "${rule}"`);
+    if (rule !== "2nd draw in a row: 15 gp (back to 10 gp after 2 minutes)") out.push(`the streak line reads "${rule}"`);
     if (parseFloat(getComputedStyle(card.querySelector(".lc-box__rule")).fontSize) < 11) out.push("the streak line is under 11px");
   } else {
     if (!buy.textContent.includes("Draw for 10 gp")) out.push(`deck Buy reads "${buy.textContent.trim()}"`);
@@ -1379,6 +1398,25 @@ async function limitCardProblems({ reached, off, shelved = false }) {
 // The box editor's Limits group: one group with the stock, what is left of
 // it beside Restock (a status, on), the limit per character with its
 // period, and plain help tied to the fields.
+// The deck editor's streak window: a number field in its sentence, the
+// deck's 2 minutes, its hint named and at the 11px floor or over, inside the form.
+function deckEditorProblems() {
+  const out = [];
+  const input = document.querySelector('input[name="streakMinutes"]');
+  if (!input) return ["the deck editor has no streak window field"];
+  const label = input.closest("label");
+  if (label?.textContent.replace(/\s+/g, " ").trim() !== "Draws count as in a row within minutes") out.push(`the window's label reads "${label?.textContent.trim()}"`);
+  if (input.value !== "2" || input.type !== "number" || input.min !== "0") out.push(`the window field is ${input.type} ${input.value} (min ${input.min})`);
+  const help = document.getElementById(input.getAttribute("aria-describedby") ?? "");
+  if (!/Blank or 0: every draw is a first draw\./.test(help?.textContent ?? "")) out.push(`the window's hint reads "${help?.textContent}"`);
+  if (help && parseFloat(getComputedStyle(help).fontSize) < 11) out.push("the window's hint is under 11px");
+  const form = document.querySelector(".lc-form").getBoundingClientRect(), r = input.getBoundingClientRect();
+  if (r.width < 30 || r.height < 20 || r.right > form.right + 1) out.push("the window field is not fully visible");
+  if (parseFloat(getComputedStyle(label).fontSize) < 11) out.push("the window's label is under 11px");
+  if (!document.querySelector('input[name="step"]')) out.push("the step field is missing");
+  return out;
+}
+
 async function limitsEditorProblems() {
   const out = [];
   const group = [...document.querySelectorAll(".lc-form fieldset")].find(f => f.querySelector("legend")?.textContent.trim() === "Limits");
@@ -1638,7 +1676,7 @@ try {
       // state); two frames in, they have faces to show.
       if (name === "dice-rolling") await page.waitForFunction(() => [...document.querySelectorAll(".lc-dice__tray .lc-dice__face")].every(f => f.textContent.trim()), null, { timeout: 10000 });
       if (name.startsWith("welcome")) await page.waitForSelector("body[data-ready]", { timeout: 10000 });
-      if (name.startsWith("manager") || name === "box-limits" || name === "box-odds" || name === "drop-preview") await page.waitForSelector("body[data-ready]", { timeout: 10000 });
+      if (name.startsWith("manager") || name === "box-limits" || name === "editor-deck" || name === "box-odds" || name === "drop-preview") await page.waitForSelector("body[data-ready]", { timeout: 10000 });
       await page.waitForTimeout(500);
       const wide = await page.evaluate(() => document.scrollingElement.scrollWidth > document.scrollingElement.clientWidth + 1);
       if (name.startsWith("shop")) problems0.push(...await page.evaluate(shopControlProblems, name.endsWith("-gm")));
@@ -1655,7 +1693,15 @@ try {
         problems0.push(...await page.evaluate(auctionCardProblems, name === "shop-auction"));
       }
       else if (name.startsWith("welcome")) problems0.push(...await page.evaluate(welcomeProblems, { view: name === "welcome-news" ? "news" : "welcome", empty: name === "welcome-empty" }));
-      else if (name === "box-limits") problems0.push(...await page.evaluate(limitsEditorProblems), ...await page.evaluate(shelfEditorProblems));
+      else if (name === "box-limits") {
+        problems0.push(...await page.evaluate(limitsEditorProblems), ...await page.evaluate(shelfEditorProblems));
+        // Restock, then a new number: the line follows the field (a press and keys, as a GM does).
+        await page.click("[data-restock]");
+        const said = [];
+        for (const v of ["12", "", "10"]) { await page.fill('input[name="stock"]', v); said.push((await page.textContent(".lc-limits__left")).trim()); }
+        if (said.join(" | ") !== "12 of 12 left once you save | Unlimited once you save | 10 of 10 left once you save") problems0.push(`the Restock line reads ${said.join(" | ")}`);
+      }
+      else if (name === "editor-deck") problems0.push(...await page.evaluate(deckEditorProblems), ...await page.evaluate(shelfEditorProblems));
       else if (name === "box-odds") problems0.push(...await page.evaluate(oddsEditorProblems));
       else if (name === "drop-preview") problems0.push(...await page.evaluate(dropPreviewProblems));
       else if (name === "landed-nothing") problems0.push(...await page.evaluate(nothingRevealProblems));

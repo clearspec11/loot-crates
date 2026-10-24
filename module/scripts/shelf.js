@@ -43,6 +43,10 @@ export const OFF_SHELF_REASON = "Off the shelf: players can't see it";
 // The GM's refusal of a pull or stake on a game off the shelf.
 export const shelfRefusal = game => `${game?.name || "That game"} is no longer on the shelf. Nothing was charged.`;
 
+// A table window's bet button while its game is off the shelf: the GM
+// would refuse the stake (pull.js guardPlay), so it is not offered.
+export const shelfBetsClosed = (game, verb = "bets") => `${game?.name || "This game"} is off the shelf: no ${verb} until the GM puts it back.`;
+
 // A table game off the shelf opens no round.
 export const shelfRoundRefusal = game => `${game?.name || "That game"} is off the shelf. Put it on the shelf to open a round.`;
 
@@ -56,14 +60,19 @@ export function shelfFieldHTML(game, { isNew = false, copy = false } = {}) {
   return `<label class="lc-row lc-form__shelf"><input type="checkbox" name="onShelf"${on ? " checked" : ""}> On the shelf, where players can see and buy it</label>`;
 }
 
-// The Boxes row's toggle: pressed while on the shelf, "Put on shelf" while
-// off it. Its action and data-box keep focus on it across the redraw
-// (manager.js focusKey).
+/*
+  The Boxes row's toggle: one fixed label, "On the shelf", pressed while
+  the game is out (the ARIA toggle-button pattern: the name stays, the
+  pressed state says on or off). Its switch (module.css) shows the same
+  state to the eye, and the row's "Off the shelf" tag says it in words.
+  Its action and data-box keep focus on it across the redraw (manager.js
+  focusKey).
+*/
+export const SHELF_TOGGLE_LABEL = "On the shelf";
 export function shelfToggleHTML(game, esc = s => String(s ?? "")) {
   const on = onShelf(game);
-  const label = on ? "On the shelf" : "Put on shelf";
   const tip = on ? "Players can see and buy it. Click to take it off the shelf." : "Players can't see it. Click to put it on the shelf.";
-  return `<button type="button" class="lc-shelf-toggle" data-action="toggleShelf" data-box="${esc(game.id)}" data-on="${on}" aria-pressed="${on}" aria-label="${label}: ${esc(game.name)}" title="${tip}">${label}</button>`;
+  return `<button type="button" class="lc-shelf-toggle lc-switch" data-action="toggleShelf" data-box="${esc(game.id)}" data-on="${on}" aria-pressed="${on}" aria-label="${SHELF_TOGGLE_LABEL}: ${esc(game.name)}" title="${tip}">${SHELF_TOGGLE_LABEL}</button>`;
 }
 
 // The Boxes tab's status line once the toggle wrote.

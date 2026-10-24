@@ -369,6 +369,31 @@ describe("Restock in the editor is written by Save", () => {
     expect(store.getBoxes().crate.rules).toMatchObject({ stock: 12, stockMax: 12 });
   });
 
+  it("Restock, then a new number: the line follows the Stock field, and Save fills to it", async () => {
+    const app = await manager();
+    const [pending] = await openEdit(app, "crate");
+    const left = dialog.form.querySelector(".lc-limits__left");
+    const stock = field("stock");
+    // Typing before Restock says nothing new: the line is the stock left.
+    stock.value = "11";
+    stock.dispatchEvent({ type: "input" });
+    expect(left.textContent).toBe("3 of 10 left");
+    dialog.form.querySelector("[data-restock]").dispatchEvent({ type: "click" });
+    expect(left.textContent).toBe("11 of 11 left once you save");
+    stock.value = "15";
+    stock.dispatchEvent({ type: "input" });
+    expect(left.textContent).toBe("15 of 15 left once you save");
+    stock.value = "";
+    stock.dispatchEvent({ type: "input" });
+    expect(left.textContent).toBe("Unlimited once you save");
+    stock.value = "15";
+    stock.dispatchEvent({ type: "input" });
+    dialog.save();
+    await pending;
+    await settle();
+    expect(store.getBoxes().crate.rules).toMatchObject({ stock: 15, stockMax: 15 });
+  });
+
   it("Save without Restock keeps the stock pulls left", async () => {
     const app = await manager();
     const [pending] = await openEdit(app, "crate");

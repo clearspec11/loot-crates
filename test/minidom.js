@@ -89,6 +89,9 @@ class Element extends Node {
   set innerHTML(html) { this.replaceChildren(...parse(this.ownerDocument, html)); }
   get childElementCount() { return this.children.length; }
   get lastElementChild() { return this.children.at(-1) ?? null; }
+  get firstElementChild() { return this.children[0] ?? null; }
+  // A <template>'s content is its own children here (manager.js htmlNode).
+  get content() { return this.nodeName === "TEMPLATE" ? this : undefined; }
   // "beforeend" only: what the manager's Show more uses.
   insertAdjacentHTML(where, html) {
     if (where !== "beforeend") throw new Error(`minidom: insertAdjacentHTML ${where} not supported`);

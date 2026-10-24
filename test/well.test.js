@@ -306,7 +306,9 @@ describe("the Pull log's folded misses", () => {
     expect(items.map(x => (x.group ? `${x.actorId}:${x.day}:${x.refunded ? "refunded" : "live"}:${x.rows.map(r => r.id)}` : x.row.id)))
       .toEqual(["a1:y1d8:live:n1", "w1", "a1:y1d7:live:n2,n4", "a1:y1d7:refunded:n3", "c1", "a2:y1d7:live:n5"]);
     expect(items[0]).toMatchObject({ actorName: "Brinn", boxName: "Wishing Well", price: 0.1, boxId: "well" });
+    expect(items[0].noun).toBe("throw");
     expect(throwsText(1)).toBe("1 throw, nothing");
+    expect(throwsText(2, "pull")).toBe("2 pulls, nothing");
     expect(throwsText(7)).toBe("7 throws, nothing");
     expect(collapseMisses([])).toEqual([]);
   });

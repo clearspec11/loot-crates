@@ -131,7 +131,7 @@ export function welcomeHTML({ view = "welcome", version = LATEST.version, entry 
       <h3 class="lc-welcome__sub">First steps</h3>
       <ol class="lc-welcome__list lc-welcome__steps">
         <li>Press Add starter crates for a ready set, or New pool in the manager and drag items onto it.</li>
-        <li>Look the games over on the Boxes tab, then press Put on shelf on each one players may buy.</li>
+        <li>Look the games over on the Boxes tab, then press On the shelf on each one players may buy.</li>
         <li>Tell the table where Crates is. The shop starts open; Shop open, beside View shop in the manager, closes it when you want a pause.</li>
       </ol>
       </div>

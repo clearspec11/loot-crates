@@ -450,6 +450,10 @@ describe("the auction's words and board", () => {
     const gm = tableBodyHTML({ kind: KIND, game, round, stakes, history: rows, viewer: { isGM: true, actors: [] } });
     expect(gm).toContain(">Bring the gavel down<");
     expect(gm).toContain('data-action="cancelRound">Call it off<');
+    // The lot taken off the shelf mid-auction: no bid is offered, in the auction's word.
+    const off = tableBodyHTML({ kind: KIND, game: { ...game, rules: { ...(game.rules ?? {}), shelved: false } }, round, stakes, history: rows, viewer: { isGM: false, actors: [{ id: "a1", name: "Ana" }] } });
+    expect(off).toMatch(/class="lc-table__bet" data-action="placeBet" aria-disabled="true"/);
+    expect(off).toContain(`is off the shelf: no bids until the GM puts it back.</span>`);
   });
 
   it("refuse a slip before any round trip: under the next legal bid, or outbidding yourself", () => {

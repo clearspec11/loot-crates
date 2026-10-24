@@ -808,8 +808,19 @@
 .loot-crates .lc-tabs__shop { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; margin: 0 0 6px auto; }
 .loot-crates .lc-tabs__shop button { margin: 0; white-space: nowrap; }
 .loot-crates .lc-view-shop { flex: none; }
-.loot-crates .lc-shop-toggle::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--lc-ink-mute); }
-.loot-crates .lc-shop-toggle[data-open="true"]::before { background: var(--lc-ok); }
+/* A toggle (aria-pressed) keeps one label, "Shop open" or "On the shelf";
+   its switch says on or off to the eye: a hollow track with the knob at
+   the left while off, the knob across and the track lit in the ok green
+   while on. The pressed state is the one source for both. */
+.loot-crates .lc-switch::before {
+  content: ""; flex: none; box-sizing: border-box; width: 24px; height: 14px; border-radius: 7px;
+  border: 1px solid var(--lc-ink-mute);
+  background: radial-gradient(circle at 6px 50%, var(--lc-ink-mute) 3.5px, transparent 4px);
+}
+.loot-crates .lc-switch[aria-pressed="true"]::before {
+  border-color: var(--lc-ok);
+  background: radial-gradient(circle at calc(100% - 6px) 50%, var(--lc-ok) 3.5px, transparent 4px), color-mix(in srgb, var(--lc-ok) 22%, transparent);
+}
 /* The tab's pane is a container: the Boxes and Pull log tables follow its
    width, not the screen's (the stacked rows under "Narrow windows"). */
 .loot-crates .lc-tab { overflow: auto; padding-right: 2px; container: lc-tab / inline-size; }
@@ -987,8 +998,9 @@
   color: var(--lc-gold-ink); border: 1px solid var(--lc-rule-soft); border-radius: 3px;
 }
 /* On the shelf (shelf.js): each row's switch leads its buttons' cell on a
-   line of its own (as Reshuffle does), in the shop switch's idiom: a dot,
-   green while players can see the game. A game off the shelf is tagged so
+   line of its own (as Reshuffle does), in the shop toggle's idiom: one
+   label and a switch (.lc-switch), on and green while players can see
+   the game. A game off the shelf is tagged so
    beside its kind and its row reads as set aside: its words in the muted
    ink, its odds drained of colour (the pills keep their text), its
    buttons as they are. */
@@ -1001,10 +1013,12 @@
 .loot-crates .lc-table input.lc-price-input { width: 6.2em; max-width: 100%; min-height: 28px; padding: 0 4px; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--lc-ink); }
 .loot-crates .lc-table--boxes td { padding-left: 6px; padding-right: 6px; }
 .loot-crates .lc-table--boxes td[data-label="Price"] { padding-left: 4px; padding-right: 4px; }
-.loot-crates .lc-shelf-toggle::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--lc-ink-mute); }
-.loot-crates .lc-shelf-toggle[data-on="true"]::before { background: var(--lc-ok); }
 .loot-crates .lc-shelf-toggle[data-on="false"] { border-style: dashed; }
-.loot-crates .lc-kind--off { color: var(--lc-ink-mute); border-style: dashed; }
+/* "Off the shelf": in sentence case (it is words, not a kind's label), on
+   one line of its own under the name and kind (display: table shrinks it
+   to its words), so it never breaks inside its dashed box and adds no
+   width the name cell didn't already have. */
+.loot-crates .lc-kind--off { display: table; margin: 3px 0 0; color: var(--lc-ink-mute); border-style: dashed; text-transform: none; letter-spacing: 0; font-weight: 600; white-space: nowrap; }
 .loot-crates .lc-table tr.lc-row--off td:not(:last-child) { color: var(--lc-ink-mute); }
 .loot-crates .lc-table tr.lc-row--off td .lc-ribbon, .loot-crates .lc-table tr.lc-row--off td .lc-odds { filter: grayscale(1); }
 .loot-crates .lc-shelf-count { font-size: 12px; color: var(--lc-ink-mute); white-space: nowrap; }

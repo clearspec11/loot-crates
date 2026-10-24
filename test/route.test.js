@@ -96,11 +96,18 @@ describe("the manager's nav", () => {
     const nav = doc.createElement("div");
     nav.innerHTML = managerNavHTML({ tab: "boxes", shopOpen: false });
     const buttons = nav.querySelectorAll("button");
-    expect(buttons.map(b => b.textContent.trim())).toEqual(["Pools", "Boxes", "Pull log", "View shop", "Shop closed"]);
+    expect(buttons.map(b => b.textContent.trim())).toEqual(["Pools", "Boxes", "Pull log", "View shop", "Shop open"]);
     expect(buttons.map(b => b.getAttribute("data-action"))).toEqual(["switchTab", "switchTab", "switchTab", "openShop", "toggleShop"]);
     expect(nav.querySelector('[role="tab"][aria-selected="true"]').textContent).toBe("Boxes");
     // View shop is a plain button; only the toggle is pressed or not.
     expect(nav.querySelector('[data-action="openShop"]').hasAttribute("aria-pressed")).toBe(false);
     expect(nav.querySelector('[data-action="toggleShop"]').getAttribute("aria-pressed")).toBe("false");
+    // The toggle keeps its one label; only its pressed state turns.
+    const open = doc.createElement("div");
+    open.innerHTML = managerNavHTML({ tab: "boxes", shopOpen: true });
+    const toggle = open.querySelector('[data-action="toggleShop"]');
+    expect(toggle.textContent.trim()).toBe("Shop open");
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+    expect(toggle.getAttribute("class")).toBe("lc-shop-toggle lc-switch");
   });
 });

@@ -135,22 +135,29 @@ function logRow(ctx) {
 }
 
 /*
-  The Pull log with a character's misses at a well folded into one line per
-  day ("Brinn, 7 throws, nothing"): the log newest first comes back as a
-  list of { row } and { group, rows, ... } in the same order, each group
-  standing where its newest row stood. Refunded misses fold separately from
-  live ones, so a group's Refund always has a throw to give back (its newest
-  row, rows[0]). Rows that aren't a well's misses pass through one by one.
+  The Pull log with a character's misses folded into one line per game and
+  day ("Brinn, 7 throws, nothing"): a miss is any pulled game's row that
+  found nothing (outcome "nothing": the well's quiet throw, a crate's
+  "Nothing" from a roll table's text results), one rule for every kind; a
+  table stake (a round's row) never folds. The log newest first comes back
+  as a list of { row } and { group, rows, noun, ... } in the same order,
+  each group standing where its newest row stood. Refunded misses fold
+  separately from live ones, so a group's Refund always has a play to give
+  back (its newest row, rows[0]). Every other row passes through alone.
 */
+export const isMiss = r => r?.outcome === "nothing" && !r.roundId;
+// What one play is called on a folded line: a throw at the well, a pull elsewhere.
+export const missNoun = kind => (kind === "well" ? "throw" : "pull");
+
 export function collapseMisses(log = []) {
   const groups = new Map();
   const out = [];
   for (const r of log) {
-    if (!(r.kind === "well" && r.outcome === "nothing")) { out.push({ row: r }); continue; }
+    if (!isMiss(r)) { out.push({ row: r }); continue; }
     const key = [r.actorId, r.boxId, r.day ?? "", r.refunded ? "refunded" : "live"].join("|");
     let g = groups.get(key);
     if (!g) {
-      g = { group: true, key, rows: [], actorName: r.actorName, boxName: r.boxName, boxId: r.boxId, actorId: r.actorId, day: r.day ?? null, price: r.price, refunded: !!r.refunded };
+      g = { group: true, key, rows: [], noun: missNoun(r.kind), actorName: r.actorName, boxName: r.boxName, boxId: r.boxId, actorId: r.actorId, day: r.day ?? null, price: r.price, refunded: !!r.refunded };
       groups.set(key, g);
       out.push(g);
     }
@@ -159,7 +166,16 @@ export function collapseMisses(log = []) {
   return out;
 }
 
-export const throwsText = n => `${n} throw${n === 1 ? "" : "s"}, nothing`;
+// "7 throws, nothing", "1 pull, nothing".
+export const throwsText = (n, noun = "throw") => `${n} ${noun}${n === 1 ? "" : "s"}, nothing`;
+
+// The misses a log folded, counted in their own words: "3 throws", "2
+// pulls", "3 throws and 2 pulls".
+export function missCountText(groups = []) {
+  const by = new Map();
+  for (const g of groups) by.set(g.noun ?? "throw", (by.get(g.noun ?? "throw") ?? 0) + g.rows.length);
+  return [...by].map(([noun, n]) => `${n} ${noun}${n === 1 ? "" : "s"}`).join(" and ");
+}
 
 /* ---------- The reveal ---------- */
 

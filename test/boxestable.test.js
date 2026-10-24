@@ -91,13 +91,14 @@ describe("the Boxes table", () => {
     expect(out).not.toContain("Off the shelf</span>");
   });
 
-  it("tags, dims and offers Put on shelf for a game off the shelf; a wheel off it opens no round", () => {
+  it("tags, dims and leaves the On the shelf toggle unpressed for a game off the shelf; a wheel off it opens no round", () => {
     const off = BOXES.map(b => ({ ...b, rules: { ...(b.rules ?? {}), shelved: false } }));
     const out = boxesTableHTML({ boxes: off, pools: POOLS, esc });
     expect((out.match(/<tr class="lc-row--off" role="row">/g) ?? []).length).toBe(BOXES.length);
     expect((out.match(/<span class="lc-kind lc-kind--off">Off the shelf<\/span>/g) ?? []).length).toBe(BOXES.length);
-    expect(out).toContain(`data-action="toggleShelf" data-box="royal" data-on="false" aria-pressed="false" aria-label="Put on shelf: Royal Vault"`);
-    expect(out).toMatch(/aria-pressed="false"[^>]*>Put on shelf<\/button>/);
+    expect(out).toContain(`data-action="toggleShelf" data-box="royal" data-on="false" aria-pressed="false" aria-label="On the shelf: Royal Vault"`);
+    expect(out).toMatch(/aria-pressed="false"[^>]*>On the shelf<\/button>/);
+    expect(out).not.toContain("Put on shelf");
     expect(out).not.toContain('data-action="openTable"');
     // A round already open runs to its resolve: its table stays one click away.
     const wheel = off.find(b => b.kind === "roulette");

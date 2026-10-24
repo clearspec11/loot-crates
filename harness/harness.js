@@ -42,12 +42,15 @@
   "editor" is the box editor's pools, Rules and Limits groups
   (editorfields.js, limits.js) for the Royal Vault: Core magic items
   ticked with a share of 2, Leigh's homebrew unticked with its share off,
-  "3 of 10 left" with Restock, one per character a day, and its "On the
-  shelf" box (shelf.js), ticked.
+  "3 of 10 left" with Restock (pressed, its line follows the Stock field),
+  one per character a day, and its "On the shelf" box (shelf.js), ticked.
+  ?deck=1 (editor: the deck editor's head for the sample deck, as
+  manager.js #editDeck draws it: the first draw, the step, "Draws count as
+  in a row within 2 minutes" with its hint, deck.js deckRiseFieldsHTML)
   ?shelf=off (shop and the Boxes tab: the GM has taken the Royal Vault off
   the shelf, shelf.js. A player's shop leaves it out; with &gm=1 the GM's
   shop shows it with its Buy off and why. The Boxes tab tags and dims its
-  row, its toggle reads "Put on shelf", and the toolbar counts the rest)
+  row, its toggle is unpressed, and the toolbar counts the rest)
   ?well=capped (shop: Tam has thrown 3 of 3 coins into the Wishing Well
   today, so its card reads "The well is still until tomorrow (3 of 3 today)"
   with its Buy off; without it Tam has thrown once: "1 of 3 throws today")
@@ -110,12 +113,12 @@ import { POOLS, BOX, BOXES, TABLE_POOL, TABLE_CRATE, TABLE_PLAN, WELL, DICE, DIC
 import { welcomeHTML, newsFor, WELCOME_TITLE } from "../module/scripts/welcome.js";
 import { LATEST } from "../module/scripts/changelog.js";
 import { STARTER_POOLS, pickEntries, buildStarter, starterNotice, starterCallHTML } from "../module/scripts/starter.js";
-import { limitsFieldset, restockPreview, stockField } from "../module/scripts/limits.js";
+import { limitsFieldset, restockLine, stockField } from "../module/scripts/limits.js";
 import { poolsFieldset, pityRow, syncShares, oddsModeFieldset, tableNoteHTML, nothingRow } from "../module/scripts/editorfields.js";
 import { getKind, kindOf } from "../module/scripts/kinds.js";
 import { mountWell } from "../module/scripts/well.js";
 import { mountDice, resolve, rollData, parseFormula } from "../module/scripts/dicegame.js";
-import { mountDeck, TONE_OF, CARD_KIND_LABEL, priceAt, deckPlan } from "../module/scripts/deck.js";
+import { mountDeck, TONE_OF, CARD_KIND_LABEL, priceAt, deckPlan, deckRiseFieldsHTML } from "../module/scripts/deck.js";
 import { resolve as resolveBets, pocketsOf, coloursOf, betName } from "../module/scripts/roulette.js";
 import { tableBodyHTML } from "../module/scripts/tableview.js";
 import { lotOf } from "../module/scripts/auction.js";
@@ -159,7 +162,7 @@ const SHOP_POOLS = { ...POOLS, [TABLE_POOL.id]: TABLE_POOL };
 document.body.classList.replace("theme-dark", `theme-${theme}`);
 
 // The window the module would open for this state: its class and title.
-const WINDOWS = { welcome: ["lc-welcome-window", WELCOME_TITLE], auction: ["lc-table", `The auction at ${q.get("lot") === "crate" ? AUCTION_CRATE.name : AUCTION.name}`], editor: ["lc-dialog", q.get("odds") ? "New box" : "Edit box"], preview: ["lc-dialog", "Add to Goblin's Pockets"], shop: ["lc-shop", "Crate Shop"], manager: ["lc-manager", "Loot Crates"], well: ["lc-reveal", "A coin in the well"], dice: ["lc-reveal", "Dragon's Teeth"], deck: ["lc-reveal", "A card from the deck"], table: ["lc-table", `The wheel at ${ROULETTE.name}`] };
+const WINDOWS = { welcome: ["lc-welcome-window", WELCOME_TITLE], auction: ["lc-table", `The auction at ${q.get("lot") === "crate" ? AUCTION_CRATE.name : AUCTION.name}`], editor: ["lc-dialog", q.get("odds") ? "New box" : q.get("deck") ? "Edit deck" : "Edit box"], preview: ["lc-dialog", "Add to Goblin's Pockets"], shop: ["lc-shop", "Crate Shop"], manager: ["lc-manager", "Loot Crates"], well: ["lc-reveal", "A coin in the well"], dice: ["lc-reveal", "Dragon's Teeth"], deck: ["lc-reveal", "A card from the deck"], table: ["lc-table", `The wheel at ${ROULETTE.name}`] };
 const [appClass, appTitle] = WINDOWS[state] ?? ["lc-reveal", "Opening a crate"];
 document.getElementById("app").classList.add(appClass);
 // The welcome opens at its window's width (welcomewindow.js), 540px.
@@ -944,6 +947,7 @@ function renderTableEditor(esc) {
 function renderEditor() {
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   if (q.get("odds")) return renderTableEditor(esc);
+  if (q.get("deck")) return renderDeckEditor(esc);
   const royal = BOXES.find(b => b.id === "royal");
   const box = { ...royal, pools: [{ id: "core", share: 2 }], rules: { ...royal.rules, perCharacter: { max: 1, per: "day" } } };
   stage.innerHTML = `
@@ -962,13 +966,33 @@ function renderEditor() {
       <footer class="form-footer"><button type="button">Save</button><button type="button">Cancel</button></footer>
     </div>`;
   const btn = stage.querySelector("[data-restock]");
+  const stock = stage.querySelector('input[name="stock"]');
+  const paint = () => { stage.querySelector(".lc-limits__left").textContent = restockLine(stock?.value ?? "", stockField(box)); };
   btn?.addEventListener("click", () => {
     if (btn.getAttribute("aria-disabled") === "true") return;
     btn.setAttribute("aria-disabled", "true");
     stage.querySelector('input[name="restock"]').value = "1";
-    stage.querySelector(".lc-limits__left").textContent = restockPreview(stockField(box));
+    paint();
   });
+  stock?.addEventListener("input", () => { if (stage.querySelector('input[name="restock"]').value === "1") paint(); });
   stage.addEventListener("change", () => syncShares(stage));
+  document.body.dataset.ready = "1";
+}
+
+// The deck editor's head (?deck=1), the rising price as the GM sets it.
+function renderDeckEditor(esc) {
+  const box = { ...DECK, rules: {} };
+  stage.innerHTML = `
+    <div class="dialog-form">
+      <div class="dialog-content"><div class="lc-form">
+        <label>Name <input name="name" value="${esc(box.name)}"></label>
+        <label class="lc-form__price">First draw <input name="price" type="text" data-price-field value="${esc(formatPrice(box.price))}" placeholder="50 gp, 5 sp or 12 gp 5 sp" autocomplete="off" spellcheck="false"></label>
+        ${deckRiseFieldsHTML(box, esc)}
+        ${limitsFieldset(box, { stock: false, hasClock: true, esc })}
+        ${shelfFieldHTML(box)}
+      </div></div>
+      <footer class="form-footer"><button type="button">Save</button><button type="button">Cancel</button></footer>
+    </div>`;
   document.body.dataset.ready = "1";
 }
 

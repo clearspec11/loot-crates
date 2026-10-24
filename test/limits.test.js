@@ -11,7 +11,7 @@ import { performPull, PullError } from "../module/scripts/pull.js";
 import { boxCard, cardShell } from "../module/scripts/boxcard.js";
 import { getKind } from "../module/scripts/kinds.js";
 import {
-  stockOf, stockText, restocked, stockAfterRefund, stockFromForm, stockField, perCharacterOf, perCharacterFromForm,
+  stockOf, stockText, restocked, restockLine, stockAfterRefund, stockFromForm, stockField, perCharacterOf, perCharacterFromForm,
   boughtBy, limitState, limitLine, limitReason, limitRefusal, withLimit, perCharacterText, limitsText, limitsFieldset,
 } from "../module/scripts/limits.js";
 import { POOLS as SHOP_POOLS, BOXES } from "../harness/sample.js";
@@ -47,6 +47,12 @@ describe("the global stock", () => {
     expect(restocked({ stock: 3, stockMax: 10, noDuplicates: true })).toEqual({ stock: 10, stockMax: 10, noDuplicates: true });
     expect(restocked({ stock: 0, stockMax: 10 }).stock).toBe(10);
     expect(restocked({ stock: 3 })).toEqual({ stock: 3 });
+    // The editor's line after Restock, from the Stock field as it reads now.
+    expect(restockLine("12", 10)).toBe("12 of 12 left once you save");
+    expect(restockLine("10", 10)).toBe("10 of 10 left once you save");
+    expect(restockLine(" ", 10)).toBe("Unlimited once you save");
+    expect(restockLine("abc", 10)).toBe("10 of 10 left once you save");
+    expect(restockLine("7.9", 10)).toBe("7 of 7 left once you save");
   });
 
   it("a refund puts one back, never past the GM's number", () => {

@@ -82,6 +82,16 @@ export function stockFromForm(fresh = {}, { shown, value }) {
 // so it says what Save will leave ("10 of 10 left once you save").
 export const restockPreview = max => `${max} of ${max} left once you save`;
 
+// That line from the Stock field as it reads now (`typed`), so it follows
+// a number changed after Restock was pressed: a number fills to it, blank
+// is unlimited (stockFromForm), anything else is the number the form
+// opened with (`shown`).
+export function restockLine(typed, shown) {
+  if (String(typed ?? "").trim() === "") return "Unlimited once you save";
+  const n = whole(typed);
+  return restockPreview(n ?? whole(shown) ?? 0);
+}
+
 // The number the editor's "Stock" opens with: the GM's, or the count
 // alone on a record from before it.
 export const stockField = game => {

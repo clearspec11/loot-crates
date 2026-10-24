@@ -75,18 +75,19 @@
   game (newgame.js copyOf): every setting, none of its history, named
   "<name> (copy)" (then "(copy 2)" and on) for the GM to rename and reprice.
   The Pull log folds a character's
-  misses at a well for one day into one line ("5 throws, nothing") whose
-  Refund gives the newest throw back, and "Hide misses" leaves only the
-  throws that gave something; a row that paid coins out says what it paid,
-  and a refund the purse can't cover is refused naming the shortfall
-  (refund.js shortMessage) instead of taking the purse below zero.
+  misses at one game for one day (a well's throws, a crate's "Nothing")
+  into one line ("5 throws, nothing") whose Refund gives the newest back,
+  and "Hide misses" leaves only the plays that gave something; a row that
+  paid coins out says what it paid, and a refund the purse can't cover is
+  refused naming the shortfall (refund.js shortMessage) instead of taking
+  the purse below zero.
 */
 import { RARITIES, RARITY_LABEL, DEFAULT_WEIGHTS, SETTINGS } from "./config.js";
 import { draftBox, oddsRules, boxPreview, boxPreviewHTML, oddsSummary, quietAnnouncer, refundRulesLine } from "./boxcard.js";
 import { kindOf } from "./kinds.js";
 import { WELL_DEFAULTS, stakeCoins, stakeGp, draftWell, wellPreview, wellPreviewHTML, wellSummary, noClockNote } from "./well.js";
 import { DICE_DEFAULTS, FORMULAS, draftDice, dicePreview, dicePreviewHTML, diceSummary } from "./dicegame.js";
-import { CARD_KINDS, CARD_KIND_HINT, cardsOf, stepOf, deckOdds, draftDeck, deckPreview, deckPreviewHTML, deckSummary } from "./deck.js";
+import { CARD_KINDS, CARD_KIND_HINT, cardsOf, streakMinutesOf, deckRiseFieldsHTML, deckOdds, draftDeck, deckPreview, deckPreviewHTML, deckSummary } from "./deck.js";
 import { ROULETTE_DEFAULTS, BET_TYPES, BET_TYPE_LABEL, pocketsOf, coloursOf, draftRoulette, roulettePreview, roulettePreviewHTML, rouletteSummary, payoutOf, maxStakeOf, maxBetsOf, windowMsOf, itemOnRarity } from "./roulette.js";
 import { MAX_HOUSE, MIN_GAVEL_SEC, HOUSE_TICK_MS, lotOf, lotFromEntry, lotFromCrate, incrementOf, reserveOf, gavelMsOf, houseOf, draftAuction, auctionPreview, auctionPreviewHTML, auctionSummary } from "./auction.js";
 import { newDraft, crateFromPool, crateFromTable, copyOf, editorTitle, addLabel, addedNotice } from "./newgame.js";
@@ -102,13 +103,13 @@ const openTableFor = boxId => import("./tablewindow.js").then(m => m.openTableFo
 const openShopWindow = () => import("./shop.js").then(m => m.openShop());
 import { getRounds, getPools, getBoxes, getLog, todayKey, newId, createPool, updatePool, removePool, createBox, updateBox, removeBox, entryFromItem, entriesFromDrop, addEntries, packHasLoot, LOOT_TYPES, isLootType, isShopOpen, setShopOpen, checkSources, sweepPools, removeEntry, patchEntry } from "./store.js";
 import { flattenPool, withSources, entryWeight, curateEntries, oddsModeOf } from "./odds.js";
-import { SKIPPED_NAMES, describeSkipped, dropPreviewHTML, PAGE_ROWS, defaultView, poolRows, sortRows, filterRows, pageRows, nextRows, poolCount, poolSummary, poolBody, chipsHTML, unsetButton, footHTML, entryRow, entryParts, pinRecent, dropNotice, poolUsers, usersText, deleteImpact, removeImpact, deletePoolText, removeEntryText } from "./poolview.js";
+import { SKIPPED_NAMES, describeSkipped, dropPreviewHTML, savedNotice, PAGE_ROWS, defaultView, poolRows, sortRows, filterRows, pageRows, nextRows, poolCount, poolSummary, poolBody, chipsHTML, unsetButton, footHTML, entryRow, entryParts, pinRecent, dropNotice, poolUsers, usersText, deleteImpact, removeImpact, deletePoolText, removeEntryText } from "./poolview.js";
 import { formatPrice, parsePrice, unreadablePrice } from "./currency.js";
 import { managerNavHTML, MANAGER_TABS } from "./route.js";
 import { describeRefund, refundPull } from "./refund.js";
 import { postRefundCard } from "./chat.js";
 import { changeCount } from "./redraw.js";
-import { limitsFieldset, perCharacterFromForm, restocked, restockPreview, stockAfterRefund, stockField, stockFromForm } from "./limits.js";
+import { limitsFieldset, perCharacterFromForm, restocked, restockLine, stockAfterRefund, stockField, stockFromForm } from "./limits.js";
 import { onShelf, shelfRules, shelfFieldHTML, shelfNotice } from "./shelf.js";
 import { starterPresent, hasStarter, starterAgainText, starterNotice, starterCallHTML, STARTER_LABEL } from "./starter.js";
 import { addStarterSet } from "./starterbuild.js";
@@ -452,6 +453,9 @@ export class CrateManager extends ApplicationV2 {
     this.#paintChips(poolEl, saved, rows);
     const unsetEl = poolEl.querySelector(".lc-pool__unset");
     if (unsetEl) unsetEl.innerHTML = unsetButton(saved, filterRows(rows, view), view, esc);
+    // Said in the tab's status line, as a Boxes row's price is.
+    const what = el.dataset.curate === "weight" ? `weight ${entryWeight(entry)}` : RARITY_LABEL[change.rarityOverride] ?? el.selectedOptions?.[0]?.textContent?.trim() ?? "rarity from its source";
+    this.#announce(savedNotice(entry.name, what));
   }
 
   // What the editor knows of an entry's source: the last check, else its
@@ -882,9 +886,10 @@ export class CrateManager extends ApplicationV2 {
 
   /*
     The deck's editor: the first draw's price, the step each draw in a row
-    multiplies it by, then the cards as rows (name, what it does, weight,
-    once, the gold for coins and loss, the text for an effect) with Add card
-    and a remove on each, the pools and rarity weights the item cards draw
+    multiplies it by and the minutes within which draws count as in a row
+    (deck.js deckRiseFieldsHTML; blank or 0 for none), then the cards as
+    rows (name, what it does, weight, once, the gold for coins and loss,
+    the text for an effect) with Add card and a remove on each, the pools and rarity weights the item cards draw
     on, and the shop's own pills as a live preview with the cards left.
     Nothing is written until Save.
   */
@@ -895,8 +900,7 @@ export class CrateManager extends ApplicationV2 {
     const data = await promptForm(editorTitle(box, isNew, opts.copy), `
       <label>Name <input name="name" value="${esc(box.name)}"${autofocus("name", opts)}></label>
       ${priceFieldHTML("First draw", box, opts)}
-      <label class="lc-row">Each draw in a row costs <input name="step" type="number" min="1" step="0.1" value="${esc(stepOf(box))}"> times the last</label>
-      <p class="lc-form__hint">A draw within two minutes of the last counts as in a row; the price comes back down after that, and a refund takes a step back.</p>
+      ${deckRiseFieldsHTML(box, esc)}
       <fieldset class="lc-cards"><legend>Cards</legend>
         <div class="lc-cards__head" aria-hidden="true"><span>Card</span><span>Does</span><span>Gold</span><span>Weight</span><span>Once</span><span></span></div>
         <div class="lc-cards__rows">${cardsOf(box).map((c, i) => cardRow(c, i + 1)).join("")}</div>
@@ -957,7 +961,7 @@ export class CrateManager extends ApplicationV2 {
       price: draft.price,
       pools: draft.pools.filter(ref => ref.id in getPools()),
       weights: draft.weights,
-      deck: { ...(fresh.deck ?? {}), step: draft.deck.step, cards: draft.deck.cards },
+      deck: { ...(fresh.deck ?? {}), step: draft.deck.step, streakMinutes: draft.deck.streakMinutes ?? streakMinutesOf(fresh), cards: draft.deck.cards },
       rules: { ...(fresh.rules ?? {}), perCharacter: perCharacterFromForm(data) },
     }), data);
   }
@@ -1201,9 +1205,11 @@ export class CrateManager extends ApplicationV2 {
     change (Enter, Tab, or leaving the field) as a pool row's weight is:
     read with currency.js parsePrice, written through the write queue onto
     the record as it is then (only the price: a pull's stock or pity
-    written meanwhile stays), and shown back as the shop will say it. A
-    save says nothing; one that can't be read, or a wheel's lowest bet over
-    its highest, puts the field back and says why in the tab's status line.
+    written meanwhile stays), and shown back as the shop will say it. The
+    tab is drawn once the write is heard (so the redraw that follows it has
+    nothing new and keeps the line), then the status line says it saved
+    (poolview.js savedNotice). One that can't be read, or a wheel's lowest
+    bet over its highest, puts the field back and says why there instead.
   */
   async #onPrice(el) {
     const id = el.dataset.boxPrice;
@@ -1227,6 +1233,8 @@ export class CrateManager extends ApplicationV2 {
     const live = el.isConnected === false ? null : el;
     if (live && live.value === typed) live.value = formatPrice(saved.price);
     if (live) live.defaultValue = formatPrice(saved.price);
+    await this.render();
+    this.#announce(savedNotice(saved.name, formatPrice(saved.price)));
   }
 
   /*
@@ -1386,7 +1394,7 @@ export class CrateManager extends ApplicationV2 {
     return boxesTabHTML({ boxes, pools, log: getLog(), rounds: getRounds(), recent: this.#recentBox, esc });
   }
 
-  // The Pull log (logtable.js): newest first, a well's misses folded per
+  // The Pull log (logtable.js): newest first, every game's misses folded per
   // character and day, a table round's stakes under its line, "Hide misses".
   _log() {
     return logTableHTML({ log: getLog(), rounds: getRounds(), hideMisses: this.hideMisses, esc });
@@ -1599,20 +1607,23 @@ function wireShelf(form, isNew) {
   and Cancel writes nothing, as for every other field. The line beside it
   says what Save will leave, as a status a screen reader hears; the button
   stays focused, off once pressed. The number is the Stock field's if the
-  GM changed it, since Save fills to that.
+  GM changed it, since Save fills to that, and the line follows the field
+  as it changes after the press (limits.js restockLine).
 */
 function wireRestock(form, box) {
   const btn = form.querySelector("[data-restock]");
   const left = form.querySelector(".lc-limits__left");
   const mark = form.querySelector('input[name="restock"]');
+  const stock = form.querySelector('input[name="stock"]');
   if (!btn || !left || !mark) return;
+  const paint = () => { left.textContent = restockLine(stock?.value ?? "", stockField(box)); };
   btn.addEventListener("click", () => {
     if (btn.getAttribute("aria-disabled") === "true") return;
     btn.setAttribute("aria-disabled", "true");
     mark.value = "1";
-    const typed = form.querySelector('input[name="stock"]')?.value;
-    left.textContent = restockPreview(typed !== "" && Number.isFinite(Number(typed)) ? Math.max(0, Math.floor(Number(typed))) : stockField(box));
+    paint();
   });
+  stock?.addEventListener("input", () => { if (mark.value === "1") paint(); });
 }
 
 // `onForm(form)` runs once, with the dialog's <form>, when it is first on

@@ -241,7 +241,7 @@ export function starterNotice({ pools = [], games = [], reused = 0, notes = [], 
   if (!games.length) return [...notes, "Nothing was added."].join(" ");
   const parts = [pools.length ? count(pools.length, "starter pool", "starter pools") : "", count(games.length, "starter game", "starter games")].filter(Boolean);
   out.push(`Added ${list(parts)}${reused ? " as copies" : ""}, all off the shelf${reused ? ", drawing from the starter pools already here" : ""}.`);
-  out.push("Players can't see them yet: look each one over, then press Put on shelf on its row.");
+  out.push("Players can't see them yet: look each one over, then press On the shelf on its row.");
   if (empty.length) out.push(`${list(empty)} found nothing in the compendiums, so ${empty.length === 1 ? "it was" : "they were"} left out.`);
   return [...out, ...notes].join(" ");
 }

@@ -362,7 +362,8 @@ export function packHasLoot(pack) {
                 multiplied through (flattenTable); text results are counted
                 in `text` (their share of the table in textChance), results
                 pointing at other documents in notItems, tables nested too
-                deep or rolling a table above them in tooDeep
+                deep or rolling a table above them in tooDeep, nested tables with
+                no results in emptyTables
   Anything that isn't a physical item type is left out and counted by type;
   so are entries whose uuid is in `known` (already in the pool) or repeats
   within the drop (a table's repeats add their weights together).
@@ -376,7 +377,7 @@ export async function entriesFromDrop(data, { known = [] } = {}) {
   const found = await collectDrop(data);
   if (!found) return null;
   const have = new Set(known);
-  const skipped = { duplicates: 0, notLoot: {}, notItems: found.notItems ?? 0, text: found.text ?? 0, tooDeep: found.tooDeep ?? 0 };
+  const skipped = { duplicates: 0, notLoot: {}, notItems: found.notItems ?? 0, text: found.text ?? 0, tooDeep: found.tooDeep ?? 0, emptyTables: found.emptyTables ?? 0 };
   const byUuid = new Map();
   for (const { type, ...entry } of found.entries) {
     if (type && !isLootType(type)) { skipped.notLoot[type] = (skipped.notLoot[type] ?? 0) + 1; continue; }
@@ -433,7 +434,7 @@ async function collectDrop(data) {
       if (!table) return null;
       const flat = await flattenTable(table, { load: uuid => resolveEntry({ uuid }) });
       const entries = flat.items.map(({ item, weight }) => ({ ...entryFromItem(item), weight, type: item.type }));
-      return { label: table.name, uuid: table.uuid, entries, notItems: flat.notItems, text: flat.text, textWeight: flat.textWeight, tooDeep: flat.tooDeep, flattened: flat.flattened, sumWeights: true };
+      return { label: table.name, uuid: table.uuid, entries, notItems: flat.notItems, text: flat.text, textWeight: flat.textWeight, tooDeep: flat.tooDeep, emptyTables: flat.empty, flattened: flat.flattened, sumWeights: true };
     }
     default: return null;
   }
@@ -458,16 +459,17 @@ const resultWeight = r => Math.max(1, Number(r?.weight) || 1);
   another table brings that table's results in, each weighted by the
   parent result's weight times its own share of its table (its weight over
   that table's total), down to TABLE_DEPTH levels. A table already on the
-  way down (a loop) or past the depth is skipped and counted in tooDeep.
+  way down (a loop) or past the depth is skipped and counted in tooDeep;
+  one with no results is skipped and counted in `empty`.
   Weights stay whole numbers, scaled together so their ratios are exact
   (integerWeights); a table with nothing nested keeps its own weights.
   `load(uuid)` resolves a result's document (fromUuid). Returns { items: [{
-  item, weight }], text, textWeight, notItems, tooDeep, flattened }.
+  item, weight }], text, textWeight, notItems, tooDeep, flattened, empty }.
 */
 export async function flattenTable(root, { load, maxDepth = TABLE_DEPTH } = {}) {
   const items = [];
   const text = [];
-  let notItems = 0, tooDeep = 0, flattened = 0;
+  let notItems = 0, tooDeep = 0, flattened = 0, empty = 0;
   // `num` over `den` is a result's weight in the root table's units; den is
   // the product of the nested tables' totals on the way down (the root's
   // results keep their own weights, so its total never divides).
@@ -482,6 +484,8 @@ export async function flattenTable(root, { load, maxDepth = TABLE_DEPTH } = {}) 
       const doc = await load(uuid);
       if (doc?.documentName === "RollTable") {
         if (depth >= maxDepth || path.includes(doc.uuid)) { tooDeep++; continue; }
+        // A nested table with no results brings nothing in: skipped, not flattened.
+        if (!(doc.results?.size ?? doc.results?.length ?? [...(doc.results ?? [])].length)) { empty++; continue; }
         flattened++;
         await walk(doc, n, d, depth + 1, [...path, doc.uuid]);
       } else if (doc?.documentName === "Item") items.push({ item: doc, n, d });
@@ -494,7 +498,7 @@ export async function flattenTable(root, { load, maxDepth = TABLE_DEPTH } = {}) 
     items: items.map((i, k) => ({ item: i.item, weight: ints[k] })),
     text: text.length,
     textWeight: ints.slice(items.length).reduce((n, w) => n + w, 0),
-    notItems, tooDeep, flattened,
+    notItems, tooDeep, flattened, empty,
   };
 }
 

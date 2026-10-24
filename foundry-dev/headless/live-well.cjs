@@ -294,7 +294,7 @@ async function restore(gm, before) {
       // Hide misses, then show them again.
       click(app.element.querySelector('[data-action="toggleMisses"]'));
       await until(() => app.element?.querySelector('[data-action="toggleMisses"]')?.getAttribute("aria-pressed") === "true", 5000);
-      const hidden = { groups: [...app.element.querySelectorAll(".lc-row--group")].filter(tr => /throws?, nothing/.test(tr.innerText)).length, button: app.element.querySelector('[data-action="toggleMisses"]')?.textContent.trim() };
+      const hidden = { groups: [...app.element.querySelectorAll(".lc-row--group")].filter(tr => /throws?, nothing/.test(tr.innerText)).length, button: app.element.querySelector('[data-action="toggleMisses"]')?.textContent.trim(), pressed: app.element.querySelector('[data-action="toggleMisses"]')?.getAttribute("aria-pressed") };
       click(app.element.querySelector('[data-action="toggleMisses"]'));
       // A table round's header is a .lc-row--group too, and stays while
       // misses are hidden: wait for the redraw that shows them again.
@@ -342,7 +342,7 @@ async function restore(gm, before) {
       purseDropped5sp: out.gmAfterThrows.purseCp === before.purseCp - 10 * THROWS,
       fiveRowsToday: rows.length === THROWS && rows.every(r => r.kind === "well" && r.outcome === "nothing" && r.day === before.today && r.price === 0.1 && r.payoutCp === 0 && r.itemId === null),
       dayTurns: out.day.ok,
-      refund: out.refund.groupsBefore.some(x => new RegExp(`${cap} throws, nothing`).test(x)) && out.refund.hidden.groups === 0 && out.refund.hidden.button === "Show misses"
+      refund: out.refund.groupsBefore.some(x => new RegExp(`${cap} throws, nothing`).test(x)) && out.refund.hidden.groups === 0 && out.refund.hidden.button === "Hide misses" && out.refund.hidden.pressed === "true"
         && out.refund.groupsAfter.some(x => new RegExp(`${cap - 1} throws, nothing`).test(x)) && out.refund.purseAfter === out.refund.purseBefore + 10
         && /Return 1 sp to Crate Tester/.test(out.refund.dialogText ?? ""),
       cardAfterRefund: out.cardAfterRefund.ms != null && out.cardAfterRefund.ms <= 2000 && !out.cardAfterRefund.off && out.cardAfterRefund.count === `${cap - 1} of ${cap} throws today`,

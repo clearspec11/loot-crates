@@ -58,8 +58,10 @@ describe("the editor's box and the row's toggle", () => {
     expect(shelfFieldHTML(A, { isNew: false })).toContain("checked");
     expect(shelfFieldHTML(B, { isNew: true, copy: true })).not.toContain("checked");
   });
-  it("is a pressed toggle on the shelf and Put on shelf off it, named for its game", () => {
-    expect(shelfToggleHTML(A)).toContain('data-action="toggleShelf" data-box="a" data-on="true" aria-pressed="true" aria-label="On the shelf: Gilded Crate"');
-    expect(shelfToggleHTML(B)).toMatch(/aria-pressed="false" aria-label="Put on shelf: Midnight Wheel"[^>]*>Put on shelf<\/button>$/);
+  it("is one toggle with a fixed label, its pressed state saying on or off, named for its game", () => {
+    expect(shelfToggleHTML(A)).toContain('class="lc-shelf-toggle lc-switch" data-action="toggleShelf" data-box="a" data-on="true" aria-pressed="true" aria-label="On the shelf: Gilded Crate"');
+    expect(shelfToggleHTML(A)).toMatch(/>On the shelf<\/button>$/);
+    // Off the shelf: the same name and words, only the state turns.
+    expect(shelfToggleHTML(B)).toMatch(/aria-pressed="false" aria-label="On the shelf: Midnight Wheel"[^>]*>On the shelf<\/button>$/);
   });
 });

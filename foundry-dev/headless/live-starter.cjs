@@ -16,10 +16,10 @@
 //      confirm may appear (the set must not be in the world yet). Four new
 //      pools must hold real dnd5e items (more than none each, every one a
 //      Compendium.dnd5e.* reference), eight new games one of every kind,
-//      every one off the shelf: its row dimmed with "Put on shelf", the
+//      every one off the shelf: its row dimmed, "On the shelf" unpressed, the
 //      first game's Edit focused, the status line saying what came in. The
 //      player's open shop must list none of them.
-//   2. The GM presses the Adventurer's cache row's "Put on shelf"; the
+//   2. The GM presses the Adventurer's cache row's "On the shelf"; the
 //      player's shop shows it with its Buy on within 2 s.
 //   3. The player presses that Buy once and closes the reveal when it
 //      lands: 50 gp charged, one item on the sheet, one log row.
@@ -196,7 +196,7 @@ const untilCard = (pl, boxId, pred, since) => pl.evaluate(async ({ boxId, pred, 
       const rows = games.map(g => {
         const t = app.element.querySelector(`button[data-action="toggleShelf"][data-box="${g.id}"]`);
         const tr = t?.closest("tr");
-        return { id: g.id, name: g.name, kind: g.kind ?? "crate", shelved: g.rules?.shelved === false, price: g.price, pools: (g.pools ?? []).map(r => r.id), toggle: t?.textContent.trim(), dimmed: !!tr?.classList.contains("lc-row--off"), tag: tr?.querySelector(".lc-kind--off")?.textContent.trim() };
+        return { id: g.id, name: g.name, kind: g.kind ?? "crate", shelved: g.rules?.shelved === false, price: g.price, pools: (g.pools ?? []).map(r => r.id), toggle: t?.textContent.trim(), pressed: t?.getAttribute("aria-pressed"), dimmed: !!tr?.classList.contains("lc-row--off"), tag: tr?.querySelector(".lc-kind--off")?.textContent.trim() };
       });
       const first = games.find(g => g.name === "Adventurer's cache");
       return {
@@ -213,7 +213,7 @@ const untilCard = (pl, boxId, pred, since) => pl.evaluate(async ({ boxId, pred, 
     await pl.page.waitForTimeout(1500);
     out.playerWhileOff = await pl.page.evaluate(ids => ids.filter(id => document.querySelector(`#loot-crates-shop .lc-box[data-box="${id}"]`)).length, out.add.rows.map(r => r.id));
 
-    // 2. Put on shelf from the row.
+    // 2. On the shelf, pressed on the row.
     out.putOn = await gm.page.evaluate(async ({ boxId }) => {
       const wait = ms => new Promise(r => setTimeout(r, ms));
       const until = async (fn, ms = 8000) => { for (let t = 0; t < ms && !fn(); t += 25) await wait(25); return fn(); };
@@ -289,10 +289,10 @@ const untilCard = (pl, boxId, pred, since) => pl.evaluate(async ({ boxId, pred, 
       pressed: a.label === "Add starter crates",
       fourPoolsFilled: a.pools.length === 4 && a.pools.map(p => p.name).sort().join() === [...STARTER_POOLS].sort().join() && a.pools.every(p => p.count > 0 && p.compendium),
       eightGames: a.rows.length === 8 && a.rows.map(r => r.name).sort().join() === [...STARTER_GAMES].sort().join() && kinds === "auction,crate,crate,crate,deck,dice,roulette,well",
-      allOffShelf: a.rows.every(r => r.shelved && r.toggle === "Put on shelf" && r.dimmed && r.tag === "Off the shelf"),
+      allOffShelf: a.rows.every(r => r.shelved && r.toggle === "On the shelf" && r.pressed === "false" && r.dimmed && r.tag === "Off the shelf"),
       drawFromStarterPools: a.rows.filter(r => r.kind !== "roulette" && r.kind !== "auction").every(r => r.pools.length > 0 && r.pools.every(id => a.pools.some(p => p.id === id))),
       auctionLot: a.lot?.type === "crate" && a.lot.boxId === a.chestId,
-      said: a.status === "Added 4 starter pools and 8 starter games, all off the shelf. Players can't see them yet: look each one over, then press Put on shelf on its row." && a.focusedFirst,
+      said: a.status === "Added 4 starter pools and 8 starter games, all off the shelf. Players can't see them yet: look each one over, then press On the shelf on its row." && a.focusedFirst,
       playerSeesNone: out.playerWhileOff === 0,
       putOn: out.putOn.pressed === "true" && out.playerAfterOn.ms != null && out.playerAfterOn.ms <= 2000,
       bought: out.buy.landed && /50 gp/.test(out.buy.text) && out.afterBuy.purseCp === before.purseCp - 5000 && out.afterBuy.items === before.items + 1 && out.afterBuy.rows.length === 1,

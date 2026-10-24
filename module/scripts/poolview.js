@@ -124,6 +124,14 @@ export function dropNotice({ pool, rows = [], label = "", added = rows.length, d
   return text;
 }
 
+/*
+  What the tab's status line says once a field saved in place: a Boxes
+  row's price ("Saved: Goblin Crate, 12 gp 5 sp.") or a pool row's weight
+  or rarity ("Saved: Flame Tongue, weight 3."). One sentence shape for every
+  in-place save, so a screen reader hears that it happened and what stands.
+*/
+export const savedNotice = (name, value) => `Saved: ${name || "the row"}, ${value}.`;
+
 // The chips, in census order. A rarity chip is what the box can draw at that
 // rarity (live, weight above 0), as the census counts it.
 export const PROBLEM_CHIPS = ["unset", "never", "missing", "renamed"];
@@ -413,9 +421,10 @@ export const SKIPPED_NAMES = { spell: ["spell", "spells"], feat: ["feature", "fe
   and for a roll table (store.js entriesFromDrop) "2 nested tables
   flattened into their items", "1 text result skipped" (or counted as
   nothing, `textAsNothing`), "1 table result that isn't an item, skipped",
-  "1 nested table skipped: more than 5 deep, or rolling a table above it".
+  "1 nested table skipped: more than 5 deep, or rolling a table above it",
+  "1 empty nested table skipped: no results to bring in".
 */
-export function describeSkipped({ duplicates = 0, notLoot = {}, notItems = 0, text = 0, tooDeep = 0 } = {}, { flattened = 0, textAsNothing = false, depth = 5 } = {}) {
+export function describeSkipped({ duplicates = 0, notLoot = {}, notItems = 0, text = 0, tooDeep = 0, emptyTables = 0 } = {}, { flattened = 0, textAsNothing = false, depth = 5 } = {}) {
   const lines = [];
   if (flattened) lines.push(`${plural(flattened, "nested table", "nested tables")} flattened into ${flattened === 1 ? "its" : "their"} items`);
   if (duplicates) lines.push(`${duplicates} already in this pool, skipped`);
@@ -424,6 +433,7 @@ export function describeSkipped({ duplicates = 0, notLoot = {}, notItems = 0, te
   if (text) lines.push(`${plural(text, "text result", "text results")} ${textAsNothing ? "counted as nothing" : "skipped"}`);
   if (notItems) lines.push(`${notItems} table result${notItems === 1 ? "" : "s"} that ${notItems === 1 ? "isn't an item" : "aren't items"}, skipped`);
   if (tooDeep) lines.push(`${plural(tooDeep, "nested table", "nested tables")} skipped: more than ${depth} deep, or rolling a table above ${tooDeep === 1 ? "it" : "them"}`);
+  if (emptyTables) lines.push(`${plural(emptyTables, "empty nested table", "empty nested tables")} skipped: no results to bring in`);
   return lines;
 }
 
