@@ -4,7 +4,7 @@ Guidance for Claude Code in this repository.
 
 ## What this is
 
-Loot Crates is a Foundry VTT module (v13/v14, dnd5e 5/6) for GM-curated item pools, gold-priced boxes and a crate-opening spin. Plain ES modules loaded by Foundry, no bundler, no framework. See README.md for the layout.
+Loot Crates is a Foundry VTT module (v13/v14, dnd5e 5/6) for GM-curated item pools, gold-priced boxes and a crate-opening spin. Plain ES modules loaded by Foundry, no bundler, no framework. See docs/ARCHITECTURE.md for how it works and the layout (README.md is the guide for GMs and players).
 
 ## Rules that keep it working
 

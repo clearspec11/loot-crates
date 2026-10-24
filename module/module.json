@@ -23,6 +23,36 @@
     ]
   },
   "url": "https://github.com/clearspec11/loot-crates",
+  "readme": "https://raw.githubusercontent.com/clearspec11/loot-crates/main/README.md",
+  "changelog": "https://raw.githubusercontent.com/clearspec11/loot-crates/main/CHANGELOG.md",
+  "bugs": "https://github.com/clearspec11/loot-crates/issues",
   "manifest": "https://github.com/clearspec11/loot-crates/releases/latest/download/module.json",
-  "download": "https://github.com/clearspec11/loot-crates/releases/latest/download/module.zip"
+  "download": "https://github.com/clearspec11/loot-crates/releases/latest/download/module.zip",
+  "media": [
+    {
+      "type": "screenshot",
+      "url": "https://raw.githubusercontent.com/clearspec11/loot-crates/main/docs/images/shop.webp",
+      "caption": "The Crate Shop: each character sees their own odds and pity."
+    },
+    {
+      "type": "screenshot",
+      "url": "https://raw.githubusercontent.com/clearspec11/loot-crates/main/docs/images/crate-landed.webp",
+      "caption": "A crate spin lands on a legendary, and the whole table watches."
+    },
+    {
+      "type": "screenshot",
+      "url": "https://raw.githubusercontent.com/clearspec11/loot-crates/main/docs/images/manager-boxes.webp",
+      "caption": "The GM manager: price, odds, rules and the shelf for every game."
+    },
+    {
+      "type": "screenshot",
+      "url": "https://raw.githubusercontent.com/clearspec11/loot-crates/main/docs/images/roulette.webp",
+      "caption": "Roulette, the Wheel of Fate: one spin settles every bet at the table."
+    },
+    {
+      "type": "screenshot",
+      "url": "https://raw.githubusercontent.com/clearspec11/loot-crates/main/docs/images/auction.webp",
+      "caption": "The Auction: bids are held until the gavel comes down, and only the winner pays."
+    }
+  ]
 }
