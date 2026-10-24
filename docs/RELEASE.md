@@ -5,7 +5,7 @@ How a version goes out, and the one-time checklist for making the repository pub
 ## Every release
 
 1. Move the changelog's **Unreleased** entry under the new version number in [CHANGELOG.md](../CHANGELOG.md), and put three to five of its lines in `module/scripts/changelog.js` (the GM's "What's new" note). `test/welcome.test.js` checks they agree.
-2. Bump `version` in `module/module.json` and `package.json`.
+2. Bump `version` in `module/module.json` and `package.json`. If the release changes the Foundry or dnd5e versions it supports, or starts using a new hook or API, update [COMPATIBILITY.md](COMPATIBILITY.md) and the README's table in the same commit (`test/release.test.js` checks them against the manifest).
 3. `npm run lint && npm run test:run && npm run build` all green, and `NODE_PATH=$(npm root -g) npm run smoke` for any UI change.
 4. Tag `vX.Y.Z` on `main` and publish a GitHub release with `dist/module.json` and `dist/module.zip` attached. The manifest's `manifest` and `download` URLs point at the latest release, so Foundry finds the update by itself.
 

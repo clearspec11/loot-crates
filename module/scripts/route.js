@@ -54,6 +54,25 @@ export function addDirectoryButtons(root, { isGM = false, open = {} } = {}) {
   return added;
 }
 
+/*
+  A sidebar menu entry (a right-click on a directory entry) in the shape
+  both Foundry versions read: v14 reads label, visible and onClick(event,
+  li) and prefers them when present; v13 reads name, condition and
+  callback(li). `li` is the entry's element, or a jQuery object around it
+  where a menu still asks for one. `run(id)` gets the entry's document id
+  (its data-entry-id); an entry without one does nothing.
+  docs/COMPATIBILITY.md has the evidence for both shapes.
+*/
+export const entryIdOf = li => {
+  const el = li?.[0] ?? li;
+  return el?.closest?.("[data-entry-id]")?.dataset?.entryId ?? el?.dataset?.entryId ?? null;
+};
+
+export function directoryMenuEntry({ label, icon, visible = () => true, run = () => {} }) {
+  const go = li => { const id = entryIdOf(li); if (id) run(id); };
+  return { label, name: label, icon, visible, condition: visible, onClick: (_event, li) => go(li), callback: li => go(li) };
+}
+
 // The shop window's header controls (ApplicationV2 _getHeaderControls): a
 // GM's "Manage crates", whose action the shop declares (shop.js).
 export const MANAGE_CONTROL = { action: "openManager", icon: "fa-solid fa-screwdriver-wrench", label: "Manage crates" };

@@ -84,7 +84,10 @@ async function join(browser, user) {
     Hooks.on("renderChatMessageHTML", watchAgain);
     for (const h of [...(Hooks.events?.createItem ?? [])]) if (h.fn?.name === "preSealItem") Hooks.off("createItem", h.id);
     Hooks.on("createItem", preSealItem);
-    // The branch's long-rest hook (main.js); the installed module has none.
+    // The branch's long-rest hook (main.js) in place of the installed
+    // module's: 1.0.0 (cc-dev's, from GitHub) has one too, and with both a
+    // player's rest sent two new days to the GM and counted twice.
+    for (const h of [...(Hooks.events?.["dnd5e.restCompleted"] ?? [])]) if (String(h.fn).includes("counting a long rest failed")) Hooks.off("dnd5e.restCompleted", h.id);
     Hooks.on("dnd5e.restCompleted", (actor, result, config) => socket.restCompleted(actor, result, config));
   }, MODULE_BASE);
   return { page, logs };

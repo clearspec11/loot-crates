@@ -4,7 +4,7 @@
   "description": "GM-curated item pools, boxes priced in gold, and a crate-opening spin the whole table watches. Players buy a box with their character's coins and win a magic item from the pool the GM built.",
   "version": "1.0.0",
   "compatibility": {
-    "minimum": "13",
+    "minimum": "13.341",
     "verified": "14"
   },
   "authors": [

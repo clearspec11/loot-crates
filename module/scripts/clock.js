@@ -39,8 +39,17 @@ export function dayKeyOf(time) {
   is dnd5e's calendarConfig setting (a DataModel with manualRecovery, or
   its plain data), absent before dnd5e had one; `isDnd5e` says the system
   is dnd5e, whose long rest has a new day either way.
+
+  The setting's shape says which dnd5e this is (docs/COMPATIBILITY.md):
+  dnd5e 5.0 and 5.1 have no setting; 5.2 and 5.3 have only `enabled`,
+  which shows the calendar but leaves daily uses to a long rest's new day
+  whether it is on or off; dnd5e 6 adds dailyRecovery (and the
+  manualRecovery getter), which is what can hand the day to the clock.
 */
+const choosesRecovery = config => config.manualRecovery !== undefined || config.dailyRecovery !== undefined;
+
 export function dayModeOf({ config = null, isDnd5e = false, time = null } = {}) {
+  if (config && !choosesRecovery(config)) return config.enabled ? "manual" : "rest";
   if (config) {
     const manual = config.manualRecovery ?? (config.dailyRecovery === "manual" || (!config.dailyRecovery && !config.enabled));
     if (manual) return config.enabled ? "manual" : "rest";

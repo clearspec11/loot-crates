@@ -6,7 +6,9 @@ The newest numbered entry's version is the one in `module/module.json`, and its 
 
 ## Unreleased
 
-- Nothing yet.
+- The manifest now asks for Foundry v13.341 (v13's first stable build) or later, not any v13 build. Earlier v13 test builds lack the Roll Tables menu hook and the dialog callbacks the module uses. dnd5e 5.0.0 or later is still required.
+- With dnd5e 5.2 or 5.3 and its calendar shown, a day now ends at each character's long rest, as dnd5e 5 recovers its own daily uses. Before, the well's daily cap and a limit per day stayed shut until the GM moved the world's clock.
+- docs/COMPATIBILITY.md lists every hook, Foundry API and dnd5e field the module uses. Each entry says what's tested on Foundry v14 with dnd5e 6, and what was read from Foundry v13's docs and dnd5e 5's source, with links.
 
 ## 1.0.0
 
