@@ -9,6 +9,10 @@ The newest numbered entry's version is the one in `module/module.json`, and its 
 - The manifest now asks for Foundry v13.341 (v13's first stable build) or later, not any v13 build. Earlier v13 test builds lack the Roll Tables menu hook and the dialog callbacks the module uses. dnd5e 5.0.0 or later is still required.
 - With dnd5e 5.2 or 5.3 and its calendar shown, a day now ends at each character's long rest, as dnd5e 5 recovers its own daily uses. Before, the well's daily cap and a limit per day stayed shut until the GM moved the world's clock.
 - docs/COMPATIBILITY.md lists every hook, Foundry API and dnd5e field the module uses. Each entry says what's tested on Foundry v14 with dnd5e 6, and what was read from Foundry v13's docs and dnd5e 5's source, with links.
+- With dnd5e's calendar on, a player's own long rest now ends that character's day. dnd5e moves the clock for a rest only on a GM's client, so the well's cap and a limit per day used to stay shut after a player rested from their sheet. When the GM later moves the clock over the same night, it doesn't count as a second day.
+- A long rest taken while no GM is online now still ends the day. The player's browser keeps the rest and sends it once a GM joins. Before, the rest was dropped.
+- A deck's shop card drops back to its base price when the streak window runs out, without the shop being reopened.
+- A table round left unspun past its grace is refunded while the GM stays online. Before, its stakes came back only when the GM reloaded.
 
 ## 1.0.0
 

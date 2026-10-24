@@ -84,8 +84,12 @@
                   whole message until this client lands rather than showing
                   its head with "Opening…", which would tell the result }
     shop          { card(game, pools, ctx) -> html, reason(game, pools,
-                  ctx) -> why it can't be bought or "" }; a kind without
-                  these gets the crate's card and rules.
+                  ctx) -> why it can't be bought or "", changesAt?(game,
+                  ctx) -> the ms timestamp when the card would read
+                  differently with nothing else changing (the deck's
+                  streak running out), or null }; a kind without these
+                  gets the crate's card and rules. The shop redraws at the
+                  soonest changesAt of the cards it shows (shop.js).
 
   A table game (Roulette, the Auction) is played in rounds the whole
   table stakes on, one resolve settling every stake (round.js, table.js).

@@ -796,7 +796,7 @@ export class CrateManager extends ApplicationV2 {
         <p class="lc-sr-only" role="status" aria-live="polite"></p>
       </div>
       <fieldset><legend>Rules</legend>
-        <label class="lc-row">Each character may throw <input name="cap" type="number" min="0" step="1" value="${box.rules?.cap ?? ""}"> times a day (blank for no limit${byRest(dayMode()) ? "" : "; the day is the world's calendar"})</label>
+        <label class="lc-row">Each character may throw <input name="cap" type="number" min="0" step="1" value="${box.rules?.cap ?? ""}"> times a day (blank for no limit${byRest(dayMode()) ? "" : "; a day ends on the world's calendar or at the character's long rest"})</label>
         ${noClockNote({ ...dayOpts(), cap: box.rules?.cap })}
         ${pityRow(box.rules?.pity, { noun: "throws", esc })}
         <label class="lc-row"><input type="checkbox" name="noDuplicates" ${box.rules?.noDuplicates ? "checked" : ""}> No duplicates per character</label>

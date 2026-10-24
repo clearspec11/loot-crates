@@ -16,6 +16,27 @@
   Either way a count keyed on it rolls over when the party's day does,
   never on the server's clock, and the GM never resets anything by hand.
 
+  A long rest ends the day in calendar mode too. dnd5e moves game.time for
+  a rest only on a GM's client (its _rest: advanceTime && game.user.isGM),
+  so a player's long rest from their own sheet leaves the clock where it
+  was. The GM therefore keeps each character's own day: a long rest moves
+  it to the day after the later of the clock's day when the rest began and
+  the character's own day (dayAfterRest; socket.js newDayFor, store.js
+  restInto), and the character's day is the later of that and the clock's
+  day (laterDay). So every long rest ends a day at once, and the clock
+  catches up rather than counting again: when the GM moves it over the
+  same night it lands on the day the rest already began. A GM's rest that
+  moved the clock began a duration earlier, so it rests into the clock's
+  new day and adds nothing. Rests taken faster than the clock runs borrow
+  days ahead of it, which the clock then passes through without a new one.
+  One seam: a rest begun on a year's last day rests into a day past it
+  (y1492d365), which the clock never names, so the clock's move into the
+  new year is one more new day.
+  The rest count (calendar off) and the day rested into (calendar on) are
+  kept apart, so turning the calendar on or off never reads one as the
+  other. Refunds never touch either: a refund marks its row, and the
+  count of unrefunded rows on today's key drops by one.
+
   No Foundry globals: the caller passes game.time and dnd5e's calendar
   setting (store.js dayMode and todayKey), so Vitest can hand it anything.
   Null when the world has no way to tell a day at all, in which case
@@ -23,13 +44,46 @@
 */
 const SECONDS_PER_DAY = 86400;
 
-export function dayKeyOf(time) {
+/*
+  A day as something that can be compared and stepped: { y, d } from the
+  calendar's components (the year and the day of that year), or { t }
+  from the seconds alone, for a world whose calendar isn't set up yet.
+  Null when `time` tells no day.
+*/
+export function dayOf(time) {
   const c = time?.components;
-  if (c && Number.isFinite(c.year) && Number.isFinite(c.day)) return `y${c.year}d${c.day}`;
-  // A world whose calendar isn't set up yet still has the seconds.
+  if (c && Number.isFinite(c.year) && Number.isFinite(c.day)) return { y: c.year, d: c.day };
   const seconds = Number(time?.worldTime);
-  if (Number.isFinite(seconds)) return `t${Math.floor(seconds / SECONDS_PER_DAY)}`;
+  if (Number.isFinite(seconds)) return { t: Math.floor(seconds / SECONDS_PER_DAY) };
   return null;
+}
+
+const isYd = day => Number.isFinite(day?.y) && Number.isFinite(day?.d);
+const isT = day => !isYd(day) && Number.isFinite(day?.t);
+
+export function keyOfDay(day) {
+  if (isYd(day)) return `y${day.y}d${day.d}`;
+  if (isT(day)) return `t${day.t}`;
+  return null;
+}
+
+export const dayKeyOf = time => keyOfDay(dayOf(time));
+
+// The day after `day`, in the same shape.
+export function nextDay(day) {
+  if (isYd(day)) return { y: day.y, d: day.d + 1 };
+  if (isT(day)) return { t: day.t + 1 };
+  return null;
+}
+
+/*
+  The later of two days. A day in the other shape (a rest noted before the
+  world's calendar was set up) or no day at all says nothing: `a` stands.
+*/
+export function laterDay(a, b) {
+  if (isYd(a) && isYd(b)) return b.y > a.y || (b.y === a.y && b.d > a.d) ? { y: b.y, d: b.d } : a;
+  if (isT(a) && isT(b)) return b.t > a.t ? { t: b.t } : a;
+  return a ?? null;
 }
 
 /*
@@ -60,13 +114,23 @@ export function dayModeOf({ config = null, isDnd5e = false, time = null } = {}) 
 // A day that ends at each character's long rest rather than on the clock.
 export const byRest = mode => mode === "rest" || mode === "manual";
 
+// The character's own day after a long rest begun on `began` (the clock's
+// day then), with `was` the day its last rest moved it to: the day after
+// the later of the two. Null when the clock told no day.
+export function dayAfterRest(began, was = null) {
+  const from = laterDay(began, was);
+  return from ? nextDay(from) : null;
+}
+
 /*
-  Today's key for one character. With the calendar on it is the clock's
-  day (dayKeyOf); with it off, `r` and that character's count of new-day
-  rests, so a long rest moves only the character who took it.
+  Today's key for one character. With the calendar on it is the later of
+  the clock's day and the day this character's last long rest rested into
+  (`restedInto`, see the header); with it off, `r` and that character's
+  count of new-day rests. Either way a long rest moves only the character
+  who took it.
 */
-export function dayKeyFor({ time = null, calendarOn = true, restDay = 0 } = {}) {
-  if (calendarOn) return dayKeyOf(time);
+export function dayKeyFor({ time = null, calendarOn = true, restDay = 0, restedInto = null } = {}) {
+  if (calendarOn) return keyOfDay(laterDay(dayOf(time), restedInto));
   const n = Number(restDay);
   return `r${Number.isInteger(n) && n > 0 ? n : 0}`;
 }

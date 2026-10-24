@@ -18,7 +18,7 @@ import { createDocument } from "./minidom.js";
 vi.mock("../module/scripts/reveal.js", () => ({ showReveal: vi.fn(async () => ({ landed: Promise.resolve() })), heldState: () => null, boxHeld: () => false, onHold: () => () => {}, onRelease: () => () => {} }));
 vi.mock("../module/scripts/sound.js", () => ({ playTick: vi.fn(), playSlow: vi.fn(), playReveal: vi.fn(), playPlop: vi.fn(), playPlink: vi.fn(), playCoinBack: vi.fn(), playBane: vi.fn() }));
 
-const { DECK, DECK_DEFAULTS, DECK_TIMING, STREAK_MS, STREAK_MINUTES, streakMinutesOf, streakWindowMs, streakMinutesFromForm, streakAt, windowText, deckRiseFieldsHTML, cardsOf, drawnIds, deckPlan, deckOdds, streakOf, priceAt, nextPrice, ordinal, mountDeck, deckLandTime, cardsLeftText, streakLine, deckRulesText, draftDeck, deckPreview, deckPreviewHTML, deckSummary, deckOddsHTML } = await import("../module/scripts/deck.js");
+const { DECK, DECK_DEFAULTS, DECK_TIMING, STREAK_MS, STREAK_MINUTES, streakMinutesOf, streakWindowMs, streakMinutesFromForm, streakAt, windowText, deckRiseFieldsHTML, cardsOf, drawnIds, deckPlan, deckOdds, streakOf, streakEndsAt, priceAt, nextPrice, ordinal, mountDeck, deckLandTime, cardsLeftText, streakLine, deckRulesText, draftDeck, deckPreview, deckPreviewHTML, deckSummary, deckOddsHTML } = await import("../module/scripts/deck.js");
 const { getKind } = await import("../module/scripts/kinds.js");
 const { performPull, PullError, PRICE_SKEW_MS } = await import("../module/scripts/pull.js");
 const { registerSocket } = await import("../module/scripts/socket.js");
@@ -172,6 +172,22 @@ describe("the rising price", () => {
     expect(windowText(GAME)).toBe("2 minutes");
     expect(windowText({ deck: { streakMinutes: 1 } })).toBe("1 minute");
     expect(windowText({ deck: { streakMinutes: 0.5 } })).toBe("30 seconds");
+  });
+
+  it("says when the streak runs out and the price drops back, for the shop's redraw", () => {
+    const one = { ...GAME, deck: { ...GAME.deck, streakMinutes: 1 } };
+    const log = [row({ at: NOW - 50_000 }), row({ at: NOW - 90_000 }), row({ at: NOW - 10_000, refunded: 1 }), row({ at: NOW - 5_000, actorId: "a2" })];
+    // The newest unrefunded draw of this character plus the window.
+    expect(streakEndsAt(GAME, log, { actorId: "a1", now: NOW })).toBe(NOW - 50_000 + 120_000);
+    expect(streakEndsAt(one, log, { actorId: "a1", now: NOW })).toBe(NOW + 10_000);
+    // The streak's last moment; the price is back a moment after.
+    expect(nextPrice(one, log, { actorId: "a1", now: NOW + 10_000 })).toBe(22.5);
+    expect(nextPrice(one, log, { actorId: "a1", now: NOW + 10_001 })).toBe(10);
+    // No streak running (past the window, a window of 0, no draws): nothing to wait for.
+    expect(streakEndsAt(one, log, { actorId: "a1", now: NOW + 10_001 })).toBeNull();
+    expect(streakEndsAt({ ...GAME, deck: { ...GAME.deck, streakMinutes: 0 } }, log, { actorId: "a1", now: NOW })).toBeNull();
+    expect(streakEndsAt(GAME, [], { actorId: "a1", now: NOW })).toBeNull();
+    expect(DECK.shop.changesAt(one, { log, actorId: "a1", now: NOW })).toBe(NOW + 10_000);
   });
 
   it("counts draws in a row within the deck's own window, and none with a window of 0", () => {
