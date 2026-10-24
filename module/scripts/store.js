@@ -12,7 +12,7 @@
 */
 import { MODULE_ID, SETTINGS } from "./config.js";
 import { normalizeRarity, flattenPool, markEntriesMissing, rawRarityOf, sourceRarityOf, curateEntries } from "./odds.js";
-import { dayKeyOf } from "./clock.js";
+import { dayModeOf, dayKeyFor, byRest } from "./clock.js";
 import { pruneRounds } from "./round.js";
 
 const uid = () => (globalThis.foundry?.utils?.randomID?.(10)) ?? Math.random().toString(36).slice(2, 12);
@@ -85,9 +85,37 @@ export function enqueueWrite(task) {
 const get = key => foundry.utils.deepClone(game.settings.get(MODULE_ID, key));
 const set = (key, value) => game.settings.set(MODULE_ID, key, value);
 
-// The in-game day's key from the world's clock (clock.js), for anything
-// counted per day; null in a world with no clock.
-export const todayKey = () => dayKeyOf(globalThis.game?.time ?? null);
+/*
+  The in-game day (clock.js), for anything counted per day. dayMode() is how
+  this world tells one: from the clock, or (dnd5e's calendar off, its
+  default) at each character's long rest. dnd5e's calendarConfig setting
+  is read the way dnd5e reads it for daily uses; a dnd5e from before that
+  setting counts rests too, and a world with neither has no day (null).
+  todayKey(actorId) is that character's key; null in a world with no day.
+  The rests are counted in the STATE setting under `days` (an actor id to
+  its count), beside the `actorId.boxId` entries, by countRest below.
+*/
+function dnd5eCalendar() {
+  try { return globalThis.game?.settings?.get?.("dnd5e", "calendarConfig") ?? null; } catch { return null; }
+}
+export const dayMode = () => dayModeOf({ config: dnd5eCalendar(), isDnd5e: globalThis.game?.system?.id === "dnd5e", time: globalThis.game?.time ?? null });
+export const restDayOf = actorId => Number(game.settings.get(MODULE_ID, SETTINGS.STATE)?.days?.[actorId]) || 0;
+export function todayKey(actorId) {
+  const rest = byRest(dayMode());
+  return dayKeyFor({ time: globalThis.game?.time ?? null, calendarOn: !rest, restDay: rest && actorId ? restDayOf(actorId) : 0 });
+}
+
+// One more new day for this character, on the GM in the write queue (a
+// pull's read-modify-write of STATE can't lose it). Returns the new count.
+export function countRest(actorId) {
+  return enqueueWrite(async () => {
+    const all = get(SETTINGS.STATE);
+    const days = { ...(all.days ?? {}) };
+    days[actorId] = (Number(days[actorId]) || 0) + 1;
+    await set(SETTINGS.STATE, { ...all, days });
+    return days[actorId];
+  });
+}
 
 export const getPools = () => get(SETTINGS.POOLS);
 export const getBoxes = () => get(SETTINGS.BOXES);

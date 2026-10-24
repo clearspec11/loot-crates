@@ -11,7 +11,7 @@
 */
 import { MODULE_ID, SETTINGS } from "./config.js";
 import { registerSettings, setStoreListener, registerIndexFields, getPools, getBoxes, getLog, getRounds, savePool, saveBox, entriesFromCompendium, entryFromItem, sweepAllPools } from "./store.js";
-import { registerSocket, requestPull, requestStake, isActiveGM } from "./socket.js";
+import { registerSocket, requestPull, requestStake, isActiveGM, restCompleted } from "./socket.js";
 import { registerKind, getKind, kindOf } from "./kinds.js";
 import { openShop, refreshShop, registerShopHooks } from "./shop.js";
 import { addDirectoryButtons } from "./route.js";
@@ -82,6 +82,12 @@ Hooks.on("renderItemDirectory", (_app, html) => {
 
 // "Make a crate" on a roll table's menu in the Roll Tables sidebar (a GM's).
 Hooks.on("getRollTableContextOptions", (_app, options) => { if (Array.isArray(options)) options.push(makeCrateMenuEntry()); });
+
+// With dnd5e's calendar off, a day ends at each character's long rest
+// (clock.js): the rest that starts a new day is counted on the GM.
+Hooks.on("dnd5e.restCompleted", (actor, result, config) => {
+  try { restCompleted(actor, result, config); } catch (err) { console.error("loot-crates | counting a long rest failed", err); }
+});
 
 // Purse and ownership changes show in the shop without reopening it.
 registerShopHooks(Hooks);

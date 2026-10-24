@@ -15,6 +15,7 @@ Ready for a first public release.
 - Deleting a wheel or an auction with a round open calls the round off first. The confirm says how many stakes it holds and how much gold, and every stake comes back at once instead of on a later reload.
 - Smaller fixes: a table window no longer offers a bet on a wheel or lot taken off the shelf mid-round; the Restock line follows a later change to Stock; Hide misses folds a crate's "Nothing" pulls the way it folds the well's throws.
 - A README for GMs and players, with install steps, a quick start and screenshots.
+- With dnd5e's calendar off (its default), a day now ends at each character's long rest, as it does for dnd5e's own daily uses: the well's daily cap and a limit per day open again after a long rest instead of staying shut until the GM moves the world's time. The editors say so beside the cap. Counts made before this update were keyed on the clock, so the first session after it starts every character's day fresh.
 
 ## 0.14.0
 

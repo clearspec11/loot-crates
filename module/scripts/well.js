@@ -9,9 +9,10 @@
     item" outcome. Every throw writes a log row (so every throw is
     refundable), the Pull log folds a character's misses for a day into one
     line (collapseMisses), and only an item posts a chat card.
-  - The cap is "N throws per in-game day", keyed on the world's calendar
-    (clock.js dayKeyOf) and counted from the unrefunded log rows that carry
-    that day's key: the GM resets nothing, the day rolls over when the party's
+  - The cap is "N throws per in-game day", keyed on the world's calendar,
+    or with dnd5e's calendar off on the character's long rests (clock.js
+    dayKeyFor), and counted from the unrefunded log rows that carry that
+    day's key: the GM resets nothing, the day rolls over when the party's
     does, and a refund gives a throw back by itself.
   - Pity counts throws since the last item at the pity rarity, in the
     crate's own state shape ({ sinceRare, owned, pulls }), so the crate's
@@ -38,6 +39,7 @@ import { resultHTML } from "./revealcard.js";
 import { cardShell, oddsRibbon, oddsPills, pityLine, shopReason, shortReason, draftBox } from "./boxcard.js";
 import { drawItem, grantData, crateLogRow } from "./crate.js";
 import { PullError, registerKind } from "./kinds.js";
+import { byRest, restDayNote } from "./clock.js";
 
 export const WELL_DEFAULTS = { price: 0.1, odds: { nothing: 90, coin: 8, item: 2 }, cap: 3 };
 export const OUTCOMES = ["nothing", "coin", "item"];
@@ -60,11 +62,13 @@ export function throwsToday(log, { boxId, actorId, day }) {
 
 export const stillLine = (thrown, cap) => `The well is still until tomorrow (${thrown} of ${cap} today)`;
 
-// The editor's one-line note when the world has no clock (store.js todayKey
-// null): the cap is keyed on the in-game day, so without one it never
-// applies, and the GM should hear that where they set it. A warning when a
-// cap is set and so silently off; a hint otherwise; nothing with a clock.
-export function noClockNote({ hasClock, cap } = {}) {
+// The editor's one-line note about the day the cap counts (store.js
+// dayMode, passed as `day`). With dnd5e's calendar off a day ends at each
+// character's long rest, and the GM hears that where they set the cap.
+// With no day at all (todayKey null) the cap never applies: a warning when
+// a cap is set and so silently off, a hint otherwise. Nothing with a clock.
+export function noClockNote({ hasClock, cap, day = null } = {}) {
+  if (byRest(day)) return `<p class="lc-form__hint">${restDayNote(day)}</p>`;
   if (hasClock) return "";
   return `<p class="lc-form__hint${capOf({ rules: { cap } }) ? " lc-form__hint--warn" : ""}">No calendar: the daily cap will not apply.</p>`;
 }

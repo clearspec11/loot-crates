@@ -108,13 +108,17 @@ async function seed(gm) {
     if (!pool) throw new Error("no Live UI pool: run live-ui.js first");
     const old = Object.values(store.getBoxes()).find(b => b.name === name) ?? null;
     const { throwsToday } = await import(base + "scripts/well.js");
-    const today = store.todayKey();
+    // This check turns the day with the calendar, so the calendar is the
+    // day from the first throw: with it off (dnd5e 6's default) a day ends
+    // at a long rest instead (clock.js; live-well-day.cjs checks that).
+    const calendar = { config: foundry.utils.deepClone(game.settings.get("dnd5e", "calendarConfig")), prefs: foundry.utils.deepClone(game.settings.get("dnd5e", "calendarPreferences")) };
+    if (!calendar.config?.enabled) await game.settings.set("dnd5e", "calendarConfig", { ...game.settings.get("dnd5e", "calendarConfig"), enabled: true });
+    const today = store.todayKey(actor.id);
     const base0 = old ? throwsToday(store.getLog(), { boxId: old.id, actorId: actor.id, day: today }) : 0;
     const well = await store.saveBox({
       ...(old ? { id: old.id } : {}), kind: "well", name, price: 0.1, pools: [{ id: pool.id, share: 1 }],
       weights: { uncommon: 75, rare: 25 }, odds: { nothing: 100, coin: 0, item: 0 }, rules: { cap: base0 + 5, pity: null, noDuplicates: false, stock: null },
     });
-    const calendar = { config: foundry.utils.deepClone(game.settings.get("dnd5e", "calendarConfig")), prefs: foundry.utils.deepClone(game.settings.get("dnd5e", "calendarPreferences")) };
     return {
       actorId: actor.id, wellId: well.id, old, worldTime: game.time.worldTime, today, base: base0, cap: well.rules.cap,
       calendarEnabled: !!(calendar.config?.enabled && calendar.prefs?.visible), calendar,
@@ -266,10 +270,10 @@ async function restore(gm, before) {
       }, { want, since });
       const advancedAt = await press("advance");
       const cleared = await until(false, advancedAt);
-      const todayAfter = await gm.page.evaluate(async base => (await import(base + "scripts/store.js")).todayKey(), MODULE_BASE);
+      const todayAfter = await gm.page.evaluate(async ({ base, before }) => (await import(base + "scripts/store.js")).todayKey(before.actorId), { base: MODULE_BASE, before });
       const reversedAt = await press("reverse");
       const back = await until(true, reversedAt);
-      const todayBack = await gm.page.evaluate(async base => (await import(base + "scripts/store.js")).todayKey(), MODULE_BASE);
+      const todayBack = await gm.page.evaluate(async ({ base, before }) => (await import(base + "scripts/store.js")).todayKey(before.actorId), { base: MODULE_BASE, before });
       const ok = cleared.ms != null && cleared.ms <= 2000 && !cleared.off && cleared.why === "" && cleared.count === `0 of ${before.cap} throws today` && todayAfter !== before.today
         && back.ms != null && back.ms <= 2000 && back.off && back.why === `The well is still until tomorrow (${before.cap} of ${before.cap} today)` && todayBack === before.today;
       return { ok, show, cleared, todayAfter, back, todayBack };

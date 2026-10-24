@@ -274,7 +274,7 @@ export class CrateShop extends ApplicationV2 {
     return {
       purse: actor?.system?.currency ?? {}, open: isShopOpen() && gm, gmOnline: gm, hasActor: !!actor,
       actorId: actor?.id ?? null, actorName: actor?.name ?? "", stateOf: boxId => (actor ? heldState(actor.id, boxId) ?? getActorState(actor.id, boxId) : {}),
-      today: todayKey(), get log() { return (log ??= getLog()); },
+      today: todayKey(actor?.id), get log() { return (log ??= getLog()); },
       // A table game's card says what its round is doing (roulette.js).
       get rounds() { return (rounds ??= getRounds()); }, isGM: !!game.user.isGM, now: Date.now(),
       // This character's pull still spinning here, or a table game's round

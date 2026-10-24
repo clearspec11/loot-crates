@@ -472,7 +472,7 @@ export class CrateReveal extends ApplicationV2 {
       const offer = kind.again(r, { game, log, pools: getPools(), purse, now: Date.now(), open: isShopOpen() && gmOnline, gmOnline }) ?? null;
       // The limit per character is the core's (limits.js): once this
       // play reached it, the next one is off with the card's reason.
-      const limit = offer && !offer.off ? withLimit(game, "", { log, actorId: r.actorId, actorName: r.actorName, today: todayKey() }) : "";
+      const limit = offer && !offer.off ? withLimit(game, "", { log, actorId: r.actorId, actorName: r.actorName, today: todayKey(r.actorId) }) : "";
       return limit ? { ...offer, off: limit } : offer;
     } catch (err) {
       console.error("loot-crates | the kind's next play couldn't be offered", err);

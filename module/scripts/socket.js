@@ -27,6 +27,10 @@
                                                            (to all) or "error"
     { type: "staked", ... } and { type: "round", ... }     GM -> everyone; table.js
                                                            hears them (onTable)
+    { type: "newDay", actorId, userId }                    a player -> GM: that
+                                                           character finished a
+                                                           rest that starts a new
+                                                           day (restCompleted)
 
   A buyer who gave up waiting (GM_TIMEOUT_MS) calls the purchase off, and the
   GM drops a request that is cancelled before it charges: otherwise a GM
@@ -76,7 +80,8 @@
 import { SOCKET } from "./config.js";
 import { performPull, performStake, PullError } from "./pull.js";
 import { getKind, kindOf, gotText } from "./kinds.js";
-import { getBoxes, getPools, getLog, getActorState, setActorState, appendLog, updateLog, newId, isShopOpen, saveBox, enqueueWrite, refreshMissing, markMissing, reportMissing, todayKey, getRounds, saveRound } from "./store.js";
+import { getBoxes, getPools, getLog, getActorState, setActorState, appendLog, updateLog, newId, isShopOpen, saveBox, enqueueWrite, refreshMissing, markMissing, reportMissing, todayKey, dayMode, countRest, getRounds, saveRound } from "./store.js";
+import { byRest } from "./clock.js";
 import { formatPrice } from "./currency.js";
 import { stakeReason, stakesOf } from "./round.js";
 import { heard as tableHeard, closeStakes, watchTables } from "./table.js";
@@ -172,6 +177,7 @@ export function registerSocket() {
     }
     if (msg.type === "round") return tableHeard(msg);
     if (msg.type === "cancel" && isActiveGM()) return cancelPull(msg);
+    if (msg.type === "newDay" && isActiveGM()) return heardNewDay(msg);
     if (msg.type === "ack" && msg.userId === game.user.id) return heardFromGM(msg);
     if (msg.type === "late" && msg.userId === game.user.id) return openedAfterAll(msg);
     if (msg.type === "reveal") {
@@ -382,7 +388,7 @@ async function doPull(msg, timer, sent, stopWatching) {
     // counted per character or per day (the limit per character, the
     // well's cap), read here inside the queue so two quick buys can't both
     // pass.
-    const today = todayKey();
+    const today = todayKey(actor.id);
     const out = await performPull({ box, pools: getPools(), actor, state, onMissing, expectedPrice: msg.price, log: getLog(), today });
     const kind = getKind(out.kind);
     timer.mark("roll+grant");
@@ -430,6 +436,34 @@ async function doPull(msg, timer, sent, stopWatching) {
   } finally {
     timer.done();
   }
+}
+
+/*
+  A new day at a long rest (clock.js "rest"): dnd5e fires restCompleted on
+  the client that rested, with `newDay` set for a long rest unless the
+  dialog's New day was unticked. The active GM counts it (store.js
+  countRest); anyone else asks the GM, who counts it only for a sender who
+  owns the character. With dnd5e's calendar on, the clock is the day and a
+  rest counts nothing. No GM online: the rest isn't counted.
+*/
+export function restCompleted(actor, result, config) {
+  if (!actor?.id || !(result?.newDay ?? config?.newDay)) return null;
+  if (isActiveGM()) return newDayFor(actor.id);
+  if (!game.users.activeGM) return null;
+  game.socket.emit(SOCKET, { type: "newDay", actorId: actor.id, userId: game.user.id });
+  return null;
+}
+
+function heardNewDay(msg) {
+  const actor = game.actors.get(msg.actorId);
+  const user = game.users.get(msg.userId);
+  if (!actor || !user || !actor.testUserPermission(user, "OWNER")) return null;
+  return newDayFor(actor.id);
+}
+
+function newDayFor(actorId) {
+  if (!byRest(dayMode())) return null;
+  return countRest(actorId).catch(err => { console.error(`loot-crates | counting a new day for ${actorId} failed`, err); return null; });
 }
 
 // The shop is open and the buyer owns the character, checked on the GM
@@ -486,7 +520,7 @@ async function doStake(msg, timer, sent, stopWatching) {
     if (why) throw new PullError(why);
     const log = getLog();
     const stakes = stakesOf(log, round.id);
-    const out = await performStake({ box, actor, round, bet: msg.bet ?? null, stakes, expectedPrice: msg.price, log, today: todayKey() });
+    const out = await performStake({ box, actor, round, bet: msg.bet ?? null, stakes, expectedPrice: msg.price, log, today: todayKey(actor.id) });
     timer.mark("charge");
 
     const logId = newId();

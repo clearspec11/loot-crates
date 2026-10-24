@@ -104,7 +104,7 @@ const cancelTableRound = roundId => import("./table.js").then(m => m.cancelRound
 // The shop, opened from the nav's "View shop"; loaded when pressed, as the
 // table is (shop.js reaches back here for its own "Manage crates").
 const openShopWindow = () => import("./shop.js").then(m => m.openShop());
-import { getRounds, getPools, getBoxes, getLog, todayKey, newId, createPool, updatePool, removePool, createBox, updateBox, removeBox, entryFromItem, entriesFromDrop, addEntries, packHasLoot, LOOT_TYPES, isLootType, isShopOpen, setShopOpen, checkSources, sweepPools, removeEntry, patchEntry } from "./store.js";
+import { getRounds, getPools, getBoxes, getLog, dayMode, newId, createPool, updatePool, removePool, createBox, updateBox, removeBox, entryFromItem, entriesFromDrop, addEntries, packHasLoot, LOOT_TYPES, isLootType, isShopOpen, setShopOpen, checkSources, sweepPools, removeEntry, patchEntry } from "./store.js";
 import { flattenPool, withSources, entryWeight, curateEntries, oddsModeOf } from "./odds.js";
 import { SKIPPED_NAMES, describeSkipped, dropPreviewHTML, savedNotice, PAGE_ROWS, defaultView, poolRows, sortRows, filterRows, pageRows, nextRows, poolCount, poolSummary, poolBody, chipsHTML, unsetButton, footHTML, entryRow, entryParts, pinRecent, dropNotice, poolUsers, usersText, deleteImpact, removeImpact, deletePoolText, removeEntryText } from "./poolview.js";
 import { formatPrice, parsePrice, unreadablePrice } from "./currency.js";
@@ -113,6 +113,7 @@ import { describeRefund, refundPull } from "./refund.js";
 import { postRefundCard } from "./chat.js";
 import { changeCount } from "./redraw.js";
 import { limitsFieldset, perCharacterFromForm, restocked, restockLine, stockAfterRefund, stockField, stockFromForm } from "./limits.js";
+import { byRest } from "./clock.js";
 import { onShelf, shelfRules, shelfFieldHTML, shelfNotice } from "./shelf.js";
 import { starterPresent, hasStarter, starterAgainText, starterNotice, starterCallHTML, STARTER_LABEL } from "./starter.js";
 import { addStarterSet } from "./starterbuild.js";
@@ -120,6 +121,9 @@ import { poolsFieldset, poolPicks, syncShares, pityRow, stakeRow, betRangeRow, d
 
 const { ApplicationV2, DialogV2 } = foundry.applications.api;
 const esc = s => foundry.utils.escapeHTML(String(s ?? ""));
+// How this world tells a day (store.js dayMode), for the editors' notes
+// beside the well's cap and a limit per day.
+const dayOpts = () => { const day = dayMode(); return { day, hasClock: day != null }; };
 const dragData = event => (foundry.applications?.ux?.TextEditor?.implementation ?? globalThis.TextEditor).getDragEventData(event);
 
 export class CrateManager extends ApplicationV2 {
@@ -728,7 +732,7 @@ export class CrateManager extends ApplicationV2 {
         ${pityRow(box.rules?.pity, { noun: "pulls", esc })}
         <label class="lc-row"><input type="checkbox" name="noDuplicates" ${box.rules?.noDuplicates ? "checked" : ""}> No duplicates per character</label>
       </fieldset>
-      ${limitsFieldset(box, { draft: isNew, hasClock: todayKey() != null, esc })}
+      ${limitsFieldset(box, { draft: isNew, ...dayOpts(), esc })}
       ${shelfFieldHTML(box, opts)}`, {
       // Restock fills the stored record at Save; a draft has none to fill.
       onForm: form => { liveOdds(form, box, poolIds); if (!isNew) wireRestock(form, box); wireShelf(form, isNew); wirePrice(form); },
@@ -792,8 +796,8 @@ export class CrateManager extends ApplicationV2 {
         <p class="lc-sr-only" role="status" aria-live="polite"></p>
       </div>
       <fieldset><legend>Rules</legend>
-        <label class="lc-row">Each character may throw <input name="cap" type="number" min="0" step="1" value="${box.rules?.cap ?? ""}"> times a day (blank for no limit; the day is the world's calendar)</label>
-        ${noClockNote({ hasClock: todayKey() != null, cap: box.rules?.cap })}
+        <label class="lc-row">Each character may throw <input name="cap" type="number" min="0" step="1" value="${box.rules?.cap ?? ""}"> times a day (blank for no limit${byRest(dayMode()) ? "" : "; the day is the world's calendar"})</label>
+        ${noClockNote({ ...dayOpts(), cap: box.rules?.cap })}
         ${pityRow(box.rules?.pity, { noun: "throws", esc })}
         <label class="lc-row"><input type="checkbox" name="noDuplicates" ${box.rules?.noDuplicates ? "checked" : ""}> No duplicates per character</label>
       </fieldset>
@@ -861,7 +865,7 @@ export class CrateManager extends ApplicationV2 {
       <fieldset class="lc-form__weights"><legend>The prize's rarity weights</legend>
         ${RARITIES.map(r => `<label class="lc-row">${RARITY_LABEL[r]} <input name="w.${r}" type="number" min="0" step="1" value="${esc(box.weights?.[r] ?? DEFAULT_WEIGHTS[r])}"><span class="lc-form__hint" data-held="${r}"></span></label>`).join("")}
       </fieldset>
-      ${limitsFieldset(box, { stock: false, draft: isNew, hasClock: todayKey() != null, esc })}
+      ${limitsFieldset(box, { stock: false, draft: isNew, ...dayOpts(), esc })}
       ${shelfFieldHTML(box, opts)}`, {
       onForm: form => {
         liveOdds(form, box, poolIds, (draft, live) => {
@@ -919,7 +923,7 @@ export class CrateManager extends ApplicationV2 {
         <div class="lc-form__preview"></div>
         <p class="lc-sr-only" role="status" aria-live="polite"></p>
       </div>
-      ${limitsFieldset(box, { stock: false, draft: isNew, hasClock: todayKey() != null, esc })}
+      ${limitsFieldset(box, { stock: false, draft: isNew, ...dayOpts(), esc })}
       ${shelfFieldHTML(box, opts)}`, {
       onForm: form => {
         wireShelf(form, isNew);

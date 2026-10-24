@@ -21,6 +21,7 @@
 */
 import { getKind, kindOf } from "./kinds.js";
 import { field } from "./editorfields.js";
+import { byRest, restDayNote } from "./clock.js";
 
 export const PER = ["ever", "day"];
 const PER_LABEL = { ever: "in all", day: "a day" };
@@ -187,10 +188,11 @@ export const limitsText = game => [stockText(game), perCharacterText(game)].filt
   hidden `restock` field and the line beside it, and only Save writes it,
   so Cancel leaves the stock as it was. A `draft` (a New,
   or a copy of a game) has no record to fill, so it gets no Restock.
-  `hasClock` false warns that a limit per day won't apply. `esc` escapes
-  text and values.
+  `hasClock` false warns that a limit per day won't apply; `day` "rest"
+  or "manual" (store.js dayMode) says a day ends at each character's long
+  rest instead of naming the calendar. `esc` escapes text and values.
 */
-export function limitsFieldset(game, { stock = true, draft = false, hasClock = true, esc = s => String(s ?? "") } = {}) {
+export function limitsFieldset(game, { stock = true, draft = false, hasClock = true, day = null, esc = s => String(s ?? "") } = {}) {
   const pc = game?.rules?.perCharacter ?? {};
   const max = whole(pc.max);
   const per = pc.per === "day" ? "day" : "ever";
@@ -204,11 +206,13 @@ export function limitsFieldset(game, { stock = true, draft = false, hasClock = t
           ${s?.max != null && !draft ? `<button type="button" class="lc-limits__restock" data-restock${full ? ` aria-disabled="true"` : ""}><i class="fas fa-rotate-left" inert></i> Restock</button><input type="hidden" name="restock" value="">` : ""}
         </div>
         <p class="lc-form__hint" id="${id}-stock">How many there are in all; blank for unlimited. Each sale takes one, a refund puts one back, and Restock fills it to this number again.</p>` : "";
-  const warn = !hasClock ? `<p class="lc-form__hint${per === "day" && max ? " lc-form__hint--warn" : ""}">No calendar: a limit per day will not apply.</p>` : "";
+  const rest = byRest(day);
+  const warn = rest ? `<p class="lc-form__hint">${restDayNote(day)}</p>`
+    : !hasClock ? `<p class="lc-form__hint${per === "day" && max ? " lc-form__hint--warn" : ""}">No calendar: a limit per day will not apply.</p>` : "";
   return `
       <fieldset class="lc-limits"><legend>Limits</legend>${stockPart}
         <div class="lc-row lc-row--wrap">${field("Each character may buy", `<input name="limitMax" type="number" min="0" step="1" value="${esc(max ?? "")}" aria-describedby="${id}-each">`)} <select name="limitPer" aria-label="How often">${PER.map(p => `<option value="${p}"${p === per ? " selected" : ""}>${PER_LABEL[p]}</option>`).join("")}</select></div>
-        <p class="lc-form__hint" id="${id}-each">Blank for no limit. Counted for each character from the Pull log, so a refund gives the purchase back; a day is the world's calendar.</p>
+        <p class="lc-form__hint" id="${id}-each">Blank for no limit. Counted for each character from the Pull log, so a refund gives the purchase back${rest ? "" : "; a day is the world's calendar"}.</p>
         ${warn}
       </fieldset>`;
 }
