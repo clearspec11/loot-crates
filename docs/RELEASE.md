@@ -9,6 +9,22 @@ How a version goes out, and the one-time checklist for making the repository pub
 3. `npm run lint && npm run test:run && npm run build` all green, and `NODE_PATH=$(npm root -g) npm run smoke` for any UI change.
 4. Tag `vX.Y.Z` on `main` and publish a GitHub release with `dist/module.json` and `dist/module.zip` attached. The manifest's `manifest` and `download` URLs point at the latest release, so Foundry finds the update by itself.
 
+## Main is protected
+
+A ruleset on GitHub keeps `main` to pull requests: no direct pushes, no force-pushes, no deleting it, for admins too. A pull request merges only when the `checks` job (`.github/workflows/checks.yml`: lint, tests, build) has passed. No approval is required, because the pull requests are opened from the owner's own account. Smoke and the live checks need a browser and the LAN Foundry, so they stay on the dev machine and are reported in the pull request.
+
+## The dev channel
+
+Each round's work can be installed before it is public. `npm run release:dev` publishes the checked-out commit (clean and pushed) as a GitHub pre-release under the fixed tag `dev`, version `X.Y.Z-dev.N`: `X.Y.Z` is the branch's version and `N` counts up for each build of it. A test world installed from
+
+```
+https://github.com/clearspec11/loot-crates/releases/download/dev/module.json
+```
+
+updates to every dev build and never to a public release; the public manifest never sees a dev build, since a pre-release is never "latest". Foundry counts `1.2.0-dev.1` as newer than `1.1.0`, and `dev.2` as newer than `dev.1` (`test/channel.test.js`). A dev build shows no "What's new" note, because the note is keyed on the release version.
+
+When: once a round's pull request is open with its release commit, and again after any fix pushed to it. After the merge, the public release goes out from `main` as above.
+
 ## What the zip ships
 
 `npm run build` packs `module/` into `dist/module.zip` and refuses to pack anything but `module.json`, `scripts/*.js`, `styles/*.css` and `lang/*.json` (the rule is `scripts/package-files.mjs`; `test/release.test.js` checks the working tree against it). Screenshots in `docs/images/` are for the README and the package listing only and never ship.
