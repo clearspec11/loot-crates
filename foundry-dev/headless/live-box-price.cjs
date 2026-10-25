@@ -15,8 +15,9 @@
 //   1. The GM opens the manager, clicks the Boxes tab, clicks the crate's
 //      price field, selects it, types PRICE key by key and presses Tab.
 //      The stored price must become 7.5 gp with nothing else on the record
-//      changed, the field read "7 gp 5 sp", the status line say nothing,
-//      and focus move on (Tab) to the row's next control.
+//      changed, the field read "7 gp 5 sp", the status line say it was
+//      saved ("Saved: Live UI crate, 7 gp 5 sp.", since round 20), and
+//      focus move on (Tab) to the row's next control.
 //   2. The player's open shop must read "Open for 7 gp 5 sp" on its Buy.
 //   3. The GM types "5 gold" and presses Enter: the field goes back to
 //      "7 gp 5 sp", the status line says how to type a price, and nothing
@@ -82,7 +83,10 @@ async function join(browser, user) {
     const route = await import(base + "scripts/route.js");
     const { openShop } = await import(base + "scripts/shop.js");
     const { openManager } = await import(base + "scripts/manager.js");
-    for (const h of [...(globalThis.Hooks.events?.renderItemDirectory ?? [])]) if (/Crates/.test(String(h.fn))) globalThis.Hooks.off("renderItemDirectory", h.fn);
+    // The installed module's hook calls addDirectoryButtons (route.js); left
+    // in, its buttons are drawn first and open the installed shop and
+    // manager, which this page's redraw no longer reaches (as live-route).
+    for (const h of [...(globalThis.Hooks.events?.renderItemDirectory ?? [])]) if (/Crates|addDirectoryButtons/.test(String(h.fn))) globalThis.Hooks.off("renderItemDirectory", h.fn);
     globalThis.Hooks.on("renderItemDirectory", (_app, html) => {
       const root = html instanceof HTMLElement ? html : html?.[0];
       if (root) route.addDirectoryButtons(root, { isGM: !!game.user.isGM, open: { shop: () => openShop(), manager: () => openManager() } });
@@ -220,7 +224,7 @@ const storedPrice = (gm, boxId) => gm.evaluate(id => game.settings.get("loot-cra
     out.checks = {
       saved: t.price === 7.5 && t.changed.length === 0,
       fieldReads: t.field === "7 gp 5 sp" && t.label === `Price of ${BOX}`,
-      saidNothing: t.status === "",
+      saidSaved: t.status === `Saved: ${BOX}, 7 gp 5 sp.`,
       tabMovedOn: t.focus !== "the price field" && t.focus != null,
       shopReads: s.label === `${BOX}: Open for 7 gp 5 sp` && s.dataPrice === "7.5" && !s.off,
       badPutBack: b.price === 7.5 && b.field === "7 gp 5 sp" && b.status === 'Couldn\'t read "5 gold"; try 5 gp or 5 sp.',

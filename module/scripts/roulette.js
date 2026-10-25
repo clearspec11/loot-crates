@@ -299,14 +299,16 @@ export function netByActor(stakes = []) {
   return [...by.values()];
 }
 
-// "Crate Tester wins 10 gp on Red", "Orla loses 5 gp", "Bo breaks even".
+// "Crate Tester wins 10 gp on Red", "Orla loses 5 gp", "Bo breaks even";
+// "Someone wins 10 gp" for a stake whose name is gone.
 export function netText(a) {
+  const name = a.actorName || t("LOOTCRATES.Auction.Someone");
   const on = a.won.length ? t("LOOTCRATES.Roulette.OnBets", { bets: a.won.join(", ") }) : "";
   const item = a.items.length ? t("LOOTCRATES.Roulette.AndFinds", { items: a.items.join(", ") }) : "";
-  if (a.net > 0) return t("LOOTCRATES.Roulette.Wins", { name: a.actorName, price: formatPrice(a.net / 100), on, item });
-  if (a.net < 0) return t("LOOTCRATES.Roulette.Loses", { name: a.actorName, price: formatPrice(-a.net / 100), item });
-  if (!a.won.length && !a.lost.length) return t("LOOTCRATES.Roulette.StakeBack", { name: a.actorName });
-  return t("LOOTCRATES.Roulette.BreaksEven", { name: a.actorName, on, item });
+  if (a.net > 0) return t("LOOTCRATES.Roulette.Wins", { name, price: formatPrice(a.net / 100), on, item });
+  if (a.net < 0) return t("LOOTCRATES.Roulette.Loses", { name, price: formatPrice(-a.net / 100), item });
+  if (!a.won.length && !a.lost.length) return t("LOOTCRATES.Roulette.StakeBack", { name });
+  return t("LOOTCRATES.Roulette.BreaksEven", { name, on, item });
 }
 
 export const netLines = stakes => netByActor(stakes).map(netText);
@@ -585,7 +587,7 @@ export function railHTML(game, stakes = [], { esc = s => String(s ?? ""), outcom
   const pockets = pocketsOf(game);
   const pocket = outcome ? pockets[outcome.index] ?? null : null;
   const live = stakes.filter(r => isOpenStake(r) || r.status === "settled");
-  const chipsOn = key => live.filter(r => spotKey(normalizeBet(game, r.stake)) === key).map(r => `<span class="lc-token lc-rarity-${esc(betSwatch(normalizeBet(game, r.stake)))}${fresh.includes(r.id) ? " lc-token--new" : ""}${actorIds.includes(r.actorId) ? " lc-token--mine" : ""}" title="${t("LOOTCRATES.Roulette.ChipTitle", { name: esc(r.actorName), price: esc(formatPrice(r.price)), on: esc(r.name ?? "") })}">${esc(initialOf(r.actorName))}</span>`).join("");
+  const chipsOn = key => live.filter(r => spotKey(normalizeBet(game, r.stake)) === key).map(r => `<span class="lc-token lc-rarity-${esc(betSwatch(normalizeBet(game, r.stake)))}${fresh.includes(r.id) ? " lc-token--new" : ""}${actorIds.includes(r.actorId) ? " lc-token--mine" : ""}" title="${t("LOOTCRATES.Roulette.ChipTitle", { name: esc(r.actorName || t("LOOTCRATES.Auction.Someone")), price: esc(formatPrice(r.price)), on: esc(r.name ?? "") })}">${esc(initialOf(r.actorName))}</span>`).join("");
   const spot = (bet, label, extra = "") => {
     const key = spotKey(bet);
     const won = pocket ? betWins(bet, pocket) : false;

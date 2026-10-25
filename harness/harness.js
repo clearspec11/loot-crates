@@ -105,6 +105,13 @@
   leaves it, its pools picked from a stand-in for the dnd5e indexes
   (sample.js STARTER_INDEX): every game off the shelf, the first game's
   Edit focused, the status line naming what came in)
+  ?linger=10 | 30 | 60 | 0 (landed, dice, well, deck and the table's
+  landing: the finished window's countdown, linger.js, as reveal.js and
+  tablewindow.js start it once the result shows: "Closes in 30 s" and Keep
+  open at the start of the actions row; 0 is the setting at Off, which
+  draws nothing; the pointer over the window pauses it, and when it runs
+  out the window "closes" as its Close does). &paused=1 holds it, as the
+  pointer over the window would: "Paused, 30 s left".
   ?state=welcome (the GM's welcome, welcome.js: a world with games, so Open
   the manager is the primary and has focus; ?empty=1, a new world, where
   Add starter crates is; ?view=news, "What's new in 0.14.0" after an
@@ -139,6 +146,7 @@ import { RARITY_LABEL, RARITIES, DEFAULT_WEIGHTS } from "../module/scripts/confi
 import { actorPicker, boxCard, oddsRibbon, shopHTML, shopNotice, patchShop, draftBox, boxPreview, boxPreviewHTML } from "../module/scripts/boxcard.js";
 import { shopOdds } from "../module/scripts/odds.js";
 import { loadStrings } from "../module/scripts/i18n.js";
+import { Linger, lingerMs } from "../module/scripts/linger.js";
 
 // The module's words (module/lang/en.json), in before anything is drawn,
 // as main.js loads them in a world.
@@ -206,6 +214,27 @@ if (state !== "welcome" && state !== "shop" && state !== "manager" && state !== 
 }
 
 const stage = document.getElementById("stage");
+
+/*
+  ?linger: the countdown a finished window starts once its result shows
+  (linger.js), in the window's actions row; `close` is what its Close does
+  here. window.__linger.shift is how far the vault moved when the line
+  came in (it must not move).
+*/
+function lingerOn(close) {
+  if (!q.has("linger")) return;
+  const row = stage.querySelector(".lc-reveal__actions");
+  const vault = stage.querySelector(".lc-vault");
+  const at = () => { const r = vault?.getBoundingClientRect(); return r ? [r.top, r.height] : [0, 0]; };
+  const before = at();
+  const linger = new Linger({ onExpire: () => close.click(), onKeep: ({ hadFocus }) => { if (hadFocus) linger.focus(close); } });
+  linger.watch(document.getElementById("app"));
+  linger.mount(row);
+  linger.start(lingerMs(q.get("linger")));
+  if (q.get("paused") === "1") linger.pause("harness");
+  const after = at();
+  window.__linger = { linger, shift: Math.abs(after[0] - before[0]) + Math.abs(after[1] - before[1]) };
+}
 
 /*
   The shop window's header controls as Foundry draws them for a GM
@@ -321,6 +350,7 @@ async function renderSpin() {
       watch.hidden = !unwatched;
       btn.textContent = "Close";
       btn.focus({ preventScroll: true });
+      lingerOn(btn);
     },
   });
   btn.addEventListener("click", () => { if (landed) location.search = `?state=${replay ? "replay" : "shop"}&seed=${seed}&theme=${theme}`; else spin.skip(); });
@@ -483,6 +513,7 @@ async function renderWell() {
       btn.dataset.action = "dismiss";
       btn.textContent = "Close";
       btn.focus({ preventScroll: true });
+      lingerOn(btn);
     },
   });
   btn.addEventListener("click", () => { if (landed) location.search = `?state=shop&seed=${seed}&theme=${theme}`; else ctrl.skip(); });
@@ -540,6 +571,7 @@ async function renderDice() {
       btn.dataset.action = "dismiss";
       btn.textContent = "Close";
       btn.focus({ preventScroll: true });
+      lingerOn(btn);
     },
   });
   btn.addEventListener("click", () => { if (landed) location.search = `?state=shop&seed=${seed}&theme=${theme}`; else ctrl.skip(); });
@@ -606,6 +638,7 @@ async function renderDeck() {
       btn.dataset.action = "dismiss";
       btn.textContent = "Close";
       btn.focus({ preventScroll: true });
+      lingerOn(btn);
     },
   });
   btn.addEventListener("click", () => { if (landed) location.search = `?state=shop&seed=${seed}&theme=${theme}`; else ctrl.skip(); });
@@ -696,6 +729,7 @@ async function renderTable() {
       btn.dataset.action = "dismiss";
       btn.textContent = "Close";
       btn.focus({ preventScroll: true });
+      lingerOn(btn);
     },
   });
   btn.addEventListener("click", () => { if (landed) location.search = `?state=shop&seed=${seed}&theme=${theme}`; else spin.skip(); });
@@ -797,6 +831,7 @@ async function renderAuction() {
       btn.dataset.action = "dismiss";
       btn.textContent = "Close";
       btn.focus({ preventScroll: true });
+      lingerOn(btn);
     },
   });
   btn.addEventListener("click", () => { if (landed) location.search = `?state=shop&auction=1&seed=${seed}&theme=${theme}`; else spin.skip(); });

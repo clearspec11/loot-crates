@@ -14,7 +14,7 @@ const { storeRedraw, REDRAW_DELAY_MS } = await import("../module/scripts/redraw.
 const { SETTINGS } = await import("../module/scripts/config.js");
 
 // The welcome's record (welcomewindow.js registers it) redraws no window.
-const ALL = Object.values(SETTINGS).filter(k => k !== SETTINGS.SOUND && k !== SETTINGS.WELCOME);
+const ALL = Object.values(SETTINGS).filter(k => k !== SETTINGS.SOUND && k !== SETTINGS.WELCOME && k !== SETTINGS.LINGER);
 
 afterEach(() => { setStoreListener(null); vi.useRealTimers(); });
 
@@ -34,6 +34,13 @@ describe("the world settings", () => {
     expect(heard).toEqual(WORLD_KEYS);
     // A client setting is no one else's business.
     expect(registered.get(SETTINGS.SOUND).onChange).toBeUndefined();
+    // Nor is how long this player's finished windows stay open (linger.js):
+    // in Game Settings, never, 10 s, 30 s (the default) or a minute.
+    const linger = registered.get(SETTINGS.LINGER);
+    expect(linger).toMatchObject({ scope: "client", config: true, type: Number, default: 30, name: "Close finished game windows" });
+    expect(linger.onChange).toBeUndefined();
+    expect(linger.choices).toEqual({ 0: "Never: I close them myself", 10: "After 10 seconds", 30: "After 30 seconds", 60: "After 1 minute" });
+    expect(linger.hint).toMatch(/Keep open/);
   });
 
   it("keeps a failing listener from breaking the write", () => {

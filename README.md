@@ -115,6 +115,8 @@ Players press **Crates** at the top of the Items sidebar. The shop shows every g
 
 **Can I turn the sounds off?** Each player can untick **Crate sounds** in Game Settings, Configure Settings, Loot Crates. The sounds also follow Foundry's interface volume.
 
+**Do the result windows pile up?** No. Once a crate, the well, the dice or a deck has shown its result, or a table round has been settled or called off, its window closes by itself after 30 seconds. A small line in the window says "Closes in 30 s", with **Keep open** beside it to keep that one. The countdown waits while your pointer is over the window or you're using it from the keyboard, and never starts before the result shows. Each player chooses the delay (never, 10 seconds, 30 seconds or a minute) under **Close finished game windows** in Game Settings, Configure Settings, Loot Crates. **Watch again** on the chat card plays a result again. The shop, the manager and dialogs never close by themselves.
+
 **Where did the welcome window go?** Game Settings, Configure Settings, Loot Crates, **Show the welcome** opens it again.
 
 **Can I use it in another language?** Yes, once someone translates it. Every word the module shows is in one file, `module/lang/en.json`. To add a language, copy it to `lang/<code>.json` (for example `lang/de.json`), translate the values and keep the keys and the `{placeholders}` as they are, then add the language to `module.json`'s `languages`. Translations are welcome as a pull request on [GitHub](https://github.com/clearspec11/loot-crates).

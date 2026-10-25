@@ -190,6 +190,18 @@ const STATES = [
   ["welcome", "state=welcome"],
   ["welcome-empty", "state=welcome&empty=1"],
   ["welcome-news", "state=welcome&view=news"],
+  // A finished window closes by itself (linger.js, VIB-206): once the
+  // result shows, "Closes in 30 s" and Keep open at the start of the
+  // actions row, 12px mute ink, no live region, the vault not moved by an
+  // inch; a second later it reads 29. Over the window it reads "Paused,
+  // N s left", and Keep open takes the line away for good. A crate as the
+  // buyer sees it, the same held (as the pointer over it would), the
+  // dice, the wheel's settled round, and the setting at Off: no line.
+  ["linger-crate", "state=landed&seed=7&buyer=1&linger=30"],
+  ["linger-paused", "state=landed&seed=7&buyer=1&linger=30&paused=1"],
+  ["linger-dice", "state=dice&outcome=win&buyer=1&duration=0&linger=30"],
+  ["linger-table", "state=table&phase=landed&outcome=win&duration=0&linger=30"],
+  ["linger-off", "state=landed&seed=7&buyer=1&linger=0"],
 ];
 
 // The manager's tables at any width, read from the DOM: the pane never
@@ -718,6 +730,66 @@ function droppedProblems() {
   const status = document.querySelector(".lc-manager__status")?.textContent ?? "";
   if (!/Staff of Power 199 added to Every dnd5e item, Very rare, at the top\. Cleared the Rare filter/.test(status)) out.push(`status line says "${status}"`);
   if (document.querySelectorAll(".lc-entry--recent").length !== 1) out.push("more than one row pinned");
+  return out;
+}
+
+// The finished window's countdown (linger.js), read from the DOM.
+async function lingerProblems({ off, paused }) {
+  const out = [];
+  const lines = [...document.querySelectorAll(".lc-linger")];
+  if (!window.__linger) return ["the harness started no countdown"];
+  if (off) {
+    if (lines.length) out.push("the setting is Off but a countdown line shows");
+    if (window.__linger.linger.view.running) out.push("the setting is Off but the countdown runs");
+    return out;
+  }
+  if (lines.length !== 1) return [`expected one countdown line, got ${lines.length}`];
+  const [line] = lines;
+  const row = document.querySelector(".lc-reveal__actions");
+  if (line.parentNode !== row || row.firstElementChild !== line) out.push("the line isn't first in the actions row");
+  const text = line.querySelector(".lc-linger__text")?.textContent ?? "";
+  const want = paused ? /^Paused, 30 s left$/ : /^Closes in (30|29) s$/;
+  if (!want.test(text)) out.push(`the line reads "${text}"`);
+  const keep = line.querySelector("button.lc-linger__keep");
+  if (keep?.textContent !== "Keep open" || keep.type !== "button") out.push("no Keep open button");
+  if (line.closest("[aria-live], [role=status], [role=timer], [role=alert]")) out.push("the ticking line is in a live region");
+  for (const el of [line, line.querySelector(".lc-linger__text"), keep]) if (el && parseFloat(getComputedStyle(el).fontSize) < 11) out.push(`"${el.textContent}" is under 11px`);
+  if (window.__linger.shift) out.push(`the vault moved ${window.__linger.shift}px when the line came in`);
+  const lr = line.getBoundingClientRect();
+  const win = document.getElementById("app").getBoundingClientRect();
+  if (lr.left < win.left - 1 || lr.right > win.right + 1) out.push("the line runs outside the window");
+  for (const b of row.querySelectorAll(":scope > button")) {
+    const r = b.getBoundingClientRect();
+    if (r.width && r.left < lr.right - 1 && r.right > lr.left + 1 && r.top < lr.bottom - 1 && r.bottom > lr.top + 1) { out.push(`the line overlaps "${b.textContent}"`); break; }
+  }
+  // A second on, it has counted down (or, held, it hasn't).
+  await new Promise(r => setTimeout(r, 1100));
+  const later = line.querySelector(".lc-linger__text")?.textContent ?? "";
+  if (paused ? later !== text : !/^Closes in (29|28) s$/.test(later)) out.push(`a second later the line reads "${later}"`);
+  return out;
+}
+
+// Over the window the countdown holds; off it, it runs on; Keep open
+// takes the line away and stops it for good (after the screenshot).
+async function lingerUseProblems(page) {
+  const out = [];
+  const read = () => page.evaluate(() => document.querySelector(".lc-linger__text")?.textContent ?? null);
+  const app = await page.$("#app");
+  const box = await app.boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + 20);
+  await page.waitForTimeout(100);
+  const over = await read();
+  if (!/^Paused, \d+ s left$/.test(over ?? "")) out.push(`with the pointer over the window the line reads "${over}"`);
+  await page.mouse.move(box.x + box.width / 2, Math.min(box.y + box.height + 40, (page.viewportSize()?.height ?? 900) - 2));
+  await page.mouse.move(1, (page.viewportSize()?.height ?? 900) - 2);
+  await page.waitForTimeout(100);
+  const left = await read();
+  if (!/^Closes in \d+ s$/.test(left ?? "")) out.push(`with the pointer gone the line reads "${left}"`);
+  await page.click(".lc-linger__keep");
+  await page.waitForTimeout(100);
+  const after = await page.evaluate(() => ({ line: document.querySelectorAll(".lc-linger").length, view: window.__linger.linger.view, focus: document.activeElement?.className ?? "" }));
+  if (after.line) out.push("Keep open left the line");
+  if (!after.view.kept || after.view.running) out.push("Keep open didn't stop the countdown");
   return out;
 }
 
@@ -1746,7 +1818,7 @@ try {
       // back to system fonts and plain grounds; that isn't a failure.
       page.on("console", m => { if (m.type() === "error" && !m.text().startsWith("Failed to load resource")) errors.push(m.text()); });
       await page.goto(`http://localhost:${PORT}/harness/?${query}`, { waitUntil: "networkidle" });
-      if (name.startsWith("landed") || name === "replay" || name.startsWith("well") || (name.startsWith("dice") && name !== "dice-rolling") || (name.startsWith("deck") && name !== "deck-held") || (name.startsWith("roulette") && name !== "roulette-spinning")) await page.waitForSelector("body[data-landed]", { timeout: 10000 });
+      if (name.startsWith("landed") || name.startsWith("linger") || name === "replay" || name.startsWith("well") || (name.startsWith("dice") && name !== "dice-rolling") || (name.startsWith("deck") && name !== "deck-held") || (name.startsWith("roulette") && name !== "roulette-spinning")) await page.waitForSelector("body[data-landed]", { timeout: 10000 });
       if (name.startsWith("table")) await page.waitForSelector("body[data-ready]", { timeout: 10000 });
       if (name.startsWith("auction")) await page.waitForSelector("body[data-ready], body[data-landed]", { timeout: 10000 });
       // Mid-spin: the disc has turned (reduced motion is off for this state).
@@ -1787,6 +1859,12 @@ try {
       else if (name === "box-odds") problems0.push(...await page.evaluate(oddsEditorProblems));
       else if (name === "drop-preview") problems0.push(...await page.evaluate(dropPreviewProblems));
       else if (name === "landed-nothing") problems0.push(...await page.evaluate(nothingRevealProblems));
+      else if (name.startsWith("linger")) {
+        problems0.push(...await page.evaluate(lingerProblems, { off: name === "linger-off", paused: name === "linger-paused" }));
+        if (name === "linger-dice") problems0.push(...await page.evaluate(diceProblems, "win"));
+        else if (name === "linger-table") problems0.push(...await page.evaluate(tableProblems, { phase: "landed", outcome: "win", gm: false }));
+        else problems0.push(...await page.evaluate(revealProblems, true));
+      }
       else if (name.startsWith("auction")) problems0.push(...await page.evaluate(auctionProblems, { phase: { "auction-open": "open", "auction-bid": "bid", "auction-gm": "bid", "auction-hammer": "hammer", "auction-crate": "hammer" }[name], gm: name === "auction-gm", crate: name === "auction-crate" }));
       else if (name.startsWith("table") || name.startsWith("roulette")) problems0.push(...await page.evaluate(tableProblems, { phase: { "table-betting": "betting", "table-waiting": "waiting", "table-closed": "closed", "roulette-spinning": "spinning", "roulette-won": "landed", "roulette-lost": "landed" }[name], outcome: name === "roulette-lost" ? "lose" : "win", gm: name === "table-waiting" }));
       else if (name.startsWith("dice")) problems0.push(...await page.evaluate(diceProblems, { "dice-rolling": "rolling", "dice-won": "win", "dice-lost": "lose" }[name]));
@@ -1826,6 +1904,7 @@ try {
       }
       await page.evaluate(() => document.fonts.ready);
       await page.screenshot({ path: path.join(OUT, w.tag, `${shot}.png`), fullPage: true });
+      if (name.startsWith("linger") && name !== "linger-off" && name !== "linger-paused") problems0.push(...await lingerUseProblems(page));
       const problems = [...errors, ...problems0, ...(wide ? ["page scrolls sideways"] : [])];
       if (problems.length) { failures++; console.error(`FAIL ${w.tag}/${shot}: ${problems.join("; ")}`); }
       else console.log(`ok   ${w.tag}/${shot}`);

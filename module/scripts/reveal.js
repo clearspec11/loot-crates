@@ -90,6 +90,13 @@
   Landing, Skip and Close release it; a hidden page or reduced motion lands
   at once, so nothing is held there. A replay holds nothing. Display only:
   nothing is written.
+
+  Once landed (Skip counts; a replay window's first landing too), the
+  window closes by itself after this player's delay (linger.js), through
+  the same close as its Close button, so focus goes back where a Close
+  sends it. Never before the landing, so never while the chat card is
+  sealed; it waits while the window is in use, and Watch again inside it
+  holds the countdown while it plays and starts it over once it lands.
 */
 import { MODULE_ID, SETTINGS } from "./config.js";
 import { formatPrice } from "./currency.js";
@@ -106,6 +113,7 @@ import { requestPull } from "./socket.js";
 // The dice game's 3D dice bridge (Dice So Nice), set wherever reveals show.
 import "./dicereveal.js";
 import { t } from "./i18n.js";
+import { Linger, lingerMs } from "./linger.js";
 
 export { stripVoice } from "./crate.js";
 
@@ -147,6 +155,11 @@ function usedSlots() {
 }
 
 const pageHidden = () => document.visibilityState === "hidden";
+
+// This player's delay before a finished window closes, in ms (0: never).
+export function lingerDelay() {
+  try { return lingerMs(game.settings.get(MODULE_ID, SETTINGS.LINGER)); } catch { return lingerMs(null); }
+}
 
 // The line over the vault for a kind that writes none: the crate's.
 const crateHead = r => t("LOOTCRATES.Reveal.Head", {
@@ -349,6 +362,11 @@ export class CrateReveal extends ApplicationV2 {
   // When the window before handed focus to this one's Skip (takeFocus).
   #handedAt = -Infinity;
   landed = new Promise(resolve => { this.#resolveLanded = resolve; });
+  // The countdown to closing by itself once landed (linger.js).
+  linger = new Linger({
+    onExpire: () => { if (!this.#closed) this.close(); },
+    onKeep: ({ hadFocus }) => { if (hadFocus) this.linger.focus(this.element?.querySelector?.(".lc-reveal__close")); },
+  });
   // Resolves once the window is drawn and playing (or will never be).
   #resolveShown;
   shown = new Promise(resolve => { this.#resolveShown = resolve; });
@@ -409,7 +427,7 @@ export class CrateReveal extends ApplicationV2 {
     const btn = this.element?.querySelector?.(".lc-reveal__close");
     if (this.#closed || !btn) return false;
     this.#handedAt = performance.now();
-    btn.focus({ preventScroll: true });
+    this.linger.focus(btn);
     return true;
   }
 
@@ -418,6 +436,7 @@ export class CrateReveal extends ApplicationV2 {
     if (event?.detail > 1 || performance.now() - this.#swappedAt < CLOSE_GRACE_MS) return;
     this.#replaying = true;
     this.#swappedAt = performance.now();
+    this.linger.pause("replay");
     // The same node keeps focus; only its words and action change.
     button.textContent = t("LOOTCRATES.Reveal.Skip");
     button.dataset.action = "skip";
@@ -437,6 +456,7 @@ export class CrateReveal extends ApplicationV2 {
     this.#showAgain(again);
     if (again.off) return;
     this.#drawing = true;
+    this.linger.pause("drawing");
     button.textContent = t("LOOTCRATES.Reveal.Drawing");
     button.setAttribute("aria-disabled", "true");
     try {
@@ -445,6 +465,7 @@ export class CrateReveal extends ApplicationV2 {
     } catch (err) {
       globalThis.ui?.notifications?.warn(err.message);
       this.#drawing = false;
+      this.linger.resume("drawing");
       if (!this.#closed) this.#showAgain(this.#againOffer());
     }
   }
@@ -518,6 +539,7 @@ export class CrateReveal extends ApplicationV2 {
   // Ends this reveal's hold without a window (showReveal, when it fails).
   abandon() {
     this.#closed = true;
+    this.linger.stop();
     this.#forget();
     this.#spin?.skip();
     this.#resolveLanded();
@@ -534,6 +556,7 @@ export class CrateReveal extends ApplicationV2 {
     const buy = ownBuy(this.reveal) ?? replayReturn(this.reveal, this.returnTo);
     if (buy?.isConnected && focusIsFree(this.element)) buy.focus({ preventScroll: true });
     this.#closed = true;
+    this.linger.stop();
     this.#forget();
     this.#stopWatching();
     // End the loop now rather than animating a detached strip for seconds.
@@ -572,6 +595,8 @@ export class CrateReveal extends ApplicationV2 {
   }
 
   _onRender() {
+    this.linger.watch(this.element);
+    this.linger.mount(this.element?.querySelector?.(".lc-reveal__actions"));
     this.#mount();
     this.#resolveShown();
   }
@@ -623,7 +648,8 @@ export class CrateReveal extends ApplicationV2 {
     this.#showAgain(this.#againOffer());
     btn.dataset.action = "dismiss";
     btn.textContent = t("LOOTCRATES.Common.Close");
-    if (focusIsFree(root, r, this.returnTo)) btn.focus({ preventScroll: true });
+    if (focusIsFree(root, r, this.returnTo)) this.linger.focus(btn);
+    this.linger.start(lingerDelay());
     // The kind's quiet word for the buyer alone (the well's miss), as the
     // result lands: a player whose window sits behind the shop still hears.
     // And the core's: which price was charged, when the press came just as
@@ -642,10 +668,13 @@ export class CrateReveal extends ApplicationV2 {
     this.#replaying = false;
     this.#swappedAt = performance.now();
     root.querySelector(".lc-reveal__result").hidden = false;
+    // The result is up again: the countdown starts over.
+    this.linger.resume("replay");
+    this.linger.start(lingerDelay());
     if (this.#watched) {
       const had = document.activeElement === watch;
       watch.hidden = true;
-      if (had) root.querySelector(".lc-reveal__close").focus({ preventScroll: true });
+      if (had) this.linger.focus(root.querySelector(".lc-reveal__close"));
     } else {
       watch.textContent = t("LOOTCRATES.Reveal.WatchAgain");
       watch.dataset.action = "watchAgain";
@@ -698,7 +727,8 @@ export async function showReplay(snapshot, key, { returnTo = null } = {}) {
   const open = foundry.applications.instances?.get?.(replayWindowId(key));
   if (open && open.state > 0) {
     open.bringToFront?.();
-    open.element?.querySelector?.(".lc-reveal__close")?.focus({ preventScroll: true });
+    const close = open.element?.querySelector?.(".lc-reveal__close");
+    if (open.linger) open.linger.focus(close); else close?.focus({ preventScroll: true });
     return open;
   }
   const reveal = replayReveal(snapshot, key);

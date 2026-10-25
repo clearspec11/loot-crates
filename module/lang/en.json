@@ -488,10 +488,10 @@
       "CalendarOff": "dnd5e's calendar is off: a day ends at each character's long rest."
     },
     "News": {
-      "Title": "Steadier auctions and dice",
-      "Line1": "With Dice So Nice on, Dragon's Teeth now shows the faces and the total the moment the 3D roll ends and lands a frame later, as it does without Dice So Nice. Before, the window coloured the dice and landed in the same instant.",
-      "Line2": "When the GM running the game leaves and another GM takes over during an auction, the new GM's Foundry now brings the gavel down and runs the house bidders. Before, the auction waited for the next bid or a reload, and the gavel never fell.",
-      "Line3": "A name that is missing, such as a deleted character's, now reads as nothing instead of the word \"undefined\" in the module's messages, in English and in a translation."
+      "Title": "Game windows that tidy themselves",
+      "Line1": "Finished game windows now close by themselves, so they no longer pile up on every screen. Once a crate, the Wishing Well, Dragon's Teeth or the Deck has shown its result, or a Roulette or Auction round has been settled or called off, the window closes after 30 seconds. A small line says \"Closes in 30 s\" with Keep open beside it. The countdown waits while the pointer is over the window or someone is using it from the keyboard. Each player picks the delay under Close finished game windows in Game Settings: never, 10 seconds, 30 seconds or a minute. Watch again on the chat card still plays any result again. The shop, the manager and dialogs never close by themselves.",
+      "Line2": "With two GMs online, an auction's gavel now settles once. A second GM who joined while the first GM's Foundry was bringing the gavel down could settle it a second time and hand the lot out twice. Now the GM who is no longer running the game stops before it writes anything, and a GM whose sale lands on a round already settled leaves it alone.",
+      "Line3": "A missing name, such as a deleted character's, now reads as \"Someone\" in the refund's chat card, the Roulette's results, the Auction's bids, board and shop card, and a table stake's line. Before 1.1.1 it read \"undefined\", and in 1.1.1 it left a gap (\"'s Goblin Crate was refunded\")."
     },
     "Welcome": {
       "Title": "Loot Crates",
@@ -993,12 +993,14 @@
       "BidBack": "{name}'s bid came back",
       "TopBid": "{bid}, the top bid",
       "SoldTo": "Sold to {name} for {price}.",
+      "SoldToSomeone": "Sold to someone for {price}.",
       "CrateGave": "The crate gave {name}.",
       "CrateHeldNothing": "The crate held nothing.",
       "VerdictHouse": "The house took it at {price}. Every player's bid came back.",
       "VerdictReserve": "No sale: the reserve wasn't met. The top bid of {price} came back.",
       "VerdictLot": "No sale: the lot is gone. The top bid of {price} came back.",
       "VerdictGrant": "No sale: the lot couldn't be put on {name}'s sheet. The top bid of {price} came back.",
+      "VerdictGrantSomeone": "No sale: the lot couldn't be put on the winner's sheet. The top bid of {price} came back.",
       "VerdictNone": "No sale: nobody bid.",
       "SoldFor": "Sold for",
       "HouseTookAt": "The house took it at",
@@ -1020,6 +1022,7 @@
       "ChatHead": "The gavel fell at {box} {bids}",
       "NoLotSet": "No lot set",
       "CardTopBid": "Top bid {price} by {name}",
+      "CardTopBidSomeone": "Top bid {price} by someone",
       "CardOpening": "Opening bid {price}, rising by {step}",
       "HasReserve": "Has a reserve",
       "NoReserve": "No reserve",
@@ -1078,7 +1081,18 @@
       "SoundHint": "Play the tick, slow-down and reveal sounds when a crate opens.",
       "ManagerName": "Pools, boxes and pulls",
       "ManagerLabel": "Open Loot Crates",
-      "ManagerHint": "Build the pools items drop from, price the boxes, and see who pulled what."
+      "ManagerHint": "Build the pools items drop from, price the boxes, and see who pulled what.",
+      "LingerName": "Close finished game windows",
+      "LingerHint": "How long a crate, well, dice, deck or table window stays open after its result shows, on your screen only. It waits while your pointer is over the window or you're using it, and Keep open stops it. Watch again on the chat card plays a result again.",
+      "LingerOff": "Never: I close them myself",
+      "Linger10": "After 10 seconds",
+      "Linger30": "After 30 seconds",
+      "Linger60": "After 1 minute"
+    },
+    "Linger": {
+      "ClosesIn": "Closes in {seconds} s",
+      "Paused": "Paused, {seconds} s left",
+      "Keep": "Keep open"
     }
   }
 }

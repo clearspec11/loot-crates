@@ -31,7 +31,7 @@ import { t, words } from "./i18n.js";
 // with its own sentence (the Auction's "Orla Vane bids 55 gp") says it.
 export function stakeSentence(row, verb = t("LOOTCRATES.Shelf.Bets"), view = null) {
   if (typeof view?.sentence === "function") return view.sentence(row);
-  return t("LOOTCRATES.Table.Stake", { actor: row.actorName, verb, price: formatPrice(row.price), on: row.name ?? row.stake?.label ?? t("LOOTCRATES.Table.TheTable") });
+  return t("LOOTCRATES.Table.Stake", { actor: row.actorName || t("LOOTCRATES.Auction.Someone"), verb, price: formatPrice(row.price), on: row.name ?? row.stake?.label ?? t("LOOTCRATES.Table.TheTable") });
 }
 
 // The head's count: the kind's own from every stake of the round, the

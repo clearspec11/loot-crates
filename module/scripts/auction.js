@@ -267,8 +267,12 @@ export const AUCTION_WORDS = Object.assign(words({
 }), { clock: left => t("LOOTCRATES.Auction.WordsClock", { time: clockText(left) }) });
 export const roundState = (round, opts = {}) => tableRoundState(round, { ...opts, words: AUCTION_WORDS });
 
+// A bidder's name, or "Someone" for one whose name is gone (a sentence
+// that starts with it; one that names them mid-way has its own key).
+const bidderName = name => name || t("LOOTCRATES.Auction.Someone");
+
 // "Crate Tester bids 55 gp", for the list, the status line and the board.
-export const bidSentence = row => t("LOOTCRATES.Auction.Bids", { name: row?.actorName ?? t("LOOTCRATES.Auction.Someone"), price: formatPrice(amountOf(row)) });
+export const bidSentence = row => t("LOOTCRATES.Auction.Bids", { name: bidderName(row?.actorName), price: formatPrice(amountOf(row)) });
 
 // "5 bids from 3 bidders", "1 bid", "No bids yet": every bid of the round,
 // the ones that were beaten included.
@@ -283,7 +287,7 @@ export function bidCount(history = []) {
 // The status line as a bid lands: who bid what, and whose bid it beat (a
 // player's comes back at once, which is said).
 export function bidAnnouncement(row, { outbid = [] } = {}) {
-  const beaten = outbid.map(r => t(r.house ? "LOOTCRATES.Auction.Outbid" : "LOOTCRATES.Auction.BidBack", { name: r.actorName }));
+  const beaten = outbid.map(r => t(r.house ? "LOOTCRATES.Auction.Outbid" : "LOOTCRATES.Auction.BidBack", { name: bidderName(r.actorName) }));
   const top = t("LOOTCRATES.Auction.TopBid", { bid: bidSentence(row) });
   return t("LOOTCRATES.Common.Sentence", { text: beaten.length ? [top, ...beaten].join(t("LOOTCRATES.Common.ListSemicolon")) : top });
 }
@@ -305,14 +309,14 @@ export function verdictText(o) {
   if (!o) return "";
   const amount = formatPrice(o.amount);
   if (o.verdict === "sold") {
-    const head = t("LOOTCRATES.Auction.SoldTo", { name: o.bidder, price: amount });
+    const head = o.bidder ? t("LOOTCRATES.Auction.SoldTo", { name: o.bidder, price: amount }) : t("LOOTCRATES.Auction.SoldToSomeone", { price: amount });
     if (o.lot?.type !== "crate") return head;
     return `${head} ${o.result ? t("LOOTCRATES.Auction.CrateGave", { name: o.result.name }) : t("LOOTCRATES.Auction.CrateHeldNothing")}`;
   }
   if (o.verdict === "house") return t("LOOTCRATES.Auction.VerdictHouse", { price: amount });
   if (o.verdict === "reserve") return t("LOOTCRATES.Auction.VerdictReserve", { price: amount });
   if (o.verdict === "lot") return t("LOOTCRATES.Auction.VerdictLot", { price: amount });
-  if (o.verdict === "grant") return t("LOOTCRATES.Auction.VerdictGrant", { name: o.bidder, price: amount });
+  if (o.verdict === "grant") return o.bidder ? t("LOOTCRATES.Auction.VerdictGrant", { name: o.bidder, price: amount }) : t("LOOTCRATES.Auction.VerdictGrantSomeone", { price: amount });
   return t("LOOTCRATES.Auction.VerdictNone");
 }
 
@@ -348,12 +352,12 @@ export function boardHTML(game, stakes = [], { esc = s => String(s ?? ""), outco
     state = sold ? "sold" : "nosale";
     line = sold ? t("LOOTCRATES.Auction.SoldFor") : outcome.verdict === "house" ? t("LOOTCRATES.Auction.HouseTookAt") : t("LOOTCRATES.Auction.NoSale");
     amount = outcome.verdict === "none" ? "" : formatPrice(outcome.amount);
-    who = sold ? outcome.bidder : outcome.verdict === "house" ? outcome.bidder : outcome.verdict === "reserve" ? t("LOOTCRATES.Auction.ReserveNotMet") : outcome.verdict === "lot" ? t("LOOTCRATES.Auction.LotGone") : outcome.verdict === "grant" ? t("LOOTCRATES.Auction.LotNotAdded") : t("LOOTCRATES.Auction.NobodyBid");
+    who = sold || outcome.verdict === "house" ? bidderName(outcome.bidder) : outcome.verdict === "reserve" ? t("LOOTCRATES.Auction.ReserveNotMet") : outcome.verdict === "lot" ? t("LOOTCRATES.Auction.LotGone") : outcome.verdict === "grant" ? t("LOOTCRATES.Auction.LotNotAdded") : t("LOOTCRATES.Auction.NobodyBid");
   } else {
     state = top ? "open" : "opening";
     line = top ? t("LOOTCRATES.Auction.TopBidLine") : t("LOOTCRATES.Auction.OpeningBidLine");
     amount = formatPrice(top ? amountOf(top) : openingOf(game));
-    who = top ? top.actorName : t("LOOTCRATES.Auction.NoBids");
+    who = top ? bidderName(top.actorName) : t("LOOTCRATES.Auction.NoBids");
   }
   const met = outcome ? outcome.reserveMet : !!top && toCp(amountOf(top)) >= toCp(reserveOf(game));
   const reserveLine = reserve && !(outcome && outcome.verdict !== "sold" && outcome.verdict !== "reserve") ? `<span class="lc-auction__reserve" data-met="${met}">${met ? t("LOOTCRATES.Auction.ReserveMet") : t("LOOTCRATES.Auction.ReserveNotMetYet")}</span>` : "";
@@ -543,7 +547,7 @@ export function readBid(game, values = {}, stakes = []) {
   const amount = gp2(num(values.amount, NaN));
   const min = minBid(game, stakes);
   const top = leaderOf(stakes);
-  if (top && !top.house && values.actorId && top.actorId === values.actorId) throw new PullError(t("LOOTCRATES.Auction.AlreadyHolds", { name: top.actorName }));
+  if (top && !top.house && values.actorId && top.actorId === values.actorId) throw new PullError(t("LOOTCRATES.Auction.AlreadyHolds", { name: bidderName(top.actorName) }));
   if (!(toCp(amount) >= toCp(min))) throw new PullError(t("LOOTCRATES.Auction.BidAtLeast", { price: formatPrice(min) }));
   return { bet: { amount }, price: amount };
 }
@@ -652,7 +656,8 @@ function card(game, pools, ctx) {
   const top = leaderOf(open);
   const min = minBid(game, open);
   const reason = auctionState(game, ctx) || shortOf(game, ctx);
-  const bid = top ? t("LOOTCRATES.Auction.CardTopBid", { price: formatPrice(amountOf(top)), name: top.actorName }) : t("LOOTCRATES.Auction.CardOpening", { price: formatPrice(openingOf(game)), step: formatPrice(incrementOf(game)) });
+  const bid = top?.actorName ? t("LOOTCRATES.Auction.CardTopBid", { price: formatPrice(amountOf(top)), name: top.actorName })
+    : top ? t("LOOTCRATES.Auction.CardTopBidSomeone", { price: formatPrice(amountOf(top)) }) : t("LOOTCRATES.Auction.CardOpening", { price: formatPrice(openingOf(game)), step: formatPrice(incrementOf(game)) });
   const reserve = reserveOf(game) > 0 ? (top && toCp(amountOf(top)) >= toCp(reserveOf(game)) ? t("LOOTCRATES.Auction.ReserveMet") : t("LOOTCRATES.Auction.HasReserve")) : t("LOOTCRATES.Auction.NoReserve");
   const middle = [
     `<div class="lc-box__rule"><strong>${esc(lotName(lot))}</strong>${lot ? `<br>${esc(lotLine(lot))}` : ""}</div>`,

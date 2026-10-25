@@ -10,7 +10,7 @@
 import { t, words } from "./i18n.js";
 
 export const LATEST = {
-  version: "1.1.1",
+  version: "1.2.0",
   get title() { return t("LOOTCRATES.News.Title"); },
   lines: words(["LOOTCRATES.News.Line1", "LOOTCRATES.News.Line2", "LOOTCRATES.News.Line3"]),
 };

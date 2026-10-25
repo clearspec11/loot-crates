@@ -8,6 +8,14 @@ The newest numbered entry's version is the one in `module/module.json`, and its 
 
 - Nothing yet.
 
+## 1.2.0
+
+Game windows that tidy themselves.
+
+- Finished game windows now close by themselves, so they no longer pile up on every screen. Once a crate, the Wishing Well, Dragon's Teeth or the Deck has shown its result, or a Roulette or Auction round has been settled or called off, the window closes after 30 seconds. A small line says "Closes in 30 s" with Keep open beside it. The countdown waits while the pointer is over the window or someone is using it from the keyboard. Each player picks the delay under Close finished game windows in Game Settings: never, 10 seconds, 30 seconds or a minute. Watch again on the chat card still plays any result again. The shop, the manager and dialogs never close by themselves.
+- With two GMs online, an auction's gavel now settles once. A second GM who joined while the first GM's Foundry was bringing the gavel down could settle it a second time and hand the lot out twice. Now the GM who is no longer running the game stops before it writes anything, and a GM whose sale lands on a round already settled leaves it alone.
+- A missing name, such as a deleted character's, now reads as "Someone" in the refund's chat card, the Roulette's results, the Auction's bids, board and shop card, and a table stake's line. Before 1.1.1 it read "undefined", and in 1.1.1 it left a gap ("'s Goblin Crate was refunded").
+
 ## 1.1.1
 
 Steadier auctions and dice.

@@ -211,6 +211,14 @@ function guardNotice(plan, boxName) {
   clock has run out by the time the task runs: a bid queued just ahead of
   it moved the gavel on, and the round is left for it ({ status:
   "not-due" }). Returns { status: "resolved", round, reveal, plan }.
+
+  The queue is this client's, so it can't hold back a second GM's: a GM
+  who joins with a lower id becomes the active one while this resolve is
+  still rolling, and their watch brings the same gavel down. So after the
+  roll, the one await before the first write, the resolve asks again: a
+  client that is no longer the active GM writes nothing (NotActiveGM; the
+  new one resolves it), and a round another GM resolved meanwhile is
+  "already". One gavel, one settle.
 */
 export function resolveRound(roundId, { rng = rollRng(), ifDue = false } = {}) {
   gmOnly();
@@ -237,6 +245,8 @@ async function doResolve(roundId, rng, { ifDue = false } = {}) {
   let grants = {};
   let extra = {};
   if (kind) ({ outcome = null, grants = {}, ...extra } = (await kind.roll({ game: box, round, stakes: rows, rng, log, now, pools: getPools(), boxes: getBoxes(), resolveSource })) ?? {});
+  gmOnly();
+  if (getRounds()[roundId]?.status === STATUS.RESOLVED) return { status: "already", round: getRounds()[roundId] };
   const plan = planResolve(rows, {
     check: row => { const g = guardAtResolve(row); return g === "ok" && !kind ? "game" : g; },
     settle: row => kind.settle?.({ game: box, round, outcome, row, stake: row.stake, grants: grants ?? {} }) ?? { payoutCp: 0 },
@@ -509,6 +519,8 @@ function watchTick() {
       busy.add(round.id);
       resolveRound(round.id, { ifDue: true })
         .catch(err => {
+          // Handed over mid-resolve: the new active GM's watch has it.
+          if (game.users?.activeGM?.id !== game.user.id) return;
           const told = failedAt.has(round.id);
           failedAt.set(round.id, Date.now());
           console.error("loot-crates | bringing the gavel down failed; trying again shortly", err);

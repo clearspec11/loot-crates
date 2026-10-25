@@ -17,6 +17,11 @@
   Auction's "Bid 55 gp" and "Bring the gavel down") and a kind may keep its
   form in step with the table as stakes land (tableView.syncForm). Nothing
   here writes.
+
+  Once the round is settled here (the stage landed, the result showing) or
+  called off, the window closes by itself after this player's delay
+  (linger.js), as its Close does: never while bets are open or the stage
+  plays, and it waits while the window is in use.
 */
 import { MODULE_ID, SETTINGS } from "./config.js";
 import { getBoxes, getLog, getRounds } from "./store.js";
@@ -24,7 +29,8 @@ import { getKind, kindOf, PullError, nounText } from "./kinds.js";
 import { stakesOf, liveRoundOf, STATUS } from "./round.js";
 import { onTable, openRound, resolveRound, cancelRound } from "./table.js";
 import { requestStake, isActiveGM } from "./socket.js";
-import { setTableWindow } from "./reveal.js";
+import { setTableWindow, lingerDelay } from "./reveal.js";
+import { Linger } from "./linger.js";
 import { buyableActors } from "./shop.js";
 import { tableBodyHTML, phaseOf, stateText, stakeSentence, countFor, countdownText, betLabelFor, gateBet } from "./tableview.js";
 import { cascadeOffset } from "./revealcard.js";
@@ -76,6 +82,12 @@ export class TableWindow extends ApplicationV2 {
   // The round was called off without a write here (table.js undoResolve's
   // void, { onReload }): its stakes come back on the GM's next load.
   voided = null;
+  // The countdown to closing by itself once the round is over (linger.js).
+  linger = new Linger({
+    onExpire: () => { if (this.rendered) this.close(); },
+    onKeep: ({ hadFocus }) => { if (hadFocus) this.linger.focus(this.element?.querySelector?.(".lc-reveal__close")); },
+  });
+  #lingering = false;
 
   constructor(roundId, boxId, options = {}) {
     super({ id: `loot-crates-table-${roundId}`, position: { height: "auto", ...cascadeOffset(0, { width: window.innerWidth, height: window.innerHeight }, { width: 760, height: 560 }) }, ...options });
@@ -185,6 +197,19 @@ export class TableWindow extends ApplicationV2 {
     if (el && el.textContent !== state.text) { el.textContent = state.text; el.dataset.state = state.key; }
     const count = root.querySelector(".lc-table__count");
     if (count) count.textContent = countFor(this.kind?.tableView, this.stakes(), this.history());
+    this.#lingerIfOver();
+  }
+
+  // The round is over here: settled with the result showing (#showLanding
+  // says so), or called off (a void heard, or the round's record says it).
+  // A round this client hasn't heard of yet isn't over. The countdown
+  // starts once, the first time either is seen.
+  #lingerIfOver({ settled = false } = {}) {
+    if (this.#lingering || !this.element) return;
+    const over = settled ? this.landed && !!this.reveal : !this.reveal && (!!this.voided || !!this.round?.voided);
+    if (!over) return;
+    this.#lingering = true;
+    this.linger.start(lingerDelay());
   }
 
   async _renderHTML() {
@@ -218,8 +243,11 @@ export class TableWindow extends ApplicationV2 {
     const active = content.contains(document.activeElement) ? document.activeElement : null;
     const key = active?.name ? `[name="${CSS.escape(active.name)}"]` : active?.dataset?.action ? `[data-action="${CSS.escape(active.dataset.action)}"]` : active?.classList?.contains("lc-table__bet") ? ".lc-table__bet" : null;
     content.replaceChildren(result);
+    this.linger.watch(this.element);
+    this.linger.mount(content.querySelector(".lc-reveal__actions"));
     this.#mount();
     if (key) content.querySelector(key)?.focus({ preventScroll: true });
+    this.#lingerIfOver();
   }
 
   // The kind's stage and the rail in the vault; a reveal already here
@@ -396,7 +424,8 @@ export class TableWindow extends ApplicationV2 {
     btn.dataset.action = "dismiss";
     btn.textContent = t("LOOTCRATES.Common.Close");
     const a = document.activeElement;
-    if (!a || a === document.body || root.contains(a)) btn.focus({ preventScroll: true });
+    if (!a || a === document.body || root.contains(a)) this.linger.focus(btn);
+    this.#lingerIfOver({ settled: true });
   }
 
   #stopWatching() {
@@ -406,6 +435,7 @@ export class TableWindow extends ApplicationV2 {
 
   _onClose(options) {
     super._onClose(options);
+    this.linger.stop();
     this.#stopWatching();
     this.#spinning?.skip();
     // A window closed mid-spin lets the table's hold go.

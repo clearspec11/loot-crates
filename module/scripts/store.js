@@ -15,6 +15,7 @@ import { normalizeRarity, flattenPool, markEntriesMissing, rawRarityOf, sourceRa
 import { dayModeOf, dayKeyFor, byRest, dayOf, dayAfterRest, keyOfDay } from "./clock.js";
 import { pruneRounds } from "./round.js";
 import { t } from "./i18n.js";
+import { LINGER_DEFAULT } from "./linger.js";
 
 const uid = () => (globalThis.foundry?.utils?.randomID?.(10)) ?? Math.random().toString(36).slice(2, 12);
 
@@ -47,6 +48,20 @@ export function registerSettings() {
     get name() { return t("LOOTCRATES.Settings.SoundName"); },
     get hint() { return t("LOOTCRATES.Settings.SoundHint"); },
     scope: "client", config: true, type: Boolean, default: true,
+  });
+  // Each player's own: the pile of finished windows is on their screen.
+  game.settings.register(MODULE_ID, SETTINGS.LINGER, {
+    get name() { return t("LOOTCRATES.Settings.LingerName"); },
+    get hint() { return t("LOOTCRATES.Settings.LingerHint"); },
+    get choices() {
+      return {
+        0: t("LOOTCRATES.Settings.LingerOff"),
+        10: t("LOOTCRATES.Settings.Linger10"),
+        30: t("LOOTCRATES.Settings.Linger30"),
+        60: t("LOOTCRATES.Settings.Linger60"),
+      };
+    },
+    scope: "client", config: true, type: Number, default: LINGER_DEFAULT,
   });
 }
 
