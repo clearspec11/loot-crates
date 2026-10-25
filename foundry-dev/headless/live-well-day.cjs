@@ -7,7 +7,7 @@
 //     NODE_PATH=$(npm root -g) node foundry-dev/headless/live-well-day.cjs
 //
 // Env: PLAYER (default Player2, must own Crate Tester), WELL (default
-// "Live well").
+// "Live well"), CALENDAR=on (the run below with dnd5e's calendar on).
 //
 // Two headless clients, the Gamemaster and the player, each running the
 // branch's socket and its dnd5e.restCompleted hook from MODULE_BASE (as
@@ -31,16 +31,33 @@
 //      client sends newDay, the GM counts it, and the card's Throw comes
 //      back on within 3 s.
 //
+// CALENDAR=on: the GM turns dnd5e's calendar on (enabled, daily recovery
+// by the calendar) if it is off, and then:
+//
+//   1. As above, the player throws to the cap.
+//   2. The GM long-rests Crate Tester with advanceTime: dnd5e moves the
+//      clock eight hours, and the card's Throw comes back on within 3 s.
+//   3. The player throws to the cap again, then long-rests Crate Tester
+//      from their own client: dnd5e can't move the clock there, so the
+//      world time stays, yet the card's Throw comes back on within 3 s.
+//   4. The player throws to the cap a third time; the GM then moves the
+//      clock over midnight into the next day's morning (game.time.advance):
+//      the card stays shut, since the player's rest already ended that day.
+//   Crate Tester's count of rests (the calendar-off day) is not touched.
+//
 // In a finally: the calendar setting, the world time, the well's record
-// and Crate Tester's count of rests (the actor-state setting's days entry)
-// are put back. Two real 1 sp throws; Crate Tester is rested twice (its
-// hit points and uses recover, as a test actor's may). Nothing is deleted.
+// and Crate Tester's count of rests and day rested into (the actor-state
+// setting's days and restedInto entries) are put back. Two real 1 sp
+// throws (three with CALENDAR=on); Crate Tester is rested twice (its hit
+// points and uses recover, as a test actor's may). Nothing is deleted.
 /* global game, foundry, Hooks */
 const { chromium } = require("playwright");
 const FOUNDRY = process.env.FOUNDRY_URL || "http://localhost:30000";
 const MODULE_BASE = process.env.MODULE_BASE || "http://localhost:8766/";
 const PLAYER = process.env.PLAYER || "Player2";
 const WELL = process.env.WELL || "Live well";
+const CALENDAR = process.env.CALENDAR === "on";
+const NIGHT = 8 * 3600;
 
 async function join(browser, user) {
   const page = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
@@ -84,14 +101,17 @@ async function join(browser, user) {
     Hooks.on("renderChatMessageHTML", watchAgain);
     for (const h of [...(Hooks.events?.createItem ?? [])]) if (h.fn?.name === "preSealItem") Hooks.off("createItem", h.id);
     Hooks.on("createItem", preSealItem);
-    // The branch's long-rest hook (main.js); the installed module has none.
+    // The branch's long-rest hook (main.js) in place of the installed
+    // module's: 1.0.0 (cc-dev's, from GitHub) has one too, and with both a
+    // player's rest sent two new days to the GM and counted twice.
+    for (const h of [...(Hooks.events?.["dnd5e.restCompleted"] ?? [])]) if (String(h.fn).includes("counting a long rest failed")) Hooks.off("dnd5e.restCompleted", h.id);
     Hooks.on("dnd5e.restCompleted", (actor, result, config) => socket.restCompleted(actor, result, config));
   }, MODULE_BASE);
   return { page, logs };
 }
 
 async function seed(gm) {
-  return gm.evaluate(async ({ base, name }) => {
+  return gm.evaluate(async ({ base, name, calendarOn }) => {
     const store = await import(base + "scripts/store.js");
     const folder = game.folders.find(f => f.type === "Actor" && f.name === "Loot Crates Test");
     const actor = game.actors.find(a => a.name === "Crate Tester" && a.folder?.id === folder?.id);
@@ -102,8 +122,9 @@ async function seed(gm) {
     // The setting is a DataModel: its plain data is what is set and put back.
     const config = game.settings.get("dnd5e", "calendarConfig");
     const calendar = foundry.utils.deepClone(config?.toObject?.() ?? config ?? {});
-    const turnOff = store.dayMode() !== "rest";
-    if (turnOff) await game.settings.set("dnd5e", "calendarConfig", { ...calendar, enabled: false, dailyRecovery: "" });
+    const want = calendarOn ? "calendar" : "rest";
+    const turnOff = store.dayMode() !== want;
+    if (turnOff) await game.settings.set("dnd5e", "calendarConfig", { ...calendar, enabled: calendarOn, dailyRecovery: "" });
     const old = Object.values(store.getBoxes()).find(b => b.name === name) ?? null;
     const today = store.todayKey(actor.id);
     // A well under a fresh id has no throws yet, so the cap is one.
@@ -115,13 +136,15 @@ async function seed(gm) {
       kind: "well", name, price: 0.1, pools: [{ id: pool.id, share: 1 }],
       weights: { uncommon: 75, rare: 25 }, odds: { nothing: 100, coin: 0, item: 0 }, rules: { cap: base0 + 1, pity: null, noDuplicates: false, stock: null },
     });
-    const days = game.settings.get("loot-crates", "actorState")?.days ?? {};
+    const state = game.settings.get("loot-crates", "actorState") ?? {};
+    const days = state.days ?? {}, rested = state.restedInto ?? {};
     return {
       actorId: actor.id, wellId: well.id, old, calendar, calendarChanged: turnOff, mode: store.dayMode(),
       worldTime: game.time.worldTime, today, base: base0, cap: well.rules.cap,
       hadDays: Object.hasOwn(days, actor.id), days: days[actor.id] ?? null,
+      hadRested: Object.hasOwn(rested, actor.id), rested: rested[actor.id] ?? null,
     };
-  }, { base: MODULE_BASE, name: WELL });
+  }, { base: MODULE_BASE, name: WELL, calendarOn: CALENDAR });
 }
 
 async function restore(gm, before) {
@@ -139,8 +162,11 @@ async function restore(gm, before) {
       const days = { ...(all.days ?? {}) };
       if (before.hadDays) days[before.actorId] = before.days; else delete days[before.actorId];
       if (Object.keys(days).length) all.days = days; else delete all.days;
+      const rested = { ...(all.restedInto ?? {}) };
+      if (before.hadRested) rested[before.actorId] = before.rested; else delete rested[before.actorId];
+      if (Object.keys(rested).length) all.restedInto = rested; else delete all.restedInto;
       await game.settings.set("loot-crates", "actorState", all);
-      return `restored (${before.hadDays ? before.days : "none"})`;
+      return `restored (${before.hadDays ? before.days : "none"}; rested into ${before.hadRested ? JSON.stringify(before.rested) : "none"})`;
     }));
     await step("calendar", async () => {
       if (!before.calendarChanged) return "unchanged";
@@ -205,12 +231,14 @@ const cardUntil = (page, want, since) => page.evaluate(async ({ want, since }) =
   return { ...globalThis.__lcWell(), ms: null };
 }, { want, since });
 
-// A long rest through dnd5e's own API, on whichever client `page` is.
-const longRest = (page, actorId) => page.evaluate(async actorId => {
+// A long rest through dnd5e's own API, on whichever client `page` is;
+// advanceTime asks dnd5e to move the clock (it does only on a GM's client).
+const longRest = (page, actorId, advanceTime = false) => page.evaluate(async ({ actorId, advanceTime }) => {
   const actor = game.actors.get(actorId);
-  const result = await actor.longRest({ dialog: false, chat: false, newDay: true });
+  const result = await actor.longRest({ dialog: false, chat: false, newDay: true, advanceTime });
   return { at: Date.now(), newDay: result?.newDay ?? null, worldTime: game.time.worldTime };
-}, actorId);
+}, { actorId, advanceTime });
+const restedOf = (gm, actorId) => gm.evaluate(id => game.settings.get("loot-crates", "actorState")?.restedInto?.[id] ?? null, actorId);
 
 const daysOf = (gm, actorId) => gm.evaluate(id => game.settings.get("loot-crates", "actorState")?.days?.[id] ?? null, actorId);
 
@@ -230,19 +258,47 @@ const daysOf = (gm, actorId) => gm.evaluate(id => game.settings.get("loot-crates
     out.shop = await openShop(pl.page, before.wellId);
     // 1. Throw to the cap.
     out.first = await pl.page.evaluate(() => globalThis.__lcThrow());
-    // 2. The GM long-rests Crate Tester.
-    const gmRest = await longRest(gm.page, before.actorId);
-    out.gmRest = { ...gmRest, card: await cardUntil(pl.page, false, gmRest.at), days: await daysOf(gm.page, before.actorId) };
+    // 2. The GM long-rests Crate Tester (moving the clock, with the calendar on).
+    const gmRest = await longRest(gm.page, before.actorId, CALENDAR);
+    out.gmRest = { ...gmRest, card: await cardUntil(pl.page, false, gmRest.at), days: await daysOf(gm.page, before.actorId), rested: await restedOf(gm.page, before.actorId) };
     // 3. Again to the cap, then the player's own long rest.
     out.second = await pl.page.evaluate(() => globalThis.__lcThrow());
-    const plRest = await longRest(pl.page, before.actorId);
-    out.playerRest = { ...plRest, card: await cardUntil(pl.page, false, plRest.at), days: await daysOf(gm.page, before.actorId) };
+    const plRest = await longRest(pl.page, before.actorId, CALENDAR);
+    out.playerRest = { ...plRest, card: await cardUntil(pl.page, false, plRest.at), days: await daysOf(gm.page, before.actorId), rested: await restedOf(gm.page, before.actorId) };
+    // 4. With the calendar on: a third throw to the cap, then the GM moves
+    // the clock over midnight into the next day's morning (whatever the
+    // hour now; a move inside the same day would prove nothing); the card
+    // must stay shut.
+    if (CALENDAR) {
+      out.third = await pl.page.evaluate(() => globalThis.__lcThrow());
+      const moved = await gm.page.evaluate(async () => {
+        const DAY = 86400;
+        const was = { worldTime: game.time.worldTime, day: game.time.components?.day ?? null };
+        await game.time.advance((Math.floor(was.worldTime / DAY) + 1) * DAY + 6 * 3600 - was.worldTime);
+        return { at: Date.now(), was, worldTime: game.time.worldTime, day: game.time.components?.day ?? null };
+      });
+      await new Promise(r => setTimeout(r, 3000));
+      out.clockMoved = { ...moved, card: await pl.page.evaluate(() => globalThis.__lcWell()), rested: await restedOf(gm.page, before.actorId) };
+    }
     out.worldTimeAfter = await gm.page.evaluate(() => game.time.worldTime);
 
     const d0 = before.days ?? 0;
     const capped = t => t.landed && t.card.off && t.card.why === still;
-    const reopened = (r, n) => r.newDay === true && r.card.ms != null && r.card.ms <= 3000 && !r.card.off && r.card.why === "" && r.card.count === `0 of ${before.cap} throws today` && r.days === d0 + n;
-    out.checks = {
+    const cardBack = r => r.newDay === true && r.card.ms != null && r.card.ms <= 3000 && !r.card.off && r.card.why === "" && r.card.count === `0 of ${before.cap} throws today`;
+    const reopened = (r, n) => cardBack(r) && r.days === d0 + n;
+    out.checks = CALENDAR ? {
+      calendarMode: before.mode === "calendar",
+      firstCapped: capped(out.first),
+      // dnd5e moved the clock for the GM's rest; the day ended once.
+      gmRestReopens: cardBack(out.gmRest) && gmRest.worldTime === before.worldTime + NIGHT && out.gmRest.rested != null,
+      secondCapped: capped(out.second),
+      // The player's rest from their own client: the clock stays, the day ends.
+      playerRestReopens: cardBack(out.playerRest) && plRest.worldTime === gmRest.worldTime && JSON.stringify(out.playerRest.rested) !== JSON.stringify(out.gmRest.rested),
+      thirdCapped: capped(out.third),
+      clockCatchesUp: out.clockMoved.day === out.clockMoved.was.day + 1 && out.clockMoved.worldTime > gmRest.worldTime && out.clockMoved.card.off && out.clockMoved.card.why === still,
+      restCountUntouched: out.gmRest.days === before.days && out.playerRest.days === before.days,
+      errors: [...pl.logs, ...gm.logs].filter(t => /pageerror|failed/i.test(t)),
+    } : {
       restMode: before.mode === "rest",
       firstCapped: capped(out.first),
       gmRestReopens: reopened(out.gmRest, 1),

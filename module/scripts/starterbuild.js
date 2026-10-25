@@ -21,7 +21,7 @@ export function starterPlan() {
   const system = globalThis.game?.system;
   const listed = [...(system?.packs ?? [])].map(p => p?.name).filter(Boolean);
   let rules = "modern";
-  try { rules = game.settings.get("dnd5e", "rulesVersion") ?? rules; } catch { /* dnd5e 5 has no rules version */ }
+  try { rules = game.settings.get("dnd5e", "rulesVersion") ?? rules; } catch { /* rulesVersion is dnd5e's since 4.0 (5.0.0 has it); without it, modern */ }
   return starterPackPlan({ system: system?.id ?? "", listed, loaded: id => !!game.packs?.get(id), rules });
 }
 

@@ -10,12 +10,13 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { shippable } from "../scripts/package-files.mjs";
+import { STARTER_PACKS } from "../module/scripts/starter.js";
 
 const root = path.resolve(import.meta.dirname, "..");
 const read = f => readFileSync(path.join(root, f), "utf8");
 const manifest = JSON.parse(read("module/module.json"));
 const RAW = "https://raw.githubusercontent.com/clearspec11/loot-crates/main/";
-const DOCS = ["README.md", "CHANGELOG.md", "CLAUDE.md", "PRODUCT.md", "docs/ARCHITECTURE.md", "docs/DESIGN.md", "docs/RELEASE.md", "foundry-dev/README.md"];
+const DOCS = ["README.md", "CHANGELOG.md", "CLAUDE.md", "PRODUCT.md", "docs/ARCHITECTURE.md", "docs/DESIGN.md", "docs/RELEASE.md", "docs/COMPATIBILITY.md", "foundry-dev/README.md"];
 
 // GitHub's heading anchors: lower case, punctuation dropped, spaces to hyphens.
 const slug = text => text.trim().toLowerCase().replace(/[^\p{L}\p{N}\s-]/gu, "").replace(/\s/g, "-");
@@ -177,5 +178,52 @@ describe("the package", () => {
     const files = walk("");
     expect(files).toContain("module.json");
     expect(files.filter(f => !shippable(f))).toEqual([]);
+  });
+});
+
+describe("docs/COMPATIBILITY.md", () => {
+  const md = read("docs/COMPATIBILITY.md");
+  const system = manifest.relationships.systems[0];
+  // A row of a two-column table: "| Name | first | second |".
+  const row = (text, name) => text.match(new RegExp(`^\\| ${name} \\| ([^|]+?) \\| ([^|]+?) \\|$`, "m"));
+
+  it("states the minimums and verified versions module.json declares", () => {
+    expect(system.id).toBe("dnd5e");
+    const foundry = row(md, "Foundry VTT"), dnd5e = row(md, "D&D 5e system");
+    expect(foundry?.[1]).toBe(manifest.compatibility.minimum);
+    expect(foundry?.[2].split(" ")[0]).toBe(manifest.compatibility.verified);
+    expect(dnd5e?.[1]).toBe(system.compatibility.minimum);
+    expect(dnd5e?.[2]).toBe(system.compatibility.verified);
+  });
+
+  it("matches the README's table", () => {
+    const readme = read("README.md");
+    const foundry = row(readme, "Foundry VTT"), dnd5e = row(readme, "D&D 5e system");
+    expect(foundry?.[1]).toContain(`v${manifest.compatibility.minimum} `);
+    expect(foundry?.[1]).toContain(`v${manifest.compatibility.verified}`);
+    expect(dnd5e?.[1].startsWith(`${system.compatibility.minimum} `)).toBe(true);
+    expect(dnd5e?.[2]).toBe(system.compatibility.verified);
+    expect(readme).toContain("(docs/COMPATIBILITY.md)");
+  });
+
+  // What the scripts use, read from their source.
+  const dir = path.join(root, "module/scripts");
+  const src = readdirSync(dir).filter(f => f.endsWith(".js")).map(f => readFileSync(path.join(dir, f), "utf8")).join("\n");
+  const uses = re => [...new Set([...src.matchAll(re)].map(m => (m[1] ?? m[0]).replace(/\?/g, "")))];
+  const hooks = uses(/\b[Hh]ooks\.(?:on|once)\(\s*"([^"]+)"/g);
+  const paths = uses(/\bfoundry(?:\??\.[A-Za-z_$][\w$]*)+/g);
+  const fields = uses(/\bsystem\.(?!json\b)[a-z]\w*(?:\.[a-z]\w*)?/g);
+
+  it("finds the hooks, foundry paths and dnd5e fields the scripts use", () => {
+    expect(hooks).toEqual(expect.arrayContaining(["init", "ready", "renderItemDirectory", "getRollTableContextOptions", "renderChatMessageHTML", "createItem", "dnd5e.restCompleted", "updateActor"]));
+    expect(paths).toEqual(expect.arrayContaining(["foundry.applications.api", "foundry.utils.escapeHTML"]));
+    expect(fields).toEqual(expect.arrayContaining(["system.rarity", "system.rarities", "system.currency", "system.type.value"]));
+  });
+
+  it("names every hook, foundry path, dnd5e field and starter pack the scripts use", () => {
+    expect(hooks.filter(h => !md.includes(`\`${h}\``))).toEqual([]);
+    expect(paths.filter(p => !md.includes(p))).toEqual([]);
+    expect(fields.filter(f => !md.includes(`\`${f}\``))).toEqual([]);
+    expect(STARTER_PACKS.map(p => `dnd5e.${p.name}`).filter(id => !md.includes(`\`${id}\``))).toEqual([]);
   });
 });

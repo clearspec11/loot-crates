@@ -19,6 +19,12 @@
   character select: aria-disabled while busy, its changes ignored, so the
   character and purse on screen are always the ones the pull charges.
 
+  A card whose price runs out on its own (the deck's streak window, its
+  kind's shop.changesAt) is redrawn when it does: one timer for the soonest
+  of the cards on screen, set on every render and cleared by the next
+  render and on close (#armRedraw), so the card shows the price the GM
+  will charge without the shop being reopened.
+
   A Buy that looked live but did nothing says why in the shop's notice (the
   header's one live region): the character was re-picked under it, the GM
   raised the price past the purse, or the crate became unbuyable a moment
@@ -51,6 +57,8 @@ import "./roulette.js";
 import "./auction.js";
 
 const { ApplicationV2 } = foundry.applications.api;
+// How long past a card's changesAt its redraw runs, so the moment has passed.
+export const REDRAW_SLACK_MS = 250;
 const esc = s => foundry.utils.escapeHTML(String(s ?? ""));
 
 /*
@@ -125,6 +133,32 @@ export class CrateShop extends ApplicationV2 {
   said = null;
 
   get actor() { return game.actors.get(this.actorId) ?? null; }
+
+  // The one-shot redraw for the soonest card to change by itself.
+  #redrawTimer = null;
+
+  #clearRedraw() {
+    if (this.#redrawTimer) clearTimeout(this.#redrawTimer);
+    this.#redrawTimer = null;
+  }
+
+  // Arms the redraw at the soonest changesAt among `boxes` (a moment past
+  // it, so the card reads the dropped price when it fires). Returns the
+  // delay armed, or null when no card will change by itself.
+  #armRedraw(boxes, ctx) {
+    this.#clearRedraw();
+    const times = boxes.map(b => shopOf(b).changesAt?.(b, ctx)).filter(t => typeof t === "number" && Number.isFinite(t));
+    if (!times.length) return null;
+    const ms = Math.min(2 ** 31 - 1, Math.max(0, Math.min(...times) - Date.now()) + REDRAW_SLACK_MS);
+    this.#redrawTimer = setTimeout(() => {
+      this.#redrawTimer = null;
+      if (this.rendered) this.render();
+    }, ms);
+    return ms;
+  }
+
+  // For the tests: whether a redraw is armed.
+  get redrawArmed() { return this.#redrawTimer != null; }
 
   // Who the shop buys for now: the stored pick while the player still owns
   // it, else their own character, else the first they own, else nobody.
@@ -305,6 +339,7 @@ export class CrateShop extends ApplicationV2 {
     // The shop-wide reason (closed, no GM, no character) or the wait is said
     // once, in the header's live region; the cards only point at it.
     this.notice = this.#notice(ctx);
+    this.#armRedraw(boxes, ctx);
     root.innerHTML = shopHTML({
       fields: picker + purseField,
       cards: boxes.length ? boxes.map(b => cardFor(b, pools, ctx)).join("") : shopEmptyHTML(!!game.user?.isGM),
@@ -321,6 +356,7 @@ export class CrateShop extends ApplicationV2 {
   // starts without it.
   _onClose(options) {
     this.said = null;
+    this.#clearRedraw();
     super._onClose?.(options);
   }
 

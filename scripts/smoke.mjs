@@ -1646,6 +1646,72 @@ async function shopProblems(mode) {
   return out;
 }
 
+/*
+  Forced colours (Windows high contrast): every gradient and colour is the
+  system's, so a switch whose label no longer says its state must still
+  draw its knob where the state is (module.css, forced-colors). Run in a
+  context with forcedColors "active" on the Boxes tab (each game's "On the
+  shelf", one off) and with the shop closed (the nav's "Shop open" off),
+  in both themes: each switch is photographed and its knob found in the
+  pixels, at the left while off and at the right while on.
+*/
+const FORCED_STATES = [
+  ["forced-boxes", "state=manager&tab=boxes&shelf=off"],
+  ["forced-boxes-closed", "state=manager&tab=boxes&shelf=off&shop=closed"],
+];
+
+async function forcedSwitchProblems(page, { shopOpen }) {
+  const out = [];
+  if (!await page.evaluate(() => matchMedia("(forced-colors: active)").matches)) return ["forced colours are not active"];
+  const seen = { true: [], false: [] };
+  for (const sw of await page.$$(".lc-switch")) {
+    const info = await sw.evaluate(el => {
+      const r = el.getBoundingClientRect();
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const textLeft = Math.min(...[...range.getClientRects()].map(x => x.left));
+      const cs = getComputedStyle(el), knob = getComputedStyle(el, "::before");
+      const kw = parseFloat(knob.width), kh = parseFloat(knob.height);
+      return { pressed: el.getAttribute("aria-pressed"), name: el.getAttribute("aria-label") || el.textContent.trim(), w: r.width, h: r.height, x: textLeft - (parseFloat(cs.columnGap) || 0) - kw - r.left, y: (r.height - kh) / 2, kw, kh, nav: !!el.closest("nav") };
+    });
+    if (!(info.w > 0 && info.h > 0)) continue;
+    if (!(info.kw >= 20)) { out.push(`${info.name}: no switch drawn`); continue; }
+    const png = await sw.screenshot();
+    // Where the knob's ink sits across the track, 0 (left) to 1 (right):
+    // pixels inside the track's border unlike the track's middle, which
+    // lies between the two knob positions.
+    const knob = await page.evaluate(async ({ b64, info }) => {
+      const img = new Image();
+      img.src = `data:image/png;base64,${b64}`;
+      await img.decode();
+      const c = document.createElement("canvas");
+      c.width = img.width; c.height = img.height;
+      const g = c.getContext("2d");
+      g.drawImage(img, 0, 0);
+      const k = img.width / info.w;
+      const x0 = Math.round(info.x * k), y0 = Math.round(info.y * k), w = Math.round(info.kw * k), h = Math.round(info.kh * k);
+      const px = g.getImageData(x0, y0, w, h).data;
+      const at = (x, y) => px.slice((y * w + x) * 4, (y * w + x) * 4 + 3);
+      const bg = at(Math.floor(w / 2), Math.floor(h / 2));
+      let n = 0, sx = 0;
+      const edge = Math.ceil(2 * k);
+      for (let y = edge; y < h - edge; y++) for (let x = edge; x < w - edge; x++) {
+        const p = at(x, y);
+        if (Math.abs(p[0] - bg[0]) + Math.abs(p[1] - bg[1]) + Math.abs(p[2] - bg[2]) > 120) { n++; sx += x; }
+      }
+      return { ink: n / (k * k), at: n ? sx / n / w : null };
+    }, { b64: png.toString("base64"), info });
+    if (knob.ink < 8 || knob.at == null) { out.push(`${info.name}: no knob to see in forced colours`); continue; }
+    if (info.pressed === "true" && knob.at < 0.6) out.push(`${info.name} is on but its knob sits at ${knob.at.toFixed(2)} of the track`);
+    if (info.pressed === "false" && knob.at > 0.4) out.push(`${info.name} is off but its knob sits at ${knob.at.toFixed(2)} of the track`);
+    seen[info.pressed]?.push(knob.at);
+    if (info.nav && (info.pressed === "true") !== shopOpen) out.push(`the nav's shop switch reads ${info.pressed}`);
+  }
+  if (!seen.true.length || !seen.false.length) out.push(`expected switches both on and off, got ${seen.true.length} on and ${seen.false.length} off`);
+  else if (Math.min(...seen.true) - Math.max(...seen.false) < 0.3) out.push("on and off knobs sit too close to tell apart");
+  return out;
+}
+
 const server = await serveStatic(root, PORT);
 const browser = await chromium.launch(process.env.PLAYWRIGHT_CHROMIUM ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM } : {});
 let failures = 0;
@@ -1750,6 +1816,24 @@ try {
       await page.close();
     }
     await ctx.close();
+    const forced = await browser.newContext({ viewport: w.viewport, isMobile: w.isMobile, hasTouch: w.hasTouch, reducedMotion: "reduce", forcedColors: "active" });
+    for (const theme of THEMES) for (const [name, query0] of FORCED_STATES) {
+      const shot = `${name}${theme === "light" ? "-light" : ""}`;
+      const page = await forced.newPage();
+      const errors = [];
+      page.on("pageerror", e => errors.push(e.message));
+      page.on("console", m => { if (m.type() === "error" && !m.text().startsWith("Failed to load resource")) errors.push(m.text()); });
+      await page.goto(`http://localhost:${PORT}/harness/?${query0}&theme=${theme}`, { waitUntil: "networkidle" });
+      await page.waitForSelector("body[data-ready]", { timeout: 10000 });
+      await page.waitForTimeout(300);
+      const wide = await page.evaluate(() => document.scrollingElement.scrollWidth > document.scrollingElement.clientWidth + 1);
+      const problems = [...errors, ...await forcedSwitchProblems(page, { shopOpen: !query0.includes("shop=closed") }), ...(wide ? ["page scrolls sideways"] : [])];
+      await page.screenshot({ path: path.join(OUT, w.tag, `${shot}.png`), fullPage: true });
+      if (problems.length) { failures++; console.error(`FAIL ${w.tag}/${shot}: ${problems.join("; ")}`); }
+      else console.log(`ok   ${w.tag}/${shot}`);
+      await page.close();
+    }
+    await forced.close();
   }
 } finally {
   await browser.close();

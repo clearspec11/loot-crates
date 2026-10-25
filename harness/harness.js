@@ -51,6 +51,8 @@
   the shelf, shelf.js. A player's shop leaves it out; with &gm=1 the GM's
   shop shows it with its Buy off and why. The Boxes tab tags and dims its
   row, its toggle is unpressed, and the toolbar counts the rest)
+  ?shop=closed (the Boxes tab: the GM has closed the shop, so the nav's
+  "Shop open" switch is off)
   ?well=capped (shop: Tam has thrown 3 of 3 coins into the Wishing Well
   today, so its card reads "The well is still until tomorrow (3 of 3 today)"
   with its Buy off; without it Tam has thrown once: "1 of 3 throws today")
@@ -813,7 +815,7 @@ function renderBoxes({ toggled = null } = {}) {
   const now = Date.now();
   stage.innerHTML = `
     <div class="lc-manager__body">
-      ${managerNavHTML({ tab: "boxes", shopOpen: true })}
+      ${managerNavHTML({ tab: "boxes", shopOpen: q.get("shop") !== "closed" })}
       <section class="lc-tab" role="tabpanel">
         ${boxesTabHTML({ boxes: GAMES, pools: POOLS, log: [...deckDraws(1, now), ...limitBuys(1)], rounds: { R1: rouletteRound(now) }, recent: added?.id ?? null, esc })}
       </section>

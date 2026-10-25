@@ -108,7 +108,7 @@ import { getRounds, getPools, getBoxes, getLog, dayMode, newId, createPool, upda
 import { flattenPool, withSources, entryWeight, curateEntries, oddsModeOf } from "./odds.js";
 import { SKIPPED_NAMES, describeSkipped, dropPreviewHTML, savedNotice, PAGE_ROWS, defaultView, poolRows, sortRows, filterRows, pageRows, nextRows, poolCount, poolSummary, poolBody, chipsHTML, unsetButton, footHTML, entryRow, entryParts, pinRecent, dropNotice, poolUsers, usersText, deleteImpact, removeImpact, deletePoolText, removeEntryText } from "./poolview.js";
 import { formatPrice, parsePrice, unreadablePrice } from "./currency.js";
-import { managerNavHTML, MANAGER_TABS } from "./route.js";
+import { managerNavHTML, MANAGER_TABS, directoryMenuEntry } from "./route.js";
 import { describeRefund, refundPull } from "./refund.js";
 import { postRefundCard } from "./chat.js";
 import { changeCount } from "./redraw.js";
@@ -796,7 +796,7 @@ export class CrateManager extends ApplicationV2 {
         <p class="lc-sr-only" role="status" aria-live="polite"></p>
       </div>
       <fieldset><legend>Rules</legend>
-        <label class="lc-row">Each character may throw <input name="cap" type="number" min="0" step="1" value="${box.rules?.cap ?? ""}"> times a day (blank for no limit${byRest(dayMode()) ? "" : "; the day is the world's calendar"})</label>
+        <label class="lc-row">Each character may throw <input name="cap" type="number" min="0" step="1" value="${box.rules?.cap ?? ""}"> times a day (blank for no limit${byRest(dayMode()) ? "" : "; a day ends on the world's calendar or at the character's long rest"})</label>
         ${noClockNote({ ...dayOpts(), cap: box.rules?.cap })}
         ${pityRow(box.rules?.pity, { noun: "throws", esc })}
         <label class="lc-row"><input type="checkbox" name="noDuplicates" ${box.rules?.noDuplicates ? "checked" : ""}> No duplicates per character</label>
@@ -1799,20 +1799,17 @@ export async function addStarterCrates() {
 
 /*
   The Roll Tables sidebar's menu entry (main.js, Foundry's
-  get<Document>ContextOptions hook for a RollTable entry), for a GM only.
-  Foundry v14 reads label, visible and onClick(event, li); v13 reads name,
-  condition and callback(li), handing a jQuery object or an element.
+  get<Document>ContextOptions hook for a RollTable entry), for a GM only,
+  in the shape both v13 and v14 read (route.js directoryMenuEntry).
 */
 export function makeCrateMenuEntry() {
-  const tableOf = li => {
-    const el = li?.[0] ?? li;
-    const id = el?.closest?.("[data-entry-id]")?.dataset?.entryId ?? el?.dataset?.entryId;
-    return id ? game.tables?.get(id) ?? null : null;
-  };
-  const visible = () => !!game.user?.isGM;
-  const run = li => {
-    const table = tableOf(li);
-    if (table) makeCrateFromTable(table.uuid).catch(err => console.error("loot-crates | making a crate from a roll table failed", err));
-  };
-  return { label: "Make a crate", name: "Make a crate", icon: '<i class="fa-solid fa-box-open"></i>', visible, condition: visible, onClick: (_event, li) => run(li), callback: li => run(li) };
+  return directoryMenuEntry({
+    label: "Make a crate",
+    icon: '<i class="fa-solid fa-box-open"></i>',
+    visible: () => !!game.user?.isGM,
+    run: id => {
+      const table = game.tables?.get(id);
+      if (table) makeCrateFromTable(table.uuid).catch(err => console.error("loot-crates | making a crate from a roll table failed", err));
+    },
+  });
 }

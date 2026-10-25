@@ -209,6 +209,18 @@ export const streakAt = (game, log, { actorId, now = Date.now() }) => streakOf(l
 
 export const nextPrice = (game, log, { actorId, now = Date.now() }) => priceAt(game, streakAt(game, log, { actorId, now }));
 
+/*
+  When this character's streak at this deck runs out (the newest
+  unrefunded draw plus the deck's window: its last moment, the price is
+  back a moment after), or null with no streak running: the shop's card is redrawn then (kinds.js
+  shop.changesAt), so it never shows a price the GM no longer charges.
+*/
+export function streakEndsAt(game, log, { actorId, now = Date.now() }) {
+  if (!streakAt(game, log, { actorId, now })) return null;
+  const newest = Math.max(...deckRows(log, game.id).filter(r => r.actorId === actorId).map(at));
+  return newest + streakWindowMs(game);
+}
+
 // kinds.js priceOf: what the core charges for this play.
 const priceOf = ({ game, actor, log = [], now = Date.now() }) => nextPrice(game, log, { actorId: actor?.id, now });
 
@@ -624,5 +636,5 @@ export const DECK = registerKind({
   },
   // Every card posts one, so the seal shows its head with "Opening…".
   chat: { card: chatCard },
-  shop: { card, reason },
+  shop: { card, reason, changesAt: (game, ctx) => streakEndsAt(game, ctx.log ?? [], { actorId: ctx.actorId, now: ctx.now ?? Date.now() }) },
 });

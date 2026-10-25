@@ -10,8 +10,9 @@
   - A stake is a log row written at charge time with `status: "open"` and
     the round's `roundId`. It has exactly one way out: the resolve settles
     it (`status: "settled"`, its `payoutCp`) or refunds it, or the GM's
-    Refund closes it early, or the GM's load refunds it once its round is
-    stale (staleStakes below). Nothing else holds coins.
+    Refund closes it early, or the GM's client refunds it once its round
+    is stale (staleStakes below: at the GM's load, and on the GM's timer
+    at nextStaleAt while it stays, table.js watchStale). Nothing else holds coins.
   - A row's status is read through rowStatus: a refunded row is "refunded"
     whatever it says, and a row with no status (every row before rounds,
     and every pull of a kind that isn't a table) is "settled". No migration.
@@ -29,12 +30,12 @@
 */
 import { getKind } from "./kinds.js";
 
-// How long an "until the GM spins" round may sit open before a GM's load
-// refunds its stakes. A reload mid-round keeps the round; one left for
+// How long an "until the GM spins" round may sit open before the GM's
+// client refunds its stakes. A reload mid-round keeps the round; one left for
 // longer than that does not.
 export const ROUND_WINDOW_MS = 10 * 60 * 1000;
 // How long a closed round (by the GM, or its clock running out) waits for
-// its spin before a GM's load refunds its stakes. One constant, so the
+// its spin before the GM's client refunds its stakes. One constant, so the
 // grace is easy to change: a GM who reloads a minute after a short round
 // closed still gets to spin it.
 export const ROUND_GRACE_MS = 10 * 60 * 1000;
@@ -78,7 +79,8 @@ export function stakeReason(round, now = Date.now()) {
   return "";
 }
 
-// When a round's open stakes become the GM's load's to refund: the grace
+// When a round's open stakes become the GM's to refund (at its load, or
+// on its timer): the grace
 // after it closed (by the GM, or its clock, whichever came first), or the
 // window after it opened for a round with no clock still open. A resolved
 // round's open rows are orphans (the resolve marked the round and stopped):
@@ -90,7 +92,7 @@ export function staleAt(round) {
   return Number.isFinite(closed) ? closed + ROUND_GRACE_MS : (round.opensAt ?? 0) + ROUND_WINDOW_MS;
 }
 
-// The open stakes a GM's load refunds: every open row whose round is gone
+// The open stakes the GM's recovery refunds: every open row whose round is gone
 // or stale. Rows of a live round inside its window are left for its spin.
 export function staleStakes(log = [], rounds = {}, now = Date.now()) {
   return log.filter(r => isOpenStake(r) && r.roundId && now >= staleAt(rounds[r.roundId]));
@@ -232,14 +234,14 @@ export function roundLine(g) {
 }
 
 // What happened to a table stake's coins, for its Pull log row: still
-// waiting, or why the resolve (or a GM's load) turned it back. A settled
+// waiting, or why the resolve (or the GM's recovery) turned it back. A settled
 // row's own note (the Auction's "Won at the hammer for 55 gp.") wins over
 // "Lost at the spin.". "" for any other row.
 const STAKE_REASON = {
   owner: "Refunded at the spin: the character changed hands.",
   game: "Refunded at the spin: the game was gone.",
   gone: "The character was gone at the spin; the stake went with it.",
-  stale: "Refunded when the GM loaded: the round never spun.",
+  stale: "Refunded: the round was never spun in time.",
   outbid: "Refunded: outbid.",
   reserve: "Refunded at the hammer: the reserve wasn't met.",
   lot: "Refunded at the hammer: the lot was gone.",

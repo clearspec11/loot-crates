@@ -12,7 +12,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 vi.mock("../module/scripts/reveal.js", () => ({ showReveal: vi.fn(async () => ({ landed: Promise.resolve() })) }));
 vi.mock("../module/scripts/chat.js", () => ({ postPullCard: vi.fn(async () => null) }));
 
-const { registerSocket, requestPull, restCompleted, GM_TIMEOUT_MS, WAIT_NOTICE_MS, TIMED_OUT, SLOW_PULL_MS, _resetSlowWarning } = await import("../module/scripts/socket.js");
+const { registerSocket, requestPull, restCompleted, owedRests, settleOwedRests, _resetOwedSent, OWED_RESEND_MS, GM_TIMEOUT_MS, WAIT_NOTICE_MS, TIMED_OUT, SLOW_PULL_MS, _resetSlowWarning } = await import("../module/scripts/socket.js");
 const { registerSettings, setStoreListener, appendLog, sweepAllPools, enqueueWrite, updateBox, INDEX_FIELDS, todayKey } = await import("../module/scripts/store.js");
 const { storeRedraw, REDRAW_DELAY_MS } = await import("../module/scripts/redraw.js");
 const { refundPull } = await import("../module/scripts/refund.js");
@@ -1106,15 +1106,8 @@ describe("a day that ends at a long rest, with dnd5e's calendar off", () => {
     restCompleted(actor, { type: "long", newDay: true }, { type: "long", newDay: true });
     restCompleted(actor, { type: "long", newDay: false }, { type: "long", newDay: true });
     restCompleted(actor, { type: "short", newDay: false }, { type: "short" });
-    expect(emitted).toEqual([{ type: "newDay", actorId: "actor1", userId: "p1" }]);
-  });
-
-  it("counts nothing for a rest when the calendar is on, where the clock is the day", async () => {
-    const { game, actor, deliver } = restWorld({ calendar: { enabled: true, dailyRecovery: "" } });
-    await deliver({ type: "newDay", actorId: "actor1", userId: "p1" });
-    await restCompleted(actor, { newDay: true }, { newDay: true });
-    expect(game.settings.get("loot-crates", "actorState")).toEqual({});
-    expect(todayKey("actor1")).toBe("y1d5");
+    // With the world time the rest began, for the calendar's day (below).
+    expect(emitted).toEqual([{ type: "newDay", actorId: "actor1", userId: "p1", at: 86400 * 5 }]);
   });
 
   it("counts rests when the calendar is on but dnd5e's daily recovery is manual", async () => {
@@ -1123,5 +1116,226 @@ describe("a day that ends at a long rest, with dnd5e's calendar off", () => {
     await deliver({ type: "newDay", actorId: "actor1", userId: "p1" });
     expect(todayKey("actor1")).toBe("r1");
     expect(game.settings.get("loot-crates", "actorState").days).toEqual({ actor1: 1 });
+  });
+});
+
+/*
+  With dnd5e's calendar on, dnd5e moves the clock for a rest only on a GM's
+  client, so a player's own long rest is noted as the day it rested into
+  and the character's day is the later of that and the clock's (clock.js).
+*/
+describe("a day with dnd5e's calendar on", () => {
+  const WELL_GAME = { id: "well", kind: "well", name: "Wishing Well", price: 0.1, pools: [{ id: "pool", share: 1 }], weights: { common: 1 }, odds: { nothing: 100, coin: 0, item: 0 }, rules: { cap: 2 } };
+  const DAY = 86400;
+  // The clock at `hour` of day `day` of year 1, read through a calendar
+  // of plain 86400 s days, as Foundry's game.time and its calendar give it.
+  const at = (day, hour = 12) => day * DAY + hour * 3600;
+  const timeAt = seconds => ({ worldTime: seconds, components: { year: 1, day: Math.floor(seconds / DAY) }, calendar: { timeToComponents: s => ({ year: 1, day: Math.floor(s / DAY) }) } });
+
+  function calendarWorld({ user = GM } = {}) {
+    const world = makeWorld({ user });
+    world.settings.set("dnd5e.calendarConfig", { enabled: true, dailyRecovery: "" });
+    world.game.time = timeAt(at(5));
+    world.actor.testUserPermission = u => u.id === GM.id || u.id === PLAYER.id;
+    return world;
+  }
+  const throwAt = (world, requestId) => world.deliver({ type: "pull", requestId, boxId: "well", actorId: "actor1", userId: "p1", price: 0.1 });
+  const refusal = (world, requestId) => world.emitted.find(m => m.type === "error" && m.requestId === requestId)?.message ?? null;
+  const thrown = world => world.emitted.filter(m => m.type === "reveal").map(m => m.requestId);
+
+  beforeEach(async () => {
+    await import("../module/scripts/well.js");
+    globalThis.CONFIG = { Dice: { randomUniform: () => 0.5 } };
+  });
+  afterEach(() => { delete globalThis.CONFIG; });
+
+  it("ends the day at a player's long rest though the clock stays, and the clock's move over the same night adds none", async () => {
+    const world = calendarWorld();
+    const { game, deliver } = world;
+    await game.settings.set("loot-crates", "pools", { pool: POOL });
+    await game.settings.set("loot-crates", "boxes", { well: WELL_GAME });
+    for (const id of ["a1", "a2", "a3"]) await throwAt(world, id);
+    expect(refusal(world, "a3")).toBe("The well is still until tomorrow (2 of 2 today).");
+
+    // The player's long rest from their sheet: dnd5e left the clock alone.
+    await deliver({ type: "newDay", actorId: "actor1", userId: "p1", at: at(5, 22) });
+    expect(game.time.worldTime).toBe(at(5));
+    expect(todayKey("actor1")).toBe("y1d6");
+    expect(game.settings.get("loot-crates", "actorState").restedInto).toEqual({ actor1: { y: 1, d: 6 } });
+    await throwAt(world, "b1");
+    expect(thrown(world)).toEqual(["a1", "a2", "b1"]);
+
+    // The GM then moves the clock over that night: the same day, not another.
+    game.time = timeAt(at(6, 6));
+    expect(todayKey("actor1")).toBe("y1d6");
+    await throwAt(world, "b2");
+    await throwAt(world, "b3");
+    expect(refusal(world, "b3")).toBe("The well is still until tomorrow (2 of 2 today).");
+
+    // A refund gives that use back.
+    const row = game.settings.get("loot-crates", "pullLog").find(r => r.day === "y1d6");
+    expect((await refundPull(row.id)).status).toBe("refunded");
+    await throwAt(world, "b4");
+    expect(thrown(world)).toEqual(["a1", "a2", "b1", "b2", "b4"]);
+
+    // The clock's own next day is a new day as before.
+    game.time = timeAt(at(7, 9));
+    expect(todayKey("actor1")).toBe("y1d7");
+    await throwAt(world, "c1");
+    expect(thrown(world).at(-1)).toBe("c1");
+    expect(game.settings.get("loot-crates", "pullLog").map(r => r.day)).toEqual(["y1d7", "y1d6", "y1d6", "y1d6", "y1d5", "y1d5"]);
+  });
+
+  it("counts a GM's rest that moved the clock from when it began, so it ends one day, and caps a player's time at the GM's clock", async () => {
+    const world = calendarWorld();
+    const { game, actor, deliver } = world;
+    game.user = { ...GM, isGM: true };
+    // A GM's long rest at 22:00 with advanceTime: dnd5e moved the clock eight hours before the hook.
+    game.time = timeAt(at(5, 22) + 8 * 3600);
+    await restCompleted(actor, { newDay: true }, { newDay: true, advanceTime: true, duration: 480 });
+    expect(game.settings.get("loot-crates", "actorState").restedInto).toEqual({ actor1: { y: 1, d: 6 } });
+    expect(todayKey("actor1")).toBe("y1d6");
+    // A GM's rest in the morning with the clock left alone ends the day too.
+    game.time = timeAt(at(6, 8));
+    await restCompleted(actor, { newDay: true }, { newDay: true, advanceTime: false, duration: 480 });
+    expect(todayKey("actor1")).toBe("y1d7");
+    // A player's rest claiming a time far past the GM's clock is one more day, no further.
+    await deliver({ type: "newDay", actorId: "actor1", userId: "p1", at: at(40) });
+    expect(todayKey("actor1")).toBe("y1d8");
+    // A rest heard late (an owed one) still ends one day, from the character's own.
+    await deliver({ type: "newDay", actorId: "actor1", userId: "p1", at: at(2) });
+    expect(game.settings.get("loot-crates", "actorState").restedInto).toEqual({ actor1: { y: 1, d: 9 } });
+    // Someone who doesn't own the character ends nothing; nor does a short rest.
+    actor.testUserPermission = u => u.id === GM.id;
+    game.time = timeAt(at(7, 8));
+    await deliver({ type: "newDay", actorId: "actor1", userId: "p1", at: at(7, 8) });
+    await restCompleted(actor, { newDay: false }, { newDay: false });
+    expect(todayKey("actor1")).toBe("y1d9");
+    // The rest count of calendar-off mode is never touched.
+    expect(game.settings.get("loot-crates", "actorState").days).toBeUndefined();
+  });
+
+  it("keeps the rest count and the day rested into apart, so switching the calendar reads neither as the other", async () => {
+    const world = calendarWorld();
+    const { game, deliver } = world;
+    await deliver({ type: "newDay", actorId: "actor1", userId: "p1", at: at(5) });
+    expect(todayKey("actor1")).toBe("y1d6");
+    await game.settings.set("dnd5e", "calendarConfig", { enabled: false, dailyRecovery: "" });
+    expect(todayKey("actor1")).toBe("r0");
+    await deliver({ type: "newDay", actorId: "actor1", userId: "p1", at: at(5) });
+    expect(todayKey("actor1")).toBe("r1");
+    await game.settings.set("dnd5e", "calendarConfig", { enabled: true, dailyRecovery: "" });
+    expect(todayKey("actor1")).toBe("y1d6");
+  });
+});
+
+/*
+  A long rest with no GM online: only a GM client writes, so the player's
+  client keeps it in its own browser storage and sends it once a GM can
+  hear it (socket.js owedRests).
+*/
+describe("a long rest taken while no GM is online", () => {
+  let stored;
+  beforeEach(() => {
+    _resetOwedSent();
+    stored = new Map();
+    vi.stubGlobal("localStorage", { getItem: k => stored.get(k) ?? null, setItem: (k, v) => stored.set(k, String(v)), removeItem: k => stored.delete(k) });
+  });
+
+  function playerWorld() {
+    const world = makeWorld({ user: PLAYER, activeGM: null });
+    world.settings.set("dnd5e.calendarConfig", { enabled: false, dailyRecovery: "" });
+    world.game.time = { components: { year: 1, day: 5 }, worldTime: 86400 * 5 };
+    world.game.world = { id: "w" };
+    return world;
+  }
+
+  it("keeps the rest in the player's browser, writing nothing to the world, and sends it when a GM loads and asks", async () => {
+    const { game, actor, emitted, deliver } = playerWorld();
+    restCompleted(actor, { newDay: true }, { newDay: true });
+    restCompleted(actor, { newDay: true }, { newDay: true });
+    expect(emitted).toEqual([]);
+    expect(game.settings.get("loot-crates", "actorState")).toEqual({});
+    // Two rests owed for one character are one.
+    expect(owedRests()).toEqual({ actor1: { at: 86400 * 5 } });
+    expect([...stored.keys()]).toEqual(["loot-crates.owedRests.w.p1"]);
+    // Still no GM: nothing to send to.
+    expect(settleOwedRests()).toBe(0);
+
+    // A GM comes online and its load asks.
+    game.users.activeGM = GM;
+    await deliver({ type: "owedRests" });
+    expect(emitted).toEqual([{ type: "newDay", actorId: "actor1", userId: "p1", at: 86400 * 5, owed: true }]);
+    // Kept until the GM says it was counted, so a GM that dropped it hears it again.
+    expect(owedRests()).toEqual({ actor1: { at: 86400 * 5 } });
+    await deliver({ type: "newDayCounted", userId: "someone else", actorId: "actor1", at: 86400 * 5 });
+    expect(owedRests()).toEqual({ actor1: { at: 86400 * 5 } });
+    await deliver({ type: "newDayCounted", userId: "p1", actorId: "actor1", at: 86400 * 5 });
+    expect(owedRests()).toEqual({});
+    expect(stored.size).toBe(0);
+  });
+
+  it("sends what it owes at its own load when a GM is already online", () => {
+    const { game, actor, emitted } = playerWorld();
+    restCompleted(actor, { newDay: true }, { newDay: true });
+    game.users.activeGM = GM;
+    expect(settleOwedRests()).toBe(1);
+    expect(emitted).toEqual([{ type: "newDay", actorId: "actor1", userId: "p1", at: 86400 * 5, owed: true }]);
+  });
+
+  it("sends a rest once when its own load and the GM's ask fall together, and again only once unanswered for a while", async () => {
+    vi.useFakeTimers();
+    const { game, actor, emitted, deliver } = playerWorld();
+    restCompleted(actor, { newDay: true }, { newDay: true });
+    game.users.activeGM = GM;
+    // Both clients loading at a session's start: the player's own load
+    // sends, and the GM's ask moments later must not make the GM hear the
+    // same rest twice (it would end two days).
+    expect(settleOwedRests()).toBe(1);
+    await deliver({ type: "owedRests" });
+    expect(emitted).toEqual([{ type: "newDay", actorId: "actor1", userId: "p1", at: 86400 * 5, owed: true }]);
+    // A GM that dropped it asks again later and hears it again.
+    vi.advanceTimersByTime(OWED_RESEND_MS);
+    await deliver({ type: "owedRests" });
+    expect(emitted.length).toBe(2);
+    // Once answered and forgotten, a new rest for the character is sent at once.
+    await deliver({ type: "newDayCounted", userId: "p1", actorId: "actor1", at: 86400 * 5 });
+    expect(owedRests()).toEqual({});
+    game.users.activeGM = null;
+    game.time = { components: { year: 1, day: 6 }, worldTime: 86400 * 6 };
+    restCompleted(actor, { newDay: true }, { newDay: true });
+    game.users.activeGM = GM;
+    expect(settleOwedRests()).toBe(1);
+    expect(emitted.at(-1)).toEqual({ type: "newDay", actorId: "actor1", userId: "p1", at: 86400 * 6, owed: true });
+  });
+
+  it("on the GM: asks at its load, counts an owed rest as any rest and answers it, even for a character it can't count", async () => {
+    const world = makeWorld({ user: GM });
+    world.settings.set("dnd5e.calendarConfig", { enabled: false, dailyRecovery: "" });
+    world.game.time = { components: { year: 1, day: 5 }, worldTime: 86400 * 5 };
+    const { game, emitted, deliver } = world;
+    expect(settleOwedRests()).toBe(0);
+    expect(emitted).toEqual([{ type: "owedRests" }]);
+    await deliver({ type: "newDay", actorId: "actor1", userId: "p1", at: 86400 * 5, owed: true });
+    expect(game.settings.get("loot-crates", "actorState").days).toEqual({ actor1: 1 });
+    expect(todayKey("actor1")).toBe("r1");
+    expect(emitted.at(-1)).toEqual({ type: "newDayCounted", userId: "p1", actorId: "actor1", at: 86400 * 5 });
+    // A character since deleted: nothing counted, still answered, so it isn't sent at every load.
+    await deliver({ type: "newDay", actorId: "gone", userId: "p1", at: 86400 * 5, owed: true });
+    expect(game.settings.get("loot-crates", "actorState").days).toEqual({ actor1: 1 });
+    expect(emitted.at(-1)).toEqual({ type: "newDayCounted", userId: "p1", actorId: "gone", at: 86400 * 5 });
+    // A rest sent live (not owed) gets no answer.
+    const n = emitted.length;
+    await deliver({ type: "newDay", actorId: "actor1", userId: "p1", at: 86400 * 5 });
+    expect(emitted.length).toBe(n);
+    expect(todayKey("actor1")).toBe("r2");
+  });
+
+  it("owes nothing, and throws nothing, where the browser's storage throws", () => {
+    vi.stubGlobal("localStorage", { getItem: () => { throw new Error("denied"); }, setItem: () => { throw new Error("denied"); }, removeItem: () => { throw new Error("denied"); } });
+    const { actor, emitted } = playerWorld();
+    expect(() => restCompleted(actor, { newDay: true }, { newDay: true })).not.toThrow();
+    expect(owedRests()).toEqual({});
+    expect(emitted).toEqual([]);
   });
 });

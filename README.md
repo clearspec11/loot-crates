@@ -17,9 +17,11 @@ Loot Crates is a Foundry VTT module for D&D 5e that turns treasure into a game t
 
 | | Works with | Tested on |
 | --- | --- | --- |
-| Foundry VTT | v13 and v14 | v14 (build 14.369) |
-| D&D 5e system | 5.x and 6.x | 6.0.6 |
+| Foundry VTT | v13.341 (the first stable v13) or later, and v14 | v14 (build 14.369) |
+| D&D 5e system | 5.0.0 or later: 5.x and 6.x | 6.0.6 |
 | Dice So Nice | optional | the dice game waits for its 3D roll |
+
+Every check so far has run on Foundry v14 with dnd5e 6.0.6. The v13 and dnd5e 5 support comes from reading their API documentation and source, API by API, not from a test world: [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) lists what was checked and where. dnd5e 6 needs Foundry v14, so on v13 you'll be running dnd5e 5.
 
 Players install nothing: Foundry serves the module to them when they join.
 

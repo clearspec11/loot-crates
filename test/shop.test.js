@@ -654,3 +654,62 @@ describe("the shop's way to the manager", () => {
     await expect(CrateShop.DEFAULT_OPTIONS.actions.openManager.call(new CrateShop(), {}, {})).resolves.toBeUndefined();
   });
 });
+
+/*
+  A deck's raised streak price runs out by itself (deck.js streakEndsAt,
+  kinds.js shop.changesAt): the open shop redraws that card when it does,
+  on one timer that the next render and closing the shop clear.
+*/
+describe("a card whose price runs out by itself", () => {
+  beforeEach(() => { globalThis.document = createDocument(); vi.useFakeTimers({ now: 1_000_000_000 }); });
+  afterEach(() => { delete globalThis.document; vi.useRealTimers(); pullLog = []; });
+
+  const draw = async app => { app.render(); return app.last; };
+  const deckBuy = app => app.content.querySelector('.lc-box__buy[data-box="deck"]');
+  // One draw at the deck 10 s ago: the next is the 2nd in a row, at 15 gp,
+  // until the deck's two-minute window runs out 110 s from now.
+  const drewAgo = ms => [{ id: "d0", kind: "deck", boxId: "deck", actorId: "a1", cardId: "blank", at: Date.now() - ms, price: 10 }];
+
+  it("redraws the deck's card back to its base price at the window's end, without the shop being reopened", async () => {
+    pullLog = drewAgo(10_000);
+    const app = new CrateShop();
+    await draw(app);
+    expect(deckBuy(app).dataset.price).toBe("15");
+    expect(app.redrawArmed).toBe(true);
+    const renders = app.renders;
+    await vi.advanceTimersByTimeAsync(110_000 - 1);
+    expect(app.renders).toBe(renders);
+    await vi.advanceTimersByTimeAsync(300);
+    expect(app.renders).toBe(renders + 1);
+    await app.last;
+    expect(deckBuy(app).dataset.price).toBe("10");
+    expect(app.content.querySelector('.lc-box[data-box="deck"] .lc-box__rule')).toBeNull();
+    // Nothing left to run out: no timer, and nothing redraws again.
+    expect(app.redrawArmed).toBe(false);
+    await vi.advanceTimersByTimeAsync(600_000);
+    expect(app.renders).toBe(renders + 1);
+  });
+
+  it("keeps one timer across renders and none once the shop is closed", async () => {
+    pullLog = drewAgo(10_000);
+    const app = new CrateShop();
+    await draw(app);
+    await draw(app);
+    await draw(app);
+    expect(vi.getTimerCount()).toBe(1);
+    await app._onClose({});
+    expect(app.redrawArmed).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+    const renders = app.renders;
+    await vi.advanceTimersByTimeAsync(200_000);
+    expect(app.renders).toBe(renders);
+  });
+
+  it("arms nothing with no streak running", async () => {
+    pullLog = drewAgo(130_000);
+    const app = new CrateShop();
+    await draw(app);
+    expect(deckBuy(app).dataset.price).toBe("10");
+    expect(app.redrawArmed).toBe(false);
+  });
+});

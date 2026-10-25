@@ -12,7 +12,7 @@
 */
 import { MODULE_ID, SETTINGS } from "./config.js";
 import { normalizeRarity, flattenPool, markEntriesMissing, rawRarityOf, sourceRarityOf, curateEntries } from "./odds.js";
-import { dayModeOf, dayKeyFor, byRest } from "./clock.js";
+import { dayModeOf, dayKeyFor, byRest, dayOf, dayAfterRest, keyOfDay } from "./clock.js";
 import { pruneRounds } from "./round.js";
 
 const uid = () => (globalThis.foundry?.utils?.randomID?.(10)) ?? Math.random().toString(36).slice(2, 12);
@@ -93,16 +93,51 @@ const set = (key, value) => game.settings.set(MODULE_ID, key, value);
   setting counts rests too, and a world with neither has no day (null).
   todayKey(actorId) is that character's key; null in a world with no day.
   The rests are counted in the STATE setting under `days` (an actor id to
-  its count), beside the `actorId.boxId` entries, by countRest below.
+  its count), beside the `actorId.boxId` entries, by countRest below. With
+  the calendar on, each character's last long rest is kept there under
+  `restedInto` (an actor id to the day its last rest moved it to, clock.js
+  dayOf's shape) by restInto, and the key is the later of that and the
+  clock's.
 */
 function dnd5eCalendar() {
   try { return globalThis.game?.settings?.get?.("dnd5e", "calendarConfig") ?? null; } catch { return null; }
 }
 export const dayMode = () => dayModeOf({ config: dnd5eCalendar(), isDnd5e: globalThis.game?.system?.id === "dnd5e", time: globalThis.game?.time ?? null });
 export const restDayOf = actorId => Number(game.settings.get(MODULE_ID, SETTINGS.STATE)?.days?.[actorId]) || 0;
+export const restedIntoOf = actorId => game.settings.get(MODULE_ID, SETTINGS.STATE)?.restedInto?.[actorId] ?? null;
 export function todayKey(actorId) {
   const rest = byRest(dayMode());
-  return dayKeyFor({ time: globalThis.game?.time ?? null, calendarOn: !rest, restDay: rest && actorId ? restDayOf(actorId) : 0 });
+  const time = globalThis.game?.time ?? null;
+  if (rest) return dayKeyFor({ time, calendarOn: false, restDay: actorId ? restDayOf(actorId) : 0 });
+  return dayKeyFor({ time, calendarOn: true, restedInto: actorId ? restedIntoOf(actorId) : null });
+}
+
+// The day `seconds` of world time falls on: now's is the clock's own, and
+// an earlier moment's is read through the world's calendar as dnd5e reads
+// one (game.time.calendar.timeToComponents), else from the seconds alone.
+export function dayAt(seconds) {
+  const time = globalThis.game?.time ?? null;
+  if (time && seconds === Number(time.worldTime)) return dayOf(time);
+  let components;
+  try { components = time?.calendar?.timeToComponents?.(seconds) ?? null; } catch { components = null; }
+  return dayOf({ components, worldTime: seconds });
+}
+
+// With the calendar on: this character took a long rest begun on `began`
+// (the clock's day then), on the GM in the write queue (clock.js
+// dayAfterRest). Returns today's key.
+export function restInto(actorId, began) {
+  return enqueueWrite(async () => {
+    const all = get(SETTINGS.STATE);
+    const restedInto = { ...(all.restedInto ?? {}) };
+    const was = restedInto[actorId] ?? null;
+    const now = dayAfterRest(began, was);
+    if (now && keyOfDay(now) !== keyOfDay(was)) {
+      restedInto[actorId] = now;
+      await set(SETTINGS.STATE, { ...all, restedInto });
+    }
+    return todayKey(actorId);
+  });
 }
 
 // One more new day for this character, on the GM in the write queue (a

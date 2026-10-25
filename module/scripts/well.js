@@ -9,9 +9,9 @@
     item" outcome. Every throw writes a log row (so every throw is
     refundable), the Pull log folds a character's misses for a day into one
     line (collapseMisses), and only an item posts a chat card.
-  - The cap is "N throws per in-game day", keyed on the world's calendar,
-    or with dnd5e's calendar off on the character's long rests (clock.js
-    dayKeyFor), and counted from the unrefunded log rows that carry that
+  - The cap is "N throws per in-game day", keyed on the world's calendar
+    and the character's long rests (clock.js dayKeyFor: with dnd5e's
+    calendar off on the rests alone), and counted from the unrefunded log rows that carry that
     day's key: the GM resets nothing, the day rolls over when the party's
     does, and a refund gives a throw back by itself.
   - Pity counts throws since the last item at the pity rarity, in the

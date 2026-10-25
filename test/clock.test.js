@@ -6,8 +6,8 @@
 */
 import { describe, it, expect, afterEach } from "vitest";
 
-const { dayKeyOf, dayKeyFor, dayModeOf, byRest, restDayNote } = await import("../module/scripts/clock.js");
-const { registerSettings, todayKey, dayMode, countRest, restDayOf } = await import("../module/scripts/store.js");
+const { dayKeyOf, dayKeyFor, dayModeOf, byRest, restDayNote, dayOf, keyOfDay, nextDay, laterDay, dayAfterRest } = await import("../module/scripts/clock.js");
+const { registerSettings, todayKey, dayMode, countRest, restDayOf, restInto, restedIntoOf, dayAt } = await import("../module/scripts/store.js");
 const { noClockNote } = await import("../module/scripts/well.js");
 const { limitsFieldset } = await import("../module/scripts/limits.js");
 
@@ -91,6 +91,68 @@ describe("the day's key", () => {
   });
 });
 
+describe("a long rest with the calendar on", () => {
+  it("reads a day from the clock's components, else its seconds, and steps and compares days of one shape", () => {
+    expect(dayOf(TIME)).toEqual({ y: 1492, d: 207 });
+    expect(dayOf({ worldTime: 86400 * 3 + 5 })).toEqual({ t: 3 });
+    expect(dayOf(null)).toBeNull();
+    expect(keyOfDay({ y: 1, d: 2 })).toBe("y1d2");
+    expect(keyOfDay({ t: 9 })).toBe("t9");
+    expect(keyOfDay({})).toBeNull();
+    expect(nextDay({ y: 1, d: 364 })).toEqual({ y: 1, d: 365 });
+    expect(nextDay({ t: 9 })).toEqual({ t: 10 });
+    expect(laterDay({ y: 1, d: 5 }, { y: 1, d: 6 })).toEqual({ y: 1, d: 6 });
+    expect(laterDay({ y: 2, d: 0 }, { y: 1, d: 365 })).toEqual({ y: 2, d: 0 });
+    expect(laterDay({ t: 4 }, { t: 3 })).toEqual({ t: 4 });
+    // Another shape, or none, says nothing.
+    expect(laterDay({ y: 1, d: 5 }, { t: 99 })).toEqual({ y: 1, d: 5 });
+    expect(laterDay({ y: 1, d: 5 }, null)).toEqual({ y: 1, d: 5 });
+  });
+
+  it("keys today on the later of the clock's day and the day the rest rested into", () => {
+    expect(dayKeyFor({ time: TIME, calendarOn: true, restedInto: { y: 1492, d: 208 } })).toBe("y1492d208");
+    // The clock caught up, or passed it: the clock's day.
+    expect(dayKeyFor({ time: TIME, calendarOn: true, restedInto: { y: 1492, d: 207 } })).toBe("y1492d207");
+    expect(dayKeyFor({ time: TIME, calendarOn: true, restedInto: { y: 1492, d: 100 } })).toBe("y1492d207");
+    // The rest count of calendar-off mode never reaches the calendar's key.
+    expect(dayKeyFor({ time: TIME, calendarOn: true, restDay: 4, restedInto: null })).toBe("y1492d207");
+    expect(dayKeyFor({ time: TIME, calendarOn: false, restDay: 2, restedInto: { y: 1492, d: 300 } })).toBe("r2");
+  });
+
+  it("moves the character's own day one on from the later of the clock's day and its own", () => {
+    expect(dayAfterRest({ y: 1, d: 5 })).toEqual({ y: 1, d: 6 });
+    expect(dayAfterRest({ y: 1, d: 5 }, { y: 1, d: 6 })).toEqual({ y: 1, d: 7 });
+    // The clock has passed the character's day: from the clock's.
+    expect(dayAfterRest({ y: 1, d: 9 }, { y: 1, d: 6 })).toEqual({ y: 1, d: 10 });
+    expect(dayAfterRest({ t: 3 }, { y: 1, d: 6 })).toEqual({ t: 4 });
+    expect(dayAfterRest(null, { y: 1, d: 6 })).toBeNull();
+  });
+
+  it("ends a day at every long rest on the GM, the clock catching up without another, and leaves the counts and actor state alone", async () => {
+    const game = world({ calendar: { enabled: true, dailyRecovery: "" } });
+    await game.settings.set("loot-crates", "actorState", { "a1.box": { pulls: 2 }, days: { a1: 3 } });
+    await expect(restInto("a1", { y: 1492, d: 207 })).resolves.toBe("y1492d208");
+    // A second rest with the clock still on 207: another day.
+    await expect(restInto("a1", { y: 1492, d: 207 })).resolves.toBe("y1492d209");
+    expect(restedIntoOf("a1")).toEqual({ y: 1492, d: 209 });
+    expect(todayKey("a2")).toBe("y1492d207");
+    // The clock catches up through 208 and 209 without a new day, then passes it.
+    game.time = { components: { year: 1492, day: 208 }, worldTime: 2 };
+    expect(todayKey("a1")).toBe("y1492d209");
+    game.time = { components: { year: 1492, day: 210 }, worldTime: 3 };
+    expect(todayKey("a1")).toBe("y1492d210");
+    expect(game.settings.get("loot-crates", "actorState")).toEqual({ "a1.box": { pulls: 2 }, days: { a1: 3 }, restedInto: { a1: { y: 1492, d: 209 } } });
+  });
+
+  it("reads a past moment's day through the world's calendar, and now's from the clock", () => {
+    const game = world({ calendar: { enabled: true, dailyRecovery: "" }, time: { worldTime: 86400 * 10, components: { year: 3, day: 10 }, calendar: { timeToComponents: s => ({ year: 3, day: Math.floor(s / 86400) }) } } });
+    expect(dayAt(86400 * 10)).toEqual({ y: 3, d: 10 });
+    expect(dayAt(86400 * 9.5)).toEqual({ y: 3, d: 9 });
+    game.time.calendar = null;
+    expect(dayAt(86400 * 9.5)).toEqual({ t: 9 });
+  });
+});
+
 describe("the editors' notes about the day", () => {
   const REST = "dnd5e's calendar is off: a day ends at each character's long rest.";
   it("says a day ends at a long rest beside the well's cap with the calendar off, and keeps the warning only for a world with no day", () => {
@@ -109,8 +171,7 @@ describe("the editors' notes about the day", () => {
     expect(rest).not.toContain("world's calendar");
     expect(rest).not.toContain("--warn");
     const calendar = limitsFieldset(game, { stock: false, hasClock: true, day: "calendar" });
-    expect(calendar).toContain("so a refund gives the purchase back; a day is the world's calendar.</p>");
-    expect(calendar).not.toContain("long rest");
+    expect(calendar).toContain("so a refund gives the purchase back; a day ends on the world's calendar or at the character's long rest.</p>");
     expect(limitsFieldset(game, { stock: false, hasClock: false, day: null })).toContain("No calendar: a limit per day will not apply.");
   });
 });

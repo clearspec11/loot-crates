@@ -12,11 +12,11 @@ vi.mock("../module/scripts/chat.js", () => ({ postPullCard: vi.fn(async () => nu
 
 const { registerSocket, requestStake } = await import("../module/scripts/socket.js");
 const { registerSettings, getLog, getRounds, enqueueWrite } = await import("../module/scripts/store.js");
-const { openRound, closeRound, resolveRound, recoverRounds, refundOrphanRounds, onTable } = await import("../module/scripts/table.js");
+const { openRound, closeRound, resolveRound, recoverRounds, refundOrphanRounds, onTable, watchStale, stopStaleWatch, STALE_SLACK_MS } = await import("../module/scripts/table.js");
 const { refundPull, describeRefund } = await import("../module/scripts/refund.js");
 const { performPull, PullError } = await import("../module/scripts/pull.js");
 const { registerKind, kindIds, _resetKinds } = await import("../module/scripts/kinds.js");
-const { rowStatus, stakesOf, staleStakes, staleAt, groupRounds, roundLine, stakeNote, orphanRounds, heldBy, ROUND_WINDOW_MS, ROUND_GRACE_MS } = await import("../module/scripts/round.js");
+const { rowStatus, stakesOf, staleStakes, staleAt, nextStaleAt, groupRounds, roundLine, stakeNote, orphanRounds, heldBy, ROUND_WINDOW_MS, ROUND_GRACE_MS } = await import("../module/scripts/round.js");
 const { showRound, boxHeld } = await import("../module/scripts/reveal.js");
 const { toCopper } = await import("../module/scripts/currency.js");
 
@@ -397,6 +397,54 @@ describe("refunding an open stake", () => {
     const row = getLog().find(r => r.actorId === "a1");
     await refundPull(row.id);
     expect(gp(world.actors.get("a1"))).toBe(100);
+  });
+});
+
+/*
+  While the GM stays (table.js watchStale): one timer at the next round to
+  go stale (round.js nextStaleAt) runs the load's recovery, so a stale
+  round's stakes come back without a reload, once.
+*/
+describe("the GM's timer for a stale round", () => {
+  afterEach(() => stopStaleWatch());
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+
+  it("refunds a round left unspun once it goes stale, once, and arms nothing after", async () => {
+    const round = await threeStakes();
+    const staleMoment = round.opensAt + ROUND_WINDOW_MS;
+    expect(nextStaleAt(getRounds())).toBe(staleMoment);
+    const clock = vi.spyOn(Date, "now").mockReturnValue(staleMoment - 40);
+    expect(watchStale()).toBe(40 + STALE_SLACK_MS);
+    await wait(100);
+    expect(getLog().filter(r => rowStatus(r) === "open")).toHaveLength(3);
+    clock.mockReturnValue(staleMoment + 1);
+    await wait(40 + STALE_SLACK_MS + 100);
+    expect(getLog().filter(r => rowStatus(r) === "open")).toHaveLength(0);
+    for (const a of world.actors.values()) expect(gp(a)).toBe(100);
+    expect(getLog().every(r => r.refundReason === "stale")).toBe(true);
+    expect(getRounds()[round.id]).toMatchObject({ status: "resolved", voided: expect.any(Number) });
+    expect(world.notes.warn).toHaveBeenCalledTimes(1);
+    expect(world.notes.warn).toHaveBeenCalledWith("Loot Crates: 3 open stakes from a round that never spun were refunded.");
+    // Nothing left to wait for: armed again, it arms nothing and refunds nothing more.
+    expect(watchStale()).toBeNull();
+    await wait(STALE_SLACK_MS + 50);
+    expect(world.notes.warn).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-arms on each call for the soonest round, waiting the whole way for one far off", async () => {
+    const round = await openRound("wheel");
+    vi.spyOn(Date, "now").mockReturnValue(round.opensAt);
+    expect(watchStale()).toBe(ROUND_WINDOW_MS + STALE_SLACK_MS);
+    // Closed by the GM: the grace runs from the close.
+    const closed = await closeRound(round.id);
+    expect(watchStale()).toBe(closed.closedAt + ROUND_GRACE_MS - round.opensAt + STALE_SLACK_MS);
+  });
+
+  it("arms nothing on a client that isn't the active GM, or with no round open", async () => {
+    expect(watchStale()).toBeNull();
+    await openRound("wheel");
+    world.game.users.activeGM = { id: "other-gm" };
+    expect(watchStale()).toBeNull();
   });
 });
 

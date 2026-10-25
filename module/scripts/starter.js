@@ -33,15 +33,16 @@ import { lotFromCrate } from "./auction.js";
 
 /*
   The packs the pools are filled from, by their name in the system's
-  manifest: the 2014 SRD items, and on dnd5e 6 (or 5 with the 2024 rules)
-  the 2024 equipment as well. The world's dnd5e rules version decides which
+  manifest: the 2014 SRD items and the 2024 equipment (dnd5e 5.0.0 and
+  6.0.6 both list items and equipment24 in system.json). The world's dnd5e rules version decides which
   comes first, and each pool is filled from the first pack that has
   anything for it (pickEntries), so a table on the 2024 rules gets the
   2024 potions, not both editions' under two names (cc-dev: 756 entries
   from both, 432 this way), and the 2014 +1 weapons only because the 2024
   pack has none. A pack the system doesn't list is skipped
-  without a word when it is optional (dnd5e 5 has no equipment24); one it
-  lists that the world can't open is named in the status line.
+  without a word when it is optional (equipment24, should a dnd5e build
+  ever drop it); one it lists that the world can't open is named in the
+  status line.
 */
 export const STARTER_PACKS = [
   { name: "items", label: "Items (SRD)", rules: "legacy", optional: false },

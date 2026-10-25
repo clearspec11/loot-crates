@@ -88,8 +88,15 @@ async function join(browser, user) {
     }
     registerShopHooks?.(Hooks);
     // main.js's hook: the entry in every Roll Tables menu, built or to come.
-    for (const options of globalThis.__lcTableMenus ?? []) options.push(makeCrateMenuEntry());
-    Hooks.on("getRollTableContextOptions", (_app, options) => options.push(makeCrateMenuEntry()));
+    // The installed module (1.0.0 from GitHub on cc-dev) adds its own "Make
+    // a crate" through the same hook, so the branch's takes its place: one
+    // entry, the branch's, as a world running only the branch would have.
+    const swap = options => {
+      for (let i = options.length - 1; i >= 0; i--) if ((options[i]?.label ?? options[i]?.name) === "Make a crate") options.splice(i, 1);
+      options.push(makeCrateMenuEntry());
+    };
+    for (const options of globalThis.__lcTableMenus ?? []) swap(options);
+    Hooks.on("getRollTableContextOptions", (_app, options) => swap(options));
   }, MODULE_BASE);
   return { page, logs };
 }

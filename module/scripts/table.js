@@ -23,7 +23,9 @@
     stake comes back and the round stops counting the row).
   - recoverRounds, on the GM's ready hook, refunds every open row whose
     round is gone or stale (round.js staleStakes) and voids the stale
-    rounds, telling the GM how many.
+    rounds, telling the GM how many. While the GM stays, watchStale runs it
+    again when the next round goes stale (round.js nextStaleAt), so a round
+    left unspun comes back without a reload.
   - cancelRound, the GM calling a round off (the Auction's Call it off):
     the round is voided first, then every open stake refunded in one task.
     The manager's Delete calls a game's round off this way before the game
@@ -60,7 +62,7 @@ import { getBoxes, getPools, getLog, getRounds, saveRound, saveRounds, updateLog
 import { getKind, kindFor, PullError } from "./kinds.js";
 import { settle } from "./currency.js";
 import { rollRng, resolveSource } from "./pull.js";
-import { newRound, liveRoundOf, openStakesOf, stakesOf, staleStakes, staleAt, stakeReason, planResolve, coinsByActor, rowPatch, tableDue, orphanRounds, STATUS } from "./round.js";
+import { newRound, liveRoundOf, openStakesOf, stakesOf, staleStakes, staleAt, nextStaleAt, stakeReason, planResolve, coinsByActor, rowPatch, tableDue, orphanRounds, STATUS } from "./round.js";
 import { onShelf, shelfRoundRefusal } from "./shelf.js";
 // reveal.js imports socket.js, which imports this file; each side reaches
 // the other only inside a function.
@@ -323,6 +325,45 @@ export function recoverRounds() {
     announce({ type: "round", event: "void", roundIds: stale.map(r => r.id), refunded: rows.map(r => r.id) });
     return { refunded, gone, voided: stale.length };
   });
+}
+
+/*
+  The GM's timer for the next round to go stale, on the active GM only: one
+  setTimeout at round.js nextStaleAt (a moment past it, so the round is
+  stale when it fires), which runs recoverRounds and arms the next. Armed
+  at load and on every change of the rounds setting (main.js), each call
+  replacing the last, so a round opened, closed or spun moves it. A
+  recovery that fails is tried again after WATCH_RETRY_MS. Nothing to wait
+  for, or not the active GM: no timer. Returns the delay armed, or null.
+*/
+export const STALE_SLACK_MS = 250;
+// setTimeout's longest delay; a later moment is re-armed when this fires.
+const MAX_DELAY_MS = 2 ** 31 - 1;
+let staleTimer = null;
+
+export function watchStale() {
+  if (staleTimer) clearTimeout(staleTimer);
+  staleTimer = null;
+  if (!globalThis.game?.user || game.users?.activeGM?.id !== game.user.id) return null;
+  const at = nextStaleAt(getRounds());
+  if (at == null) return null;
+  const ms = Math.min(MAX_DELAY_MS, Math.max(0, at - Date.now()) + STALE_SLACK_MS);
+  staleTimer = setTimeout(() => {
+    staleTimer = null;
+    if (Date.now() < at) return watchStale();
+    recoverRounds()
+      .then(() => watchStale())
+      .catch(err => {
+        console.error("loot-crates | refunding a stale round failed; trying again shortly", err);
+        if (!staleTimer) staleTimer = setTimeout(watchStale, WATCH_RETRY_MS);
+      });
+  }, ms);
+  return ms;
+}
+
+export function stopStaleWatch() {
+  if (staleTimer) clearTimeout(staleTimer);
+  staleTimer = null;
 }
 
 /*

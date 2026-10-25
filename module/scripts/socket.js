@@ -27,10 +27,19 @@
                                                            (to all) or "error"
     { type: "staked", ... } and { type: "round", ... }     GM -> everyone; table.js
                                                            hears them (onTable)
-    { type: "newDay", actorId, userId }                    a player -> GM: that
+    { type: "newDay", actorId, userId, at, owed? }         a player -> GM: that
                                                            character finished a
                                                            rest that starts a new
-                                                           day (restCompleted)
+                                                           day (restCompleted); `at`
+                                                           the world time it began;
+                                                           owed: taken while no GM
+                                                           was online (sendOwedRests)
+    { type: "owedRests" }                                  GM -> everyone, at its
+                                                           load: send the rests
+                                                           taken while it was away
+    { type: "newDayCounted", userId, actorId, at }         GM -> that player: an
+                                                           owed rest is counted,
+                                                           so it is forgotten
 
   A buyer who gave up waiting (GM_TIMEOUT_MS) calls the purchase off, and the
   GM drops a request that is cancelled before it charges: otherwise a GM
@@ -80,7 +89,7 @@
 import { SOCKET } from "./config.js";
 import { performPull, performStake, PullError } from "./pull.js";
 import { getKind, kindOf, gotText } from "./kinds.js";
-import { getBoxes, getPools, getLog, getActorState, setActorState, appendLog, updateLog, newId, isShopOpen, saveBox, enqueueWrite, refreshMissing, markMissing, reportMissing, todayKey, dayMode, countRest, getRounds, saveRound } from "./store.js";
+import { getBoxes, getPools, getLog, getActorState, setActorState, appendLog, updateLog, newId, isShopOpen, saveBox, enqueueWrite, refreshMissing, markMissing, reportMissing, todayKey, dayMode, countRest, restInto, dayAt, getRounds, saveRound } from "./store.js";
 import { byRest } from "./clock.js";
 import { formatPrice } from "./currency.js";
 import { stakeReason, stakesOf } from "./round.js";
@@ -178,6 +187,8 @@ export function registerSocket() {
     if (msg.type === "round") return tableHeard(msg);
     if (msg.type === "cancel" && isActiveGM()) return cancelPull(msg);
     if (msg.type === "newDay" && isActiveGM()) return heardNewDay(msg);
+    if (msg.type === "owedRests" && !isActiveGM()) return sendOwedRests();
+    if (msg.type === "newDayCounted" && msg.userId === game.user.id) return forgetOwedRest(msg);
     if (msg.type === "ack" && msg.userId === game.user.id) return heardFromGM(msg);
     if (msg.type === "late" && msg.userId === game.user.id) return openedAfterAll(msg);
     if (msg.type === "reveal") {
@@ -439,31 +450,134 @@ async function doPull(msg, timer, sent, stopWatching) {
 }
 
 /*
-  A new day at a long rest (clock.js "rest"): dnd5e fires restCompleted on
-  the client that rested, with `newDay` set for a long rest unless the
-  dialog's New day was unticked. The active GM counts it (store.js
-  countRest); anyone else asks the GM, who counts it only for a sender who
-  owns the character. With dnd5e's calendar on, the clock is the day and a
-  rest counts nothing. No GM online: the rest isn't counted.
+  A new day at a long rest. dnd5e fires restCompleted on the client that
+  rested, with `newDay` set for a long rest unless the dialog's New day was
+  unticked. The active GM notes it; anyone else asks the GM, who notes it
+  only for a sender who owns the character. Noted how this world tells a
+  day (clock.js): with dnd5e's calendar off, one more in the character's
+  count of rests (store.js countRest); with it on, one more day on the
+  character's own day, the clock catching up (store.js restInto, clock.js),
+  since dnd5e moves the clock for a rest only on a GM's client and a
+  player's own rest from the sheet would otherwise end nothing. The message carries the world time the rest began (restBegan),
+  which the GM caps at its own clock.
+
+  No GM online: only a GM client writes, so the player's client doesn't
+  write the rest anywhere in the world. It keeps it in this browser's own
+  storage (localStorage, per world and user: owedRests), and sends it when
+  a GM is there to hear it: at this client's load if a GM is online, and
+  when a GM's client loads and asks (settleOwedRests, main.js ready). The
+  GM notes it as any rest, answers newDayCounted, and only then is it
+  forgotten here, so a GM who drops it gets it again at its next load. A
+  rest kept by a browser the player never opens again with a GM online is
+  lost, and that character's day ends at its next long rest instead.
+  Several rests owed for one character are one: a day can only end once
+  before the next throw.
 */
 export function restCompleted(actor, result, config) {
   if (!actor?.id || !(result?.newDay ?? config?.newDay)) return null;
-  if (isActiveGM()) return newDayFor(actor.id);
-  if (!game.users.activeGM) return null;
-  game.socket.emit(SOCKET, { type: "newDay", actorId: actor.id, userId: game.user.id });
+  const at = restBegan(config);
+  if (isActiveGM()) return newDayFor(actor.id, at);
+  if (!game.users.activeGM) {
+    oweRest(actor.id, at);
+    return null;
+  }
+  game.socket.emit(SOCKET, { type: "newDay", actorId: actor.id, userId: game.user.id, ...(at != null ? { at } : {}) });
   return null;
 }
 
-function heardNewDay(msg) {
-  const actor = game.actors.get(msg.actorId);
-  const user = game.users.get(msg.userId);
-  if (!actor || !user || !actor.testUserPermission(user, "OWNER")) return null;
-  return newDayFor(actor.id);
+// When the rest began, in world seconds: on a GM's client with
+// advanceTime, dnd5e has already moved the clock by the rest's duration
+// (minutes) when the hook fires, so this goes back over it.
+function restBegan(config) {
+  const now = Number(game.time?.worldTime);
+  if (!Number.isFinite(now)) return null;
+  const minutes = Number(config?.duration);
+  const moved = !!config?.advanceTime && minutes > 0 && !!game.user?.isGM;
+  return moved ? now - 60 * minutes : now;
 }
 
-function newDayFor(actorId) {
-  if (!byRest(dayMode())) return null;
-  return countRest(actorId).catch(err => { console.error(`loot-crates | counting a new day for ${actorId} failed`, err); return null; });
+async function heardNewDay(msg) {
+  const actor = game.actors.get(msg.actorId);
+  const user = game.users.get(msg.userId);
+  const owner = !!actor && !!user && actor.testUserPermission(user, "OWNER");
+  if (owner) await newDayFor(actor.id, msg.at);
+  // An owed rest is answered whatever came of it, so a character since
+  // deleted or given away isn't sent again at every load.
+  if (msg.owed) game.socket.emit(SOCKET, { type: "newDayCounted", userId: msg.userId, actorId: msg.actorId, at: msg.at ?? null });
+  return null;
+}
+
+function newDayFor(actorId, at) {
+  const mode = dayMode();
+  const failed = err => { console.error(`loot-crates | counting a new day for ${actorId} failed`, err); return null; };
+  if (byRest(mode)) return countRest(actorId).catch(failed);
+  if (mode !== "calendar") return null;
+  const now = Number(game.time?.worldTime);
+  const began = typeof at === "number" && Number.isFinite(at) ? (Number.isFinite(now) ? Math.min(at, now) : at) : now;
+  const day = dayAt(began);
+  return day ? restInto(actorId, day).catch(failed) : null;
+}
+
+// The rests this client owes the GM: { actorId: { at } }, in this browser
+// for this world and user. Storage that throws (a private window) owes nothing.
+const owedKey = () => `loot-crates.owedRests.${game.world?.id ?? "world"}.${game.user?.id ?? "user"}`;
+export function owedRests() {
+  try { return JSON.parse(globalThis.localStorage?.getItem(owedKey()) ?? "null") ?? {}; } catch { return {}; }
+}
+function saveOwed(owed) {
+  try {
+    if (Object.keys(owed).length) globalThis.localStorage?.setItem(owedKey(), JSON.stringify(owed));
+    else globalThis.localStorage?.removeItem(owedKey());
+  } catch { /* nothing kept: the day ends at the next rest a GM hears */ }
+}
+function oweRest(actorId, at) {
+  const owed = owedRests();
+  const was = owed[actorId]?.at;
+  const fin = v => typeof v === "number" && Number.isFinite(v);
+  owed[actorId] = { at: fin(was) && fin(at) ? Math.max(was, at) : fin(at) ? at : fin(was) ? was : null };
+  saveOwed(owed);
+}
+
+/*
+  Sends every owed rest to the active GM. Returns how many went. A rest sent
+  and not yet answered isn't sent again within OWED_RESEND_MS: this client's
+  own load and the GM's ask at its load can fall moments apart (both joining
+  at a session's start), and the GM would hear one rest twice and end two
+  days. A GM that dropped it still hears it again at its next ask.
+*/
+export const OWED_RESEND_MS = 30_000;
+const owedSent = new Map(); // actorId -> { at, sentAt }
+export function _resetOwedSent() { owedSent.clear(); }
+export function sendOwedRests() {
+  if (!game.users.activeGM || isActiveGM()) return 0;
+  const now = Date.now();
+  let sent = 0;
+  for (const [actorId, { at = null } = {}] of Object.entries(owedRests())) {
+    const last = owedSent.get(actorId);
+    if (last && last.at === at && now - last.sentAt < OWED_RESEND_MS) continue;
+    owedSent.set(actorId, { at, sentAt: now });
+    game.socket.emit(SOCKET, { type: "newDay", actorId, userId: game.user.id, at, owed: true });
+    sent++;
+  }
+  return sent;
+}
+
+function forgetOwedRest(msg) {
+  const owed = owedRests();
+  if (!owed[msg.actorId] || (owed[msg.actorId].at ?? null) !== (msg.at ?? null)) return;
+  delete owed[msg.actorId];
+  owedSent.delete(msg.actorId);
+  saveOwed(owed);
+}
+
+// At a client's load (main.js ready): the active GM asks every client for
+// the rests it owes; anyone else sends its own if a GM is online to hear.
+export function settleOwedRests() {
+  if (isActiveGM()) {
+    game.socket.emit(SOCKET, { type: "owedRests" });
+    return 0;
+  }
+  return sendOwedRests();
 }
 
 // The shop is open and the buyer owns the character, checked on the GM

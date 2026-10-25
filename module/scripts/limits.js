@@ -212,7 +212,7 @@ export function limitsFieldset(game, { stock = true, draft = false, hasClock = t
   return `
       <fieldset class="lc-limits"><legend>Limits</legend>${stockPart}
         <div class="lc-row lc-row--wrap">${field("Each character may buy", `<input name="limitMax" type="number" min="0" step="1" value="${esc(max ?? "")}" aria-describedby="${id}-each">`)} <select name="limitPer" aria-label="How often">${PER.map(p => `<option value="${p}"${p === per ? " selected" : ""}>${PER_LABEL[p]}</option>`).join("")}</select></div>
-        <p class="lc-form__hint" id="${id}-each">Blank for no limit. Counted for each character from the Pull log, so a refund gives the purchase back${rest ? "" : "; a day is the world's calendar"}.</p>
+        <p class="lc-form__hint" id="${id}-each">Blank for no limit. Counted for each character from the Pull log, so a refund gives the purchase back${rest ? "" : "; a day ends on the world's calendar or at the character's long rest"}.</p>
         ${warn}
       </fieldset>`;
 }
