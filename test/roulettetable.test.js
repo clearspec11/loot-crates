@@ -10,18 +10,18 @@
 */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-vi.mock("../module/scripts/reveal.js", () => ({ showReveal: vi.fn(async () => ({ landed: Promise.resolve() })), showRound: vi.fn(() => ({ landed: Promise.resolve(), instant: true })), boxHeld: vi.fn(() => false) }));
-vi.mock("../module/scripts/chat.js", () => ({ postPullCard: vi.fn(async () => null) }));
-vi.mock("../module/scripts/sound.js", () => ({ playTick: vi.fn(), playSlow: vi.fn(), playReveal: vi.fn(), playPlop: vi.fn(), playPlink: vi.fn(), playCoinBack: vi.fn(), playBane: vi.fn(), playDrop: vi.fn() }));
+vi.mock("../module/scripts/foundry/reveal.js", () => ({ showReveal: vi.fn(async () => ({ landed: Promise.resolve() })), showRound: vi.fn(() => ({ landed: Promise.resolve(), instant: true })), boxHeld: vi.fn(() => false) }));
+vi.mock("../module/scripts/foundry/chat.js", () => ({ postPullCard: vi.fn(async () => null) }));
+vi.mock("../module/scripts/foundry/sound.js", () => ({ playTick: vi.fn(), playSlow: vi.fn(), playReveal: vi.fn(), playPlop: vi.fn(), playPlink: vi.fn(), playCoinBack: vi.fn(), playBane: vi.fn(), playDrop: vi.fn() }));
 
-const { registerSocket } = await import("../module/scripts/socket.js");
-const { registerSettings, getLog, getRounds } = await import("../module/scripts/store.js");
-const { openRound, resolveRound } = await import("../module/scripts/table.js");
-const { refundPull, describeRefund } = await import("../module/scripts/refund.js");
-const { ROULETTE_DEFAULTS } = await import("../module/scripts/roulette.js");
-const { rowStatus } = await import("../module/scripts/round.js");
-const { postPullCard } = await import("../module/scripts/chat.js");
-const { toCopper } = await import("../module/scripts/currency.js");
+const { registerSocket } = await import("../module/scripts/foundry/socket.js");
+const { registerSettings, getLog, getRounds } = await import("../module/scripts/foundry/store.js");
+const { openRound, resolveRound } = await import("../module/scripts/foundry/table.js");
+const { refundPull, describeRefund } = await import("../module/scripts/foundry/refund.js");
+const { ROULETTE_DEFAULTS } = await import("../module/scripts/games/roulette.js");
+const { rowStatus } = await import("../module/scripts/core/round.js");
+const { postPullCard } = await import("../module/scripts/foundry/chat.js");
+const { toCopper } = await import("../module/scripts/core/currency.js");
 
 const tick = () => new Promise(r => setTimeout(r, 0));
 const GM = { id: "gm", name: "Gamemaster" };

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { toCopper, canAfford, charge, formatPrice, refund, isWholeCoins, consolidate, settle, parsePrice, unreadablePrice } from "../module/scripts/currency.js";
+import { toCopper, canAfford, charge, formatPrice, refund, isWholeCoins, consolidate, settle, parsePrice, unreadablePrice } from "../module/scripts/core/currency.js";
 
 describe("currency", () => {
   it("values a purse in copper", () => {

@@ -6,17 +6,17 @@
   crate without either rule draws exactly as it always has.
 */
 import { describe, it, expect, vi } from "vitest";
-import { draw, shopOdds, rollMiss, missState, oddsModeOf, missChanceOf, seededRng, undoPull, MAX_MISS } from "../module/scripts/odds.js";
-import { buildStrip, NOTHING_CARD, fillerSource, pickFiller, teaseRarity } from "../module/scripts/strip.js";
-import { performPull } from "../module/scripts/pull.js";
-import { crateLogRow, CRATE } from "../module/scripts/crate.js";
-import { chanceLines, chanceLinesHTML, boxCard, draftBox, oddsRules, oddsRows, boxPreview, boxPreviewHTML, oddsSummary } from "../module/scripts/boxcard.js";
-import { replaySnapshot, replayReveal, missHTML, oddsWithNothing } from "../module/scripts/revealcard.js";
-import { flattenTable, integerWeights, entriesFromDrop, TABLE_DEPTH } from "../module/scripts/store.js";
-import { describeSkipped, dropPreviewHTML } from "../module/scripts/poolview.js";
-import { crateFromTable } from "../module/scripts/newgame.js";
-import { oddsModeFieldset, tableNoteHTML, nothingRow } from "../module/scripts/editorfields.js";
-import { boxesTabHTML } from "../module/scripts/boxestable.js";
+import { draw, shopOdds, rollMiss, missState, oddsModeOf, missChanceOf, seededRng, undoPull, MAX_MISS } from "../module/scripts/core/odds.js";
+import { buildStrip, NOTHING_CARD, fillerSource, pickFiller, teaseRarity } from "../module/scripts/core/strip.js";
+import { performPull } from "../module/scripts/foundry/pull.js";
+import { crateLogRow, CRATE } from "../module/scripts/games/crate.js";
+import { chanceLines, chanceLinesHTML, boxCard, draftBox, oddsRules, oddsRows, boxPreview, boxPreviewHTML, oddsSummary } from "../module/scripts/views/boxcard.js";
+import { replaySnapshot, replayReveal, missHTML, oddsWithNothing } from "../module/scripts/views/revealcard.js";
+import { flattenTable, integerWeights, entriesFromDrop, TABLE_DEPTH } from "../module/scripts/foundry/store.js";
+import { describeSkipped, dropPreviewHTML } from "../module/scripts/views/poolview.js";
+import { crateFromTable } from "../module/scripts/views/newgame.js";
+import { oddsModeFieldset, tableNoteHTML, nothingRow } from "../module/scripts/views/editorfields.js";
+import { boxesTabHTML } from "../module/scripts/views/boxestable.js";
 
 const entry = (uuid, weight, rarity = "common", extra = {}) => ({ uuid, name: uuid, img: `icons/${uuid}.webp`, rarity, sourceRarity: rarity, weight, ...extra });
 const tally = (n, fn) => { const out = {}; for (let i = 0; i < n; i++) { const k = fn(); out[k] = (out[k] ?? 0) + 1; } return out; };

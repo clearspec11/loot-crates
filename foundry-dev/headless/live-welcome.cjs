@@ -46,7 +46,7 @@ async function load(page) {
   await page.waitForFunction(() => window.game?.ready, null, { timeout: 120000 });
   // What main.js does first: the branch's words, from its own lang/en.json
   // (the installed release may have no language file, or older words).
-  await page.evaluate(async base => (await import(base + "scripts/i18n.js")).loadStrings(), MODULE_BASE);
+  await page.evaluate(async base => (await import(base + "scripts/core/i18n.js")).loadStrings(), MODULE_BASE);
   return page.evaluate(async base => {
     globalThis.canvas?.app?.ticker?.stop();
     if (!document.querySelector("link[data-lc-branch]")) {
@@ -55,9 +55,9 @@ async function load(page) {
       document.head.append(link);
       await new Promise(r => { link.onload = r; link.onerror = r; });
     }
-    const store = await import(base + "scripts/store.js");
+    const store = await import(base + "scripts/foundry/store.js");
     try { store.registerSettings(); } catch { /* the installed module registered them */ }
-    const w = await import(base + "scripts/welcomewindow.js");
+    const w = await import(base + "scripts/foundry/welcomewindow.js");
     if (!game.settings.settings.has("loot-crates.welcome")) w.registerWelcome();
     globalThis.__lcWelcome = w;
     return !!w.welcomeAtLoad();
@@ -175,7 +175,7 @@ const closeOurs = page => page?.evaluate(() => { for (const a of [...foundry.app
     await gm.page.evaluate(() => { for (const a of foundry.applications.instances.values()) if (a.id === "settings-config") a.close(); }).catch(() => {});
 
     // 5. An update: What's new once when this version has lines, else nothing.
-    out.hasLines = await gm.page.evaluate(async ({ base, v }) => !!(await import(base + "scripts/welcome.js")).newsFor(v), { base: MODULE_BASE, v: out.version });
+    out.hasLines = await gm.page.evaluate(async ({ base, v }) => !!(await import(base + "scripts/views/welcome.js")).newsFor(v), { base: MODULE_BASE, v: out.version });
     await setFlag(gm.page, { seen: "0.0.1", off: false });
     out.reloadUpdate = await reload(gm.page);
     if (out.hasLines) {

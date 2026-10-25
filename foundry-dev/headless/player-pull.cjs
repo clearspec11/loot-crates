@@ -120,22 +120,22 @@ async function join(browser, user, { readySweep = false } = {}) {
   await page.waitForFunction(() => window.game?.ready, null, { timeout: 120000 });
   // What main.js does first: the branch's words, from its own lang/en.json
   // (the installed release may have no language file, or older words).
-  await page.evaluate(async base => (await import(base + "scripts/i18n.js")).loadStrings(), MODULE_BASE);
+  await page.evaluate(async base => (await import(base + "scripts/core/i18n.js")).loadStrings(), MODULE_BASE);
   // The branch's socket in place of the installed one.
   await page.evaluate(async ([base, readySweep, canvasOn]) => {
     if (!canvasOn) globalThis.canvas?.app?.ticker?.stop();
     game.socket.off("module.loot-crates");
-    const store = await import(base + "scripts/store.js");
+    const store = await import(base + "scripts/foundry/store.js");
     try { store.registerSettings(); } catch { /* the installed module registered them */ }
     try { store.registerIndexFields?.(); } catch { /* already in CONFIG */ }
-    const socket = await import(base + "scripts/socket.js");
+    const socket = await import(base + "scripts/foundry/socket.js");
     socket.registerSocket();
     // What main.js's init does: open windows redraw as the world settings
     // change. If the installed module registered the settings first and
     // Foundry kept its entries, point their onChange at the branch's too.
-    const { storeRedraw } = await import(base + "scripts/redraw.js");
-    const { refreshShop, registerShopHooks } = await import(base + "scripts/shop.js");
-    const { refreshManager } = await import(base + "scripts/manager.js");
+    const { storeRedraw } = await import(base + "scripts/core/redraw.js");
+    const { refreshShop, registerShopHooks } = await import(base + "scripts/foundry/shop.js");
+    const { refreshManager } = await import(base + "scripts/foundry/manager.js");
     const redraw = storeRedraw({ refreshShop, refreshManager });
     store.setStoreListener(redraw);
     for (const key of store.WORLD_KEYS) {
@@ -147,7 +147,7 @@ async function join(browser, user, { readySweep = false } = {}) {
     registerShopHooks?.(Hooks);
     // What main.js does for chat: a pull's card stays sealed while it spins here.
     // And "Watch again" on a pull's card.
-    const { sealChatCard, watchAgain, preSealItem } = await import(base + "scripts/reveal.js");
+    const { sealChatCard, watchAgain, preSealItem } = await import(base + "scripts/foundry/reveal.js");
     Hooks.on("renderChatMessageHTML", sealChatCard);
     Hooks.on("renderChatMessageHTML", watchAgain);
     // And for the sheet: a pull's item stays hidden until it lands here. The
@@ -170,7 +170,7 @@ async function join(browser, user, { readySweep = false } = {}) {
 */
 async function closeShopCheck(player, gm) {
   await player.evaluate(async ({ base, box }) => {
-    const { openShop } = await import(base + "scripts/shop.js");
+    const { openShop } = await import(base + "scripts/foundry/shop.js");
     const app = openShop();
     await new Promise(r => setTimeout(r, 1500));
     globalThis.__lcShop = () => {
@@ -182,7 +182,7 @@ async function closeShopCheck(player, gm) {
   const before = await player.evaluate(() => globalThis.__lcShop());
   if (before.off) throw new Error(`${BOX} can't be bought before the check: ${before.notice}`);
   await gm.evaluate(async base => {
-    const { openManager } = await import(base + "scripts/manager.js");
+    const { openManager } = await import(base + "scripts/foundry/manager.js");
     const app = openManager();
     await app.render({ force: true });
     await new Promise(r => setTimeout(r, 500));
@@ -259,7 +259,7 @@ async function openSheet(page) {
 */
 async function replayCheck(page) {
   const facts = () => page.evaluate(async base => {
-    const { getLog } = await import(base + "scripts/store.js");
+    const { getLog } = await import(base + "scripts/foundry/store.js");
     const actor = game.actors.find(a => a.isOwner && a.type === "character");
     const msg = game.messages.contents.filter(m => m.flags?.["loot-crates"]?.logId).at(-1);
     return {
@@ -334,7 +334,7 @@ async function gmWatchCheck(page) {
     Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
     Object.defineProperty(document, "hidden", { configurable: true, get: () => false });
     document.dispatchEvent(new Event("visibilitychange"));
-    const { getLog } = await import(base + "scripts/store.js");
+    const { getLog } = await import(base + "scripts/foundry/store.js");
     globalThis.__lcCounts = () => ({ messages: game.messages.size, logRows: getLog().length });
     globalThis.__lcBefore = globalThis.__lcCounts();
     return [...document.querySelectorAll(".application.lc-reveal")].at(-1)?.id ?? null;
@@ -404,7 +404,7 @@ async function gmWatchCheck(page) {
     if (GM_LOG) {
       if (!gm) throw new Error("GM_LOG needs the headless Gamemaster");
       await gm.page.evaluate(async base => {
-        const { openManager } = await import(base + "scripts/manager.js");
+        const { openManager } = await import(base + "scripts/foundry/manager.js");
         const app = openManager();
         app.tab = "log";
         await app.render({ force: true });
@@ -424,7 +424,7 @@ async function gmWatchCheck(page) {
     }
     if (SEAL) out.sheetOpened = await openSheet(pl.page);
     const result = await pl.page.evaluate(async ({ base, box, count, seal }) => {
-      const { openShop } = await import(base + "scripts/shop.js");
+      const { openShop } = await import(base + "scripts/foundry/shop.js");
       const actor = game.actors.find(a => a.isOwner && a.type === "character");
       if (!actor) throw new Error(`${game.user.name} owns no character`);
       const before = foundry.utils.deepClone(actor.system.currency);
@@ -439,9 +439,9 @@ async function gmWatchCheck(page) {
         leak), and reads the shop card's pity text and odds at two moments.
       */
       async function sealWatch(base, actor, card) {
-        const { getActorState, getBoxes, getPools } = await import(base + "scripts/store.js");
-        const { shopOdds } = await import(base + "scripts/odds.js");
-        const { pityLine } = await import(base + "scripts/boxcard.js");
+        const { getActorState, getBoxes, getPools } = await import(base + "scripts/foundry/store.js");
+        const { shopOdds } = await import(base + "scripts/core/odds.js");
+        const { pityLine } = await import(base + "scripts/views/boxcard.js");
         const boxId = card.dataset.box;
         const shopCard = () => document.querySelector(`.lc-shop .lc-box[data-box="${boxId}"]`);
         // "" when the card has no pity line (none this buyer can reach).

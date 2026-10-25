@@ -9,21 +9,21 @@
   writes each setting once.
 */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { STARTER_PACKS, STARTER_POOLS, STARTER_GAMES, STARTER_GAME_NAMES, STARTER_POOL_NAMES, starterPackPlan, takesRow, pickEntries, buildStarter, starterPresent, hasStarter, starterNotice, starterAgainText, starterCallHTML, STARTER_LABEL } from "../module/scripts/starter.js";
-import { addStarterSet } from "../module/scripts/starterbuild.js";
-import { registerSettings } from "../module/scripts/store.js";
-import { NEW_DEFAULTS, addedNotice } from "../module/scripts/newgame.js";
-import { onShelf } from "../module/scripts/shelf.js";
-import { kindOf } from "../module/scripts/kinds.js";
-import { RARITIES } from "../module/scripts/config.js";
-import { draftBox, boxPreview } from "../module/scripts/boxcard.js";
-import { draftWell, wellPreview } from "../module/scripts/well.js";
-import { draftDice, dicePreview } from "../module/scripts/dicegame.js";
-import { draftDeck, deckPreview, DECK_DEFAULTS, cardsOf } from "../module/scripts/deck.js";
-import { draftRoulette, roulettePreview, ROULETTE_DEFAULTS, maxStakeOf } from "../module/scripts/roulette.js";
-import { draftAuction, auctionPreview, lotOf, openingOf, incrementOf, houseOf, MAX_HOUSE, MIN_GAVEL_SEC } from "../module/scripts/auction.js";
-import { formatPrice, parsePrice } from "../module/scripts/currency.js";
-import { stockOf } from "../module/scripts/limits.js";
+import { STARTER_PACKS, STARTER_POOLS, STARTER_GAMES, STARTER_GAME_NAMES, STARTER_POOL_NAMES, starterPackPlan, takesRow, pickEntries, buildStarter, starterPresent, hasStarter, starterNotice, starterAgainText, starterCallHTML, STARTER_LABEL } from "../module/scripts/views/starter.js";
+import { addStarterSet } from "../module/scripts/foundry/starterbuild.js";
+import { registerSettings } from "../module/scripts/foundry/store.js";
+import { NEW_DEFAULTS, addedNotice } from "../module/scripts/views/newgame.js";
+import { onShelf } from "../module/scripts/core/shelf.js";
+import { kindOf } from "../module/scripts/games/kinds.js";
+import { RARITIES } from "../module/scripts/core/config.js";
+import { draftBox, boxPreview } from "../module/scripts/views/boxcard.js";
+import { draftWell, wellPreview } from "../module/scripts/games/well.js";
+import { draftDice, dicePreview } from "../module/scripts/games/dicegame.js";
+import { draftDeck, deckPreview, DECK_DEFAULTS, cardsOf } from "../module/scripts/games/deck.js";
+import { draftRoulette, roulettePreview, ROULETTE_DEFAULTS, maxStakeOf } from "../module/scripts/games/roulette.js";
+import { draftAuction, auctionPreview, lotOf, openingOf, incrementOf, houseOf, MAX_HOUSE, MIN_GAVEL_SEC } from "../module/scripts/games/auction.js";
+import { formatPrice, parsePrice } from "../module/scripts/core/currency.js";
+import { stockOf } from "../module/scripts/core/limits.js";
 
 const row = (_id, name, type, rarity, sub, extra = {}) => ({ _id, name, type, img: `icons/${_id}.webp`, system: { rarity, ...(sub ? { type: { value: sub } } : {}) }, ...extra });
 

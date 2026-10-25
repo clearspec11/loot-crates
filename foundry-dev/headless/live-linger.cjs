@@ -57,7 +57,7 @@ async function join(browser, user) {
   await page.click("button[name=join], button[type=submit]");
   await page.waitForURL(/\/game/, { timeout: 30000 });
   await page.waitForFunction(() => window.game?.ready, null, { timeout: 120000 });
-  await page.evaluate(async base => (await import(base + "scripts/i18n.js")).loadStrings(), MODULE_BASE);
+  await page.evaluate(async base => (await import(base + "scripts/core/i18n.js")).loadStrings(), MODULE_BASE);
   await page.evaluate(async base => {
     globalThis.canvas?.app?.ticker?.stop();
     if (!document.querySelector("link[data-lc-branch]")) {
@@ -67,16 +67,16 @@ async function join(browser, user) {
       await new Promise(r => { link.onload = r; link.onerror = r; });
     }
     game.socket.off("module.loot-crates");
-    const store = await import(base + "scripts/store.js");
+    const store = await import(base + "scripts/foundry/store.js");
     // The branch's settings: the installed release has no "Close finished
     // game windows", and registering again keeps the world's values.
     try { store.registerSettings(); } catch { /* the installed module registered them */ }
     try { store.registerIndexFields?.(); } catch { /* already in CONFIG */ }
-    const socket = await import(base + "scripts/socket.js");
+    const socket = await import(base + "scripts/foundry/socket.js");
     socket.registerSocket();
-    const { storeRedraw } = await import(base + "scripts/redraw.js");
-    const { refreshShop, registerShopHooks } = await import(base + "scripts/shop.js");
-    const { refreshManager } = await import(base + "scripts/manager.js");
+    const { storeRedraw } = await import(base + "scripts/core/redraw.js");
+    const { refreshShop, registerShopHooks } = await import(base + "scripts/foundry/shop.js");
+    const { refreshManager } = await import(base + "scripts/foundry/manager.js");
     const redraw = storeRedraw({ refreshShop, refreshManager });
     store.setStoreListener(redraw);
     for (const key of store.WORLD_KEYS) {
@@ -87,7 +87,7 @@ async function join(browser, user) {
     // The installed module's seal and Watch again would open its own
     // replay window, which has no countdown: the branch's in their place.
     for (const h of [...(Hooks.events?.renderChatMessageHTML ?? [])]) if (["sealChatCard", "watchAgain"].includes(h.fn?.name)) Hooks.off("renderChatMessageHTML", h.id);
-    const { sealChatCard, watchAgain, preSealItem } = await import(base + "scripts/reveal.js");
+    const { sealChatCard, watchAgain, preSealItem } = await import(base + "scripts/foundry/reveal.js");
     Hooks.on("renderChatMessageHTML", sealChatCard);
     Hooks.on("renderChatMessageHTML", watchAgain);
     for (const h of [...(Hooks.events?.createItem ?? [])]) if (h.fn?.name === "preSealItem") Hooks.off("createItem", h.id);
@@ -169,7 +169,7 @@ async function setDelay(page, seconds) {
     if (!gm) throw new Error("the Gamemaster seat is taken; this check needs the headless Gamemaster");
     out.gm = "headless Gamemaster running the branch";
     out.seed = await gm.page.evaluate(async ({ base, box }) => {
-      const store = await import(base + "scripts/store.js");
+      const store = await import(base + "scripts/foundry/store.js");
       const folder = game.folders.find(f => f.type === "Actor" && f.name === "Loot Crates Test");
       const actor = game.actors.find(a => a.name === "Crate Tester" && a.folder?.id === folder?.id);
       if (!actor) throw new Error("no Crate Tester in Loot Crates Test");
@@ -189,7 +189,7 @@ async function setDelay(page, seconds) {
 
     // 2. One purchase through the shop's real Buy.
     await page.evaluate(async base => {
-      const { openShop } = await import(base + "scripts/shop.js");
+      const { openShop } = await import(base + "scripts/foundry/shop.js");
       openShop();
     }, MODULE_BASE);
     await page.waitForSelector(".application.lc-shop .lc-box", { timeout: 15000 });
@@ -200,7 +200,7 @@ async function setDelay(page, seconds) {
     await page.waitForTimeout(600);
     const buy = page.locator(`.application.lc-shop .lc-box__buy[data-box="${out.seed.boxId}"]`);
     if (await buy.getAttribute("aria-disabled") === "true") throw new Error(`${BOX} can't be bought: ${await page.locator(`.application.lc-shop .lc-box[data-box="${out.seed.boxId}"] .lc-box__why`).textContent().catch(() => "")}`);
-    const logBefore = await page.evaluate(async base => (await import(base + "scripts/store.js")).getLog().map(r => r.id), MODULE_BASE);
+    const logBefore = await page.evaluate(async base => (await import(base + "scripts/foundry/store.js")).getLog().map(r => r.id), MODULE_BASE);
     const before = await pageNow(page);
     await buy.click();
     await corner(page);
@@ -208,7 +208,7 @@ async function setDelay(page, seconds) {
     await page.waitForTimeout(300);
     const atLanding = await line(page, pulled.id);
     const focusAtLanding = await page.evaluate(() => document.activeElement?.matches?.(".lc-reveal__close") ? "Close" : document.activeElement?.className ?? "none");
-    rowId = await page.evaluate(async ({ base, logBefore }) => (await import(base + "scripts/store.js")).getLog().find(r => !logBefore.includes(r.id))?.id ?? null, { base: MODULE_BASE, logBefore });
+    rowId = await page.evaluate(async ({ base, logBefore }) => (await import(base + "scripts/foundry/store.js")).getLog().find(r => !logBefore.includes(r.id))?.id ?? null, { base: MODULE_BASE, logBefore });
     const gone = await waitGone(page, pulled.id, (DELAY_S + 8) * 1000);
     await page.waitForTimeout(300);
     const focusAfterClose = await page.evaluate(id => document.activeElement?.matches?.(`.lc-box__buy[data-box="${id}"]`) ? "Buy" : document.activeElement?.className || document.activeElement?.tagName || "none", out.seed.boxId);
@@ -268,8 +268,8 @@ async function setDelay(page, seconds) {
     try {
       if (gm && rowId) {
         out.restore.refund = await gm.page.evaluate(async ({ base, rowId }) => {
-          const { refundPull } = await import(base + "scripts/refund.js");
-          const store = await import(base + "scripts/store.js");
+          const { refundPull } = await import(base + "scripts/foundry/refund.js");
+          const store = await import(base + "scripts/foundry/store.js");
           if (store.getLog().find(r => r.id === rowId)?.refunded) return "already refunded";
           await refundPull(rowId);
           return store.getLog().find(r => r.id === rowId)?.refunded ? "refunded" : "not refunded";

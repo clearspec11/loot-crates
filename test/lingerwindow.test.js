@@ -13,11 +13,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { createDocument } from "./minidom.js";
 
-vi.mock("../module/scripts/sound.js", () => ({ playTick: vi.fn(), playSlow: vi.fn(), playReveal: vi.fn(), playDrop: vi.fn(), playCoinBack: vi.fn(), playPlop: vi.fn(), playPlink: vi.fn(), playBane: vi.fn() }));
-vi.mock("../module/scripts/socket.js", () => ({ requestPull: vi.fn(), requestStake: vi.fn(), isActiveGM: vi.fn(() => true) }));
-vi.mock("../module/scripts/table.js", () => ({ onTable: vi.fn(), openRound: vi.fn(), resolveRound: vi.fn(), cancelRound: vi.fn() }));
-vi.mock("../module/scripts/shop.js", () => ({ buyableActors: vi.fn(() => []) }));
-vi.mock("../module/scripts/store.js", () => ({ getBoxes: vi.fn(() => ({})), getPools: vi.fn(() => ({})), getLog: vi.fn(() => []), getRounds: vi.fn(() => ({})), todayKey: vi.fn(() => null), isShopOpen: vi.fn(() => true), getActorState: vi.fn(() => ({})) }));
+vi.mock("../module/scripts/foundry/sound.js", () => ({ playTick: vi.fn(), playSlow: vi.fn(), playReveal: vi.fn(), playDrop: vi.fn(), playCoinBack: vi.fn(), playPlop: vi.fn(), playPlink: vi.fn(), playBane: vi.fn() }));
+vi.mock("../module/scripts/foundry/socket.js", () => ({ requestPull: vi.fn(), requestStake: vi.fn(), isActiveGM: vi.fn(() => true) }));
+vi.mock("../module/scripts/foundry/table.js", () => ({ onTable: vi.fn(), openRound: vi.fn(), resolveRound: vi.fn(), cancelRound: vi.fn() }));
+vi.mock("../module/scripts/foundry/shop.js", () => ({ buyableActors: vi.fn(() => []) }));
+vi.mock("../module/scripts/foundry/store.js", () => ({ getBoxes: vi.fn(() => ({})), getPools: vi.fn(() => ({})), getLog: vi.fn(() => []), getRounds: vi.fn(() => ({})), todayKey: vi.fn(() => null), isShopOpen: vi.fn(() => true), getActorState: vi.fn(() => ({})) }));
 
 // A window in the page: a section holding the content, removed on close
 // before _onClose runs, as ApplicationV2 does.
@@ -50,10 +50,10 @@ class DomApp {
 }
 
 vi.stubGlobal("foundry", { applications: { api: { ApplicationV2: DomApp }, instances: new Map() }, utils: { escapeHTML: s => String(s ?? "") } });
-const { showReveal, CrateReveal, _resetHolds } = await import("../module/scripts/reveal.js");
-const { TableWindow } = await import("../module/scripts/tablewindow.js");
-const { registerKind, _resetKinds } = await import("../module/scripts/kinds.js");
-const store = await import("../module/scripts/store.js");
+const { showReveal, CrateReveal, _resetHolds } = await import("../module/scripts/foundry/reveal.js");
+const { TableWindow } = await import("../module/scripts/foundry/tablewindow.js");
+const { registerKind, _resetKinds } = await import("../module/scripts/games/kinds.js");
+const store = await import("../module/scripts/foundry/store.js");
 
 // A crate-like kind whose spin lands when the test says (or on Skip).
 let controllers;

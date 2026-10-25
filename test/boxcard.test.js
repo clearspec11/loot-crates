@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { boxCard, buyReason, crateReason, shopReason, shopNotice, shopHTML, SHOP_NOTICE_ID, oddsPills, pityLine, refundRulesLine, pickActor, refusalLine, changedCharacterLine, actorPicker } from "../module/scripts/boxcard.js";
-import { shopOdds, flattenPool } from "../module/scripts/odds.js";
-import { shortfall } from "../module/scripts/currency.js";
+import { boxCard, buyReason, crateReason, shopReason, shopNotice, shopHTML, SHOP_NOTICE_ID, oddsPills, pityLine, refundRulesLine, pickActor, refusalLine, changedCharacterLine, actorPicker } from "../module/scripts/views/boxcard.js";
+import { shopOdds, flattenPool } from "../module/scripts/core/odds.js";
+import { shortfall } from "../module/scripts/core/currency.js";
 import { POOLS, BOXES } from "../harness/sample.js";
 
 const byId = id => BOXES.find(b => b.id === id);
@@ -72,7 +72,7 @@ describe("boxCard", () => {
 
 describe("the crate's peek and ribbon", () => {
   it("peeks at real droppable items, best first, and none a crate can't drop", async () => {
-    const { peekItems } = await import("../module/scripts/boxcard.js");
+    const { peekItems } = await import("../module/scripts/views/boxcard.js");
     const pauper = peekItems(byId("common"), POOLS);
     expect(pauper.map(e => e.rarity)).toEqual(["uncommon", "common"]);
     const royal = peekItems(byId("royal"), POOLS);
@@ -80,7 +80,7 @@ describe("the crate's peek and ribbon", () => {
     expect(peekItems(byId("empty"), POOLS)).toEqual([]);
   });
   it("peeks only at what this buyer can still get under no-duplicates", async () => {
-    const { peekItems } = await import("../module/scripts/boxcard.js");
+    const { peekItems } = await import("../module/scripts/views/boxcard.js");
     const royal = { ...byId("royal"), rules: { noDuplicates: true } };
     const first = peekItems(royal, POOLS);
     const state = { owned: first.map(e => e.uuid) };
@@ -91,7 +91,7 @@ describe("the crate's peek and ribbon", () => {
     expect(peekItems(byId("royal"), POOLS, undefined, 3, state)).toEqual(peekItems(byId("royal"), POOLS));
   });
   it("draws the ribbon from the shop's own odds, hidden from assistive tech", async () => {
-    const { oddsRibbon } = await import("../module/scripts/boxcard.js");
+    const { oddsRibbon } = await import("../module/scripts/views/boxcard.js");
     const html = oddsRibbon(shopOdds(byId("common"), POOLS).rows);
     expect(html).toMatch(/^<div class="lc-ribbon" aria-hidden="true">/);
     expect([...html.matchAll(/flex-grow:([\d.]+)/g)].map(m => +m[1])).toEqual([0.85, 0.15]);

@@ -20,10 +20,10 @@
 // Never deletes anything. Writes the module's own settings (one pool, one
 // box, one log row); each run adds one item to the test actor and posts one
 // chat card.
-const store = await import(MODULE_BASE + "scripts/store.js");
-const { registerSocket, requestPull } = await import(MODULE_BASE + "scripts/socket.js");
-const { oddsTable } = await import(MODULE_BASE + "scripts/odds.js");
-const { toCopper } = await import(MODULE_BASE + "scripts/currency.js");
+const store = await import(MODULE_BASE + "scripts/foundry/store.js");
+const { registerSocket, requestPull } = await import(MODULE_BASE + "scripts/foundry/socket.js");
+const { oddsTable } = await import(MODULE_BASE + "scripts/core/odds.js");
+const { toCopper } = await import(MODULE_BASE + "scripts/core/currency.js");
 
 try { store.registerSettings(); } catch (e) { if (!/already registered/i.test(String(e))) throw e; }
 store.registerIndexFields();
@@ -73,7 +73,7 @@ if (!document.querySelector("link[data-loot-crates]")) {
   link.dataset.lootCrates = "1";
   document.head.appendChild(link);
 }
-const { openManager } = await import(MODULE_BASE + "scripts/manager.js");
+const { openManager } = await import(MODULE_BASE + "scripts/foundry/manager.js");
 const DEAD2 = "Compendium.dnd5e.items.Item.deadbeef00000002";
 const [r1, r2, relinkTo] = live.slice(30, 33);
 const fresh = store.getPools()[pool.id];

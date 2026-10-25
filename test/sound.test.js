@@ -5,7 +5,7 @@
   no channel yet (before the first gesture) or a muted one, nothing is built.
 */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { playTick, playSlow, playReveal, TICK_HZ, TEASE_HZ, BACK_HZ } from "../module/scripts/sound.js";
+import { playTick, playSlow, playReveal, TICK_HZ, TEASE_HZ, BACK_HZ } from "../module/scripts/foundry/sound.js";
 
 const param = () => ({
   value: 1, set: [], ramps: [], linear: [], cancelled: [],

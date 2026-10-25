@@ -18,8 +18,8 @@
 //
 // Deletes nothing; writes the module's own settings (one pool, emptied again
 // at the end so later checks don't carry 872 entries).
-const store = await import(MODULE_BASE + "scripts/store.js");
-const { rarityUnset } = await import(MODULE_BASE + "scripts/odds.js");
+const store = await import(MODULE_BASE + "scripts/foundry/store.js");
+const { rarityUnset } = await import(MODULE_BASE + "scripts/core/odds.js");
 try { store.registerSettings(); } catch (e) { if (!/already registered/i.test(String(e))) throw e; }
 store.registerIndexFields();
 if (!document.querySelector("link[data-loot-crates]")) {
@@ -36,7 +36,7 @@ const unsetStored = entries.filter(rarityUnset).length;
 const wait = ms => new Promise(r => setTimeout(r, ms));
 const until = async (fn, ms = 10000) => { for (let t = 0; t < ms && !fn(); t += 50) await wait(50); return fn(); };
 const frames = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-const { openManager } = await import(MODULE_BASE + "scripts/manager.js");
+const { openManager } = await import(MODULE_BASE + "scripts/foundry/manager.js");
 const app = openManager();
 app.tab = "pools";
 const poolEl = () => app.element?.querySelector(`.lc-pool[data-drop-pool="${POOL}"]`);

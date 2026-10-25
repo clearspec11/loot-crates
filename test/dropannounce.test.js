@@ -8,12 +8,12 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from "vitest";
 import { createDocument } from "./minidom.js";
 
-vi.mock("../module/scripts/shop.js", () => ({ refreshShop: vi.fn() }));
-vi.mock("../module/scripts/chat.js", () => ({ postRefundCard: vi.fn() }));
+vi.mock("../module/scripts/foundry/shop.js", () => ({ refreshShop: vi.fn() }));
+vi.mock("../module/scripts/foundry/chat.js", () => ({ postRefundCard: vi.fn() }));
 
 let pools;
 const NEW = { uuid: "Item.flame", name: "Flame Tongue", img: "", rarity: "rare", weight: 1 };
-vi.mock("../module/scripts/store.js", async importOriginal => ({
+vi.mock("../module/scripts/foundry/store.js", async importOriginal => ({
   ...(await importOriginal()),
   getPools: () => pools,
   checkSources: async entries => new Map(entries.map(e => [e.uuid, { name: e.name, img: e.img, rarity: e.rarity }])),
@@ -42,7 +42,7 @@ beforeAll(async () => {
     },
   });
   vi.stubGlobal("game", { settings: { get: () => true } });
-  ({ CrateManager } = await import("../module/scripts/manager.js"));
+  ({ CrateManager } = await import("../module/scripts/foundry/manager.js"));
 });
 afterAll(() => vi.unstubAllGlobals());
 

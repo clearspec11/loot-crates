@@ -4,7 +4,7 @@ import { defineConfig, globalIgnores } from "eslint/config";
 
 // Foundry supplies these globals inside a world. The module is not bundled;
 // its scripts are plain ES modules loaded by Foundry, and the pure ones
-// (odds.js, currency.js, strip.js) are also run by Vitest and the harness.
+// (module/scripts/core, games and views) are also run by Vitest and the harness.
 const FOUNDRY_GLOBALS = {
   game: "readonly",
   Hooks: "readonly",
@@ -38,8 +38,11 @@ export default defineConfig([
       "no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
     },
   },
+  // Only main.js and foundry/ may reach Foundry. core/, games/ and views/
+  // are pure (CLAUDE.md, "Pure first"): Vitest and the harness run them, so
+  // a Foundry global there is a lint error, not a habit to remember.
   {
-    files: ["module/**/*.js", "foundry-dev/**/*.js"],
+    files: ["module/scripts/main.js", "module/scripts/foundry/**/*.js", "foundry-dev/**/*.js"],
     languageOptions: { globals: { ...globals.browser, ...FOUNDRY_GLOBALS } },
   },
   {

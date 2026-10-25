@@ -6,7 +6,7 @@
   browser, removing or moving a focused node drops focus to the body.
 */
 import { describe, it, expect, beforeEach } from "vitest";
-import { boxCard, shopHTML, shopNotice, patchShop, morph } from "../module/scripts/boxcard.js";
+import { boxCard, shopHTML, shopNotice, patchShop, morph } from "../module/scripts/views/boxcard.js";
 import { POOLS, BOXES } from "../harness/sample.js";
 import { createDocument } from "./minidom.js";
 

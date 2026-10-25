@@ -4,13 +4,13 @@
 */
 import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
 
-vi.mock("../module/scripts/shop.js", () => ({ refreshShop: vi.fn() }));
-vi.mock("../module/scripts/chat.js", () => ({ postRefundCard: vi.fn() }));
+vi.mock("../module/scripts/foundry/shop.js", () => ({ refreshShop: vi.fn() }));
+vi.mock("../module/scripts/foundry/chat.js", () => ({ postRefundCard: vi.fn() }));
 
 let tabAfter;
 beforeAll(async () => {
   vi.stubGlobal("foundry", { utils: { escapeHTML: s => String(s), deepClone: v => structuredClone(v) }, applications: { api: { ApplicationV2: class {}, DialogV2: class {} } } });
-  ({ tabAfter } = await import("../module/scripts/manager.js"));
+  ({ tabAfter } = await import("../module/scripts/foundry/manager.js"));
 });
 afterAll(() => vi.unstubAllGlobals());
 

@@ -40,7 +40,7 @@ const MODULE_BASE = process.env.MODULE_BASE || "http://localhost:8766/";
   await page.waitForFunction(() => window.game?.ready, null, { timeout: 120000 });
   // What main.js does first: the branch's words, from its own lang/en.json
   // (the installed release may have no language file, or older words).
-  await page.evaluate(async base => (await import(base + "scripts/i18n.js")).loadStrings(), MODULE_BASE);
+  await page.evaluate(async base => (await import(base + "scripts/core/i18n.js")).loadStrings(), MODULE_BASE);
   const lockedBefore = await page.evaluate(() => { globalThis.canvas?.app?.ticker?.stop(); return { locked: game.audio.locked, interface: !!game.audio.interface }; });
 
   // The first gesture: open the chat tab with a real click.
@@ -50,9 +50,9 @@ const MODULE_BASE = process.env.MODULE_BASE || "http://localhost:8766/";
 
   const setup = await page.evaluate(async base => {
     game.socket.off("module.loot-crates");
-    const store = await import(base + "scripts/store.js");
+    const store = await import(base + "scripts/foundry/store.js");
     try { store.registerSettings(); } catch { /* the installed module registered them */ }
-    const { watchAgain } = await import(base + "scripts/reveal.js");
+    const { watchAgain } = await import(base + "scripts/foundry/reveal.js");
     // A refunded card has no Watch again: the newest one that wasn't refunded.
     const msg = game.messages.contents.filter(m => m.flags?.["loot-crates"]?.replay && !m.flags["loot-crates"].refundedAt).at(-1);
     const li = msg && document.querySelector(`#chat .chat-log [data-message-id="${msg.id}"]`);
@@ -101,8 +101,8 @@ const MODULE_BASE = process.env.MODULE_BASE || "http://localhost:8766/";
       if (m.id !== msg.id) { el.querySelector(".lc-chat__replay")?.remove(); watchAgain(m, el); }
       return m.id;
     };
-    const { brakeAt } = await import(base + "scripts/spin.js");
-    const { TICK_HZ, TEASE_HZ, BACK_HZ } = await import(base + "scripts/sound.js");
+    const { brakeAt } = await import(base + "scripts/views/spin.js");
+    const { TICK_HZ, TEASE_HZ, BACK_HZ } = await import(base + "scripts/foundry/sound.js");
     return { messageId: msg.id, nearMissId: pick(true), plainId: pick(false), brakeMs: brakeAt(), TICK_HZ, TEASE_HZ, BACK_HZ, sound: game.settings.get("loot-crates", "sound"), volume: ctx.gainNode.gain.value, state: ctx.state };
   }, MODULE_BASE);
   if (setup.error) { console.log(JSON.stringify({ ok: false, ...setup })); await browser.close(); process.exit(1); }

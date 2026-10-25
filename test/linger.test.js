@@ -8,7 +8,7 @@
 */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createDocument } from "./minidom.js";
-import { LINGER_SECONDS, LINGER_DEFAULT, lingerMs, lingerText, lingerHTML, createCountdown, Linger } from "../module/scripts/linger.js";
+import { LINGER_SECONDS, LINGER_DEFAULT, lingerMs, lingerText, lingerHTML, createCountdown, Linger } from "../module/scripts/core/linger.js";
 
 // A clock and timers the test moves by hand.
 function fakeTime() {

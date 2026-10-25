@@ -76,18 +76,18 @@ async function wire(page) {
       await new Promise(r => { link.onload = r; link.onerror = r; });
     }
     game.socket.off("module.loot-crates");
-    const store = await import(base + "scripts/store.js");
+    const store = await import(base + "scripts/foundry/store.js");
     try { store.registerSettings(); } catch { /* the installed module registered them */ }
     try { store.registerIndexFields?.(); } catch { /* already in CONFIG */ }
-    const socket = await import(base + "scripts/socket.js");
+    const socket = await import(base + "scripts/foundry/socket.js");
     socket.registerSocket();
-    const { storeRedraw } = await import(base + "scripts/redraw.js");
-    const { refreshShop, registerShopHooks } = await import(base + "scripts/shop.js");
-    const { refreshManager } = await import(base + "scripts/manager.js");
-    const { refreshTables } = await import(base + "scripts/tablewindow.js");
+    const { storeRedraw } = await import(base + "scripts/core/redraw.js");
+    const { refreshShop, registerShopHooks } = await import(base + "scripts/foundry/shop.js");
+    const { refreshManager } = await import(base + "scripts/foundry/manager.js");
+    const { refreshTables } = await import(base + "scripts/foundry/tablewindow.js");
     const redraw = storeRedraw({ refreshShop, refreshManager, refreshTables });
     // As main.js: a change to the rounds moves the GM's stale timer.
-    const table = await import(base + "scripts/table.js");
+    const table = await import(base + "scripts/foundry/table.js");
     store.setStoreListener(key => { redraw(key); if (key === "tableRounds") table.watchStale(); });
     table.watchStale();
     for (const key of store.WORLD_KEYS) {
@@ -95,7 +95,7 @@ async function wire(page) {
       if (cfg && !String(cfg.onChange ?? "").includes("storeChanged")) cfg.onChange = () => redraw(key);
     }
     registerShopHooks?.(Hooks);
-    const { sealChatCard, watchAgain, preSealItem } = await import(base + "scripts/reveal.js");
+    const { sealChatCard, watchAgain, preSealItem } = await import(base + "scripts/foundry/reveal.js");
     Hooks.on("renderChatMessageHTML", sealChatCard);
     Hooks.on("renderChatMessageHTML", watchAgain);
     for (const h of [...(Hooks.events?.createItem ?? [])]) if (h.fn?.name === "preSealItem") Hooks.off("createItem", h.id);
@@ -117,7 +117,7 @@ async function join(browser, user) {
   await page.waitForFunction(() => window.game?.ready, null, { timeout: 120000 });
   // What main.js does first: the branch's words, from its own lang/en.json
   // (the installed release may have no language file, or older words).
-  await page.evaluate(async base => (await import(base + "scripts/i18n.js")).loadStrings(), MODULE_BASE);
+  await page.evaluate(async base => (await import(base + "scripts/core/i18n.js")).loadStrings(), MODULE_BASE);
   await wire(page);
   return { page, logs };
 }
@@ -132,11 +132,11 @@ const hideTab = page => page.evaluate(() => {
 // The GM's side: seed the wheel, settle any round left over, note what is to be restored.
 async function seed(gm, windowSec = 0) {
   return gm.evaluate(async ({ base, name, windowSec }) => {
-    const store = await import(base + "scripts/store.js");
-    const { toCopper } = await import(base + "scripts/currency.js");
-    const { ROULETTE_DEFAULTS } = await import(base + "scripts/roulette.js");
-    const { liveRoundOf } = await import(base + "scripts/round.js");
-    const { resolveRound } = await import(base + "scripts/table.js");
+    const store = await import(base + "scripts/foundry/store.js");
+    const { toCopper } = await import(base + "scripts/core/currency.js");
+    const { ROULETTE_DEFAULTS } = await import(base + "scripts/games/roulette.js");
+    const { liveRoundOf } = await import(base + "scripts/core/round.js");
+    const { resolveRound } = await import(base + "scripts/foundry/table.js");
     const folder = game.folders.find(f => f.type === "Actor" && f.name === "Loot Crates Test");
     const actor = game.actors.find(a => a.name === "Crate Tester" && a.folder?.id === folder?.id);
     if (!actor) throw new Error("no Crate Tester in Loot Crates Test: run live-pull.js first");
@@ -163,7 +163,7 @@ async function restore(gm, before) {
   return gm.evaluate(async ({ base, before, name }) => {
     const out = {};
     try {
-      const store = await import(base + "scripts/store.js");
+      const store = await import(base + "scripts/foundry/store.js");
       if (before.old) { await store.saveBox(before.old); out.wheel = "restored"; }
       else { const w = Object.values(store.getBoxes()).find(b => b.name === name); out.wheel = w ? "left seeded (new this run)" : "none"; }
     } catch (err) { out.error = String(err?.stack || err); }
@@ -283,8 +283,8 @@ async function spinAndWatch(gm, pl, roundId, wheelId) {
 // The GM refunds a row from the Pull log, as a person does: the tab, Refund, Yes.
 async function refundFromLog(gm, rowId) {
   return gm.evaluate(async ({ base, rowId }) => {
-    const { openManager } = await import(base + "scripts/manager.js");
-    const store = await import(base + "scripts/store.js");
+    const { openManager } = await import(base + "scripts/foundry/manager.js");
+    const store = await import(base + "scripts/foundry/store.js");
     const wait = ms => new Promise(r => setTimeout(r, ms));
     const until = async (fn, ms = 15000) => { for (let t = 0; t < ms && !fn(); t += 50) await wait(50); return fn(); };
     const click = el => el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, button: 0, view: window }));
@@ -311,13 +311,13 @@ async function refundFromLog(gm, rowId) {
 }
 
 const purseOf = (gm, actorId) => gm.evaluate(async ({ base, actorId }) => {
-  const { toCopper } = await import(base + "scripts/currency.js");
+  const { toCopper } = await import(base + "scripts/core/currency.js");
   const actor = game.actors.get(actorId);
   return { purseCp: toCopper(actor.system.currency), items: actor.items.size };
 }, { base: MODULE_BASE, actorId });
 
 const freshRows = (gm, before) => gm.evaluate(async ({ base, before }) => {
-  const store = await import(base + "scripts/store.js");
+  const store = await import(base + "scripts/foundry/store.js");
   return store.getLog().filter(r => !before.logIds.includes(r.id)).sort((a, b) => a.at - b.at).map(r => ({ id: r.id, name: r.name, price: r.price, payoutCp: r.payoutCp, status: r.status, roundId: r.roundId, refunded: r.refunded ?? null, refundReason: r.refundReason ?? null, itemId: r.itemId }));
 }, { base: MODULE_BASE, before });
 
@@ -337,7 +337,7 @@ const freshRows = (gm, before) => gm.evaluate(async ({ base, before }) => {
 
     // 1. The shop on Crate Tester, with no round open; the GM opens one from the Boxes tab.
     out.shopBefore = await pl.page.evaluate(async ({ base, wheelId }) => {
-      const { openShop } = await import(base + "scripts/shop.js");
+      const { openShop } = await import(base + "scripts/foundry/shop.js");
       const actor = game.actors.find(a => a.isOwner && a.type === "character");
       if (!actor) throw new Error(`${game.user.name} owns no character`);
       const app = openShop();
@@ -348,9 +348,9 @@ const freshRows = (gm, before) => gm.evaluate(async ({ base, before }) => {
       return { found: !!card, buy: card?.querySelector(".lc-box__buy")?.textContent.trim() ?? null, off: card?.querySelector(".lc-box__buy")?.getAttribute("aria-disabled") === "true", why: card?.querySelector(".lc-box__why")?.textContent.trim() ?? "", round: card?.querySelector(".lc-box__round")?.textContent.trim() ?? "", pills: [...(card?.querySelectorAll(".lc-odd") ?? [])].map(p => p.textContent.trim()) };
     }, { base: MODULE_BASE, wheelId: before.wheelId });
     out.open = await gm.page.evaluate(async ({ base, wheelId }) => {
-      const { openManager } = await import(base + "scripts/manager.js");
-      const store = await import(base + "scripts/store.js");
-      const { liveRoundOf } = await import(base + "scripts/round.js");
+      const { openManager } = await import(base + "scripts/foundry/manager.js");
+      const store = await import(base + "scripts/foundry/store.js");
+      const { liveRoundOf } = await import(base + "scripts/core/round.js");
       const wait = ms => new Promise(r => setTimeout(r, ms));
       const until = async (fn, ms = 15000) => { for (let t = 0; t < ms && !fn(); t += 50) await wait(50); return fn(); };
       const click = el => el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, button: 0, view: window }));
@@ -421,15 +421,15 @@ const freshRows = (gm, before) => gm.evaluate(async ({ base, before }) => {
     // late joiner who never heard the "open"): the shop card's countdown
     // must tick within 2 s, and its Place a bet opens the round's window.
     before.old2 = await gm.page.evaluate(async ({ base, wheelId, windowSec }) => {
-      const store = await import(base + "scripts/store.js");
+      const store = await import(base + "scripts/foundry/store.js");
       const box = store.getBoxes()[wheelId];
       await store.saveBox({ ...box, roulette: { ...box.roulette, windowSec } });
       return true;
     }, { base: MODULE_BASE, wheelId: before.wheelId, windowSec: CLOCK_SEC });
     out.open2 = await gm.page.evaluate(async ({ base, wheelId }) => {
-      const { openManager } = await import(base + "scripts/manager.js");
-      const store = await import(base + "scripts/store.js");
-      const { liveRoundOf } = await import(base + "scripts/round.js");
+      const { openManager } = await import(base + "scripts/foundry/manager.js");
+      const store = await import(base + "scripts/foundry/store.js");
+      const { liveRoundOf } = await import(base + "scripts/core/round.js");
       const wait = ms => new Promise(r => setTimeout(r, ms));
       const until = async (fn, ms = 15000) => { for (let t = 0; t < ms && !fn(); t += 50) await wait(50); return fn(); };
       const click = el => el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, button: 0, view: window }));
@@ -447,10 +447,10 @@ const freshRows = (gm, before) => gm.evaluate(async ({ base, before }) => {
     await pl.page.waitForFunction(() => window.game?.ready, null, { timeout: 120000 });
     // What main.js does first: the branch's words, from its own lang/en.json
     // (the installed release may have no language file, or older words).
-    await pl.page.evaluate(async base => (await import(base + "scripts/i18n.js")).loadStrings(), MODULE_BASE);
+    await pl.page.evaluate(async base => (await import(base + "scripts/core/i18n.js")).loadStrings(), MODULE_BASE);
     await wire(pl.page);
     out.lateJoiner = await pl.page.evaluate(async ({ base, wheelId }) => {
-      const { openShop } = await import(base + "scripts/shop.js");
+      const { openShop } = await import(base + "scripts/foundry/shop.js");
       const wait = ms => new Promise(r => setTimeout(r, ms));
       const actor = game.actors.find(a => a.isOwner && a.type === "character");
       const app = openShop();
@@ -484,8 +484,8 @@ const freshRows = (gm, before) => gm.evaluate(async ({ base, before }) => {
     // close back by twice its clock (stale under the old rule of one clock
     // length) instead of waiting; the load-time recovery leaves it alone.
     const moveClose = (ms) => gm.page.evaluate(async ({ base, roundId, ms }) => {
-      const store = await import(base + "scripts/store.js");
-      const { staleAt, ROUND_GRACE_MS } = await import(base + "scripts/round.js");
+      const store = await import(base + "scripts/foundry/store.js");
+      const { staleAt, ROUND_GRACE_MS } = await import(base + "scripts/core/round.js");
       const closedAt = Date.now() - (ms ?? ROUND_GRACE_MS + 1000);
       await store.enqueueWrite(() => store.saveRound({ ...store.getRounds()[roundId], closedAt }));
       const round = store.getRounds()[roundId];
@@ -493,8 +493,8 @@ const freshRows = (gm, before) => gm.evaluate(async ({ base, before }) => {
     }, { base: MODULE_BASE, roundId: out.open2.roundId, ms });
     out.inGrace = await moveClose(CLOCK_SEC * 2000);
     out.recoveredInGrace = await gm.page.evaluate(async ({ base, roundId }) => {
-      const { recoverRounds } = await import(base + "scripts/table.js");
-      const store = await import(base + "scripts/store.js");
+      const { recoverRounds } = await import(base + "scripts/foundry/table.js");
+      const store = await import(base + "scripts/foundry/store.js");
       const out = await recoverRounds();
       const row = store.getLog().find(r => r.roundId === roundId);
       return { ...out, round: store.getRounds()[roundId]?.status ?? null, row: row && { status: row.status, refunded: !!row.refunded } };
@@ -507,7 +507,7 @@ const freshRows = (gm, before) => gm.evaluate(async ({ base, before }) => {
     });
     out.pastGrace = await moveClose(null);
     out.recovered = await gm.page.evaluate(async ({ base, roundId, since }) => {
-      const store = await import(base + "scripts/store.js");
+      const store = await import(base + "scripts/foundry/store.js");
       const rowOf = () => store.getLog().find(r => r.roundId === roundId);
       let ms = null;
       for (let i = 0; i < 250; i++) {

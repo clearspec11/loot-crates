@@ -29,14 +29,14 @@ if (!document.querySelector("link[data-loot-crates]")) {
 // The software-rendered canvas holds this VM's main thread (and every timer)
 // for most of a second at a time; the manager doesn't need it.
 globalThis.canvas?.app?.ticker?.stop();
-const store = await import(MODULE_BASE + "scripts/store.js");
+const store = await import(MODULE_BASE + "scripts/foundry/store.js");
 try { store.registerSettings(); } catch (e) { if (!/already registered/i.test(String(e))) throw e; }
 store.registerIndexFields();
 // The branch's redraw, as main.js wires it: the installed module registered
 // the settings, so its onChange calls its own listener, not this one.
-const { storeRedraw } = await import(MODULE_BASE + "scripts/redraw.js");
-const { refreshShop } = await import(MODULE_BASE + "scripts/shop.js");
-const { openManager, refreshManager } = await import(MODULE_BASE + "scripts/manager.js");
+const { storeRedraw } = await import(MODULE_BASE + "scripts/core/redraw.js");
+const { refreshShop } = await import(MODULE_BASE + "scripts/foundry/shop.js");
+const { openManager, refreshManager } = await import(MODULE_BASE + "scripts/foundry/manager.js");
 const redraw = storeRedraw({ refreshShop, refreshManager });
 store.setStoreListener(redraw);
 for (const key of store.WORLD_KEYS) {

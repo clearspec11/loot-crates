@@ -9,8 +9,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { createDocument } from "./minidom.js";
 
-vi.mock("../module/scripts/store.js", () => ({ getBoxes: vi.fn(() => ({})) }));
-vi.mock("../module/scripts/manager.js", () => ({ openManager: vi.fn(), addStarterCrates: vi.fn(async () => ({ games: [] })) }));
+vi.mock("../module/scripts/foundry/store.js", () => ({ getBoxes: vi.fn(() => ({})) }));
+vi.mock("../module/scripts/foundry/manager.js", () => ({ openManager: vi.fn(), addStarterCrates: vi.fn(async () => ({ games: [] })) }));
 
 class DomApp {
   constructor(options) { this.options = options; this.rendered = false; }
@@ -41,10 +41,10 @@ class DomApp {
 }
 const FOUNDRY = { applications: { api: { ApplicationV2: DomApp } }, utils: { escapeHTML: s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]) } };
 vi.stubGlobal("foundry", FOUNDRY);
-const { WelcomeWindow, WelcomeMenu, welcomeAtLoad, openWelcome, registerWelcome } = await import("../module/scripts/welcomewindow.js");
-const { LATEST } = await import("../module/scripts/changelog.js");
-const store = await import("../module/scripts/store.js");
-const manager = await import("../module/scripts/manager.js");
+const { WelcomeWindow, WelcomeMenu, welcomeAtLoad, openWelcome, registerWelcome } = await import("../module/scripts/foundry/welcomewindow.js");
+const { LATEST } = await import("../module/scripts/core/changelog.js");
+const store = await import("../module/scripts/foundry/store.js");
+const manager = await import("../module/scripts/foundry/manager.js");
 
 const act = (app, name) => WelcomeWindow.DEFAULT_OPTIONS.actions[name].call(app, {}, null);
 let doc, settings, writes, version, isGM, open;

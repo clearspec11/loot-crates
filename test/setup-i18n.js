@@ -4,6 +4,6 @@
   player does and its expected strings are the English ones.
 */
 import en from "../module/lang/en.json";
-import { setStrings } from "../module/scripts/i18n.js";
+import { setStrings } from "../module/scripts/core/i18n.js";
 
 setStrings(en);

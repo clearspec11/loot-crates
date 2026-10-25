@@ -64,7 +64,7 @@ async function join(browser, user) {
   await page.waitForFunction(() => window.game?.ready, null, { timeout: 120000 });
   // What main.js does first: the branch's words, from its own lang/en.json
   // (the installed release may have no language file, or older words).
-  await page.evaluate(async base => (await import(base + "scripts/i18n.js")).loadStrings(), MODULE_BASE);
+  await page.evaluate(async base => (await import(base + "scripts/core/i18n.js")).loadStrings(), MODULE_BASE);
   // The branch's code in place of the installed module's, as main.js wires it.
   await page.evaluate(async base => {
     globalThis.canvas?.app?.ticker?.stop();
@@ -75,14 +75,14 @@ async function join(browser, user) {
       await new Promise(r => { link.onload = r; link.onerror = r; });
     }
     game.socket.off("module.loot-crates");
-    const store = await import(base + "scripts/store.js");
+    const store = await import(base + "scripts/foundry/store.js");
     try { store.registerSettings(); } catch { /* the installed module registered them */ }
     try { store.registerIndexFields?.(); } catch { /* already in CONFIG */ }
-    const socket = await import(base + "scripts/socket.js");
+    const socket = await import(base + "scripts/foundry/socket.js");
     socket.registerSocket();
-    const { storeRedraw } = await import(base + "scripts/redraw.js");
-    const { refreshShop, registerShopHooks } = await import(base + "scripts/shop.js");
-    const { refreshManager, makeCrateMenuEntry } = await import(base + "scripts/manager.js");
+    const { storeRedraw } = await import(base + "scripts/core/redraw.js");
+    const { refreshShop, registerShopHooks } = await import(base + "scripts/foundry/shop.js");
+    const { refreshManager, makeCrateMenuEntry } = await import(base + "scripts/foundry/manager.js");
     const redraw = storeRedraw({ refreshShop, refreshManager });
     store.setStoreListener(redraw);
     for (const key of store.WORLD_KEYS) {
@@ -126,8 +126,8 @@ const GM_HELPERS = `
 
     // Seed the table: three loot items from dnd5e's SRD pack, the jackpot a rare.
     out.seeded = await gm.page.evaluate(async ({ base, name }) => {
-      const store = await import(base + "scripts/store.js");
-      const { toCopper } = await import(base + "scripts/currency.js");
+      const store = await import(base + "scripts/foundry/store.js");
+      const { toCopper } = await import(base + "scripts/core/currency.js");
       const pack = game.packs.get("dnd5e.items");
       const index = await pack.getIndex({ fields: ["system.rarity", "system.rarities", "type"] });
       const rows = [...index].filter(r => store.isLootType(r.type));
@@ -168,7 +168,7 @@ const GM_HELPERS = `
 
     // 2. The editor on the draft.
     out.editor = await gm.page.evaluate(async ({ base, before }) => {
-      const store = await import(base + "scripts/store.js");
+      const store = await import(base + "scripts/foundry/store.js");
       await __lc.until(() => __lc.dialog()?.querySelector('input[name="price"]'), 15000);
       await __lc.wait(500);
       const d = __lc.dialog();
@@ -193,8 +193,8 @@ const GM_HELPERS = `
     await gm.page.locator(".application.lc-dialog").last().locator('input[name="price"]').fill("1 gp");
     await gm.page.locator(".application.lc-dialog").last().locator('button[data-action="ok"]').click();
     out.saved = await gm.page.evaluate(async ({ base, before }) => {
-      const store = await import(base + "scripts/store.js");
-      const { shopOdds } = await import(base + "scripts/odds.js");
+      const store = await import(base + "scripts/foundry/store.js");
+      const { shopOdds } = await import(base + "scripts/core/odds.js");
       const fresh = () => Object.values(store.getBoxes()).filter(b => !before.boxIds.includes(b.id));
       await __lc.until(() => fresh().length && !__lc.dialog(), 10000);
       await __lc.wait(400);
@@ -208,7 +208,7 @@ const GM_HELPERS = `
 
     // 3. Player2's shop: the card names the items; one real Buy.
     out.card = box ? await pl.page.evaluate(async ({ base, id }) => {
-      const { openShop } = await import(base + "scripts/shop.js");
+      const { openShop } = await import(base + "scripts/foundry/shop.js");
       const actor = game.actors.find(a => a.isOwner && a.type === "character" && a.name === "Crate Tester");
       if (!actor) throw new Error(`${game.user.name} doesn't own Crate Tester`);
       const app = openShop();
@@ -236,8 +236,8 @@ const GM_HELPERS = `
       });
       if (out.pull.landed) { await pl.page.waitForTimeout(700); await pl.page.locator(".lc-reveal [data-action=\"dismiss\"]").last().click(); }
       out.afterPull = await gm.page.evaluate(async ({ base, before, boxId }) => {
-        const store = await import(base + "scripts/store.js");
-        const { toCopper } = await import(base + "scripts/currency.js");
+        const store = await import(base + "scripts/foundry/store.js");
+        const { toCopper } = await import(base + "scripts/core/currency.js");
         await __lc.until(() => store.getLog().some(r => !before.logIds.includes(r.id)), 8000);
         await __lc.wait(300);
         const actor = game.actors.get(before.actorId);
@@ -261,8 +261,8 @@ const GM_HELPERS = `
         out.refundDialog = (await gm.page.locator(".application.dialog .window-content").last().textContent())?.replace(/\s+/g, " ").trim();
         await yes.click();
         out.refunded = await gm.page.evaluate(async ({ base, before, id }) => {
-          const store = await import(base + "scripts/store.js");
-          const { toCopper } = await import(base + "scripts/currency.js");
+          const store = await import(base + "scripts/foundry/store.js");
+          const { toCopper } = await import(base + "scripts/core/currency.js");
           await __lc.until(() => store.getLog().find(r => r.id === id)?.refunded, 8000);
           await __lc.wait(400);
           const actor = game.actors.get(before.actorId);
@@ -296,8 +296,8 @@ const GM_HELPERS = `
   } finally {
     try {
       out.restored = gm ? await gm.page.evaluate(async ({ base, created, rows, seeded, name }) => {
-        const store = await import(base + "scripts/store.js");
-        const { refundPull } = await import(base + "scripts/refund.js");
+        const store = await import(base + "scripts/foundry/store.js");
+        const { refundPull } = await import(base + "scripts/foundry/refund.js");
         const refunded = [];
         for (const id of rows) if (!store.getLog().find(r => r.id === id)?.refunded) { try { refunded.push({ id, status: (await refundPull(id))?.status ?? "done" }); } catch (err) { refunded.push({ id, error: String(err) }); } }
         for (const id of created.boxes) if (store.getBoxes()[id]) await store.removeBox(id);

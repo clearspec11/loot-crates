@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { draftBox, boxPreview, boxPreviewHTML, oddsPills, oddsRibbon, oddsSummary, quietAnnouncer, ANNOUNCE_DELAY_MS } from "../module/scripts/boxcard.js";
-import { shopOdds } from "../module/scripts/odds.js";
+import { draftBox, boxPreview, boxPreviewHTML, oddsPills, oddsRibbon, oddsSummary, quietAnnouncer, ANNOUNCE_DELAY_MS } from "../module/scripts/views/boxcard.js";
+import { shopOdds } from "../module/scripts/core/odds.js";
 import { POOLS, BOX } from "../harness/sample.js";
 
 // The box editor's form as promptForm reads it: checkboxes as booleans,

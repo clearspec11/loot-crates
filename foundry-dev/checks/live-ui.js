@@ -14,10 +14,10 @@ if (!document.querySelector("link[data-loot-crates]")) {
   link.dataset.lootCrates = "1";
   document.head.appendChild(link);
 }
-const store = await import(MODULE_BASE + "scripts/store.js");
-const { registerSocket } = await import(MODULE_BASE + "scripts/socket.js");
-const { openManager } = await import(MODULE_BASE + "scripts/manager.js");
-const { openShop } = await import(MODULE_BASE + "scripts/shop.js");
+const store = await import(MODULE_BASE + "scripts/foundry/store.js");
+const { registerSocket } = await import(MODULE_BASE + "scripts/foundry/socket.js");
+const { openManager } = await import(MODULE_BASE + "scripts/foundry/manager.js");
+const { openShop } = await import(MODULE_BASE + "scripts/foundry/shop.js");
 
 try { store.registerSettings(); } catch (e) { if (!/already registered/i.test(String(e))) throw e; }
 store.registerIndexFields();

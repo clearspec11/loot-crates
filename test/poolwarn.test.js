@@ -8,14 +8,14 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from "vitest";
 import { createDocument } from "./minidom.js";
 
-vi.mock("../module/scripts/shop.js", () => ({ refreshShop: vi.fn() }));
-vi.mock("../module/scripts/chat.js", () => ({ postRefundCard: vi.fn() }));
+vi.mock("../module/scripts/foundry/shop.js", () => ({ refreshShop: vi.fn() }));
+vi.mock("../module/scripts/foundry/chat.js", () => ({ postRefundCard: vi.fn() }));
 
 let pools, boxes;
 // How long the stubbed source check takes, in ms (a render awaits it).
 let checkDelay = 0;
 const removed = [];
-vi.mock("../module/scripts/store.js", async importOriginal => ({
+vi.mock("../module/scripts/foundry/store.js", async importOriginal => ({
   ...(await importOriginal()),
   getPools: () => structuredClone(pools),
   getBoxes: () => structuredClone(boxes),
@@ -42,8 +42,8 @@ beforeAll(async () => {
     applications: { api: { ApplicationV2: class { render() {} }, DialogV2: class { static confirm = confirm; } } },
   });
   vi.stubGlobal("game", { settings: { get: () => true } });
-  ({ CrateManager, openManager, refreshManager } = await import("../module/scripts/manager.js"));
-  ({ SETTINGS } = await import("../module/scripts/config.js"));
+  ({ CrateManager, openManager, refreshManager } = await import("../module/scripts/foundry/manager.js"));
+  ({ SETTINGS } = await import("../module/scripts/core/config.js"));
 });
 afterAll(() => vi.unstubAllGlobals());
 

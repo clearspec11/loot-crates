@@ -7,7 +7,7 @@
   under a row read through the caller's escape.
 */
 import { describe, it, expect } from "vitest";
-import { logTableHTML, logRarityNote, logPayoutNote, logStakeNote, logLateNote, LOG_COLUMNS } from "../module/scripts/logtable.js";
+import { logTableHTML, logRarityNote, logPayoutNote, logStakeNote, logLateNote, LOG_COLUMNS } from "../module/scripts/views/logtable.js";
 import { sampleLog, rouletteRound } from "../harness/sample.js";
 
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);

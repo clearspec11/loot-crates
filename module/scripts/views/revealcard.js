@@ -1,0 +1,165 @@
+/*
+  The reveal's result block and where its window opens, with no Foundry in
+  them, so the reveal window, the harness and Vitest share one format. The
+  caller passes its own escape function (foundry.utils.escapeHTML in a world).
+
+  After the spin the result says three things, in this order of loudness: the
+  item's name in its rarity colour (the moment), its rarity, then one quiet
+  line with where it went and, for the buyer and GMs only, the gold left.
+*/
+import { RARITY_LABEL, RARITIES } from "../core/config.js";
+import { formatGold } from "../core/currency.js";
+import { t } from "../core/i18n.js";
+
+export const REVEAL_WIDTH = 720;
+// The reveal's rendered height in cc-dev at 1440x900, used only to centre the
+// first window before it has been measured.
+export const REVEAL_HEIGHT = 384;
+export const CASCADE_STEP = 32;
+export const CASCADE_WRAP = 4;
+const GUTTER = 16;
+// How long after landing a click on the button (now Close) is still taken as
+// the tail of a Skip.
+export const CLOSE_GRACE_MS = 500;
+
+// The lowest cascade slot no open reveal holds; when all are taken, the
+// next one round (slots wrap at CASCADE_WRAP anyway).
+export function freeSlot(used = []) {
+  const taken = new Set(used.filter(Number.isInteger).map(n => n % CASCADE_WRAP));
+  for (let k = 0; k < CASCADE_WRAP; k++) if (!taken.has(k)) return k;
+  return used.length;
+}
+
+/*
+  Where the nth open reveal window goes in a viewport { width, height }: the
+  first centred, each later one 32px down and right of the last, starting over
+  at the fifth, never wider than the viewport less a 16px gutter each side and
+  never past its edges. Two pulls a second apart no longer open on top of
+  each other, and a half-width Foundry tab doesn't cut the window off.
+*/
+export function cascadeOffset(n, viewport, { width: want = REVEAL_WIDTH, height = REVEAL_HEIGHT } = {}) {
+  const vw = Math.max(0, viewport?.width ?? 0);
+  const vh = Math.max(0, viewport?.height ?? 0);
+  const width = Math.max(0, Math.min(want, vw - 2 * GUTTER));
+  const k = ((Math.floor(n) || 0) % CASCADE_WRAP + CASCADE_WRAP) % CASCADE_WRAP;
+  const step = CASCADE_STEP * k;
+  const clamp = (v, max) => Math.max(0, Math.min(v, Math.max(0, max)));
+  return {
+    width,
+    left: Math.round(clamp((vw - width) / 2 + step, vw - width)),
+    top: Math.round(clamp((vh - height) / 2 + step, vh - height)),
+  };
+}
+
+// The buyer and GMs see the purse; the rest of the table sees only the item.
+export function canSeePurse(reveal, viewer = {}) {
+  return !!viewer.isGM || (!!reveal?.userId && reveal.userId === viewer.userId);
+}
+
+// `extra` lines (already escaped) join the quiet line after the gold: a
+// kind's own words for a find (the well's "2 of 3 throws today").
+export function resultHTML(reveal, { esc = String, canSee = false, extra = [] } = {}) {
+  const res = reveal.result;
+  const where = [];
+  if (reveal.itemUuid) where.push(t("LOOTCRATES.Reveal.AddedTo", { name: esc(reveal.actorName) }));
+  if (canSee && reveal.purse) where.push(`<span class="lc-reveal__gold">${t("LOOTCRATES.Reveal.GoldLeft", { gold: esc(formatGold(reveal.purse)) })}</span>`);
+  where.push(...extra);
+  return `<div class="lc-reveal__name">${esc(res.name)}</div>`
+    + `<div class="lc-reveal__rarity">${esc(RARITY_LABEL[res.rarity] ?? res.rarity)}${res.pity ? ` · ${t("LOOTCRATES.Common.Pity")}` : ""}</div>`
+    + (where.length ? `<div class="lc-reveal__where">${where.join(" · ")}</div>` : "");
+}
+
+/*
+  A crate pull that found nothing (odds.js rollMiss): one quiet line where
+  the item's name would be, then, for the buyer and GMs, the gold left.
+*/
+export function missHTML(reveal, { esc = String, canSee = false } = {}) {
+  const where = canSee && reveal.purse ? `<div class="lc-reveal__where"><span class="lc-reveal__gold">${t("LOOTCRATES.Reveal.GoldLeft", { gold: esc(formatGold(reveal.purse)) })}</span></div>` : "";
+  return `<div class="lc-reveal__quiet">${t("LOOTCRATES.Reveal.NothingThisTime")}</div>${where}`;
+}
+
+// The odds a crate's reveal and replay show: its rarities, then the share
+// of pulls that find nothing as a "none" row when it can miss.
+export function oddsWithNothing(odds) {
+  const rows = (odds?.rows ?? []).map(({ rarity, chance, label }) => ({ rarity, chance, label }));
+  return odds?.nothing ? [...rows, { rarity: "none", chance: odds.nothing.chance, label: odds.nothing.label }] : rows;
+}
+
+/*
+  "Watch again": what a pull's chat card keeps so anyone at the table can
+  replay the spin later (a hidden tab, a Skip, joining late). Display only:
+  each card's name, art and rarity, where it lands, whether it teases, the
+  odds ribbon, the crate and the result. No uuid, no granted item, no purse,
+  so a replay can neither open the item nor say what gold is left. About 5 KB
+  for a 48-card strip, stored once in the message's flags.
+*/
+export function replaySnapshot(reveal) {
+  const strip = reveal?.strip;
+  // A crate's miss replays too: its strip lands on the blank.
+  const nothing = !reveal?.result && reveal?.outcome === "nothing";
+  if (!Array.isArray(strip?.cards) || !strip.cards.length || (!reveal.result && !nothing)) return null;
+  return {
+    strip: {
+      cards: strip.cards.map(c => ({ name: String(c?.name ?? ""), img: String(c?.img ?? ""), rarity: c?.rarity, ...(c?.result ? { result: true } : {}) })),
+      landIndex: strip.landIndex,
+      nearMiss: !!strip.nearMiss,
+    },
+    odds: (reveal.odds ?? []).map(({ rarity, chance, label }) => ({ rarity, chance, label })),
+    box: { name: String(reveal.box?.name ?? ""), price: reveal.box?.price ?? 0 },
+    actorName: String(reveal.actorName ?? ""),
+    result: nothing ? { name: t("LOOTCRATES.Odds.Nothing"), rarity: "none", nothing: true } : { name: String(reveal.result.name ?? ""), rarity: reveal.result.rarity, pity: !!reveal.result.pity },
+  };
+}
+
+// "none" is a crate's blank (strip.js NOTHING_CARD); anything else unknown reads common.
+const rarityOr = r => (RARITIES.includes(r) || r === "none" ? r : "common");
+
+/*
+  The reveal a replay window plays, from a stored snapshot, or null when the
+  snapshot can't be played (anything can be in a message's flags). `key`
+  names the window (the chat message's id), so a second Watch again on the
+  same card brings the open replay forward instead of opening another.
+*/
+export function replayReveal(snapshot, key) {
+  const cards = snapshot?.strip?.cards;
+  const land = snapshot?.strip?.landIndex;
+  if (!Array.isArray(cards) || !cards.length || !Number.isInteger(land) || land < 0 || land >= cards.length || !snapshot.result) return null;
+  return {
+    replay: true,
+    replayKey: String(key ?? ""),
+    actorName: String(snapshot.actorName ?? ""),
+    box: { name: String(snapshot.box?.name ?? ""), price: Number(snapshot.box?.price) || 0 },
+    odds: Array.isArray(snapshot.odds) ? snapshot.odds.filter(o => (RARITIES.includes(o?.rarity) || o?.rarity === "none") && Number.isFinite(o.chance)) : [],
+    ...(snapshot.result.nothing
+      ? { result: null, outcome: "nothing" }
+      : { result: { name: String(snapshot.result.name ?? ""), rarity: rarityOr(snapshot.result.rarity), pity: !!snapshot.result.pity } }),
+    strip: {
+      cards: cards.map(c => ({ name: String(c?.name ?? ""), img: String(c?.img ?? ""), rarity: rarityOr(c?.rarity), ...(c?.result ? { result: true } : {}) })),
+      landIndex: land,
+      nearMiss: !!snapshot.strip.nearMiss,
+    },
+  };
+}
+
+// The replay window's title: says it is a replay, so nobody takes it for a
+// second purchase.
+export const replayTitle = reveal => t("LOOTCRATES.Reveal.ReplayTitle", { actor: reveal.actorName, box: reveal.box.name });
+export const replayWindowId = key => `loot-crates-reveal-replay-${key}`;
+
+/*
+  The reveal's buttons, in reading order. Draw again (the buyer alone, once
+  landed, for a kind whose next play starts from the window: the deck's
+  "Draw again for 15 gp"; its reason when off is the line before it). Open
+  item (the buyer and GMs, once landed). Watch again (once landed, only on
+  a client that didn't see the spin play out: it landed hidden or was
+  skipped; it reads Skip while its replay plays). Then the one button that
+  reads Skip and becomes Close. They sit beside Close, not in the vault:
+  actions on the window, like Close, needing no new pattern.
+*/
+export const revealActionsHTML = () => `<div class="lc-reveal__actions">
+        <span class="lc-reveal__why" hidden></span>
+        <button type="button" class="lc-reveal__again" data-action="drawAgain" hidden>${t("LOOTCRATES.Reveal.DrawAgain")}</button>
+        <button type="button" class="lc-reveal__open" data-action="openItem" hidden>${t("LOOTCRATES.Reveal.OpenItem")}</button>
+        <button type="button" class="lc-reveal__watch" data-action="watchAgain" hidden>${t("LOOTCRATES.Reveal.WatchAgain")}</button>
+        <button type="button" class="lc-reveal__close" data-action="skip">${t("LOOTCRATES.Reveal.Skip")}</button>
+      </div>`;

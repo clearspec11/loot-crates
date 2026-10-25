@@ -7,11 +7,11 @@
 */
 import { describe, it, expect, afterEach } from "vitest";
 
-const { postRefundCard } = await import("../module/scripts/chat.js");
-const { netText, railHTML, ROULETTE_DEFAULTS } = await import("../module/scripts/roulette.js");
-const auction = await import("../module/scripts/auction.js");
-const { getKind } = await import("../module/scripts/kinds.js");
-const { stakeSentence } = await import("../module/scripts/tableview.js");
+const { postRefundCard } = await import("../module/scripts/foundry/chat.js");
+const { netText, railHTML, ROULETTE_DEFAULTS } = await import("../module/scripts/games/roulette.js");
+const auction = await import("../module/scripts/games/auction.js");
+const { getKind } = await import("../module/scripts/games/kinds.js");
+const { stakeSentence } = await import("../module/scripts/views/tableview.js");
 
 const GONE = [null, undefined, ""];
 

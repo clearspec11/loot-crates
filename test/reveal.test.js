@@ -5,7 +5,7 @@
 */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
-vi.mock("../module/scripts/sound.js", () => ({ playTick: vi.fn(), playSlow: vi.fn(), playReveal: vi.fn() }));
+vi.mock("../module/scripts/foundry/sound.js", () => ({ playTick: vi.fn(), playSlow: vi.fn(), playReveal: vi.fn() }));
 
 const fakeElement = () => ({
   className: "", textContent: "", innerHTML: "", clientWidth: 600, dataset: {}, children: [], hidden: false,
@@ -67,11 +67,11 @@ const reveal = {
   strip: { landIndex: 30, cards: Array.from({ length: 36 }, (_, i) => ({ uuid: `c${i}`, name: `Card ${i}`, img: "", rarity: "common", result: i === 30 })) },
 };
 
-const { showReveal, showReplay, sealChatCard, watchAgain, stripVoice, CrateReveal } = await import("../module/scripts/reveal.js");
-const { settleAt } = await import("../module/scripts/spin.js");
-const sound = await import("../module/scripts/sound.js");
-const { replaySnapshot, replayReveal } = await import("../module/scripts/revealcard.js");
-const { playReveal, playSlow } = await import("../module/scripts/sound.js");
+const { showReveal, showReplay, sealChatCard, watchAgain, stripVoice, CrateReveal } = await import("../module/scripts/foundry/reveal.js");
+const { settleAt } = await import("../module/scripts/views/spin.js");
+const sound = await import("../module/scripts/foundry/sound.js");
+const { replaySnapshot, replayReveal } = await import("../module/scripts/views/revealcard.js");
+const { playReveal, playSlow } = await import("../module/scripts/foundry/sound.js");
 
 describe("a reveal on a hidden page", () => {
   it("lands at once when it opens hidden, without a frame, silently", async () => {

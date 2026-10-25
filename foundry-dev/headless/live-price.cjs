@@ -61,7 +61,7 @@ async function join(browser, user, { holdBoxes = null } = {}) {
   await page.waitForFunction(() => window.game?.ready, null, { timeout: 120000 });
   // What main.js does first: the branch's words, from its own lang/en.json
   // (the installed release may have no language file, or older words).
-  await page.evaluate(async base => (await import(base + "scripts/i18n.js")).loadStrings(), MODULE_BASE);
+  await page.evaluate(async base => (await import(base + "scripts/core/i18n.js")).loadStrings(), MODULE_BASE);
   await page.evaluate(async base => {
     globalThis.canvas?.app?.ticker?.stop();
     if (!document.querySelector("link[data-lc-branch]")) {
@@ -71,14 +71,14 @@ async function join(browser, user, { holdBoxes = null } = {}) {
       await new Promise(r => { link.onload = r; link.onerror = r; });
     }
     game.socket.off("module.loot-crates");
-    const store = await import(base + "scripts/store.js");
+    const store = await import(base + "scripts/foundry/store.js");
     try { store.registerSettings(); } catch { /* the installed module registered them */ }
     try { store.registerIndexFields?.(); } catch { /* already in CONFIG */ }
-    const socket = await import(base + "scripts/socket.js");
+    const socket = await import(base + "scripts/foundry/socket.js");
     socket.registerSocket();
-    const { storeRedraw } = await import(base + "scripts/redraw.js");
-    const { refreshShop } = await import(base + "scripts/shop.js");
-    const { refreshManager } = await import(base + "scripts/manager.js");
+    const { storeRedraw } = await import(base + "scripts/core/redraw.js");
+    const { refreshShop } = await import(base + "scripts/foundry/shop.js");
+    const { refreshManager } = await import(base + "scripts/foundry/manager.js");
     const redraw = storeRedraw({ refreshShop, refreshManager });
     store.setStoreListener(redraw);
     for (const key of store.WORLD_KEYS) {
@@ -92,7 +92,7 @@ async function join(browser, user, { holdBoxes = null } = {}) {
 // The GM edits the box's price in the manager, as a person does.
 async function setPrice(gm, boxId, price) {
   await gm.evaluate(async base => {
-    const { openManager } = await import(base + "scripts/manager.js");
+    const { openManager } = await import(base + "scripts/foundry/manager.js");
     const app = openManager();
     await app.render({ force: true });
   }, MODULE_BASE);
@@ -125,12 +125,12 @@ async function setPrice(gm, boxId, price) {
 
     // The player's shop, and what the world says now.
     const facts = () => pl.page.evaluate(async ({ base, box }) => {
-      const { getLog } = await import(base + "scripts/store.js");
+      const { getLog } = await import(base + "scripts/foundry/store.js");
       const actor = game.actors.find(a => a.isOwner && a.type === "character");
       const shop = [...foundry.applications.instances.values()].find(a => a.id === "loot-crates-shop");
       const card = shop && [...shop.element.querySelectorAll(".lc-box")].find(c => c.querySelector(".lc-box__name")?.textContent.trim() === box);
       const buy = card?.querySelector(".lc-box__buy");
-      const { toCopper } = await import(base + "scripts/currency.js");
+      const { toCopper } = await import(base + "scripts/core/currency.js");
       return {
         boxId: card?.dataset.box ?? null, label: buy?.textContent.replace(/\s+/g, " ").trim() ?? null, dataPrice: buy?.dataset.price ?? null,
         off: buy?.getAttribute("aria-disabled") === "true",
@@ -142,7 +142,7 @@ async function setPrice(gm, boxId, price) {
       };
     }, { base: MODULE_BASE, box: BOX });
     await pl.page.evaluate(async base => {
-      const { openShop } = await import(base + "scripts/shop.js");
+      const { openShop } = await import(base + "scripts/foundry/shop.js");
       openShop();
       globalThis.__lcToasts = [];
       for (const kind of ["info", "warn", "error"]) {

@@ -81,7 +81,7 @@ async function join(browser, user) {
   await page.waitForFunction(() => window.game?.ready, null, { timeout: 120000 });
   // What main.js does first: the branch's words, from its own lang/en.json
   // (the installed release may have no language file, or older words).
-  await page.evaluate(async base => (await import(base + "scripts/i18n.js")).loadStrings(), MODULE_BASE);
+  await page.evaluate(async base => (await import(base + "scripts/core/i18n.js")).loadStrings(), MODULE_BASE);
   // The branch's code in place of the installed module's, as main.js wires it.
   await page.evaluate(async base => {
     globalThis.canvas?.app?.ticker?.stop();
@@ -92,14 +92,14 @@ async function join(browser, user) {
       await new Promise(r => { link.onload = r; link.onerror = r; });
     }
     game.socket.off("module.loot-crates");
-    const store = await import(base + "scripts/store.js");
+    const store = await import(base + "scripts/foundry/store.js");
     try { store.registerSettings(); } catch { /* the installed module registered them */ }
     try { store.registerIndexFields?.(); } catch { /* already in CONFIG */ }
-    const socket = await import(base + "scripts/socket.js");
+    const socket = await import(base + "scripts/foundry/socket.js");
     socket.registerSocket();
-    const { storeRedraw } = await import(base + "scripts/redraw.js");
-    const { refreshShop, registerShopHooks } = await import(base + "scripts/shop.js");
-    const { refreshManager } = await import(base + "scripts/manager.js");
+    const { storeRedraw } = await import(base + "scripts/core/redraw.js");
+    const { refreshShop, registerShopHooks } = await import(base + "scripts/foundry/shop.js");
+    const { refreshManager } = await import(base + "scripts/foundry/manager.js");
     const redraw = storeRedraw({ refreshShop, refreshManager });
     store.setStoreListener(redraw);
     for (const key of store.WORLD_KEYS) {
@@ -107,7 +107,7 @@ async function join(browser, user) {
       if (cfg && !String(cfg.onChange ?? "").includes("storeChanged")) cfg.onChange = () => redraw(key);
     }
     registerShopHooks?.(Hooks);
-    const { sealChatCard, watchAgain, preSealItem } = await import(base + "scripts/reveal.js");
+    const { sealChatCard, watchAgain, preSealItem } = await import(base + "scripts/foundry/reveal.js");
     Hooks.on("renderChatMessageHTML", sealChatCard);
     Hooks.on("renderChatMessageHTML", watchAgain);
     for (const h of [...(Hooks.events?.createItem ?? [])]) if (h.fn?.name === "preSealItem") Hooks.off("createItem", h.id);
@@ -123,7 +123,7 @@ async function join(browser, user) {
 
 async function seed(gm) {
   return gm.evaluate(async ({ base, name, calendarOn }) => {
-    const store = await import(base + "scripts/store.js");
+    const store = await import(base + "scripts/foundry/store.js");
     const folder = game.folders.find(f => f.type === "Actor" && f.name === "Loot Crates Test");
     const actor = game.actors.find(a => a.name === "Crate Tester" && a.folder?.id === folder?.id);
     if (!actor) throw new Error("no Crate Tester in Loot Crates Test: run live-pull.js first");
@@ -178,7 +178,7 @@ async function restore(gm, before) {
   return gm.evaluate(async ({ base, before, name }) => {
     const out = {};
     const step = async (key, fn) => { try { out[key] = await fn(); } catch (err) { out[key] = `failed: ${err?.message ?? err}`; } };
-    const store = await import(base + "scripts/store.js");
+    const store = await import(base + "scripts/foundry/store.js");
     await step("well", async () => {
       if (before.old) { await store.removeBox(before.wellId); await store.saveBox(before.old); return "restored (this run's well removed)"; }
       return Object.values(store.getBoxes()).some(b => b.name === name) ? "left seeded (new this run)" : "none";
@@ -211,7 +211,7 @@ async function restore(gm, before) {
 // The player's shop, opened and on Crate Tester; `__lcWell()` reads the card.
 async function openShop(page, wellId) {
   return page.evaluate(async ({ base, wellId }) => {
-    const { openShop } = await import(base + "scripts/shop.js");
+    const { openShop } = await import(base + "scripts/foundry/shop.js");
     const actor = game.actors.find(a => a.isOwner && a.type === "character" && a.name === "Crate Tester");
     if (!actor) throw new Error(`${game.user.name} doesn't own Crate Tester`);
     const app = openShop();

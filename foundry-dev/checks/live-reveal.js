@@ -18,10 +18,10 @@ if (!document.querySelector("link[data-loot-crates]")) {
   link.dataset.lootCrates = "1";
   document.head.appendChild(link);
 }
-const store = await import(MODULE_BASE + "scripts/store.js");
-const { draw, seededRng } = await import(MODULE_BASE + "scripts/odds.js");
-const { buildStrip } = await import(MODULE_BASE + "scripts/strip.js");
-const { showReveal } = await import(MODULE_BASE + "scripts/reveal.js");
+const store = await import(MODULE_BASE + "scripts/foundry/store.js");
+const { draw, seededRng } = await import(MODULE_BASE + "scripts/core/odds.js");
+const { buildStrip } = await import(MODULE_BASE + "scripts/core/strip.js");
+const { showReveal } = await import(MODULE_BASE + "scripts/foundry/reveal.js");
 try { store.registerSettings(); } catch (e) { if (!/already registered/i.test(String(e))) throw e; }
 store.registerIndexFields();
 

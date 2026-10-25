@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { buildStrip, STRIP_LENGTH, LAND_INDEX, fillerSource } from "../module/scripts/strip.js";
-import { draw, seededRng, rarityRank, flattenPool } from "../module/scripts/odds.js";
+import { buildStrip, STRIP_LENGTH, LAND_INDEX, fillerSource } from "../module/scripts/core/strip.js";
+import { draw, seededRng, rarityRank, flattenPool } from "../module/scripts/core/odds.js";
 import { POOLS, BOX, BOXES } from "../harness/sample.js";
 
 describe("buildStrip", () => {

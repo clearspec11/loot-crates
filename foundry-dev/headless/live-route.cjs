@@ -54,7 +54,7 @@ async function join(browser, user) {
   await page.waitForFunction(() => window.game?.ready, null, { timeout: 120000 });
   // What main.js does first: the branch's words, from its own lang/en.json
   // (the installed release may have no language file, or older words).
-  await page.evaluate(async base => (await import(base + "scripts/i18n.js")).loadStrings(), MODULE_BASE);
+  await page.evaluate(async base => (await import(base + "scripts/core/i18n.js")).loadStrings(), MODULE_BASE);
   // The branch's code in place of the installed module's, as main.js wires it.
   await page.evaluate(async base => {
     globalThis.canvas?.app?.ticker?.stop();
@@ -65,14 +65,14 @@ async function join(browser, user) {
       await new Promise(r => { link.onload = r; link.onerror = r; });
     }
     game.socket.off("module.loot-crates");
-    const store = await import(base + "scripts/store.js");
+    const store = await import(base + "scripts/foundry/store.js");
     try { store.registerSettings(); } catch { /* the installed module registered them */ }
     try { store.registerIndexFields?.(); } catch { /* already in CONFIG */ }
-    const socket = await import(base + "scripts/socket.js");
+    const socket = await import(base + "scripts/foundry/socket.js");
     socket.registerSocket();
-    const { storeRedraw } = await import(base + "scripts/redraw.js");
-    const { refreshShop, registerShopHooks } = await import(base + "scripts/shop.js");
-    const { refreshManager } = await import(base + "scripts/manager.js");
+    const { storeRedraw } = await import(base + "scripts/core/redraw.js");
+    const { refreshShop, registerShopHooks } = await import(base + "scripts/foundry/shop.js");
+    const { refreshManager } = await import(base + "scripts/foundry/manager.js");
     const redraw = storeRedraw({ refreshShop, refreshManager });
     store.setStoreListener(redraw);
     for (const key of store.WORLD_KEYS) {
@@ -82,9 +82,9 @@ async function join(browser, user) {
     registerShopHooks?.(globalThis.Hooks);
     // The branch's sidebar buttons (route.js) in place of the installed
     // module's, as main.js wires them, drawn again on the open directory.
-    const route = await import(base + "scripts/route.js");
-    const { openShop } = await import(base + "scripts/shop.js");
-    const { openManager } = await import(base + "scripts/manager.js");
+    const route = await import(base + "scripts/views/route.js");
+    const { openShop } = await import(base + "scripts/foundry/shop.js");
+    const { openManager } = await import(base + "scripts/foundry/manager.js");
     // The installed module's hook calls addDirectoryButtons (route.js); left
     // in, its buttons are drawn first and open the installed shop and
     // manager, which this page's redraw no longer reaches.
@@ -183,7 +183,7 @@ const closeOurs = page => page?.evaluate(() => { for (const a of [...foundry.app
 
     // 5. Every game off the shelf, by the GM's toggles: the player's empty shelf.
     shelf = await gm.page.evaluate(async base => {
-      const store = await import(base + "scripts/store.js");
+      const store = await import(base + "scripts/foundry/store.js");
       return Object.fromEntries(Object.values(store.getBoxes()).map(b => [b.id, b.rules?.shelved]));
     }, MODULE_BASE);
     await gm.page.locator('#loot-crates-manager .lc-tabs [data-tab="boxes"]').click();
@@ -225,7 +225,7 @@ const closeOurs = page => page?.evaluate(() => { for (const a of [...foundry.app
     if (gm && shelf) {
       try {
         out.restored = await gm.page.evaluate(async ({ base, was }) => {
-          const store = await import(base + "scripts/store.js");
+          const store = await import(base + "scripts/foundry/store.js");
           for (const [id, flag] of Object.entries(was)) {
             await store.updateBox(id, f => {
               const rules = { ...(f.rules ?? {}) };

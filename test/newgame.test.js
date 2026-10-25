@@ -7,17 +7,17 @@
 */
 import { describe, it, expect } from "vitest";
 import en from "../module/lang/en.json";
-import { setStrings } from "../module/scripts/i18n.js";
-import { NEW_DEFAULTS, NEW_TITLE, EDIT_TITLE, COPY_TITLE, DELETE_TITLE, editorTitle, deleteTitle, deleteGameText, deletedNotice, newDraft, crateFromPool, copyOf, copyName, addLabel, addedNotice } from "../module/scripts/newgame.js";
-import { drawnIds, deckOdds } from "../module/scripts/deck.js";
-import { liveRoundOf, newRound } from "../module/scripts/round.js";
-import { stockOf } from "../module/scripts/limits.js";
-import { DEFAULT_WEIGHTS, DEFAULT_PRICE_GP } from "../module/scripts/config.js";
-import { WELL_DEFAULTS } from "../module/scripts/well.js";
-import { DICE_DEFAULTS } from "../module/scripts/dicegame.js";
-import { DECK_DEFAULTS } from "../module/scripts/deck.js";
-import { ROULETTE_DEFAULTS } from "../module/scripts/roulette.js";
-import { kindOf } from "../module/scripts/kinds.js";
+import { setStrings } from "../module/scripts/core/i18n.js";
+import { NEW_DEFAULTS, NEW_TITLE, EDIT_TITLE, COPY_TITLE, DELETE_TITLE, editorTitle, deleteTitle, deleteGameText, deletedNotice, newDraft, crateFromPool, copyOf, copyName, addLabel, addedNotice } from "../module/scripts/views/newgame.js";
+import { drawnIds, deckOdds } from "../module/scripts/games/deck.js";
+import { liveRoundOf, newRound } from "../module/scripts/core/round.js";
+import { stockOf } from "../module/scripts/core/limits.js";
+import { DEFAULT_WEIGHTS, DEFAULT_PRICE_GP } from "../module/scripts/core/config.js";
+import { WELL_DEFAULTS } from "../module/scripts/games/well.js";
+import { DICE_DEFAULTS } from "../module/scripts/games/dicegame.js";
+import { DECK_DEFAULTS } from "../module/scripts/games/deck.js";
+import { ROULETTE_DEFAULTS } from "../module/scripts/games/roulette.js";
+import { kindOf } from "../module/scripts/games/kinds.js";
 
 const KINDS = ["crate", "well", "dice", "deck", "roulette", "auction"];
 

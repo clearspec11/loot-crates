@@ -88,7 +88,7 @@ async function join(browser, user) {
   await page.waitForFunction(() => window.game?.ready, null, { timeout: 120000 });
   // What main.js does first: the branch's words, from its own lang/en.json
   // (the installed release may have no language file, or older words).
-  await page.evaluate(async base => (await import(base + "scripts/i18n.js")).loadStrings(), MODULE_BASE);
+  await page.evaluate(async base => (await import(base + "scripts/core/i18n.js")).loadStrings(), MODULE_BASE);
   // The branch's code in place of the installed module's, as main.js wires it.
   await page.evaluate(async base => {
     globalThis.canvas?.app?.ticker?.stop();
@@ -99,14 +99,14 @@ async function join(browser, user) {
       await new Promise(r => { link.onload = r; link.onerror = r; });
     }
     game.socket.off("module.loot-crates");
-    const store = await import(base + "scripts/store.js");
+    const store = await import(base + "scripts/foundry/store.js");
     try { store.registerSettings(); } catch { /* the installed module registered them */ }
     try { store.registerIndexFields?.(); } catch { /* already in CONFIG */ }
-    const socket = await import(base + "scripts/socket.js");
+    const socket = await import(base + "scripts/foundry/socket.js");
     socket.registerSocket();
-    const { storeRedraw } = await import(base + "scripts/redraw.js");
-    const { refreshShop, registerShopHooks } = await import(base + "scripts/shop.js");
-    const { refreshManager } = await import(base + "scripts/manager.js");
+    const { storeRedraw } = await import(base + "scripts/core/redraw.js");
+    const { refreshShop, registerShopHooks } = await import(base + "scripts/foundry/shop.js");
+    const { refreshManager } = await import(base + "scripts/foundry/manager.js");
     const redraw = storeRedraw({ refreshShop, refreshManager });
     store.setStoreListener(redraw);
     for (const key of store.WORLD_KEYS) {
@@ -114,7 +114,7 @@ async function join(browser, user) {
       if (cfg && !String(cfg.onChange ?? "").includes("storeChanged")) cfg.onChange = () => redraw(key);
     }
     registerShopHooks?.(Hooks);
-    const { sealChatCard, watchAgain, preSealItem } = await import(base + "scripts/reveal.js");
+    const { sealChatCard, watchAgain, preSealItem } = await import(base + "scripts/foundry/reveal.js");
     Hooks.on("renderChatMessageHTML", sealChatCard);
     Hooks.on("renderChatMessageHTML", watchAgain);
     for (const h of [...(Hooks.events?.createItem ?? [])]) if (h.fn?.name === "preSealItem") Hooks.off("createItem", h.id);
@@ -138,8 +138,8 @@ const hide = page => page.evaluate(() => {
 // The GM's side: seed the game, note what is to be restored.
 async function seed(gm) {
   return gm.evaluate(async ({ base, name, manual }) => {
-    const store = await import(base + "scripts/store.js");
-    const { toCopper } = await import(base + "scripts/currency.js");
+    const store = await import(base + "scripts/foundry/store.js");
+    const { toCopper } = await import(base + "scripts/core/currency.js");
     const folder = game.folders.find(f => f.type === "Actor" && f.name === "Loot Crates Test");
     const actor = game.actors.find(a => a.name === "Crate Tester" && a.folder?.id === folder?.id);
     if (!actor) throw new Error("no Crate Tester in Loot Crates Test: run live-pull.js first");
@@ -174,7 +174,7 @@ async function restore(gm, before, state) {
         await actor.update({ "system.currency": state.wonPurse });
         out.purse = "put back after the spend";
       }
-      const store = await import(base + "scripts/store.js");
+      const store = await import(base + "scripts/foundry/store.js");
       if (before.old) { await store.saveBox(before.old); out.game = "restored"; }
       else { const g = Object.values(store.getBoxes()).find(b => b.name === name); out.game = g ? "left seeded (new this run)" : "none"; }
     } catch (err) { out.error = String(err?.stack || err); }
@@ -205,8 +205,8 @@ const readReveal = page => page.evaluate(() => {
 // for a refused refund). Returns the dialog's text and what followed.
 async function refundFromLog(gm, { rowId, press }) {
   return gm.evaluate(async ({ base, rowId, press }) => {
-    const { openManager } = await import(base + "scripts/manager.js");
-    const store = await import(base + "scripts/store.js");
+    const { openManager } = await import(base + "scripts/foundry/manager.js");
+    const store = await import(base + "scripts/foundry/store.js");
     const wait = ms => new Promise(r => setTimeout(r, ms));
     const until = async (fn, ms = 15000) => { for (let t = 0; t < ms && !fn(); t += 50) await wait(50); return fn(); };
     const click = el => el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, button: 0, view: window }));
@@ -258,7 +258,7 @@ async function refundFromLog(gm, { rowId, press }) {
 
     // 1. One bet through the shop's own button, every frame watched.
     out.bet = await pl.page.evaluate(async ({ base, gameId }) => {
-      const { openShop } = await import(base + "scripts/shop.js");
+      const { openShop } = await import(base + "scripts/foundry/shop.js");
       const actor = game.actors.find(a => a.isOwner && a.type === "character");
       if (!actor) throw new Error(`${game.user.name} owns no character`);
       const app = openShop();
@@ -368,7 +368,7 @@ async function refundFromLog(gm, { rowId, press }) {
       if (revealApp) { await revealApp.close(); await new Promise(r => setTimeout(r, 500)); }
       const focusAfterClose = document.activeElement === buy ? "Buy" : document.activeElement?.tagName ?? "none";
       const chatAfter = { sealedNow: document.querySelectorAll(".lc-chat--sealed").length };
-      const { getLog } = await import(base + "scripts/store.js");
+      const { getLog } = await import(base + "scripts/foundry/store.js");
       const row = getLog().filter(r => r.boxId === gameId).sort((a, b) => b.at - a.at)[0] ?? null;
       return {
         start, buyLabels: labels, purseBefore, purseAfter: foundry.utils.deepClone(actor.system.currency), reveal,
@@ -385,7 +385,7 @@ async function refundFromLog(gm, { rowId, press }) {
     out.gmReveal = await readReveal(gm.page);
     if (watcher) out.watcherReveal = await readReveal(watcher.page);
     out.gmSide = await gm.page.evaluate(async ({ base, before, rowId }) => {
-      const { toCopper } = await import(base + "scripts/currency.js");
+      const { toCopper } = await import(base + "scripts/core/currency.js");
       const actor = game.actors.get(before.actorId);
       const msg = game.messages.contents.filter(m => m.flags?.["loot-crates"]?.logId === rowId).at(-1) ?? null;
       return {
@@ -409,7 +409,7 @@ async function refundFromLog(gm, { rowId, press }) {
         }, { actorId: before.actorId, leaveCp: Math.max(0, net - 500) });
         const refused = await refundFromLog(gm.page, { rowId: row.id, press: "close|ok" });
         const after = await gm.page.evaluate(async ({ base, actorId, rowId }) => {
-          const { getLog } = await import(base + "scripts/store.js");
+          const { getLog } = await import(base + "scripts/foundry/store.js");
           const actor = game.actors.get(actorId);
           return { purse: foundry.utils.deepClone(actor.system.currency), refunded: getLog().find(r => r.id === rowId)?.refunded ?? null, messages: game.messages.size };
         }, { base: MODULE_BASE, actorId: before.actorId, rowId: row.id });
@@ -423,7 +423,7 @@ async function refundFromLog(gm, { rowId, press }) {
     // 3. The refund proper.
     out.refund = await refundFromLog(gm.page, { rowId: row.id, press: "yes" });
     out.afterRefund = await gm.page.evaluate(async ({ base, before }) => {
-      const { toCopper } = await import(base + "scripts/currency.js");
+      const { toCopper } = await import(base + "scripts/core/currency.js");
       const actor = game.actors.get(before.actorId);
       return { purseCp: toCopper(actor.system.currency), purse: foundry.utils.deepClone(actor.system.currency), items: actor.items.size };
     }, { base: MODULE_BASE, before });
@@ -441,7 +441,7 @@ async function refundFromLog(gm, { rowId, press }) {
     const b = out.bet, r = b.reveal;
     const faces = (row.faces ?? []).map(String);
     const net = Math.round(row.payoutCp) - Math.round(row.price * 100);
-    const purseDelta = (await gm.page.evaluate(async ({ base, purse }) => (await import(base + "scripts/currency.js")).toCopper(purse), { base: MODULE_BASE, purse: b.purseAfter })) - before.purseCp;
+    const purseDelta = (await gm.page.evaluate(async ({ base, purse }) => (await import(base + "scripts/core/currency.js")).toCopper(purse), { base: MODULE_BASE, purse: b.purseAfter })) - before.purseCp;
     out.checks = {
       cardWords: b.start.buy === "Live dice: Bet 10 gp" && b.start.rule === "Roll 3d6 over the dragon's 3" && b.start.pays === "Pays 3× the stake: 30 gp" && b.start.pills.join(", ") === "Win >99%, Lose <1%",
       rowIsTheRoll: faces.length === 3 && row.target === 3 && row.price === 10 && typeof row.win === "boolean" && row.payoutCp === (row.win ? 3000 : 0) && row.itemId === null,

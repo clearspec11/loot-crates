@@ -53,7 +53,7 @@ const shot = process.argv.includes("--shot") ? process.argv[process.argv.indexOf
     await page.waitForFunction(() => window.game?.ready, null, { timeout: 120000 });
     // What main.js does first: the branch's words, from its own lang/en.json
     // (the installed release may have no language file, or older words).
-    await page.evaluate(async base => (await import(base + "scripts/i18n.js")).loadStrings(), MODULE_BASE);
+    await page.evaluate(async base => (await import(base + "scripts/core/i18n.js")).loadStrings(), MODULE_BASE);
 
     // The branch's code and styles; the manager opened as the GM opens it.
     await page.evaluate(async base => {
@@ -64,16 +64,16 @@ const shot = process.argv.includes("--shot") ? process.argv[process.argv.indexOf
         document.head.append(link);
         await new Promise(r => { link.onload = r; link.onerror = r; });
       }
-      const store = await import(base + "scripts/store.js");
+      const store = await import(base + "scripts/foundry/store.js");
       try { store.registerSettings(); } catch { /* the installed module registered them */ }
       try { store.registerIndexFields?.(); } catch { /* already in CONFIG */ }
-      const { openManager } = await import(base + "scripts/manager.js");
+      const { openManager } = await import(base + "scripts/foundry/manager.js");
       globalThis.__lcApp = openManager();
       for (let t = 0; t < 100 && !globalThis.__lcApp.element?.querySelector(".lc-tabs [data-tab]"); t++) await new Promise(r => setTimeout(r, 50));
     }, MODULE_BASE);
     const win = page.locator("#loot-crates-manager");
     await win.waitFor({ timeout: 10000 });
-    const boxThere = await page.evaluate(async ({ base, name }) => Object.values((await import(base + "scripts/store.js")).getBoxes()).some(b => b.name === name), { base: MODULE_BASE, name: BOX });
+    const boxThere = await page.evaluate(async ({ base, name }) => Object.values((await import(base + "scripts/foundry/store.js")).getBoxes()).some(b => b.name === name), { base: MODULE_BASE, name: BOX });
     if (!boxThere) throw new Error(`no ${BOX}: run live-ui.js first`);
 
     // Size the window down by its handle, as a GM drags it.
@@ -125,14 +125,14 @@ const shot = process.argv.includes("--shot") ? process.argv[process.argv.indexOf
     });
     const dialog = () => page.evaluate(() => { const d = [...document.querySelectorAll(".application.lc-dialog")].pop(); return d ? { title: d.querySelector(".window-title")?.textContent.trim() ?? null, focusInside: d.contains(document.activeElement) } : null; });
     const waitDialog = (open, ms = 8000) => page.waitForFunction(o => !![...document.querySelectorAll(".application.lc-dialog")].pop() === o, open, { timeout: ms }).then(() => true, () => false);
-    const boxesBefore = await page.evaluate(async base => JSON.stringify((await import(base + "scripts/store.js")).getBoxes()), MODULE_BASE);
+    const boxesBefore = await page.evaluate(async base => JSON.stringify((await import(base + "scripts/foundry/store.js")).getBoxes()), MODULE_BASE);
 
     // 1. The Boxes tab, by its real tab button.
     await win.locator('.lc-tabs [data-tab="boxes"]').click();
     await page.waitForFunction(() => globalThis.__lcApp.tab === "boxes" && globalThis.__lcApp.element.querySelector(".lc-toolbar--boxes"), null, { timeout: 10000 });
     await page.waitForTimeout(400);
     out.boxes = await readPane();
-    const crate = await page.evaluate(async ({ base, name }) => Object.values((await import(base + "scripts/store.js")).getBoxes()).find(b => b.name === name)?.id ?? null, { base: MODULE_BASE, name: BOX });
+    const crate = await page.evaluate(async ({ base, name }) => Object.values((await import(base + "scripts/foundry/store.js")).getBoxes()).find(b => b.name === name)?.id ?? null, { base: MODULE_BASE, name: BOX });
     out.boxes.crateTag = await page.evaluate(id => globalThis.__lcApp.element.querySelector(`[data-action="editBox"][data-box="${id}"]`)?.closest("tr")?.querySelector(".lc-kind")?.textContent ?? null, crate);
     if (shot) await page.screenshot({ path: shot });
 
@@ -143,7 +143,7 @@ const shot = process.argv.includes("--shot") ? process.argv[process.argv.indexOf
       await page.locator('.application.lc-dialog button[data-action="cancel"]').last().click();
       out.edit.closed = await waitDialog(false);
     }
-    out.edit.written = (await page.evaluate(async base => JSON.stringify((await import(base + "scripts/store.js")).getBoxes()), MODULE_BASE)) !== boxesBefore;
+    out.edit.written = (await page.evaluate(async base => JSON.stringify((await import(base + "scripts/foundry/store.js")).getBoxes()), MODULE_BASE)) !== boxesBefore;
 
     // 3. The Pull log, by its real tab button.
     await win.locator('.lc-tabs [data-tab="log"]').click();
@@ -167,7 +167,7 @@ const shot = process.argv.includes("--shot") ? process.argv[process.argv.indexOf
       out.keyboard.escapeClosed = await waitDialog(false, 3000);
       if (!out.keyboard.escapeClosed) { await page.locator('.application.lc-dialog button[data-action="cancel"]').last().click(); out.keyboard.cancelClosed = await waitDialog(false); }
     }
-    out.keyboard.written = (await page.evaluate(async base => JSON.stringify((await import(base + "scripts/store.js")).getBoxes()), MODULE_BASE)) !== boxesBefore;
+    out.keyboard.written = (await page.evaluate(async base => JSON.stringify((await import(base + "scripts/foundry/store.js")).getBoxes()), MODULE_BASE)) !== boxesBefore;
 
     const b = out.boxes, l = out.log;
     // Rows stack in a pane of STACK_AT or narrower; a wider one shows the

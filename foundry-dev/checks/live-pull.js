@@ -7,9 +7,9 @@
 //     NODE_PATH=$(npm root -g) node foundry-dev/headless/run.cjs foundry-dev/checks/live-pull.js
 //
 // Never deletes anything. Each run adds one item to the test actor.
-const { performPull } = await import(MODULE_BASE + "scripts/pull.js");
-const { entriesFromCompendium } = await import(MODULE_BASE + "scripts/store.js");
-const { seededRng } = await import(MODULE_BASE + "scripts/odds.js");
+const { performPull } = await import(MODULE_BASE + "scripts/foundry/pull.js");
+const { entriesFromCompendium } = await import(MODULE_BASE + "scripts/foundry/store.js");
+const { seededRng } = await import(MODULE_BASE + "scripts/core/odds.js");
 
 const FOLDER = "Loot Crates Test";
 let folder = game.folders.find(f => f.type === "Actor" && f.name === FOLDER);

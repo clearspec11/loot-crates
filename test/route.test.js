@@ -6,7 +6,7 @@
 */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createDocument } from "./minidom.js";
-import { sidebarButtons, addDirectoryButtons, shopControls, shopEmptyHTML, managerNavHTML, MANAGE_CONTROL } from "../module/scripts/route.js";
+import { sidebarButtons, addDirectoryButtons, shopControls, shopEmptyHTML, managerNavHTML, MANAGE_CONTROL } from "../module/scripts/views/route.js";
 
 // The Items directory's header as Foundry draws it, with its own buttons.
 function directory(doc) {

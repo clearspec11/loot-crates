@@ -30,7 +30,7 @@ Needs Playwright with Chromium 146 or newer (Foundry v14 refuses older) and a Ga
 
 `checks/live-payoff.js` buys one crate as the GM through `requestPull` and reports, from the real reveal: the button reads Skip and is enabled mid-spin, the strip is aria-hidden, the result says "Added to <actor>'s inventory" and "<n> gp left", focus is on Close after landing, Open item renders the granted item's sheet, and the newest chat card's content link resolves via `fromUuid` to the granted item. It then opens two reveals with distinct requestIds (no purchase), reports their origins (cascaded, not stacked), closes the first mid-spin and confirms its chat card still posts.
 
-Every check loads the branch's words first, as main.js does: once the world is ready, `run.cjs` and each headless script import the branch's `scripts/i18n.js` and call `loadStrings()`, which fetches the branch's own `lang/en.json` from `MODULE_BASE`. The installed release may have no language file (1.0.1 has none) or older words, and the branch's scripts read every sentence by key (`i18n.js`), so without it a check would see keys like `LOOTCRATES.Shop.Title` where the text should be.
+Every check loads the branch's words first, as main.js does: once the world is ready, `run.cjs` and each headless script import the branch's `scripts/core/i18n.js` and call `loadStrings()`, which fetches the branch's own `lang/en.json` from `MODULE_BASE`. The installed release may have no language file (1.0.1 has none) or older words, and the branch's scripts read every sentence by key (`i18n.js`), so without it a check would see keys like `LOOTCRATES.Shop.Title` where the text should be.
 
 Rules for the dev world: test actors only in that folder, never delete anything, never touch other folders' actors.
 

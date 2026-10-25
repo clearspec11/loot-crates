@@ -10,7 +10,8 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { shippable } from "../scripts/package-files.mjs";
-import { STARTER_PACKS } from "../module/scripts/starter.js";
+import { scriptFiles } from "./scripts.js";
+import { STARTER_PACKS } from "../module/scripts/views/starter.js";
 
 const root = path.resolve(import.meta.dirname, "..");
 const read = f => readFileSync(path.join(root, f), "utf8");
@@ -207,8 +208,7 @@ describe("docs/COMPATIBILITY.md", () => {
   });
 
   // What the scripts use, read from their source.
-  const dir = path.join(root, "module/scripts");
-  const src = readdirSync(dir).filter(f => f.endsWith(".js")).map(f => readFileSync(path.join(dir, f), "utf8")).join("\n");
+  const src = scriptFiles().map(s => s.src).join("\n");
   const uses = re => [...new Set([...src.matchAll(re)].map(m => (m[1] ?? m[0]).replace(/\?/g, "")))];
   const hooks = uses(/\b[Hh]ooks\.(?:on|once)\(\s*"([^"]+)"/g);
   const paths = uses(/\bfoundry(?:\??\.[A-Za-z_$][\w$]*)+/g);

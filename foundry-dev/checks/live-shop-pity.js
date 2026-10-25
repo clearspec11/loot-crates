@@ -37,16 +37,16 @@ if (!document.querySelector("link[data-loot-crates]")) {
 }
 globalThis.canvas?.app?.ticker?.stop();
 game.socket.off("module.loot-crates");
-const store = await import(MODULE_BASE + "scripts/store.js");
+const store = await import(MODULE_BASE + "scripts/foundry/store.js");
 try { store.registerSettings(); } catch { /* the installed module registered them */ }
 try { store.registerIndexFields(); } catch { /* already in CONFIG */ }
-const socket = await import(MODULE_BASE + "scripts/socket.js");
+const socket = await import(MODULE_BASE + "scripts/foundry/socket.js");
 socket.registerSocket();
-const { storeRedraw } = await import(MODULE_BASE + "scripts/redraw.js");
-const { openShop, refreshShop } = await import(MODULE_BASE + "scripts/shop.js");
-const { refreshManager } = await import(MODULE_BASE + "scripts/manager.js");
-const { shopOdds, flattenPool, rarityRank } = await import(MODULE_BASE + "scripts/odds.js");
-const { RARITY_SHORT, RARITY_LABEL } = await import(MODULE_BASE + "scripts/config.js");
+const { storeRedraw } = await import(MODULE_BASE + "scripts/core/redraw.js");
+const { openShop, refreshShop } = await import(MODULE_BASE + "scripts/foundry/shop.js");
+const { refreshManager } = await import(MODULE_BASE + "scripts/foundry/manager.js");
+const { shopOdds, flattenPool, rarityRank } = await import(MODULE_BASE + "scripts/core/odds.js");
+const { RARITY_SHORT, RARITY_LABEL } = await import(MODULE_BASE + "scripts/core/config.js");
 const redraw = storeRedraw({ refreshShop, refreshManager });
 store.setStoreListener(redraw);
 for (const key of store.WORLD_KEYS) {

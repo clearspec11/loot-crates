@@ -4,8 +4,8 @@
 */
 import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
 
-vi.mock("../module/scripts/shop.js", () => ({ refreshShop: vi.fn() }));
-vi.mock("../module/scripts/chat.js", () => ({ postRefundCard: vi.fn() }));
+vi.mock("../module/scripts/foundry/shop.js", () => ({ refreshShop: vi.fn() }));
+vi.mock("../module/scripts/foundry/chat.js", () => ({ postRefundCard: vi.fn() }));
 
 let log = [];
 let CrateManager, logRarityNote;
@@ -13,7 +13,7 @@ beforeAll(async () => {
   const escapeHTML = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   vi.stubGlobal("foundry", { utils: { escapeHTML, deepClone: v => structuredClone(v) }, applications: { api: { ApplicationV2: class {}, DialogV2: class {} } } });
   vi.stubGlobal("game", { settings: { get: (_m, key) => (key === "pullLog" ? log : {}) } });
-  ({ CrateManager, logRarityNote } = await import("../module/scripts/manager.js"));
+  ({ CrateManager, logRarityNote } = await import("../module/scripts/foundry/manager.js"));
 });
 afterAll(() => vi.unstubAllGlobals());
 

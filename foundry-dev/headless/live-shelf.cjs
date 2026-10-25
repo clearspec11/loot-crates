@@ -56,7 +56,7 @@ async function join(browser, user) {
   await page.waitForFunction(() => window.game?.ready, null, { timeout: 120000 });
   // What main.js does first: the branch's words, from its own lang/en.json
   // (the installed release may have no language file, or older words).
-  await page.evaluate(async base => (await import(base + "scripts/i18n.js")).loadStrings(), MODULE_BASE);
+  await page.evaluate(async base => (await import(base + "scripts/core/i18n.js")).loadStrings(), MODULE_BASE);
   // The branch's code in place of the installed module's, as main.js wires it.
   await page.evaluate(async base => {
     globalThis.canvas?.app?.ticker?.stop();
@@ -67,14 +67,14 @@ async function join(browser, user) {
       await new Promise(r => { link.onload = r; link.onerror = r; });
     }
     game.socket.off("module.loot-crates");
-    const store = await import(base + "scripts/store.js");
+    const store = await import(base + "scripts/foundry/store.js");
     try { store.registerSettings(); } catch { /* the installed module registered them */ }
     try { store.registerIndexFields?.(); } catch { /* already in CONFIG */ }
-    const socket = await import(base + "scripts/socket.js");
+    const socket = await import(base + "scripts/foundry/socket.js");
     socket.registerSocket();
-    const { storeRedraw } = await import(base + "scripts/redraw.js");
-    const { refreshShop, registerShopHooks } = await import(base + "scripts/shop.js");
-    const { refreshManager } = await import(base + "scripts/manager.js");
+    const { storeRedraw } = await import(base + "scripts/core/redraw.js");
+    const { refreshShop, registerShopHooks } = await import(base + "scripts/foundry/shop.js");
+    const { refreshManager } = await import(base + "scripts/foundry/manager.js");
     const redraw = storeRedraw({ refreshShop, refreshManager });
     store.setStoreListener(redraw);
     for (const key of store.WORLD_KEYS) {
@@ -89,8 +89,8 @@ async function join(browser, user) {
 // The GM's side: the pool the crate draws from, and what is to be restored.
 async function prepare(gm) {
   return gm.evaluate(async ({ base, name }) => {
-    const store = await import(base + "scripts/store.js");
-    const { toCopper } = await import(base + "scripts/currency.js");
+    const store = await import(base + "scripts/foundry/store.js");
+    const { toCopper } = await import(base + "scripts/core/currency.js");
     const folder = game.folders.find(f => f.type === "Actor" && f.name === "Loot Crates Test");
     const actor = game.actors.find(a => a.name === "Crate Tester" && a.folder?.id === folder?.id);
     if (!actor) throw new Error("no Crate Tester in Loot Crates Test");
@@ -121,13 +121,13 @@ async function restore(gm, before) {
   return gm.evaluate(async ({ base, before }) => {
     const out = {};
     try {
-      const store = await import(base + "scripts/store.js");
+      const store = await import(base + "scripts/foundry/store.js");
       const made = Object.keys(store.getBoxes()).filter(id => !before.boxIds.includes(id));
       for (const id of made) await store.removeBox(id);
       out.removed = made.length;
       out.boxesAsBefore = Object.keys(store.getBoxes()).sort().join() === [...before.boxIds].sort().join();
       if (!before.shopOpen) { await store.setShopOpen(false); out.shop = "closed again"; }
-      const { toCopper } = await import(base + "scripts/currency.js");
+      const { toCopper } = await import(base + "scripts/core/currency.js");
       out.purseCp = toCopper(game.actors.get(before.actorId).system.currency);
     } catch (err) { out.error = String(err?.stack || err); }
     return out;
@@ -195,7 +195,7 @@ const pressToggle = (gm, boxId) => gm.evaluate(async ({ boxId }) => {
     // The player's shop, open on Crate Tester for the whole check.
     out.shopOpened = await pl.page.evaluate(async ({ base }) => {
       const wait = ms => new Promise(r => setTimeout(r, ms));
-      const { openShop } = await import(base + "scripts/shop.js");
+      const { openShop } = await import(base + "scripts/foundry/shop.js");
       const actor = game.actors.find(a => a.isOwner && a.type === "character" && a.name === "Crate Tester");
       if (!actor) throw new Error(`${game.user.name} doesn't own Crate Tester`);
       const app = openShop();
@@ -211,8 +211,8 @@ const pressToggle = (gm, boxId) => gm.evaluate(async ({ boxId }) => {
       const until = async (fn, ms = 10000) => { for (let t = 0; t < ms && !fn(); t += 50) await wait(50); return fn(); };
       const click = el => el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, button: 0, view: window }));
       const type = (el, v) => { el.focus(); el.value = v; el.dispatchEvent(new Event("input", { bubbles: true })); el.dispatchEvent(new Event("change", { bubbles: true })); };
-      const store = await import(base + "scripts/store.js");
-      const { openManager } = await import(base + "scripts/manager.js");
+      const store = await import(base + "scripts/foundry/store.js");
+      const { openManager } = await import(base + "scripts/foundry/manager.js");
       const had = new Set(Object.keys(store.getBoxes()));
       const app = openManager();
       await until(() => app.element?.querySelector('.lc-tabs [data-tab="boxes"]'));
@@ -278,14 +278,14 @@ const pressToggle = (gm, boxId) => gm.evaluate(async ({ boxId }) => {
 
     // 4. A pull sent anyway.
     out.sent = await pl.page.evaluate(async ({ base, boxId }) => {
-      const { requestPull } = await import(base + "scripts/socket.js");
+      const { requestPull } = await import(base + "scripts/foundry/socket.js");
       const actor = game.actors.find(a => a.isOwner && a.name === "Crate Tester");
       try { await requestPull({ boxId, actorId: actor.id, price: 1 }); return { refused: false }; }
       catch (err) { return { refused: true, message: err.message }; }
     }, { base: MODULE_BASE, boxId });
     out.after = await gm.page.evaluate(async ({ base, before }) => {
-      const store = await import(base + "scripts/store.js");
-      const { toCopper } = await import(base + "scripts/currency.js");
+      const store = await import(base + "scripts/foundry/store.js");
+      const { toCopper } = await import(base + "scripts/core/currency.js");
       const actor = game.actors.get(before.actorId);
       return { purseCp: toCopper(actor.system.currency), items: actor.items.filter(i => !i.flags?.dnd5e?.cachedFor).length, newRows: store.getLog().filter(r => !before.logIds.includes(r.id)).length };
     }, { base: MODULE_BASE, before });

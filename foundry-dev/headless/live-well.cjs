@@ -64,7 +64,7 @@ async function join(browser, user) {
   await page.waitForFunction(() => window.game?.ready, null, { timeout: 120000 });
   // What main.js does first: the branch's words, from its own lang/en.json
   // (the installed release may have no language file, or older words).
-  await page.evaluate(async base => (await import(base + "scripts/i18n.js")).loadStrings(), MODULE_BASE);
+  await page.evaluate(async base => (await import(base + "scripts/core/i18n.js")).loadStrings(), MODULE_BASE);
   // The branch's code in place of the installed module's, as main.js wires it.
   await page.evaluate(async base => {
     globalThis.canvas?.app?.ticker?.stop();
@@ -75,14 +75,14 @@ async function join(browser, user) {
       await new Promise(r => { link.onload = r; link.onerror = r; });
     }
     game.socket.off("module.loot-crates");
-    const store = await import(base + "scripts/store.js");
+    const store = await import(base + "scripts/foundry/store.js");
     try { store.registerSettings(); } catch { /* the installed module registered them */ }
     try { store.registerIndexFields?.(); } catch { /* already in CONFIG */ }
-    const socket = await import(base + "scripts/socket.js");
+    const socket = await import(base + "scripts/foundry/socket.js");
     socket.registerSocket();
-    const { storeRedraw } = await import(base + "scripts/redraw.js");
-    const { refreshShop, registerShopHooks } = await import(base + "scripts/shop.js");
-    const { refreshManager } = await import(base + "scripts/manager.js");
+    const { storeRedraw } = await import(base + "scripts/core/redraw.js");
+    const { refreshShop, registerShopHooks } = await import(base + "scripts/foundry/shop.js");
+    const { refreshManager } = await import(base + "scripts/foundry/manager.js");
     const redraw = storeRedraw({ refreshShop, refreshManager });
     store.setStoreListener(redraw);
     for (const key of store.WORLD_KEYS) {
@@ -90,7 +90,7 @@ async function join(browser, user) {
       if (cfg && !String(cfg.onChange ?? "").includes("storeChanged")) cfg.onChange = () => redraw(key);
     }
     registerShopHooks?.(Hooks);
-    const { sealChatCard, watchAgain, preSealItem } = await import(base + "scripts/reveal.js");
+    const { sealChatCard, watchAgain, preSealItem } = await import(base + "scripts/foundry/reveal.js");
     Hooks.on("renderChatMessageHTML", sealChatCard);
     Hooks.on("renderChatMessageHTML", watchAgain);
     for (const h of [...(Hooks.events?.createItem ?? [])]) if (h.fn?.name === "preSealItem") Hooks.off("createItem", h.id);
@@ -102,7 +102,7 @@ async function join(browser, user) {
 // The GM's side: seed the well, note what is to be restored.
 async function seed(gm) {
   return gm.evaluate(async ({ base, name }) => {
-    const store = await import(base + "scripts/store.js");
+    const store = await import(base + "scripts/foundry/store.js");
     const folder = game.folders.find(f => f.type === "Actor" && f.name === "Loot Crates Test");
     const actor = game.actors.find(a => a.name === "Crate Tester" && a.folder?.id === folder?.id);
     if (!actor) throw new Error("no Crate Tester in Loot Crates Test: run live-pull.js first");
@@ -110,7 +110,7 @@ async function seed(gm) {
     const pool = Object.values(store.getPools()).find(p => p.name === "Live UI pool");
     if (!pool) throw new Error("no Live UI pool: run live-ui.js first");
     const old = Object.values(store.getBoxes()).find(b => b.name === name) ?? null;
-    const { throwsToday } = await import(base + "scripts/well.js");
+    const { throwsToday } = await import(base + "scripts/games/well.js");
     // This check turns the day with the calendar, so the calendar is the
     // day from the first throw: with it off (dnd5e 6's default) a day ends
     // at a long rest instead (clock.js; live-well-day.cjs checks that).
@@ -125,7 +125,7 @@ async function seed(gm) {
     return {
       actorId: actor.id, wellId: well.id, old, worldTime: game.time.worldTime, today, base: base0, cap: well.rules.cap,
       calendarEnabled: !!(calendar.config?.enabled && calendar.prefs?.visible), calendar,
-      purseCp: (await import(base + "scripts/currency.js")).toCopper(actor.system.currency),
+      purseCp: (await import(base + "scripts/core/currency.js")).toCopper(actor.system.currency),
       logIds: store.getLog().map(r => r.id), messages: game.messages.size,
     };
   }, { base: MODULE_BASE, name: WELL });
@@ -142,7 +142,7 @@ async function restore(gm, before) {
         await game.settings.set("dnd5e", "calendarPreferences", before.calendar.prefs);
         out.calendar = "restored";
       }
-      const store = await import(base + "scripts/store.js");
+      const store = await import(base + "scripts/foundry/store.js");
       if (before.old) { await store.saveBox(before.old); out.well = "restored"; }
       else { const w = Object.values(store.getBoxes()).find(b => b.name === name); out.well = w ? "left seeded (new this run)" : "none"; }
     } catch (err) { out.error = String(err?.stack || err); }
@@ -173,7 +173,7 @@ async function restore(gm, before) {
 
     // 1. Five throws through the shop's own button.
     out.throws = await pl.page.evaluate(async ({ base, wellId, count }) => {
-      const { openShop } = await import(base + "scripts/shop.js");
+      const { openShop } = await import(base + "scripts/foundry/shop.js");
       const actor = game.actors.find(a => a.isOwner && a.type === "character");
       if (!actor) throw new Error(`${game.user.name} owns no character`);
       const app = openShop();
@@ -230,8 +230,8 @@ async function restore(gm, before) {
     }, { base: MODULE_BASE, wellId: before.wellId, count: THROWS });
 
     out.gmAfterThrows = await gm.page.evaluate(async ({ base, before }) => {
-      const store = await import(base + "scripts/store.js");
-      const { toCopper } = await import(base + "scripts/currency.js");
+      const store = await import(base + "scripts/foundry/store.js");
+      const { toCopper } = await import(base + "scripts/core/currency.js");
       const actor = game.actors.get(before.actorId);
       const rows = store.getLog().filter(r => !before.logIds.includes(r.id));
       return { purseCp: toCopper(actor.system.currency), newRows: rows.map(r => ({ kind: r.kind, outcome: r.outcome, day: r.day, price: r.price, payoutCp: r.payoutCp, itemId: r.itemId })), messages: game.messages.size };
@@ -273,10 +273,10 @@ async function restore(gm, before) {
       }, { want, since });
       const advancedAt = await press("advance");
       const cleared = await until(false, advancedAt);
-      const todayAfter = await gm.page.evaluate(async ({ base, before }) => (await import(base + "scripts/store.js")).todayKey(before.actorId), { base: MODULE_BASE, before });
+      const todayAfter = await gm.page.evaluate(async ({ base, before }) => (await import(base + "scripts/foundry/store.js")).todayKey(before.actorId), { base: MODULE_BASE, before });
       const reversedAt = await press("reverse");
       const back = await until(true, reversedAt);
-      const todayBack = await gm.page.evaluate(async ({ base, before }) => (await import(base + "scripts/store.js")).todayKey(before.actorId), { base: MODULE_BASE, before });
+      const todayBack = await gm.page.evaluate(async ({ base, before }) => (await import(base + "scripts/foundry/store.js")).todayKey(before.actorId), { base: MODULE_BASE, before });
       const ok = cleared.ms != null && cleared.ms <= 2000 && !cleared.off && cleared.why === "" && cleared.count === `0 of ${before.cap} throws today` && todayAfter !== before.today
         && back.ms != null && back.ms <= 2000 && back.off && back.why === `The well is still until tomorrow (${before.cap} of ${before.cap} today)` && todayBack === before.today;
       return { ok, show, cleared, todayAfter, back, todayBack };
@@ -284,9 +284,9 @@ async function restore(gm, before) {
 
     // 3. The GM refunds one throw from the folded row.
     out.refund = await gm.page.evaluate(async ({ base, before }) => {
-      const { openManager } = await import(base + "scripts/manager.js");
-      const store = await import(base + "scripts/store.js");
-      const { toCopper } = await import(base + "scripts/currency.js");
+      const { openManager } = await import(base + "scripts/foundry/manager.js");
+      const store = await import(base + "scripts/foundry/store.js");
+      const { toCopper } = await import(base + "scripts/core/currency.js");
       const wait = ms => new Promise(r => setTimeout(r, ms));
       const until = async (fn, ms = 15000) => { for (let t = 0; t < ms && !fn(); t += 50) await wait(50); return fn(); };
       const click = el => el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, button: 0, view: window }));

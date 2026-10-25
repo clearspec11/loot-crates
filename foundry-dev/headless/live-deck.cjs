@@ -82,7 +82,7 @@ async function join(browser, user) {
   await page.waitForFunction(() => window.game?.ready, null, { timeout: 120000 });
   // What main.js does first: the branch's words, from its own lang/en.json
   // (the installed release may have no language file, or older words).
-  await page.evaluate(async base => (await import(base + "scripts/i18n.js")).loadStrings(), MODULE_BASE);
+  await page.evaluate(async base => (await import(base + "scripts/core/i18n.js")).loadStrings(), MODULE_BASE);
   // The branch's code in place of the installed module's, as main.js wires it.
   await page.evaluate(async base => {
     globalThis.canvas?.app?.ticker?.stop();
@@ -93,14 +93,14 @@ async function join(browser, user) {
       await new Promise(r => { link.onload = r; link.onerror = r; });
     }
     game.socket.off("module.loot-crates");
-    const store = await import(base + "scripts/store.js");
+    const store = await import(base + "scripts/foundry/store.js");
     try { store.registerSettings(); } catch { /* the installed module registered them */ }
     try { store.registerIndexFields?.(); } catch { /* already in CONFIG */ }
-    const socket = await import(base + "scripts/socket.js");
+    const socket = await import(base + "scripts/foundry/socket.js");
     socket.registerSocket();
-    const { storeRedraw } = await import(base + "scripts/redraw.js");
-    const { refreshShop, registerShopHooks } = await import(base + "scripts/shop.js");
-    const { refreshManager } = await import(base + "scripts/manager.js");
+    const { storeRedraw } = await import(base + "scripts/core/redraw.js");
+    const { refreshShop, registerShopHooks } = await import(base + "scripts/foundry/shop.js");
+    const { refreshManager } = await import(base + "scripts/foundry/manager.js");
     const redraw = storeRedraw({ refreshShop, refreshManager });
     store.setStoreListener(redraw);
     for (const key of store.WORLD_KEYS) {
@@ -108,7 +108,7 @@ async function join(browser, user) {
       if (cfg && !String(cfg.onChange ?? "").includes("storeChanged")) cfg.onChange = () => redraw(key);
     }
     registerShopHooks?.(Hooks);
-    const { sealChatCard, watchAgain, preSealItem } = await import(base + "scripts/reveal.js");
+    const { sealChatCard, watchAgain, preSealItem } = await import(base + "scripts/foundry/reveal.js");
     Hooks.on("renderChatMessageHTML", sealChatCard);
     Hooks.on("renderChatMessageHTML", watchAgain);
     for (const h of [...(Hooks.events?.createItem ?? [])]) if (h.fn?.name === "preSealItem") Hooks.off("createItem", h.id);
@@ -120,8 +120,8 @@ async function join(browser, user) {
 // The GM's side: seed the deck, note what is to be restored.
 async function seed(gm) {
   return gm.evaluate(async ({ base, name, streakMin }) => {
-    const store = await import(base + "scripts/store.js");
-    const { toCopper } = await import(base + "scripts/currency.js");
+    const store = await import(base + "scripts/foundry/store.js");
+    const { toCopper } = await import(base + "scripts/core/currency.js");
     const folder = game.folders.find(f => f.type === "Actor" && f.name === "Loot Crates Test");
     const actor = game.actors.find(a => a.name === "Crate Tester" && a.folder?.id === folder?.id);
     if (!actor) throw new Error("no Crate Tester in Loot Crates Test: run live-pull.js first");
@@ -141,7 +141,7 @@ async function seed(gm) {
     });
     // A draw at this deck within its window would make the first draw here
     // the second in a row (deck.js streakWindowMs): wait it out.
-    const { streakWindowMs } = await import(base + "scripts/deck.js");
+    const { streakWindowMs } = await import(base + "scripts/games/deck.js");
     const last = Math.max(0, ...store.getLog().filter(r => r.kind === "deck" && r.boxId === deck.id && r.actorId === actor.id && !r.refunded).map(r => r.at || 0));
     const waitMs = Math.max(0, last + streakWindowMs(deck) + 2000 - Date.now());
     if (waitMs) await new Promise(r => setTimeout(r, waitMs));
@@ -158,7 +158,7 @@ async function restore(gm, before) {
   return gm.evaluate(async ({ base, before, name }) => {
     const out = {};
     try {
-      const store = await import(base + "scripts/store.js");
+      const store = await import(base + "scripts/foundry/store.js");
       if (before.old) { await store.saveBox(before.old); out.deck = "restored"; }
       else { const d = Object.values(store.getBoxes()).find(b => b.name === name); out.deck = d ? "left seeded (new this run)" : "none"; }
     } catch (err) { out.error = String(err?.stack || err); }
@@ -301,7 +301,7 @@ function armDraw({ base, deckId, press }) {
     const openAfter = [...document.querySelectorAll(".application.lc-reveal")].length;
     const previousClosed = press === "again" ? !openBefore.at(-1)?.isConnected : null;
     const actor = game.actors.find(a => a.isOwner && a.type === "character");
-    const { getLog } = await import(base + "scripts/store.js");
+    const { getLog } = await import(base + "scripts/foundry/store.js");
     const row = getLog().filter(r => r.boxId === deckId).sort((a, b) => b.at - a.at)[0] ?? null;
     noteFocus(rv);
     return {
@@ -318,8 +318,8 @@ function armDraw({ base, deckId, press }) {
 // The GM refunds a row from the Pull log, as a person does: the tab, Refund, Yes.
 async function refundFromLog(gm, rowId) {
   return gm.evaluate(async ({ base, rowId }) => {
-    const { openManager } = await import(base + "scripts/manager.js");
-    const store = await import(base + "scripts/store.js");
+    const { openManager } = await import(base + "scripts/foundry/manager.js");
+    const store = await import(base + "scripts/foundry/store.js");
     const wait = ms => new Promise(r => setTimeout(r, ms));
     const until = async (fn, ms = 15000) => { for (let t = 0; t < ms && !fn(); t += 50) await wait(50); return fn(); };
     const click = el => el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, button: 0, view: window }));
@@ -367,7 +367,7 @@ async function refundFromLog(gm, rowId) {
     }
     // The shop, open on Crate Tester.
     out.shop = await pl.page.evaluate(async ({ base, deckId }) => {
-      const { openShop } = await import(base + "scripts/shop.js");
+      const { openShop } = await import(base + "scripts/foundry/shop.js");
       const actor = game.actors.find(a => a.isOwner && a.type === "character");
       if (!actor) throw new Error(`${game.user.name} owns no character`);
       const app = openShop();
@@ -385,8 +385,8 @@ async function refundFromLog(gm, rowId) {
     out.second = await drawAndWatch(pl.page, { deckId: before.deckId, press: "again" });
     out.gmSecond = await readReveal(gm.page);
     const rows = await gm.page.evaluate(async ({ base, before }) => {
-      const store = await import(base + "scripts/store.js");
-      const { toCopper } = await import(base + "scripts/currency.js");
+      const store = await import(base + "scripts/foundry/store.js");
+      const { toCopper } = await import(base + "scripts/core/currency.js");
       const actor = game.actors.get(before.actorId);
       const fresh = store.getLog().filter(r => !before.logIds.includes(r.id)).sort((a, b) => a.at - b.at);
       return { purseCp: toCopper(actor.system.currency), items: actor.items.size, messages: game.messages.size, rows: fresh.map(r => ({ id: r.id, cardId: r.cardId, tone: r.tone, price: r.price, payoutCp: r.payoutCp, itemId: r.itemId, streak: r.streak, once: r.once })) };
@@ -404,7 +404,7 @@ async function refundFromLog(gm, rowId) {
     if (!second) throw new Error("no row for the second draw");
     out.refund = await refundFromLog(gm.page, second.id);
     out.afterRefund = await gm.page.evaluate(async ({ base, before }) => {
-      const { toCopper } = await import(base + "scripts/currency.js");
+      const { toCopper } = await import(base + "scripts/core/currency.js");
       const actor = game.actors.get(before.actorId);
       return { purseCp: toCopper(actor.system.currency), items: actor.items.size };
     }, { base: MODULE_BASE, before });
@@ -422,7 +422,7 @@ async function refundFromLog(gm, rowId) {
     // is refunded) with the shop left open, and read the card as it stands:
     // still raised just before the end, back down just after, untouched.
     if (STREAK_MIN != null) {
-      const firstAt = await gm.page.evaluate(async ({ base, id }) => (await import(base + "scripts/store.js")).getLog().find(r => r.id === id)?.at ?? null, { base: MODULE_BASE, id: rows.rows[0]?.id });
+      const firstAt = await gm.page.evaluate(async ({ base, id }) => (await import(base + "scripts/foundry/store.js")).getLog().find(r => r.id === id)?.at ?? null, { base: MODULE_BASE, id: rows.rows[0]?.id });
       const endsAt = (firstAt ?? Date.now()) + before.windowMs;
       out.afterWindow = await pl.page.evaluate(async ({ deckId, endsAt }) => {
         const wait = ms => new Promise(r => setTimeout(r, Math.max(0, ms)));

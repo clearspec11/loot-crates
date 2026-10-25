@@ -12,20 +12,20 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createDocument } from "./minidom.js";
 
-vi.mock("../module/scripts/reveal.js", () => ({ showReveal: vi.fn(async () => ({ landed: Promise.resolve() })), showRound: vi.fn(() => ({ landed: Promise.resolve(), instant: true })), boxHeld: vi.fn(() => false) }));
-vi.mock("../module/scripts/chat.js", () => ({ postPullCard: vi.fn(async () => null) }));
+vi.mock("../module/scripts/foundry/reveal.js", () => ({ showReveal: vi.fn(async () => ({ landed: Promise.resolve() })), showRound: vi.fn(() => ({ landed: Promise.resolve(), instant: true })), boxHeld: vi.fn(() => false) }));
+vi.mock("../module/scripts/foundry/chat.js", () => ({ postPullCard: vi.fn(async () => null) }));
 
-const { registerSocket } = await import("../module/scripts/socket.js");
-const { registerSettings, getLog, getRounds, enqueueWrite, saveRound } = await import("../module/scripts/store.js");
-const { openRound, resolveRound, recoverRounds, cancelRound, tableTick, stopWatching, onTable } = await import("../module/scripts/table.js");
-const { refundPull } = await import("../module/scripts/refund.js");
-const { stakesOf, tableDue, stakeNote, ROUND_GRACE_MS } = await import("../module/scripts/round.js");
-const { toCopper } = await import("../module/scripts/currency.js");
-const { getKind } = await import("../module/scripts/kinds.js");
-const auction = await import("../module/scripts/auction.js");
-const { tableBodyHTML } = await import("../module/scripts/tableview.js");
-const { logTableHTML } = await import("../module/scripts/logtable.js");
-const { postPullCard } = await import("../module/scripts/chat.js");
+const { registerSocket } = await import("../module/scripts/foundry/socket.js");
+const { registerSettings, getLog, getRounds, enqueueWrite, saveRound } = await import("../module/scripts/foundry/store.js");
+const { openRound, resolveRound, recoverRounds, cancelRound, tableTick, stopWatching, onTable } = await import("../module/scripts/foundry/table.js");
+const { refundPull } = await import("../module/scripts/foundry/refund.js");
+const { stakesOf, tableDue, stakeNote, ROUND_GRACE_MS } = await import("../module/scripts/core/round.js");
+const { toCopper } = await import("../module/scripts/core/currency.js");
+const { getKind } = await import("../module/scripts/games/kinds.js");
+const auction = await import("../module/scripts/games/auction.js");
+const { tableBodyHTML } = await import("../module/scripts/views/tableview.js");
+const { logTableHTML } = await import("../module/scripts/views/logtable.js");
+const { postPullCard } = await import("../module/scripts/foundry/chat.js");
 
 const KIND = getKind("auction");
 const tick = () => new Promise(r => setTimeout(r, 0));
@@ -353,7 +353,7 @@ describe("the hammer", () => {
 
   it("is brought down by the GM's watch when the gavel runs out", async () => {
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
-    const { watchTables } = await import("../module/scripts/table.js");
+    const { watchTables } = await import("../module/scripts/foundry/table.js");
     const round = await openRound("lot", { windowMs: 20000 });
     await world.deliver(bid(round, "a1", "p1", 10));
     expect(watchTables()).toBe(false);

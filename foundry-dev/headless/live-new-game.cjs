@@ -50,7 +50,7 @@ async function join(browser, user) {
   await page.waitForFunction(() => window.game?.ready, null, { timeout: 120000 });
   // What main.js does first: the branch's words, from its own lang/en.json
   // (the installed release may have no language file, or older words).
-  await page.evaluate(async base => (await import(base + "scripts/i18n.js")).loadStrings(), MODULE_BASE);
+  await page.evaluate(async base => (await import(base + "scripts/core/i18n.js")).loadStrings(), MODULE_BASE);
   // The branch's code in place of the installed module's, as main.js wires it.
   await page.evaluate(async base => {
     globalThis.canvas?.app?.ticker?.stop();
@@ -61,14 +61,14 @@ async function join(browser, user) {
       await new Promise(r => { link.onload = r; link.onerror = r; });
     }
     game.socket.off("module.loot-crates");
-    const store = await import(base + "scripts/store.js");
+    const store = await import(base + "scripts/foundry/store.js");
     try { store.registerSettings(); } catch { /* the installed module registered them */ }
     try { store.registerIndexFields?.(); } catch { /* already in CONFIG */ }
-    const socket = await import(base + "scripts/socket.js");
+    const socket = await import(base + "scripts/foundry/socket.js");
     socket.registerSocket();
-    const { storeRedraw } = await import(base + "scripts/redraw.js");
-    const { refreshShop, registerShopHooks } = await import(base + "scripts/shop.js");
-    const { refreshManager } = await import(base + "scripts/manager.js");
+    const { storeRedraw } = await import(base + "scripts/core/redraw.js");
+    const { refreshShop, registerShopHooks } = await import(base + "scripts/foundry/shop.js");
+    const { refreshManager } = await import(base + "scripts/foundry/manager.js");
     const redraw = storeRedraw({ refreshShop, refreshManager });
     store.setStoreListener(redraw);
     for (const key of store.WORLD_KEYS) {
@@ -121,7 +121,7 @@ const untilCards = (pl, pred, since, ms = 4000) => pl.evaluate(async ({ pred, si
 
     // The world as it is: the boxes, the pool, the shop's state.
     out.before = await gm.page.evaluate(async base => {
-      const store = await import(base + "scripts/store.js");
+      const store = await import(base + "scripts/foundry/store.js");
       const pool = Object.values(store.getPools()).find(p => p.name === "Live UI pool");
       if (!pool) throw new Error("no Live UI pool: run live-ui.js first");
       return { boxIds: Object.keys(store.getBoxes()), poolId: pool.id, shopOpen: store.isShopOpen() };
@@ -131,7 +131,7 @@ const untilCards = (pl, pred, since, ms = 4000) => pl.evaluate(async ({ pred, si
     // The player's shop, open on Crate Tester.
     out.shop = await pl.page.evaluate(async ({ base, read }) => {
       (0, eval)(read);
-      const { openShop } = await import(base + "scripts/shop.js");
+      const { openShop } = await import(base + "scripts/foundry/shop.js");
       const actor = game.actors.find(a => a.isOwner && a.type === "character" && a.name === "Crate Tester");
       if (!actor) throw new Error(`${game.user.name} doesn't own Crate Tester`);
       const app = openShop();
@@ -144,7 +144,7 @@ const untilCards = (pl, pred, since, ms = 4000) => pl.evaluate(async ({ pred, si
     // The manager on the Boxes tab, by its tab.
     await gm.page.evaluate(async ({ base, helpers }) => {
       (0, eval)(helpers);
-      const { openManager } = await import(base + "scripts/manager.js");
+      const { openManager } = await import(base + "scripts/foundry/manager.js");
       __lc.app = openManager();
       await __lc.until(() => __lc.app.element?.querySelector('.lc-tabs [data-tab="boxes"]'));
       __lc.click(__lc.app.element.querySelector('.lc-tabs [data-tab="boxes"]'));
@@ -154,7 +154,7 @@ const untilCards = (pl, pred, since, ms = 4000) => pl.evaluate(async ({ pred, si
 
     // 1. New dice game, then Cancel.
     out.dice = await gm.page.evaluate(async base => {
-      const store = await import(base + "scripts/store.js");
+      const store = await import(base + "scripts/foundry/store.js");
       const rows = __lc.rows();
       const btn = __lc.app.element.querySelector('[data-action="addDice"]');
       btn.focus();
@@ -194,7 +194,7 @@ const untilCards = (pl, pred, since, ms = 4000) => pl.evaluate(async ({ pred, si
     const t2save = Date.now();
     await dlg.locator('button[data-action="ok"]').click();
     out.crate.saved = await gm.page.evaluate(async ({ base, before, name }) => {
-      const store = await import(base + "scripts/store.js");
+      const store = await import(base + "scripts/foundry/store.js");
       const fresh = () => Object.values(store.getBoxes()).filter(b => !before.includes(b.id));
       await __lc.until(() => fresh().length && !__lc.dialog(), 8000);
       await __lc.until(() => __lc.status(), 3000);
@@ -229,7 +229,7 @@ const untilCards = (pl, pred, since, ms = 4000) => pl.evaluate(async ({ pred, si
 
     // 3. New box, then Cancel.
     out.cancel = await gm.page.evaluate(async base => {
-      const store = await import(base + "scripts/store.js");
+      const store = await import(base + "scripts/foundry/store.js");
       const before = { boxes: Object.keys(store.getBoxes()).length, rows: __lc.rows(), html: __lc.app.element.querySelector(".lc-table")?.innerHTML.length };
       __lc.click(__lc.app.element.querySelector('[data-action="addBox"]'));
       await __lc.until(() => __lc.dialog()?.querySelector('input[name="name"]'), 8000);
@@ -265,7 +265,7 @@ const untilCards = (pl, pred, since, ms = 4000) => pl.evaluate(async ({ pred, si
     await gm.page.locator(".application.lc-dialog").last().locator('input[name="price"]').fill("9");
     await gm.page.locator(".application.lc-dialog").last().locator('button[data-action="ok"]').click();
     out.fromPool.saved = await gm.page.evaluate(async ({ base, known }) => {
-      const store = await import(base + "scripts/store.js");
+      const store = await import(base + "scripts/foundry/store.js");
       const fresh = () => Object.values(store.getBoxes()).filter(b => !known.includes(b.id));
       await __lc.until(() => fresh().length && !__lc.dialog(), 8000);
       await __lc.until(() => __lc.status(), 3000);
@@ -303,7 +303,7 @@ const untilCards = (pl, pred, since, ms = 4000) => pl.evaluate(async ({ pred, si
     // Only the boxes this run created go.
     try {
       out.deleted = gm ? await gm.page.evaluate(async ({ base, ids }) => {
-        const store = await import(base + "scripts/store.js");
+        const store = await import(base + "scripts/foundry/store.js");
         const gone = [];
         for (const id of ids) if (store.getBoxes()[id]) { await store.removeBox(id); gone.push(id); }
         try { await globalThis.__lc?.app?.close(); } catch { /* closed */ }

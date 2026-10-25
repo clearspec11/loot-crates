@@ -24,7 +24,7 @@
 // Never deletes anything. Writes the module's own settings (two pools, the
 // big one emptied again at the end) and,
 // on the first run only, one Item folder with two items.
-const store = await import(MODULE_BASE + "scripts/store.js");
+const store = await import(MODULE_BASE + "scripts/foundry/store.js");
 try { store.registerSettings(); } catch (e) { if (!/already registered/i.test(String(e))) throw e; }
 store.registerIndexFields();
 
@@ -73,7 +73,7 @@ if (!document.querySelector("link[data-loot-crates]")) {
 const pick = compendium.entries.slice(0, 121);
 const [newcomer, ...seed] = [pick[120], ...pick.slice(0, 120)];
 await store.savePool({ id: "live-drop-big", name: "Live drop big pool", entries: seed, pools: [] });
-const { openManager } = await import(MODULE_BASE + "scripts/manager.js");
+const { openManager } = await import(MODULE_BASE + "scripts/foundry/manager.js");
 // Every info toast from here on, to show the drops that went in raised none.
 const infoToasts = [];
 const realInfo = ui.notifications.info;

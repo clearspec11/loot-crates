@@ -7,7 +7,7 @@
 */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
-vi.mock("../module/scripts/sound.js", () => ({ playTick: vi.fn(), playSlow: vi.fn(), playReveal: vi.fn() }));
+vi.mock("../module/scripts/foundry/sound.js", () => ({ playTick: vi.fn(), playSlow: vi.fn(), playReveal: vi.fn() }));
 
 const fakeElement = () => ({
   className: "", textContent: "", innerHTML: "", clientWidth: 600, dataset: {}, children: [], hidden: false,
@@ -41,8 +41,8 @@ class FakeApp {
 }
 
 vi.stubGlobal("foundry", { applications: { api: { ApplicationV2: FakeApp }, instances: new Map() }, utils: { escapeHTML: s => s } });
-const { showReveal, heldState, isSealedItem, sealChatCard, _resetHolds } = await import("../module/scripts/reveal.js");
-const { registerKind, _resetKinds } = await import("../module/scripts/kinds.js");
+const { showReveal, heldState, isSealedItem, sealChatCard, _resetHolds } = await import("../module/scripts/foundry/reveal.js");
+const { registerKind, _resetKinds } = await import("../module/scripts/games/kinds.js");
 
 // A controller the test lands by hand, so the result is held until then.
 let controllers;

@@ -3,9 +3,9 @@
   only, removes only the item it granted, and puts the box's stock back.
 */
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { registerSettings, appendLog, getLog, getBoxes, getActorState, enqueueWrite } from "../module/scripts/store.js";
-import { refundPull, describeRefund, grantedItem } from "../module/scripts/refund.js";
-import { toCopper, isWholeCoins } from "../module/scripts/currency.js";
+import { registerSettings, appendLog, getLog, getBoxes, getActorState, enqueueWrite } from "../module/scripts/foundry/store.js";
+import { refundPull, describeRefund, grantedItem } from "../module/scripts/foundry/refund.js";
+import { toCopper, isWholeCoins } from "../module/scripts/core/currency.js";
 
 const tick = () => new Promise(r => setTimeout(r, 0));
 
@@ -193,7 +193,7 @@ describe("refundPull and the buyer's pity and no-duplicates record", () => {
   rewritten once (muted, struck through, linked to the pool's source, with
   the time), and no other card is touched.
 */
-const { refundedCardContent, findPullCard, LEGACY_WINDOW_MS } = await import("../module/scripts/chatcard.js");
+const { refundedCardContent, findPullCard, LEGACY_WINDOW_MS } = await import("../module/scripts/views/chatcard.js");
 
 const escapeHTML = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const CARD = `

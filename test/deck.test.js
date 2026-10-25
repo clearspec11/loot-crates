@@ -15,24 +15,24 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createDocument } from "./minidom.js";
 
-vi.mock("../module/scripts/reveal.js", () => ({ showReveal: vi.fn(async () => ({ landed: Promise.resolve() })), heldState: () => null, boxHeld: () => false, onHold: () => () => {}, onRelease: () => () => {} }));
-vi.mock("../module/scripts/sound.js", () => ({ playTick: vi.fn(), playSlow: vi.fn(), playReveal: vi.fn(), playPlop: vi.fn(), playPlink: vi.fn(), playCoinBack: vi.fn(), playBane: vi.fn() }));
+vi.mock("../module/scripts/foundry/reveal.js", () => ({ showReveal: vi.fn(async () => ({ landed: Promise.resolve() })), heldState: () => null, boxHeld: () => false, onHold: () => () => {}, onRelease: () => () => {} }));
+vi.mock("../module/scripts/foundry/sound.js", () => ({ playTick: vi.fn(), playSlow: vi.fn(), playReveal: vi.fn(), playPlop: vi.fn(), playPlink: vi.fn(), playCoinBack: vi.fn(), playBane: vi.fn() }));
 
-const { DECK, DECK_DEFAULTS, DECK_TIMING, STREAK_MS, STREAK_MINUTES, streakMinutesOf, streakWindowMs, streakMinutesFromForm, streakAt, windowText, deckRiseFieldsHTML, cardsOf, drawnIds, deckPlan, deckOdds, streakOf, streakEndsAt, priceAt, nextPrice, ordinal, mountDeck, deckLandTime, cardsLeftText, streakLine, deckRulesText, draftDeck, deckPreview, deckPreviewHTML, deckSummary, deckOddsHTML } = await import("../module/scripts/deck.js");
-const { getKind } = await import("../module/scripts/kinds.js");
-const { performPull, PullError, PRICE_SKEW_MS } = await import("../module/scripts/pull.js");
-const { registerSocket } = await import("../module/scripts/socket.js");
-const { registerSettings, appendLog, getLog } = await import("../module/scripts/store.js");
-const { refundPull, describeRefund, refundCoins } = await import("../module/scripts/refund.js");
-const { postPullCard, postRefundCard } = await import("../module/scripts/chat.js");
+const { DECK, DECK_DEFAULTS, DECK_TIMING, STREAK_MS, STREAK_MINUTES, streakMinutesOf, streakWindowMs, streakMinutesFromForm, streakAt, windowText, deckRiseFieldsHTML, cardsOf, drawnIds, deckPlan, deckOdds, streakOf, streakEndsAt, priceAt, nextPrice, ordinal, mountDeck, deckLandTime, cardsLeftText, streakLine, deckRulesText, draftDeck, deckPreview, deckPreviewHTML, deckSummary, deckOddsHTML } = await import("../module/scripts/games/deck.js");
+const { getKind } = await import("../module/scripts/games/kinds.js");
+const { performPull, PullError, PRICE_SKEW_MS } = await import("../module/scripts/foundry/pull.js");
+const { registerSocket } = await import("../module/scripts/foundry/socket.js");
+const { registerSettings, appendLog, getLog } = await import("../module/scripts/foundry/store.js");
+const { refundPull, describeRefund, refundCoins } = await import("../module/scripts/foundry/refund.js");
+const { postPullCard, postRefundCard } = await import("../module/scripts/foundry/chat.js");
 // manager.js reads foundry.applications.api when it is imported.
 globalThis.foundry = { applications: { api: { ApplicationV2: class {}, DialogV2: class {} } }, utils: { escapeHTML: s => String(s) } };
-const { logPayoutNote } = await import("../module/scripts/manager.js");
+const { logPayoutNote } = await import("../module/scripts/foundry/manager.js");
 delete globalThis.foundry;
-const { showReveal } = await import("../module/scripts/reveal.js");
-const sound = await import("../module/scripts/sound.js");
-const { toCopper, isWholeCoins } = await import("../module/scripts/currency.js");
-const { seededRng } = await import("../module/scripts/odds.js");
+const { showReveal } = await import("../module/scripts/foundry/reveal.js");
+const sound = await import("../module/scripts/foundry/sound.js");
+const { toCopper, isWholeCoins } = await import("../module/scripts/core/currency.js");
+const { seededRng } = await import("../module/scripts/core/odds.js");
 
 const tick = () => new Promise(r => setTimeout(r, 0));
 

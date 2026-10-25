@@ -14,18 +14,18 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { createDocument } from "./minidom.js";
 
-vi.mock("../module/scripts/reveal.js", () => ({ showReveal: vi.fn(async () => ({ landed: Promise.resolve() })), heldState: () => null, boxHeld: () => false, onHold: () => () => {}, onRelease: () => () => {} }));
-vi.mock("../module/scripts/sound.js", () => ({ playTick: vi.fn(), playSlow: vi.fn(), playReveal: vi.fn(), playPlop: vi.fn(), playPlink: vi.fn(), playCoinBack: vi.fn() }));
+vi.mock("../module/scripts/foundry/reveal.js", () => ({ showReveal: vi.fn(async () => ({ landed: Promise.resolve() })), heldState: () => null, boxHeld: () => false, onHold: () => () => {}, onRelease: () => () => {} }));
+vi.mock("../module/scripts/foundry/sound.js", () => ({ playTick: vi.fn(), playSlow: vi.fn(), playReveal: vi.fn(), playPlop: vi.fn(), playPlink: vi.fn(), playCoinBack: vi.fn() }));
 
-const { DICE, parseFormula, winChance, resolve, facesOf, rollData, rollFaces, diceOdds, mountDice, landTime, DICE_TIMING, verdictText, diceRulesText, draftDice, dicePreview, dicePreviewHTML, diceSummary, setDice3D } = await import("../module/scripts/dicegame.js");
-const { getKind } = await import("../module/scripts/kinds.js");
-const { performPull, PullError } = await import("../module/scripts/pull.js");
-const { registerSocket } = await import("../module/scripts/socket.js");
-const { registerSettings, appendLog, getLog } = await import("../module/scripts/store.js");
-const { refundPull, describeRefund, refundCoins, shortMessage } = await import("../module/scripts/refund.js");
-const { showReveal } = await import("../module/scripts/reveal.js");
-const sound = await import("../module/scripts/sound.js");
-const { settle, toCopper, isWholeCoins } = await import("../module/scripts/currency.js");
+const { DICE, parseFormula, winChance, resolve, facesOf, rollData, rollFaces, diceOdds, mountDice, landTime, DICE_TIMING, verdictText, diceRulesText, draftDice, dicePreview, dicePreviewHTML, diceSummary, setDice3D } = await import("../module/scripts/games/dicegame.js");
+const { getKind } = await import("../module/scripts/games/kinds.js");
+const { performPull, PullError } = await import("../module/scripts/foundry/pull.js");
+const { registerSocket } = await import("../module/scripts/foundry/socket.js");
+const { registerSettings, appendLog, getLog } = await import("../module/scripts/foundry/store.js");
+const { refundPull, describeRefund, refundCoins, shortMessage } = await import("../module/scripts/foundry/refund.js");
+const { showReveal } = await import("../module/scripts/foundry/reveal.js");
+const sound = await import("../module/scripts/foundry/sound.js");
+const { settle, toCopper, isWholeCoins } = await import("../module/scripts/core/currency.js");
 
 const tick = () => new Promise(r => setTimeout(r, 0));
 
@@ -333,11 +333,11 @@ describe("the GM's socket path", () => {
   it("never puts a Roll in a ChatMessage: the dice path has no message of its own", () => {
     // The code, with its comments taken out (they explain why).
     const code = file => readFileSync(new URL(file, import.meta.url), "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
-    const src = code("../module/scripts/dicegame.js");
+    const src = code("../module/scripts/games/dicegame.js");
     expect(src).not.toMatch(/ChatMessage/);
     expect(src).not.toMatch(/toMessage\(/);
     expect(src).not.toMatch(/\brolls\s*:/);
-    const bridge = code("../module/scripts/dicereveal.js");
+    const bridge = code("../module/scripts/foundry/dicereveal.js");
     expect(bridge).not.toMatch(/ChatMessage/);
     expect(bridge).toMatch(/showForRoll\(roll, game\.user, false\)/);
   });
@@ -405,7 +405,7 @@ describe("the money, both ways", () => {
     expect((await refundPull(rowId)).status).toBe("already");
     expect(actor.writes).toHaveLength(1);
     // The player's refund card says what left the purse, not that nothing moved.
-    const { postRefundCard } = await import("../module/scripts/chat.js");
+    const { postRefundCard } = await import("../module/scripts/foundry/chat.js");
     globalThis.ChatMessage = { create: async data => data, getSpeaker: () => ({ actor: actor.id }) };
     const card = await postRefundCard({ row: getLog()[0], actor, removedItem: null });
     expect(card.content).toContain("20 gp was taken back from their purse: the 30 gp won, less the 10 gp stake.");

@@ -9,16 +9,16 @@
 */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-vi.mock("../module/scripts/reveal.js", () => ({ showReveal: vi.fn(async () => ({ landed: Promise.resolve() })), heldState: () => null, boxHeld: () => false, onHold: () => () => {}, onRelease: () => () => {} }));
+vi.mock("../module/scripts/foundry/reveal.js", () => ({ showReveal: vi.fn(async () => ({ landed: Promise.resolve() })), heldState: () => null, boxHeld: () => false, onHold: () => () => {}, onRelease: () => () => {} }));
 
-const { registerKind, getKind, kindOf, kindIds, kindFor, gotText, PullError, _resetKinds } = await import("../module/scripts/kinds.js");
-const { performPull } = await import("../module/scripts/pull.js");
-const { registerSocket } = await import("../module/scripts/socket.js");
-const { registerSettings, appendLog, getLog, getActorState } = await import("../module/scripts/store.js");
-const { refundPull, describeRefund, refundCoins } = await import("../module/scripts/refund.js");
-const { postPullCard } = await import("../module/scripts/chat.js");
-const { showReveal } = await import("../module/scripts/reveal.js");
-const { toCopper, isWholeCoins } = await import("../module/scripts/currency.js");
+const { registerKind, getKind, kindOf, kindIds, kindFor, gotText, PullError, _resetKinds } = await import("../module/scripts/games/kinds.js");
+const { performPull } = await import("../module/scripts/foundry/pull.js");
+const { registerSocket } = await import("../module/scripts/foundry/socket.js");
+const { registerSettings, appendLog, getLog, getActorState } = await import("../module/scripts/foundry/store.js");
+const { refundPull, describeRefund, refundCoins } = await import("../module/scripts/foundry/refund.js");
+const { postPullCard } = await import("../module/scripts/foundry/chat.js");
+const { showReveal } = await import("../module/scripts/foundry/reveal.js");
+const { toCopper, isWholeCoins } = await import("../module/scripts/core/currency.js");
 
 const tick = () => new Promise(r => setTimeout(r, 0));
 

@@ -16,7 +16,7 @@ if (!document.querySelector("link[data-loot-crates]")) {
   link.dataset.lootCrates = "1";
   document.head.appendChild(link);
 }
-const store = await import(MODULE_BASE + "scripts/store.js");
+const store = await import(MODULE_BASE + "scripts/foundry/store.js");
 try { store.registerSettings(); } catch (e) { if (!/already registered/i.test(String(e))) throw e; }
 store.registerIndexFields();
 const wait = ms => new Promise(r => setTimeout(r, ms));
@@ -28,7 +28,7 @@ const box = Object.values(store.getBoxes()).find(b => b.pools?.some(ref => pools
 if (!box) return { ok: false, error: "no box with a live pool in the world" };
 const storedBefore = JSON.stringify(store.getBoxes()[box.id]);
 
-const { openManager } = await import(MODULE_BASE + "scripts/manager.js");
+const { openManager } = await import(MODULE_BASE + "scripts/foundry/manager.js");
 const app = openManager();
 app.tab = "boxes";
 await app.render();

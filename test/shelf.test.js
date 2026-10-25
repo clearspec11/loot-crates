@@ -4,7 +4,7 @@
   a player's shop leaves the rest out, the GM's keeps them.
 */
 import { describe, it, expect } from "vitest";
-import { onShelf, shelfRules, shelfFor, shelfCountText, shelfRefusal, shelfFieldHTML, shelfToggleHTML, shelfNotice } from "../module/scripts/shelf.js";
+import { onShelf, shelfRules, shelfFor, shelfCountText, shelfRefusal, shelfFieldHTML, shelfToggleHTML, shelfNotice } from "../module/scripts/core/shelf.js";
 
 const A = { id: "a", name: "Gilded Crate", rules: {} };
 const B = { id: "b", name: "Midnight Wheel", kind: "roulette", rules: { shelved: false } };
