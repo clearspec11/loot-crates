@@ -488,10 +488,10 @@
       "CalendarOff": "dnd5e's calendar is off: a day ends at each character's long rest."
     },
     "News": {
-      "Title": "Ready for translation, and steadier days",
-      "Line1": "Every word the module shows now lives in one English language file, so the module can be translated by adding a file for another language. Nothing reads differently in English.",
-      "Line2": "With dnd5e's calendar on, two long rests on the same calendar day (the GM's, then a player's from their sheet) now end one day, not two. Before, the well's cap and a limit per day stayed shut for the next two midnights.",
-      "Line3": "When the GM running the game leaves and another GM takes over, a table round left unspun is still refunded once it goes stale. Before, the new GM's client waited for a reload or the next round."
+      "Title": "Steadier auctions and dice",
+      "Line1": "With Dice So Nice on, Dragon's Teeth now shows the faces and the total the moment the 3D roll ends and lands a frame later, as it does without Dice So Nice. Before, the window coloured the dice and landed in the same instant.",
+      "Line2": "When the GM running the game leaves and another GM takes over during an auction, the new GM's Foundry now brings the gavel down and runs the house bidders. Before, the auction waited for the next bid or a reload, and the gavel never fell.",
+      "Line3": "A name that is missing, such as a deleted character's, now reads as nothing instead of the word \"undefined\" in the module's messages, in English and in a translation."
     },
     "Welcome": {
       "Title": "Loot Crates",

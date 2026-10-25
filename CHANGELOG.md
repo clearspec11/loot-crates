@@ -6,6 +6,12 @@ The newest numbered entry's version is the one in `module/module.json`, and its 
 
 ## Unreleased
 
+- Nothing yet.
+
+## 1.1.1
+
+Steadier auctions and dice.
+
 - With Dice So Nice on, Dragon's Teeth now shows the faces and the total the moment the 3D roll ends and lands a frame later, as it does without Dice So Nice. Before, the window coloured the dice and landed in the same instant.
 - When the GM running the game leaves and another GM takes over during an auction, the new GM's Foundry now brings the gavel down and runs the house bidders. Before, the auction waited for the next bid or a reload, and the gavel never fell.
 - A name that is missing, such as a deleted character's, now reads as nothing instead of the word "undefined" in the module's messages, in English and in a translation.
