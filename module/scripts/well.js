@@ -40,10 +40,11 @@ import { cardShell, oddsRibbon, oddsPills, pityLine, shopReason, shortReason, dr
 import { drawItem, grantData, crateLogRow } from "./crate.js";
 import { PullError, registerKind } from "./kinds.js";
 import { byRest, restDayNote } from "./clock.js";
+import { t, words } from "./i18n.js";
 
 export const WELL_DEFAULTS = { price: 0.1, odds: { nothing: 90, coin: 8, item: 2 }, cap: 3 };
 export const OUTCOMES = ["nothing", "coin", "item"];
-export const OUTCOME_LABEL = { nothing: "Nothing", coin: "Coin back", item: "Item" };
+export const OUTCOME_LABEL = words({ nothing: "LOOTCRATES.Odds.Nothing", coin: "LOOTCRATES.Well.CoinBack", item: "LOOTCRATES.Common.Item" });
 // The pills' and ribbon's swatch for an outcome that isn't a rarity (module.css).
 const OUTCOME_CLASS = { nothing: "lc-rarity-none", coin: "lc-rarity-coin" };
 
@@ -60,7 +61,7 @@ export function throwsToday(log, { boxId, actorId, day }) {
   return (log ?? []).filter(r => r.boxId === boxId && r.actorId === actorId && r.day === day && !r.refunded).length;
 }
 
-export const stillLine = (thrown, cap) => `The well is still until tomorrow (${thrown} of ${cap} today)`;
+export const stillLine = (thrown, cap) => t("LOOTCRATES.Well.Still", { thrown, cap });
 
 // The editor's one-line note about the day the cap counts (store.js
 // dayMode, passed as `day`). With dnd5e's calendar off a day ends at each
@@ -70,7 +71,7 @@ export const stillLine = (thrown, cap) => `The well is still until tomorrow (${t
 export function noClockNote({ hasClock, cap, day = null } = {}) {
   if (byRest(day)) return `<p class="lc-form__hint">${restDayNote(day)}</p>`;
   if (hasClock) return "";
-  return `<p class="lc-form__hint${capOf({ rules: { cap } }) ? " lc-form__hint--warn" : ""}">No calendar: the daily cap will not apply.</p>`;
+  return `<p class="lc-form__hint${capOf({ rules: { cap } }) ? " lc-form__hint--warn" : ""}">${t("LOOTCRATES.Well.NoCalendar")}</p>`;
 }
 
 /*
@@ -113,9 +114,9 @@ async function roll(ctx) {
   const { game, actor, state = {}, rng, log = [], today = null } = ctx;
   const cap = capOf(game);
   const thrown = throwsToday(log, { boxId: game.id, actorId: actor.id, day: today });
-  if (cap && today && thrown >= cap) throw new PullError(`${stillLine(thrown, cap)}.`);
+  if (cap && today && thrown >= cap) throw new PullError(t("LOOTCRATES.Common.Sentence", { text: stillLine(thrown, cap) }));
   const odds = wellOdds(game, ctx.pools, state);
-  if (odds.dry) throw new PullError(`${game.name} is dry: the GM has given it no odds.`);
+  if (odds.dry) throw new PullError(t("LOOTCRATES.Well.DryError", { name: game.name }));
   const pick = weightedPick(odds.rows, r => r.chance, rng)?.key ?? "nothing";
   const common = { outcome: "nothing", day: today, thrown: thrown + 1, cap };
   const quiet = { sinceRare: (state.sinceRare ?? 0) + 1, owned: [...(state.owned ?? [])], pulls: (state.pulls ?? 0) + 1 };
@@ -171,14 +172,19 @@ export function collapseMisses(log = []) {
 }
 
 // "7 throws, nothing", "1 pull, nothing".
-export const throwsText = (n, noun = "throw") => `${n} ${noun}${n === 1 ? "" : "s"}, nothing`;
+const MISS_WORDS = {
+  throw: { one: "LOOTCRATES.Well.ThrowsOne", many: "LOOTCRATES.Well.ThrowsMany", nothingOne: "LOOTCRATES.Well.ThrowsNothingOne", nothingMany: "LOOTCRATES.Well.ThrowsNothingMany" },
+  pull: { one: "LOOTCRATES.Well.PullsOne", many: "LOOTCRATES.Well.PullsMany", nothingOne: "LOOTCRATES.Well.PullsNothingOne", nothingMany: "LOOTCRATES.Well.PullsNothingMany" },
+};
+const missWords = noun => MISS_WORDS[noun] ?? MISS_WORDS.throw;
+export const throwsText = (n, noun = "throw") => t(n === 1 ? missWords(noun).nothingOne : missWords(noun).nothingMany, { count: n });
 
 // The misses a log folded, counted in their own words: "3 throws", "2
 // pulls", "3 throws and 2 pulls".
 export function missCountText(groups = []) {
   const by = new Map();
   for (const g of groups) by.set(g.noun ?? "throw", (by.get(g.noun ?? "throw") ?? 0) + g.rows.length);
-  return [...by].map(([noun, n]) => `${n} ${noun}${n === 1 ? "" : "s"}`).join(" and ");
+  return [...by].map(([noun, n]) => t(n === 1 ? missWords(noun).one : missWords(noun).many, { count: n })).join(t("LOOTCRATES.Common.And"));
 }
 
 /* ---------- The reveal ---------- */
@@ -218,33 +224,33 @@ export function mountWell(host, { outcome = "nothing", img = "", rarity = "none"
   const el = { coin: q(".lc-well__coin"), rings: host.querySelectorAll(".lc-well__ring"), glow: q(".lc-well__glow"), prize: q(".lc-well__prize") };
   const set = (node, transform, opacity) => { if (!node?.style) return; node.style.transform = transform; node.style.opacity = String(opacity); };
 
-  const pose = t => {
+  const pose = at => {
     const { splash, settle, ring, land } = WELL_TIMING;
     // The coin: an arc from the top left to the water, tumbling; then it
     // sinks; for a coin back it rises again and hangs over the water.
-    if (t < T(splash)) {
-      const p = clamp01(t / T(splash));
+    if (at < T(splash)) {
+      const p = clamp01(at / T(splash));
       const x = -120 + 120 * p, y = -110 * (1 - p) - 200 * p * (1 - p);
       set(el.coin, `translate(${x}px, ${y}px) rotate(${p * 540}deg) scaleX(${Math.max(0.15, Math.abs(Math.cos(p * Math.PI * 3)))})`, 1);
-    } else if (t < T(settle) || outcome !== "coin") {
-      const p = clamp01((t - T(splash)) / T(settle - splash));
+    } else if (at < T(settle) || outcome !== "coin") {
+      const p = clamp01((at - T(splash)) / T(settle - splash));
       set(el.coin, `translate(0, ${14 * p}px) scale(${1 - 0.3 * p})`, 1 - p);
     } else {
-      const p = ease(clamp01((t - T(settle)) / T(land.coin - settle)));
+      const p = ease(clamp01((at - T(settle)) / T(land.coin - settle)));
       set(el.coin, `translate(0, ${14 - 60 * p}px) rotate(${p * 360}deg) scale(${0.7 + 0.3 * p})`, p);
     }
     // Three ripples from the splash, each a beat after the last. The last
     // one stays faint on the water once everything has settled: the mark
     // the throw left.
     [...el.rings].forEach((r, i) => {
-      const p = clamp01((t - T(splash + i * 140)) / T(ring));
-      const last = i === el.rings.length - 1 && t >= T(land[outcome] ?? land.nothing);
+      const p = clamp01((at - T(splash + i * 140)) / T(ring));
+      const last = i === el.rings.length - 1 && at >= T(land[outcome] ?? land.nothing);
       set(r, `scale(${0.2 + 1.6 * ease(p)})`, last ? 0.25 : 0.9 * (1 - p));
     });
     // An item: the glow rises in the rarity's colour and lifts the find.
-    const g = outcome === "item" ? ease(clamp01((t - T(settle)) / T(land.item - settle))) : 0;
+    const g = outcome === "item" ? ease(clamp01((at - T(settle)) / T(land.item - settle))) : 0;
     set(el.glow, `translate(0, ${10 - 24 * g}px) scale(${1.3 * g})`, 0.85 * Math.min(1, g * 1.4));
-    const f = outcome === "item" ? ease(clamp01((t - T(settle + 300)) / T(land.item - settle - 300))) : 0;
+    const f = outcome === "item" ? ease(clamp01((at - T(settle + 300)) / T(land.item - settle - 300))) : 0;
     set(el.prize, `translate(0, ${36 - 56 * f}px) scale(${0.6 + 0.4 * f})`, f);
   };
 
@@ -268,10 +274,10 @@ export function mountWell(host, { outcome = "nothing", img = "", rarity = "none"
         resolveDone = resolve;
         const step = now => {
           t0 ??= now;
-          const t = now - t0;
-          pose(t);
-          if (!splashed && t >= T(WELL_TIMING.splash)) { splashed = true; try { onSplash?.(); } catch (err) { console.error("loot-crates | the well's splash cue failed", err); } }
-          if (t >= total) land();
+          const at = now - t0;
+          pose(at);
+          if (!splashed && at >= T(WELL_TIMING.splash)) { splashed = true; try { onSplash?.(); } catch (err) { console.error("loot-crates | the well's splash cue failed", err); } }
+          if (at >= total) land();
           else frame = requestAnimationFrame(step);
         };
         frame = requestAnimationFrame(step);
@@ -297,9 +303,11 @@ function play(host, reveal, { sound = false, pageHidden = () => false, onLand })
 
 // "Tam throws a coin into Wishing Well, 1 sp": the window's head line.
 function head(reveal, { esc }) {
-  return `<span class="lc-reveal__who">${esc(reveal.actorName)}</span> throws a coin into
-        <strong class="lc-reveal__crate">${esc(reveal.box.name)}</strong>
-        <span class="lc-reveal__price">${esc(formatPrice(reveal.box.price))}</span>`;
+  return t("LOOTCRATES.Well.Head", {
+    who: `<span class="lc-reveal__who">${esc(reveal.actorName)}</span>`,
+    crate: `<strong class="lc-reveal__crate">${esc(reveal.box.name)}</strong>`,
+    price: `<span class="lc-reveal__price">${esc(formatPrice(reveal.box.price))}</span>`,
+  });
 }
 
 // What the window says once the water settles, into its live region: a quiet
@@ -307,13 +315,13 @@ function head(reveal, { esc }) {
 // The buyer and GMs also see the gold left and the day's count.
 function result(reveal, { esc = String, canSee = false } = {}) {
   const outcome = outcomeOf(reveal);
-  const count = canSee && reveal.cap && reveal.thrown != null ? [`${esc(reveal.thrown)} of ${esc(reveal.cap)} throws today`] : [];
+  const count = canSee && reveal.cap && reveal.thrown != null ? [t("LOOTCRATES.Well.ThrowsToday", { thrown: esc(reveal.thrown), cap: esc(reveal.cap) })] : [];
   if (outcome === "item") return resultHTML(reveal, { esc, canSee, extra: count });
   const where = [];
-  if (outcome === "coin") where.push(`${esc(formatPrice(reveal.box.price))} back in ${esc(reveal.actorName)}'s purse`);
-  if (canSee && reveal.purse) where.push(`<span class="lc-reveal__gold">${esc(formatGold(reveal.purse))} left</span>`);
+  if (outcome === "coin") where.push(t("LOOTCRATES.Well.BackInPurse", { price: esc(formatPrice(reveal.box.price)), name: esc(reveal.actorName) }));
+  if (canSee && reveal.purse) where.push(`<span class="lc-reveal__gold">${t("LOOTCRATES.Reveal.GoldLeft", { gold: esc(formatGold(reveal.purse)) })}</span>`);
   where.push(...count);
-  return `<div class="lc-reveal__quiet">${outcome === "coin" ? "The coin comes back." : "The coin sinks. Nothing."}</div>`
+  return `<div class="lc-reveal__quiet">${outcome === "coin" ? t("LOOTCRATES.Well.ComesBack") : t("LOOTCRATES.Well.Sinks")}</div>`
     + (where.length ? `<div class="lc-reveal__where">${where.join(" · ")}</div>` : "");
 }
 
@@ -328,7 +336,7 @@ function sting(reveal) {
 // so a player whose window sits behind the shop still learns the throw is
 // done. Not an error: nothing went wrong.
 function notice(reveal) {
-  return outcomeOf(reveal) === "nothing" ? `${reveal.box.name}: the coin sinks. Nothing.` : null;
+  return outcomeOf(reveal) === "nothing" ? t("LOOTCRATES.Well.SinksNotice", { name: reveal.box.name }) : null;
 }
 
 // Only a find posts a card; a miss and a coin back keep the chat quiet.
@@ -337,12 +345,12 @@ function chatCard(reveal, { esc, itemLink }) {
   if (outcomeOf(reveal) !== "item" || !r) return null;
   return `
     <div class="loot-crates lc-chat lc-rarity-${esc(r.rarity)}">
-      <div class="lc-chat__head">${esc(reveal.actorName)} threw a coin into <strong>${esc(reveal.box.name)}</strong> <span class="lc-chat__price">${esc(formatPrice(reveal.box.price))}</span></div>
+      <div class="lc-chat__head">${t("LOOTCRATES.Well.ChatHead", { actor: esc(reveal.actorName), box: `<strong>${esc(reveal.box.name)}</strong>`, price: `<span class="lc-chat__price">${esc(formatPrice(reveal.box.price))}</span>` })}</div>
       <div class="lc-chat__item">
         <img src="${esc(r.img)}" alt="">
         <div>
           <div class="lc-chat__name">${itemLink(reveal.itemUuid ?? r.uuid, r.name)}</div>
-          <div class="lc-chat__rarity">${esc(RARITY_LABEL[r.rarity] ?? r.rarity)}${r.pity ? " · pity" : ""}</div>
+          <div class="lc-chat__rarity">${esc(RARITY_LABEL[r.rarity] ?? r.rarity)}${r.pity ? ` · ${t("LOOTCRATES.Common.Pity")}` : ""}</div>
         </div>
       </div>
     </div>`;
@@ -369,8 +377,8 @@ export function wellOddsHTML(odds) {
 // today's share. The shop's own reasons (closed, no GM, no character) are
 // said once in its header, and being short is the card's last word.
 function wellState(game, odds, ctx) {
-  if (ctx.held?.(game.id)) return "Still rippling";
-  if (odds.dry) return "The well is dry";
+  if (ctx.held?.(game.id)) return t("LOOTCRATES.Well.StillRippling");
+  if (odds.dry) return t("LOOTCRATES.Well.Dry");
   const cap = capOf(game);
   const thrown = throwsToday(ctx.log, { boxId: game.id, actorId: ctx.actorId, day: ctx.today });
   if (cap && ctx.today && thrown >= cap) return stillLine(thrown, cap);
@@ -388,9 +396,9 @@ function card(game, pools, ctx) {
   const middle = [
     wellOddsHTML(odds),
     pity ? `<div class="lc-box__pity lc-rarity-${odds.item.pity.minRarity}${odds.item.pity.due ? " lc-box__pity--due" : ""}">${esc(pity)}</div>` : "",
-    cap && ctx.today && thrown < cap ? `<div class="lc-box__stock">${esc(thrown)} of ${esc(cap)} throws today</div>` : "",
+    cap && ctx.today && thrown < cap ? `<div class="lc-box__stock">${t("LOOTCRATES.Well.ThrowsToday", { thrown: esc(thrown), cap: esc(cap) })}</div>` : "",
   ];
-  return cardShell(game, ctx, { rarityClass: odds.item.top ? `lc-rarity-${odds.item.top}` : "lc-box--well", art: WELL_ART, middle, reason, label: `Throw ${esc(formatPrice(game.price))}` });
+  return cardShell(game, ctx, { rarityClass: odds.item.top ? `lc-rarity-${odds.item.top}` : "lc-box--well", art: WELL_ART, middle, reason, label: t("LOOTCRATES.Well.Throw", { price: esc(formatPrice(game.price)) }) });
 }
 
 const reason = (game, pools, ctx) => wellState(game, wellOdds(game, pools, ctx.stateOf?.(game.id) ?? {}), ctx) || shopReason(ctx) || shortReason(game, ctx);
@@ -402,9 +410,9 @@ export function wellRulesText(game) {
   const cap = capOf(game);
   const pity = game.rules?.pity;
   return [
-    cap ? `${cap} a day` : "",
-    pity?.after && pity.minRarity ? `${RARITY_LABEL[pity.minRarity] ?? pity.minRarity} or better after ${pity.after} throws` : "",
-    game.rules?.noDuplicates ? "no dupes" : "",
+    cap ? t("LOOTCRATES.Well.CapADay", { cap }) : "",
+    pity?.after && pity.minRarity ? t("LOOTCRATES.Well.RulePityThrows", { rarity: RARITY_LABEL[pity.minRarity] ?? pity.minRarity, after: pity.after }) : "",
+    game.rules?.noDuplicates ? t("LOOTCRATES.Boxes.RuleNoDupes") : "",
   ].filter(Boolean).join(", ");
 }
 
@@ -428,22 +436,22 @@ export function draftWell(game, values, poolIds) {
 export function wellPreview(game, pools) {
   const odds = wellOdds(game, pools);
   let note = "";
-  if (odds.dry) note = "This well is dry: every outcome weighs 0.";
-  else if (!game.pools?.length) note = "No pool is ticked, so a throw can never find an item.";
-  else if (!odds.item.rows.length) note = "Its pools have no item that can drop, so a throw can never find one.";
+  if (odds.dry) note = t("LOOTCRATES.Well.PreviewDry");
+  else if (!game.pools?.length) note = t("LOOTCRATES.Well.PreviewNoPool");
+  else if (!odds.item.rows.length) note = t("LOOTCRATES.Well.PreviewNoItem");
   return { odds, note, dry: odds.dry };
 }
 
 export function wellPreviewHTML(preview, esc = s => String(s ?? "")) {
   const { odds, note, dry } = preview;
-  const items = odds.item.rows.length ? `<div class="lc-form__hint">If an item: ${oddsRibbon(odds.item.rows)}<div class="lc-odds">${oddsPills(odds.item.rows)}</div></div>` : "";
+  const items = odds.item.rows.length ? `<div class="lc-form__hint">${t("LOOTCRATES.Well.IfItem", { odds: `${oddsRibbon(odds.item.rows)}<div class="lc-odds">${oddsPills(odds.item.rows)}</div>` })}</div>` : "";
   return `${wellOddsHTML(odds)}${items}${note ? `<p class="lc-form__hint${dry ? " lc-form__hint--warn" : ""}">${esc(note)}</p>` : ""}`;
 }
 
 export function wellSummary(preview) {
   const odds = preview.odds.rows.map(r => `${r.name} ${r.label}`).join(", ");
   const items = preview.odds.item.rows.map(r => `${RARITY_LABEL[r.rarity] ?? r.rarity} ${r.label}`).join(", ");
-  return [odds, items ? `If an item: ${items}` : "", preview.note].filter(Boolean).join(". ");
+  return [odds, items ? t("LOOTCRATES.Well.IfItem", { odds: items }) : "", preview.note].filter(Boolean).join(". ");
 }
 
 export const WELL = registerKind({
@@ -452,10 +460,10 @@ export const WELL = registerKind({
   roll,
   logRow,
   // The late-cancel line (socket.js): the coin back isn't a thing one "got".
-  gotText: out => (out.outcome === "coin" ? "got the coin back" : `got ${out.result?.name || "nothing"}`),
+  gotText: out => (out.outcome === "coin" ? t("LOOTCRATES.Well.GotCoinBack") : out.result?.name ? t("LOOTCRATES.Common.Got", { name: out.result.name }) : t("LOOTCRATES.Common.GotNothing")),
   undo: undoPull,
   reveal: {
-    title: "A coin in the well",
+    get title() { return t("LOOTCRATES.Well.Title"); },
     head,
     play,
     result,

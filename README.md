@@ -115,6 +115,8 @@ Players press **Crates** at the top of the Items sidebar. The shop shows every g
 
 **Where did the welcome window go?** Game Settings, Configure Settings, Loot Crates, **Show the welcome** opens it again.
 
+**Can I use it in another language?** Yes, once someone translates it. Every word the module shows is in one file, `module/lang/en.json`. To add a language, copy it to `lang/<code>.json` (for example `lang/de.json`), translate the values and keep the keys and the `{placeholders}` as they are, then add the language to `module.json`'s `languages`. Translations are welcome as a pull request on [GitHub](https://github.com/clearspec11/loot-crates).
+
 **Where do I report a bug?** On the [issue tracker](https://github.com/clearspec11/loot-crates/issues). What changed in each version is in the [changelog](CHANGELOG.md).
 
 ## For developers

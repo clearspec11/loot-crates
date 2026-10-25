@@ -48,6 +48,7 @@ import { resultHTML } from "./revealcard.js";
 import { cardShell, oddsRibbon, oddsPills, shopReason, shortReason, draftBox } from "./boxcard.js";
 import { drawItem, grantData } from "./crate.js";
 import { PullError, registerKind } from "./kinds.js";
+import { t } from "./i18n.js";
 
 export const DICE_DEFAULTS = { price: 10, formula: "3d6", target: 12, multiplier: 3 };
 export const FORMULAS = ["2d6", "3d6"];
@@ -108,7 +109,7 @@ export function resolve(faces, { target, multiplier = DICE_DEFAULTS.multiplier, 
 // The faces a serialised Roll (roll.toJSON()) shows: every active result
 // of every dice term, in order. What each client rebuilds the dice from.
 export function facesOf(data) {
-  return (data?.terms ?? []).flatMap(t => (Array.isArray(t?.results) ? t.results.filter(r => r?.active !== false).map(r => Number(r.result)) : []));
+  return (data?.terms ?? []).flatMap(term => (Array.isArray(term?.results) ? term.results.filter(r => r?.active !== false).map(r => Number(r.result)) : []));
 }
 
 const validFaces = (faces, number, sides) => faces.length === number && faces.every(f => Number.isInteger(f) && f >= 1 && f <= sides);
@@ -161,7 +162,7 @@ export function diceOdds(game, pools, state = {}) {
   const { number, sides } = parsed;
   const target = targetOf(game);
   const win = parsed.bad ? 0 : winChance(number, sides, target);
-  const chances = [["win", "Win", win], ["lose", "Lose", 1 - win]].filter(([, , c]) => c > 0);
+  const chances = [["win", t("LOOTCRATES.Dice.Win"), win], ["lose", t("LOOTCRATES.Dice.Lose"), 1 - win]].filter(([, , c]) => c > 0);
   const pcts = wholePercents(chances.map(([, , c]) => c));
   const prize = hasPrize(game);
   return {
@@ -183,10 +184,10 @@ export function diceOdds(game, pools, state = {}) {
 async function roll(ctx) {
   const { game, rng } = ctx;
   const parsed = parseFormula(game.dice?.formula);
-  if (!parsed) throw new PullError(`${game.name} has no dice to roll. Tell the GM.`);
+  if (!parsed) throw new PullError(t("LOOTCRATES.Dice.NoDice", { name: game.name }));
   const { number, sides, formula } = parsed;
   const target = targetOf(game);
-  if (target >= number * sides) throw new PullError(`Nobody can beat the dragon's ${target} on ${formula}.`);
+  if (target >= number * sides) throw new PullError(t("LOOTCRATES.Common.Sentence", { text: t("LOOTCRATES.Dice.Unbeatable", { target, formula }) }));
   const { faces, roll: data } = await rollFaces(formula, { rng, number, sides });
   const multiplier = multiplierOf(game);
   const out = resolve(faces, { target, multiplier, stakeCp: Math.round(game.price * 100), sides });
@@ -201,16 +202,16 @@ async function roll(ctx) {
 // "15 beats the dragon's 12", "9 doesn't beat the dragon's 12", "12 ties
 // the dragon's 12: the dragon wins". The verdict's own words, everywhere.
 export function verdictText({ total, target, win }) {
-  if (win) return `${total} beats the dragon's ${target}`;
-  if (total === target) return `${total} ties the dragon's ${target}: the dragon wins`;
-  return `${total} doesn't beat the dragon's ${target}`;
+  if (win) return t("LOOTCRATES.Dice.Beats", { total, target });
+  if (total === target) return t("LOOTCRATES.Dice.Ties", { total, target });
+  return t("LOOTCRATES.Dice.DoesNotBeat", { total, target });
 }
 
-export const facesText = faces => (faces ?? []).join(", ");
+export const facesText = faces => (faces ?? []).join(t("LOOTCRATES.Common.ListComma"));
 
 // What the coins did: "Won 30 gp" or "Lost 10 gp".
 export function moneyText({ win, payoutCp, price }) {
-  return win ? `Won ${formatPrice((Number(payoutCp) || 0) / 100)}` : `Lost ${formatPrice(price)}`;
+  return win ? t("LOOTCRATES.Dice.Won", { price: formatPrice((Number(payoutCp) || 0) / 100) }) : t("LOOTCRATES.Dice.Lost", { price: formatPrice(price) });
 }
 
 // The row: the faces and the verdict, so the Pull log reads the roll, and
@@ -257,7 +258,7 @@ export function mountDice(host, { faces = [], sides = 6, target = 0, outcome = "
   host.classList.remove("lc-dice--landed", "lc-dice--three", "lc-dice--told");
   host.dataset.outcome = outcome;
   host.innerHTML = `<div class="lc-dice__stage" aria-hidden="true">
-      <div class="lc-dice__dragon">The dragon's <strong>${Math.floor(Number(target) || 0)}</strong></div>
+      <div class="lc-dice__dragon">${t("LOOTCRATES.Dice.TheDragons", { target: `<strong>${Math.floor(Number(target) || 0)}</strong>` })}</div>
       <div class="lc-dice__tray">${faces.map((_, i) => `<div class="lc-dice__die" data-die="${i}"><span class="lc-dice__face"></span></div>`).join("")}</div>
       <div class="lc-dice__total"></div>
     </div>`;
@@ -276,13 +277,13 @@ export function mountDice(host, { faces = [], sides = 6, target = 0, outcome = "
   // settle, 440 ms before the total, says nothing about the win.
   let told = false;
 
-  const pose = t => {
+  const pose = at => {
     for (let i = 0; i < n; i++) {
       const die = dice[i];
       const face = die?.querySelector?.(".lc-dice__face");
-      if (t < T(settleAt(i))) {
-        const k = Math.floor(t / T(DICE_TIMING.flip)) % flips[i].length;
-        const p = t / T(DICE_TIMING.tumble);
+      if (at < T(settleAt(i))) {
+        const k = Math.floor(at / T(DICE_TIMING.flip)) % flips[i].length;
+        const p = at / T(DICE_TIMING.tumble);
         if (face) face.textContent = String(flips[i][k]);
         set(die, { transform: `translateY(${-10 - 8 * Math.abs(Math.sin(p * Math.PI * 4 + i))}px) rotate(${(k % 2 ? 1 : -1) * (9 + 6 * (1 - Math.min(1, p)))}deg)`, opacity: "0.92" });
       } else {
@@ -291,11 +292,11 @@ export function mountDice(host, { faces = [], sides = 6, target = 0, outcome = "
         if (!settled.has(i)) {
           settled.add(i);
           die?.classList?.add("lc-dice__die--set");
-          if (t !== Infinity) try { onSettle?.(i); } catch (err) { console.error("loot-crates | a die's settle cue failed", err); }
+          if (at !== Infinity) try { onSettle?.(i); } catch (err) { console.error("loot-crates | a die's settle cue failed", err); }
         }
       }
     }
-    const shown = t >= T(settleAt(n - 1) + DICE_TIMING.total * 0.4);
+    const shown = at >= T(settleAt(n - 1) + DICE_TIMING.total * 0.4);
     if (totalEl) { totalEl.textContent = shown ? String(sum) : ""; set(totalEl, { opacity: shown ? "1" : "0", transform: shown ? "none" : "translateY(4px)" }); }
     if (shown !== told) { told = shown; host.classList[shown ? "add" : "remove"]("lc-dice--told"); }
   };
@@ -316,9 +317,9 @@ export function mountDice(host, { faces = [], sides = 6, target = 0, outcome = "
     const step = now => {
       if (landed) return;
       t0 ??= now;
-      const t = now - t0;
-      pose(t);
-      if (t >= total) land();
+      const at = now - t0;
+      pose(at);
+      if (at >= total) land();
       else frame = requestAnimationFrame(step);
     };
     frame = requestAnimationFrame(step);
@@ -368,9 +369,13 @@ function play(host, reveal, { sound = false, pageHidden = () => false, onLand })
 // "Tam rolls 3d6 to beat the dragon's 12 at Dragon's Teeth, 10 gp": the
 // window's head line. The formula and the target are no secret; the faces are.
 function head(reveal, { esc }) {
-  return `<span class="lc-reveal__who">${esc(reveal.actorName)}</span> rolls ${esc(reveal.formula ?? "")} to beat the dragon's ${esc(reveal.target ?? 0)} at
-        <strong class="lc-reveal__crate">${esc(reveal.box.name)}</strong>
-        <span class="lc-reveal__price">${esc(formatPrice(reveal.box.price))}</span>`;
+  return t("LOOTCRATES.Dice.Head", {
+    who: `<span class="lc-reveal__who">${esc(reveal.actorName)}</span>`,
+    formula: esc(reveal.formula ?? ""),
+    target: esc(reveal.target ?? 0),
+    crate: `<strong class="lc-reveal__crate">${esc(reveal.box.name)}</strong>`,
+    price: `<span class="lc-reveal__price">${esc(formatPrice(reveal.box.price))}</span>`,
+  });
 }
 
 /*
@@ -381,9 +386,9 @@ function head(reveal, { esc }) {
 */
 function result(reveal, { esc = String, canSee = false } = {}) {
   const faces = facesIn(reveal);
-  const lines = [`Rolled ${esc(facesText(faces))} on ${esc(reveal.formula ?? "")}`, esc(moneyText({ win: reveal.win, payoutCp: reveal.payoutCp, price: reveal.box.price }))];
-  if (canSee && reveal.purse) lines.push(`<span class="lc-reveal__gold">${esc(formatGold(reveal.purse))} in the purse</span>`);
-  if (reveal.prize && reveal.result?.rarity) return resultHTML(reveal, { esc, canSee: false, extra: [`A perfect ${esc(reveal.total)}: ${esc(verdictText(reveal))}`, ...lines] });
+  const lines = [t("LOOTCRATES.Dice.RolledOn", { faces: esc(facesText(faces)), formula: esc(reveal.formula ?? "") }), esc(moneyText({ win: reveal.win, payoutCp: reveal.payoutCp, price: reveal.box.price }))];
+  if (canSee && reveal.purse) lines.push(`<span class="lc-reveal__gold">${t("LOOTCRATES.Dice.InPurse", { gold: esc(formatGold(reveal.purse)) })}</span>`);
+  if (reveal.prize && reveal.result?.rarity) return resultHTML(reveal, { esc, canSee: false, extra: [t("LOOTCRATES.Dice.PerfectVerdict", { total: esc(reveal.total), verdict: esc(verdictText(reveal)) }), ...lines] });
   return `<div class="lc-reveal__quiet lc-dice__verdict" data-tooltip="${esc(reveal.formula ?? "")}: ${esc(facesText(faces))}">${esc(verdictText(reveal))}</div>`
     + `<div class="lc-reveal__where">${lines.join(" · ")}</div>`;
 }
@@ -396,7 +401,7 @@ function sting(reveal) {
 // A loss is quiet in the room; the buyer alone is told, in case the window
 // sits behind the shop. Not an error: the dragon won.
 function notice(reveal) {
-  return reveal.win ? null : `${reveal.box.name}: ${verdictText(reveal)}. ${moneyText({ win: false, price: reveal.box.price })}.`;
+  return reveal.win ? null : t("LOOTCRATES.Dice.LossNotice", { name: reveal.box.name, verdict: verdictText(reveal), money: moneyText({ win: false, price: reveal.box.price }) });
 }
 
 // Only a win posts a card: the faces (so the roll is visibly fair) and the
@@ -409,10 +414,10 @@ function chatCard(reveal, { esc, itemLink }) {
   const r = reveal.result;
   const prize = reveal.prize && r?.rarity;
   const name = prize ? itemLink(reveal.itemUuid ?? r.uuid, r.name) : esc(verdictText(reveal));
-  const line = prize ? `${esc(RARITY_LABEL[r.rarity] ?? r.rarity)} · a perfect ${esc(reveal.total)} · ${esc(moneyText(reveal))}` : esc(moneyText({ win: true, payoutCp: reveal.payoutCp }));
+  const line = prize ? `${esc(RARITY_LABEL[r.rarity] ?? r.rarity)} · ${t("LOOTCRATES.Dice.APerfect", { total: esc(reveal.total) })} · ${esc(moneyText(reveal))}` : esc(moneyText({ win: true, payoutCp: reveal.payoutCp }));
   return `
     <div class="loot-crates lc-chat lc-rarity-${esc(rarityOf(reveal))}">
-      <div class="lc-chat__head">${esc(reveal.actorName)} rolled ${esc(reveal.formula ?? "")} against the dragon's ${esc(reveal.target ?? 0)} at <strong>${esc(reveal.box.name)}</strong> <span class="lc-chat__price">${esc(formatPrice(reveal.box.price))}</span></div>
+      <div class="lc-chat__head">${t("LOOTCRATES.Dice.ChatHead", { actor: esc(reveal.actorName), formula: esc(reveal.formula ?? ""), target: esc(reveal.target ?? 0), box: `<strong>${esc(reveal.box.name)}</strong>`, price: `<span class="lc-chat__price">${esc(formatPrice(reveal.box.price))}</span>` })}</div>
       <div class="lc-chat__item">
         ${dice}
         <div>
@@ -439,16 +444,16 @@ export function diceOddsHTML(odds) {
 }
 
 // "Pays 3× the stake: 30 gp".
-export const paysText = odds => `Pays ${+odds.multiplier.toFixed(2)}× the stake: ${formatPrice(odds.payoutCp / 100)}`;
-export const prizeText = odds => `A perfect ${odds.max} also wins an item`;
+export const paysText = odds => t("LOOTCRATES.Dice.Pays", { multiplier: +odds.multiplier.toFixed(2), price: formatPrice(odds.payoutCp / 100) });
+export const prizeText = odds => t("LOOTCRATES.Dice.PrizeText", { max: odds.max });
 
 // Why this game in particular can't be bet on now, or "": its last roll is
 // still tumbling on this client (the shop holds the result; reveal.js), or
 // the dragon's number is one the dice can't beat. Being short is the
 // card's last word, as for every kind.
 function diceState(game, odds, ctx) {
-  if (ctx.held?.(game.id)) return "Still rolling";
-  if (!odds.beatable) return `Nobody can beat the dragon's ${odds.target} on ${odds.formula}`;
+  if (ctx.held?.(game.id)) return t("LOOTCRATES.Dice.StillRolling");
+  if (!odds.beatable) return t("LOOTCRATES.Dice.Unbeatable", { target: odds.target, formula: odds.formula });
   return "";
 }
 
@@ -458,12 +463,12 @@ function card(game, pools, ctx) {
   const reason = diceState(game, odds, ctx) || shortReason(game, ctx);
   const top = odds.prize ? odds.item.top : null;
   const middle = [
-    `<div class="lc-box__rule">Roll ${esc(odds.formula)} over the dragon's ${esc(odds.target)}</div>`,
+    `<div class="lc-box__rule">${t("LOOTCRATES.Dice.Rule", { formula: esc(odds.formula), target: esc(odds.target) })}</div>`,
     diceOddsHTML(odds),
     `<div class="lc-box__stock">${esc(paysText(odds))}</div>`,
-    odds.prize ? `<div class="lc-box__prize lc-rarity-${top ?? "none"}">${esc(prizeText(odds))}${top ? "" : " (its pools hold nothing)"}</div>` : "",
+    odds.prize ? `<div class="lc-box__prize lc-rarity-${top ?? "none"}">${top ? esc(prizeText(odds)) : t("LOOTCRATES.Dice.PrizeEmpty", { prize: esc(prizeText(odds)) })}</div>` : "",
   ];
-  return cardShell(game, ctx, { rarityClass: top ? `lc-rarity-${top}` : "lc-box--dice", art: DICE_ART, middle, reason, label: `Bet ${esc(formatPrice(game.price))}` });
+  return cardShell(game, ctx, { rarityClass: top ? `lc-rarity-${top}` : "lc-box--dice", art: DICE_ART, middle, reason, label: t("LOOTCRATES.Dice.Bet", { price: esc(formatPrice(game.price)) }) });
 }
 
 const reason = (game, pools, ctx) => diceState(game, diceOdds(game, pools, ctx.stateOf?.(game.id) ?? {}), ctx) || shopReason(ctx) || shortReason(game, ctx);
@@ -473,7 +478,7 @@ const reason = (game, pools, ctx) => diceState(game, diceOdds(game, pools, ctx.s
 // "3d6 over 12, pays 3×, item on 18": the Boxes table's rules cell.
 export function diceRulesText(game) {
   const odds = diceOdds(game, {});
-  return [`${odds.formula} over ${odds.target}`, `pays ${+odds.multiplier.toFixed(2)}×`, odds.prize ? `item on ${odds.max}` : ""].filter(Boolean).join(", ");
+  return [t("LOOTCRATES.Dice.RuleOver", { formula: odds.formula, target: odds.target }), t("LOOTCRATES.Dice.RulePays", { multiplier: +odds.multiplier.toFixed(2) }), odds.prize ? t("LOOTCRATES.Dice.RuleItemOn", { max: odds.max }) : ""].filter(Boolean).join(", ");
 }
 
 // The game as the editor's form would save it (boxcard.js draftBox for the
@@ -496,10 +501,10 @@ export function draftDice(game, values, poolIds) {
 export function dicePreview(game, pools) {
   const odds = diceOdds(game, pools);
   let note = "";
-  if (!odds.beatable) note = `Nobody can beat ${odds.target} on ${odds.formula}: the shop won't sell this. The dice total ${odds.max} at most.`;
-  else if (odds.win >= 1) note = `Every roll beats ${odds.target} on ${odds.formula}.`;
-  else if (odds.prize && !game.pools?.length) note = "The perfect-roll prize has no pool ticked, so it can never be won.";
-  else if (odds.prize && !odds.item.rows.length) note = "The perfect-roll prize's pools have no item that can drop.";
+  if (!odds.beatable) note = t("LOOTCRATES.Dice.PreviewUnbeatable", { target: odds.target, formula: odds.formula, max: odds.max });
+  else if (odds.win >= 1) note = t("LOOTCRATES.Dice.PreviewAlwaysWins", { target: odds.target, formula: odds.formula });
+  else if (odds.prize && !game.pools?.length) note = t("LOOTCRATES.Dice.PreviewNoPool");
+  else if (odds.prize && !odds.item.rows.length) note = t("LOOTCRATES.Dice.PreviewNoItem");
   return { odds, note, warn: !odds.beatable };
 }
 
@@ -522,9 +527,9 @@ export const DICE = registerKind({
   logRow,
   // "rolled 4, 6, 5: 15 beats the dragon's 12", for the late-cancel line
   // (socket.js), where "got <verdict>" read as if the verdict were an item.
-  gotText: out => `rolled ${facesText(out.faces)}: ${verdictText(out)}`,
+  gotText: out => t("LOOTCRATES.Dice.GotText", { faces: facesText(out.faces), verdict: verdictText(out) }),
   reveal: {
-    title: "Dragon's Teeth",
+    get title() { return t("LOOTCRATES.Dice.Title"); },
     head,
     play,
     result,

@@ -17,6 +17,7 @@
   registerMenu). No Foundry globals: the caller says whether this is a GM
   and passes the window openers and the escape.
 */
+import { t } from "./i18n.js";
 
 // The sidebar buttons a user gets, in order.
 export const sidebarButtons = isGM => (isGM ? ["shop", "manager"] : ["shop"]);
@@ -24,8 +25,8 @@ export const sidebarButtons = isGM => (isGM ? ["shop", "manager"] : ["shop"]);
 // Each sidebar button: its class (the guard against adding it twice), icon,
 // words and tooltip. The words are its accessible name; the tooltip adds to them.
 export const SIDEBAR_BUTTONS = {
-  shop: { cls: "loot-crates-open", icon: "fas fa-box-open", label: "Crates", tip: "Open the Crate Shop" },
-  manager: { cls: "loot-crates-manage", icon: "fas fa-screwdriver-wrench", label: "Manage crates", tip: "Open the Loot Crates manager" },
+  shop: { cls: "loot-crates-open", icon: "fas fa-box-open", get label() { return t("LOOTCRATES.Route.Crates"); }, get tip() { return t("LOOTCRATES.Route.CratesTip"); } },
+  manager: { cls: "loot-crates-manage", icon: "fas fa-screwdriver-wrench", get label() { return t("LOOTCRATES.Route.Manage"); }, get tip() { return t("LOOTCRATES.Route.ManageTip"); } },
 };
 
 /*
@@ -75,19 +76,20 @@ export function directoryMenuEntry({ label, icon, visible = () => true, run = ()
 
 // The shop window's header controls (ApplicationV2 _getHeaderControls): a
 // GM's "Manage crates", whose action the shop declares (shop.js).
-export const MANAGE_CONTROL = { action: "openManager", icon: "fa-solid fa-screwdriver-wrench", label: "Manage crates" };
+export const MANAGE_CONTROL = { action: "openManager", icon: "fa-solid fa-screwdriver-wrench", get label() { return t("LOOTCRATES.Route.Manage"); } };
 export const shopControls = isGM => (isGM ? [{ ...MANAGE_CONTROL }] : []);
 
 // An empty shelf: a GM is pointed at the manager, a player told why.
 export function shopEmptyHTML(isGM) {
   return isGM
-    ? `<p class="lc-shop__empty">No crates on the shelf yet. Make one in <button type="button" class="lc-shop__manage" data-action="openManager"><i class="fas fa-screwdriver-wrench" inert></i> Manage crates</button>.</p>`
-    : `<p class="lc-shop__empty">No crates on the shelf yet. The GM hasn't put any out.</p>`;
+    ? `<p class="lc-shop__empty">${t("LOOTCRATES.Route.EmptyGM", { manage: `<button type="button" class="lc-shop__manage" data-action="openManager"><i class="fas fa-screwdriver-wrench" inert></i> ${t("LOOTCRATES.Route.Manage")}</button>` })}</p>`
+    : `<p class="lc-shop__empty">${t("LOOTCRATES.Route.EmptyPlayer")}</p>`;
 }
 
-export const SHOP_TOGGLE_LABEL = "Shop open";
+export const shopToggleLabel = () => t("LOOTCRATES.Route.ShopOpen");
 
-export const MANAGER_TABS = [["pools", "Pools"], ["boxes", "Boxes"], ["log", "Pull log"]];
+const TAB_KEYS = [["pools", "LOOTCRATES.Manager.TabPools"], ["boxes", "LOOTCRATES.Manager.TabBoxes"], ["log", "LOOTCRATES.Manager.TabLog"]];
+export const MANAGER_TABS = TAB_KEYS.map(([tab, key]) => Object.defineProperty([tab], 1, { enumerable: true, get: () => t(key) }));
 
 // The manager's nav: the tabs (the ARIA tabs pattern, manager.js), then
 // "View shop" and the shop's toggle: one fixed label, "Shop open", pressed
@@ -95,9 +97,9 @@ export const MANAGER_TABS = [["pools", "Pools"], ["boxes", "Boxes"], ["log", "Pu
 // row's "On the shelf"); its switch (module.css) shows the state.
 export function managerNavHTML({ tab = "pools", shopOpen = false } = {}) {
   return `<nav class="lc-tabs">
-        <div class="lc-tabs__list" role="tablist" aria-label="Loot Crates sections">${MANAGER_TABS.map(([k, l]) => `<button type="button" role="tab" id="lc-manager-tab-${k}" aria-controls="lc-manager-panel" aria-selected="${k === tab}" tabindex="${k === tab ? 0 : -1}" data-action="switchTab" data-tab="${k}" class="${k === tab ? "active" : ""}">${l}</button>`).join("")}</div>
+        <div class="lc-tabs__list" role="tablist" aria-label="${t("LOOTCRATES.Manager.Sections")}">${MANAGER_TABS.map(([k, l]) => `<button type="button" role="tab" id="lc-manager-tab-${k}" aria-controls="lc-manager-panel" aria-selected="${k === tab}" tabindex="${k === tab ? 0 : -1}" data-action="switchTab" data-tab="${k}" class="${k === tab ? "active" : ""}">${l}</button>`).join("")}</div>
         <span class="lc-tabs__spacer"></span>
-        <span class="lc-tabs__shop"><button type="button" data-action="openShop" class="lc-view-shop" title="Open the Crate Shop window"><i class="fas fa-store" inert></i> View shop</button>
-        <button type="button" data-action="toggleShop" class="lc-shop-toggle lc-switch" data-open="${shopOpen}" aria-pressed="${shopOpen}" title="${shopOpen ? "Players can buy now. Click to close the shop." : "Players can't buy now. Click to open the shop."}">${SHOP_TOGGLE_LABEL}</button></span>
+        <span class="lc-tabs__shop"><button type="button" data-action="openShop" class="lc-view-shop" title="${t("LOOTCRATES.Manager.ViewShopTip")}"><i class="fas fa-store" inert></i> ${t("LOOTCRATES.Manager.ViewShop")}</button>
+        <button type="button" data-action="toggleShop" class="lc-shop-toggle lc-switch" data-open="${shopOpen}" aria-pressed="${shopOpen}" title="${shopOpen ? t("LOOTCRATES.Manager.ShopOpenTip") : t("LOOTCRATES.Manager.ShopClosedTip")}">${shopToggleLabel()}</button></span>
       </nav>`;
 }

@@ -19,6 +19,7 @@ import { resultHTML, missHTML, oddsWithNothing } from "./revealcard.js";
 import { boxCard, buyReason } from "./boxcard.js";
 import { formatPrice } from "./currency.js";
 import { PullError, registerKind } from "./kinds.js";
+import { t } from "./i18n.js";
 
 // A source's own rarities as stored: dnd5e 6's set (an array once copied, more
 // than one for a "Varies" item), dnd5e 5's string, or none.
@@ -52,14 +53,14 @@ export async function drawItem({ game: box, pools, state = {}, rng, resolveSourc
   for (let redraws = 0; result && !source; redraws++) {
     lost = result.entry;
     await onMissing?.(lost);
-    if (redraws === MAX_REDRAWS) throw new PullError(`${lost.name} is missing from its compendium. Tell the GM.`);
+    if (redraws === MAX_REDRAWS) throw new PullError(t("LOOTCRATES.Error.MissingSource", { name: lost.name }));
     console.warn(`loot-crates | ${lost.name} (${lost.uuid}) in pool ${lost.poolId} has no source; excluding it and rolling again`);
     pools = markEntriesMissing(pools, lost.poolId, [lost.uuid], true);
     result = draw({ box, pools, rng, state });
     source = result && await resolveSource(result.entry.uuid);
   }
   // Every entry left was dead: say so rather than "nothing left".
-  if (!result && lost) throw new PullError(`${lost.name} is missing from its compendium. Tell the GM.`);
+  if (!result && lost) throw new PullError(t("LOOTCRATES.Error.MissingSource", { name: lost.name }));
   return { result, source, pools };
 }
 
@@ -112,7 +113,7 @@ async function roll(ctx) {
     return { result: null, grant: null, outcome: "nothing", strip, state: missState(ctx.state ?? {}), pools: ctx.pools };
   }
   const { result, source, pools } = await drawItem(ctx);
-  if (!result) throw new PullError(`${box.name} has nothing left to give ${actor.name}.`);
+  if (!result) throw new PullError(t("LOOTCRATES.Error.NothingLeft", { box: box.name, actor: actor.name }));
   const strip = buildStrip({ result, box, pools, rng: ctx.rng, state: ctx.state ?? {} });
   return { ...grantData(source, result, box), strip, state: nextState(box, ctx.state ?? {}, result), pools };
 }
@@ -122,7 +123,7 @@ async function roll(ctx) {
 // undoPull). Provenance for a GM-set rarity: the source's own, only when it
 // differs.
 export function crateLogRow({ game: box, state, out }) {
-  if (!out.result) return { outcome: "nothing", name: "Nothing", before: { sinceRare: state.sinceRare ?? 0, hadItem: false }, resetPity: false };
+  if (!out.result) return { outcome: "nothing", name: t("LOOTCRATES.Odds.Nothing"), before: { sinceRare: state.sinceRare ?? 0, hadItem: false }, resetPity: false };
   const row = { name: out.result.name, uuid: out.result.uuid, rarity: out.result.rarity, pity: out.result.pity, before: { sinceRare: state.sinceRare ?? 0, hadItem: (state.owned ?? []).includes(out.result.uuid) }, resetPity: resetsPity(box, out.result.rarity) };
   const src = out.sourceRarity ?? [];
   if (out.rarityOverride && !(src.length === 1 && src[0] === out.result.rarity)) row.sourceRarity = src;
@@ -191,23 +192,23 @@ function chatCard(reveal, { esc, itemLink }) {
   if (!r) {
     return `
     <div class="loot-crates lc-chat lc-rarity-none">
-      <div class="lc-chat__head">${esc(reveal.actorName)} opened <strong>${esc(reveal.box.name)}</strong> <span class="lc-chat__price">${esc(formatPrice(reveal.box.price))}</span></div>
+      <div class="lc-chat__head">${t("LOOTCRATES.Crate.ChatHead", { actor: esc(reveal.actorName), box: `<strong>${esc(reveal.box.name)}</strong>`, price: `<span class="lc-chat__price">${esc(formatPrice(reveal.box.price))}</span>` })}</div>
       <div class="lc-chat__item">
         <div>
-          <div class="lc-chat__name">Nothing</div>
-          <div class="lc-chat__rarity">No item this time</div>
+          <div class="lc-chat__name">${t("LOOTCRATES.Odds.Nothing")}</div>
+          <div class="lc-chat__rarity">${t("LOOTCRATES.Crate.NoItem")}</div>
         </div>
       </div>
     </div>`;
   }
   return `
     <div class="loot-crates lc-chat lc-rarity-${esc(r.rarity)}">
-      <div class="lc-chat__head">${esc(reveal.actorName)} opened <strong>${esc(reveal.box.name)}</strong> <span class="lc-chat__price">${esc(formatPrice(reveal.box.price))}</span></div>
+      <div class="lc-chat__head">${t("LOOTCRATES.Crate.ChatHead", { actor: esc(reveal.actorName), box: `<strong>${esc(reveal.box.name)}</strong>`, price: `<span class="lc-chat__price">${esc(formatPrice(reveal.box.price))}</span>` })}</div>
       <div class="lc-chat__item">
         <img src="${esc(r.img)}" alt="">
         <div>
           <div class="lc-chat__name">${itemLink(reveal.itemUuid ?? r.uuid, r.name)}</div>
-          <div class="lc-chat__rarity">${esc(RARITY_LABEL[r.rarity] ?? r.rarity)}${r.pity ? " · pity" : ""}</div>
+          <div class="lc-chat__rarity">${esc(RARITY_LABEL[r.rarity] ?? r.rarity)}${r.pity ? ` · ${t("LOOTCRATES.Common.Pity")}` : ""}</div>
         </div>
       </div>
     </div>`;
@@ -221,11 +222,11 @@ export const CRATE = registerKind({
   revealExtra,
   undo: undoPull,
   reveal: {
-    title: "Opening a crate",
+    get title() { return t("LOOTCRATES.Crate.Title"); },
     play,
     result: (reveal, opts) => (reveal.result ? resultHTML(reveal, opts) : missHTML(reveal, opts)),
     sting: reveal => (reveal.result ? playReveal(reveal.result.rarity) : playPlink()),
-    notice: reveal => (reveal.result || reveal.replay ? null : `${reveal.box.name}: nothing this time.`),
+    notice: reveal => (reveal.result || reveal.replay ? null : t("LOOTCRATES.Crate.NothingNotice", { name: reveal.box.name })),
     replayable: true,
   },
   chat: { card: chatCard },

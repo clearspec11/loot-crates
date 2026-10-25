@@ -6,6 +6,8 @@
   none of its history. Nothing here writes.
 */
 import { describe, it, expect } from "vitest";
+import en from "../module/lang/en.json";
+import { setStrings } from "../module/scripts/i18n.js";
 import { NEW_DEFAULTS, NEW_TITLE, EDIT_TITLE, COPY_TITLE, DELETE_TITLE, editorTitle, deleteTitle, deleteGameText, deletedNotice, newDraft, crateFromPool, copyOf, copyName, addLabel, addedNotice } from "../module/scripts/newgame.js";
 import { drawnIds, deckOdds } from "../module/scripts/deck.js";
 import { liveRoundOf, newRound } from "../module/scripts/round.js";
@@ -168,6 +170,24 @@ describe("copyOf", () => {
     // A name that only looks like a copy in the middle is a plain name.
     expect(copyName("Crate (copy) of doom")).toBe("Crate (copy) of doom (copy)");
     expect(copyName("")).toBe("Game (copy)");
+  });
+
+  it("reads a copy back whatever order a translation puts the name and number in", () => {
+    const de = structuredClone(en);
+    Object.assign(de.LOOTCRATES.Game, { CopyName: "Kopie von {name}", CopyNameN: "Kopie {n} von {name}" });
+    setStrings(de);
+    try {
+      expect(copyName("Goblin Crate")).toBe("Kopie von Goblin Crate");
+      expect(copyName("Kopie von Goblin Crate")).toBe("Kopie 2 von Goblin Crate");
+      expect(copyName("Kopie 2 von Goblin Crate")).toBe("Kopie 3 von Goblin Crate");
+      expect(copyName("Kopie 2 von Goblin Crate", ["Kopie 3 von Goblin Crate"])).toBe("Kopie 4 von Goblin Crate");
+      // Brackets and braces in a translation are text, not pattern.
+      Object.assign(de.LOOTCRATES.Game, { CopyName: "{name} [copia]", CopyNameN: "{name} [copia {n}] {x}" });
+      setStrings(de);
+      expect(copyName("Pozo [copia 2] {x}")).toBe("Pozo [copia 3] {x}");
+    } finally {
+      setStrings(en);
+    }
   });
 });
 

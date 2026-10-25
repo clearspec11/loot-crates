@@ -138,6 +138,11 @@ import { resultHTML, missHTML, oddsWithNothing, replaySnapshot, replayReveal, re
 import { RARITY_LABEL, RARITIES, DEFAULT_WEIGHTS } from "../module/scripts/config.js";
 import { actorPicker, boxCard, oddsRibbon, shopHTML, shopNotice, patchShop, draftBox, boxPreview, boxPreviewHTML } from "../module/scripts/boxcard.js";
 import { shopOdds } from "../module/scripts/odds.js";
+import { loadStrings } from "../module/scripts/i18n.js";
+
+// The module's words (module/lang/en.json), in before anything is drawn,
+// as main.js loads them in a world.
+await loadStrings();
 
 const q = new URLSearchParams(location.search);
 const state = q.get("state") ?? "shop";

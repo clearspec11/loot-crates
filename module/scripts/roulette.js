@@ -53,10 +53,11 @@ import { grantData } from "./crate.js";
 import { rollFaces } from "./dicegame.js";
 import { liveRoundOf, isOpenStake, roundState as tableRoundState } from "./round.js";
 import { PullError, registerKind } from "./kinds.js";
+import { t, words } from "./i18n.js";
 
 export const BET_TYPES = ["colour", "parity", "number", "rarity"];
-export const BET_TYPE_LABEL = { colour: "Colour", parity: "Odd or even", number: "Number", rarity: "Rarity" };
-export const PARITY_LABEL = { odd: "Odd", even: "Even" };
+export const BET_TYPE_LABEL = words({ colour: "LOOTCRATES.Roulette.Colour", parity: "LOOTCRATES.Roulette.OddOrEven", number: "LOOTCRATES.Roulette.Number", rarity: "LOOTCRATES.Roulette.Rarity" });
+export const PARITY_LABEL = words({ odd: "LOOTCRATES.Roulette.Odd", even: "LOOTCRATES.Roulette.Even" });
 
 // Six of each colour laid so that colour and parity are different bets
 // (a plain alternation would make "Red" and "Odd" the same wager).
@@ -64,7 +65,7 @@ const DEFAULT_COLOURS = [0, 1, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0];
 const DEFAULT_RARITIES = ["common", "uncommon", "common", "uncommon", "rare", "common", "uncommon", "common", "legendary", "uncommon", "common", "rare"];
 export const ROULETTE_DEFAULTS = {
   price: 5, maxStake: 50, maxBets: 3, windowSec: 45, itemOnRarity: false,
-  colours: ["Red", "Black"],
+  colours: words(["LOOTCRATES.Roulette.Red", "LOOTCRATES.Roulette.Black"]),
   payouts: { colour: 2, parity: 2, number: 12, rarity: 3 },
   pockets: DEFAULT_RARITIES.map((rarity, i) => ({ colour: DEFAULT_COLOURS[i], rarity })),
 };
@@ -160,13 +161,13 @@ export function optionsOf(game, type) {
 */
 export function betOdds(game) {
   const n = pocketsOf(game).length;
-  const out = { pockets: n, payouts: Object.fromEntries(BET_TYPES.map(t => [t, payoutOf(game, t)])) };
+  const out = { pockets: n, payouts: Object.fromEntries(BET_TYPES.map(type => [type, payoutOf(game, type)])) };
   for (const type of BET_TYPES) {
     const options = n ? optionsOf(game, type) : [];
     const pcts = wholePercents(options.map(o => o.count / n));
     // Twelve numbers at 8.33% each can't all read the same whole percent and
     // still sum to 100, so a number's pick is said as "1 in 12" instead.
-    out[type] = options.map((o, i) => ({ ...o, chance: o.count / n, label: chanceLabel(o.count / n, pcts[i]), ...(type === "number" ? { fraction: `1 in ${n}` } : {}), pays: out.payouts[type] }));
+    out[type] = options.map((o, i) => ({ ...o, chance: o.count / n, label: chanceLabel(o.count / n, pcts[i]), ...(type === "number" ? { fraction: t("LOOTCRATES.Roulette.OneIn", { n }) } : {}), pays: out.payouts[type] }));
   }
   return out;
 }
@@ -196,15 +197,15 @@ const priceOf = ({ game, bet }) => {
 
 // "Crate Tester has placed 3 of 3 bets this round." and the other refusals.
 export function stakeCheck(game, { actor, bet, stakes = [], price }) {
-  if (pocketsOf(game).length < 2) throw new PullError(`${game.name} has no wheel to spin. Tell the GM.`);
+  if (pocketsOf(game).length < 2) throw new PullError(t("LOOTCRATES.Roulette.NoWheel", { name: game.name }));
   const b = normalizeBet(game, bet);
-  if (!b) throw new PullError("Pick a colour, odd or even, a number or a rarity.");
+  if (!b) throw new PullError(t("LOOTCRATES.Roulette.PickBet"));
   const min = minStakeOf(game), max = maxStakeOf(game);
-  if (price < min) throw new PullError(`The least stake at ${game.name} is ${formatPrice(min)}.`);
-  if (max != null && price > max) throw new PullError(`The most you can stake at ${game.name} is ${formatPrice(max)}.`);
+  if (price < min) throw new PullError(t("LOOTCRATES.Roulette.LeastStake", { name: game.name, price: formatPrice(min) }));
+  if (max != null && price > max) throw new PullError(t("LOOTCRATES.Roulette.MostStake", { name: game.name, price: formatPrice(max) }));
   const cap = maxBetsOf(game);
   const mine = stakes.filter(r => r.actorId === actor?.id && isOpenStake(r)).length;
-  if (cap && mine >= cap) throw new PullError(`${actor?.name ?? "This character"} has placed ${mine} of ${cap} bets this round.`);
+  if (cap && mine >= cap) throw new PullError(t("LOOTCRATES.Roulette.CapReached", { name: actor?.name ?? t("LOOTCRATES.Roulette.ThisCharacter"), mine, cap }));
   return b;
 }
 
@@ -238,7 +239,7 @@ export function drawOfRarity(game, pools, rarity, rng = Math.random) {
 async function roll(ctx) {
   const { game, stakes = [], rng, pools = {}, resolveSource = null } = ctx;
   const pockets = pocketsOf(game);
-  if (pockets.length < 2) throw new PullError(`${game.name} has no wheel to spin. Tell the GM.`);
+  if (pockets.length < 2) throw new PullError(t("LOOTCRATES.Roulette.NoWheel", { name: game.name }));
   const n = pockets.length;
   const { faces, roll: data } = await rollFaces(`1d${n}`, { rng, number: 1, sides: n });
   const pocket = pockets[faces[0] - 1];
@@ -274,7 +275,7 @@ function settle({ game, outcome, row, stake: kept, grants = {} }) {
 export function verdictText(outcome, colours = ROULETTE_DEFAULTS.colours) {
   if (!outcome) return "";
   const colour = String(colours[outcome.colour] ?? outcome.colourName ?? "").toLowerCase();
-  return `The ball lands on ${outcome.number}, ${colour}, ${RARITY_LABEL[outcome.rarity] ?? outcome.rarity}.`;
+  return t("LOOTCRATES.Roulette.Verdict", { number: outcome.number, colour, rarity: RARITY_LABEL[outcome.rarity] ?? outcome.rarity });
 }
 
 /*
@@ -300,12 +301,12 @@ export function netByActor(stakes = []) {
 
 // "Crate Tester wins 10 gp on Red", "Orla loses 5 gp", "Bo breaks even".
 export function netText(a) {
-  const on = a.won.length ? ` on ${a.won.join(", ")}` : "";
-  const item = a.items.length ? `, and finds ${a.items.join(", ")}` : "";
-  if (a.net > 0) return `${a.actorName} wins ${formatPrice(a.net / 100)}${on}${item}`;
-  if (a.net < 0) return `${a.actorName} loses ${formatPrice(-a.net / 100)}${item}`;
-  if (!a.won.length && !a.lost.length) return `${a.actorName}'s stake came back`;
-  return `${a.actorName} breaks even${on}${item}`;
+  const on = a.won.length ? t("LOOTCRATES.Roulette.OnBets", { bets: a.won.join(", ") }) : "";
+  const item = a.items.length ? t("LOOTCRATES.Roulette.AndFinds", { items: a.items.join(", ") }) : "";
+  if (a.net > 0) return t("LOOTCRATES.Roulette.Wins", { name: a.actorName, price: formatPrice(a.net / 100), on, item });
+  if (a.net < 0) return t("LOOTCRATES.Roulette.Loses", { name: a.actorName, price: formatPrice(-a.net / 100), item });
+  if (!a.won.length && !a.lost.length) return t("LOOTCRATES.Roulette.StakeBack", { name: a.actorName });
+  return t("LOOTCRATES.Roulette.BreaksEven", { name: a.actorName, on, item });
 }
 
 export const netLines = stakes => netByActor(stakes).map(netText);
@@ -470,10 +471,10 @@ export function betFields(game, { esc = s => String(s ?? ""), values = {} } = {}
   const odds = betOdds(game);
   const min = minStakeOf(game), max = maxStakeOf(game);
   const stake = Number(values.stake) >= min ? Number(values.stake) : min;
-  const types = BET_TYPES.filter(t => odds[t].length).map(t => `<option value="${t}"${t === type ? " selected" : ""}>${esc(BET_TYPE_LABEL[t])}, pays ${esc(+odds.payouts[t].toFixed(2))}×</option>`).join("");
-  return `<label class="lc-table__field"><span class="lc-label">Bet on</span><select name="type" class="lc-table__type">${types}</select></label>
-      <label class="lc-table__field"><span class="lc-label">Pick</span><select name="pick" class="lc-table__pick">${pickOptions(game, type, values.pick, esc)}</select></label>
-      <label class="lc-table__field lc-table__field--stake"><span class="lc-label">Stake (gp)</span><input name="stake" type="number" min="${esc(min)}"${max != null ? ` max="${esc(max)}"` : ""} step="1" value="${esc(stake)}" class="lc-table__stake"></label>`;
+  const types = BET_TYPES.filter(k => odds[k].length).map(k => `<option value="${k}"${k === type ? " selected" : ""}>${t("LOOTCRATES.Roulette.TypePays", { type: esc(BET_TYPE_LABEL[k]), pays: esc(+odds.payouts[k].toFixed(2)) })}</option>`).join("");
+  return `<label class="lc-table__field"><span class="lc-label">${t("LOOTCRATES.Roulette.BetOn")}</span><select name="type" class="lc-table__type">${types}</select></label>
+      <label class="lc-table__field"><span class="lc-label">${t("LOOTCRATES.Roulette.Pick")}</span><select name="pick" class="lc-table__pick">${pickOptions(game, type, values.pick, esc)}</select></label>
+      <label class="lc-table__field lc-table__field--stake"><span class="lc-label">${t("LOOTCRATES.Roulette.StakeGp")}</span><input name="stake" type="number" min="${esc(min)}"${max != null ? ` max="${esc(max)}"` : ""} step="1" value="${esc(stake)}" class="lc-table__stake"></label>`;
 }
 
 // The pick select's options for a bet type, each naming its odds.
@@ -489,11 +490,11 @@ export function readBet(game, values) {
   let pick = values.pick;
   if (type === "colour" || type === "number") pick = Number(pick);
   const bet = normalizeBet(game, { type, pick });
-  if (!bet) throw new PullError("Pick a colour, odd or even, a number or a rarity.");
+  if (!bet) throw new PullError(t("LOOTCRATES.Roulette.PickBet"));
   const stake = Number(values.stake);
   const min = minStakeOf(game), max = maxStakeOf(game);
-  if (!(stake >= min)) throw new PullError(`Stake at least ${formatPrice(min)}.`);
-  if (max != null && stake > max) throw new PullError(`Stake no more than ${formatPrice(max)}.`);
+  if (!(stake >= min)) throw new PullError(t("LOOTCRATES.Roulette.StakeAtLeast", { price: formatPrice(min) }));
+  if (max != null && stake > max) throw new PullError(t("LOOTCRATES.Roulette.StakeAtMost", { price: formatPrice(max) }));
   return { bet: { ...bet, stake }, price: stake };
 }
 
@@ -502,7 +503,7 @@ export function readBet(game, values) {
 function tableResult(reveal, { esc = String } = {}) {
   const lines = netLines(reveal.stakes ?? []);
   return `<div class="lc-reveal__quiet lc-table__verdict">${esc(verdictText(reveal.outcome, reveal.colours))}</div>`
-    + (lines.length ? `<div class="lc-reveal__where">${lines.map(esc).join(" · ")}</div>` : `<div class="lc-reveal__where">Nobody had a bet on the table.</div>`);
+    + (lines.length ? `<div class="lc-reveal__where">${lines.map(esc).join(" · ")}</div>` : `<div class="lc-reveal__where">${t("LOOTCRATES.Roulette.NobodyBet")}</div>`);
 }
 
 // The sting, by what the viewer's own characters did: a win rises, an item
@@ -525,13 +526,13 @@ function chatCard(reveal, { esc }) {
   const lines = netLines(reveal.stakes ?? []);
   return `
     <div class="loot-crates lc-chat lc-rarity-${esc(o.rarity)}">
-      <div class="lc-chat__head">The wheel turned at <strong>${esc(reveal.box?.name ?? "")}</strong> <span class="lc-chat__price">${esc(`${n} bet${n === 1 ? "" : "s"}`)}</span></div>
+      <div class="lc-chat__head">${t("LOOTCRATES.Roulette.ChatHead", { box: `<strong>${esc(reveal.box?.name ?? "")}</strong>`, bets: `<span class="lc-chat__price">${esc(t(n === 1 ? "LOOTCRATES.Table.BetsOne" : "LOOTCRATES.Table.BetsMany", { count: n }))}</span>` })}</div>
       <div class="lc-chat__item">
         <span class="lc-chat__pocket lc-wheel__pocket--${esc(o.colour)}" aria-hidden="true">${esc(o.number)}</span>
         <div>
           <div class="lc-chat__name">${esc(verdictText(o, reveal.colours))}</div>
           <div class="lc-chat__rarity">${esc(RARITY_LABEL[o.rarity] ?? o.rarity)} · ${esc(String(reveal.colours?.[o.colour] ?? o.colourName ?? ""))}</div>
-          ${lines.length ? `<div class="lc-chat__text">${lines.map(esc).join(". ")}.</div>` : ""}
+          ${lines.length ? `<div class="lc-chat__text">${t("LOOTCRATES.Common.Sentence", { text: lines.map(esc).join(". ") })}</div>` : ""}
         </div>
       </div>
     </div>`;
@@ -543,7 +544,7 @@ const WHEEL_ART = `<svg class="lc-wheel__icon" viewBox="0 0 24 24" width="40" he
 
 // The wheel's words for what the round is doing (round.js roundState), on
 // the shop card and in the table window's head.
-export const WHEEL_WORDS = { open: "Bets are open until the GM spins", waiting: "Bets are closed: waiting for the GM to spin", held: "The wheel is turning" };
+export const WHEEL_WORDS = words({ open: "LOOTCRATES.Roulette.WordsOpen", waiting: "LOOTCRATES.Roulette.WordsWaiting", held: "LOOTCRATES.Roulette.WordsHeld" });
 export const roundState = (round, opts = {}) => tableRoundState(round, { ...opts, words: WHEEL_WORDS });
 export { clockText } from "./round.js";
 
@@ -558,10 +559,11 @@ export function rouletteOddsHTML(odds, esc = s => String(s ?? "")) {
 // "Red or Black 1 in 2, pays 2×": the three plain bets in one line each.
 export function betLines(odds) {
   const lines = [];
-  if (odds.colour.length) lines.push(`${odds.colour.map(o => o.name).join(" or ")} ${odds.colour.length === 2 && odds.colour[0].count === odds.colour[1].count ? "1 in 2" : odds.colour.map(o => `${o.name} ${o.label}`).join(", ")}, pays ${+odds.payouts.colour.toFixed(2)}×`);
-  if (odds.parity.length) lines.push(`Odd or even ${odds.parity.length === 2 && odds.parity[0].count === odds.parity[1].count ? "1 in 2" : odds.parity.map(o => `${o.name} ${o.label}`).join(", ")}, pays ${+odds.payouts.parity.toFixed(2)}×`);
-  if (odds.pockets) lines.push(`One number 1 in ${odds.pockets}, pays ${+odds.payouts.number.toFixed(2)}×`);
-  if (odds.rarity.length) lines.push(`A rarity pays ${+odds.payouts.rarity.toFixed(2)}×`);
+  const half = t("LOOTCRATES.Roulette.OneIn", { n: 2 });
+  if (odds.colour.length) lines.push(t("LOOTCRATES.Roulette.LineColour", { names: odds.colour.map(o => o.name).join(t("LOOTCRATES.Common.Or")), odds: odds.colour.length === 2 && odds.colour[0].count === odds.colour[1].count ? half : odds.colour.map(o => `${o.name} ${o.label}`).join(", "), pays: +odds.payouts.colour.toFixed(2) }));
+  if (odds.parity.length) lines.push(t("LOOTCRATES.Roulette.LineParity", { odds: odds.parity.length === 2 && odds.parity[0].count === odds.parity[1].count ? half : odds.parity.map(o => `${o.name} ${o.label}`).join(", "), pays: +odds.payouts.parity.toFixed(2) }));
+  if (odds.pockets) lines.push(t("LOOTCRATES.Roulette.LineNumber", { odds: t("LOOTCRATES.Roulette.OneIn", { n: odds.pockets }), pays: +odds.payouts.number.toFixed(2) }));
+  if (odds.rarity.length) lines.push(t("LOOTCRATES.Roulette.LineRarity", { pays: +odds.payouts.rarity.toFixed(2) }));
   return lines.map(l => l.replace(/\s+/g, " "));
 }
 
@@ -583,7 +585,7 @@ export function railHTML(game, stakes = [], { esc = s => String(s ?? ""), outcom
   const pockets = pocketsOf(game);
   const pocket = outcome ? pockets[outcome.index] ?? null : null;
   const live = stakes.filter(r => isOpenStake(r) || r.status === "settled");
-  const chipsOn = key => live.filter(r => spotKey(normalizeBet(game, r.stake)) === key).map(r => `<span class="lc-token lc-rarity-${esc(betSwatch(normalizeBet(game, r.stake)))}${fresh.includes(r.id) ? " lc-token--new" : ""}${actorIds.includes(r.actorId) ? " lc-token--mine" : ""}" title="${esc(r.actorName)}: ${esc(formatPrice(r.price))} on ${esc(r.name ?? "")}">${esc(initialOf(r.actorName))}</span>`).join("");
+  const chipsOn = key => live.filter(r => spotKey(normalizeBet(game, r.stake)) === key).map(r => `<span class="lc-token lc-rarity-${esc(betSwatch(normalizeBet(game, r.stake)))}${fresh.includes(r.id) ? " lc-token--new" : ""}${actorIds.includes(r.actorId) ? " lc-token--mine" : ""}" title="${t("LOOTCRATES.Roulette.ChipTitle", { name: esc(r.actorName), price: esc(formatPrice(r.price)), on: esc(r.name ?? "") })}">${esc(initialOf(r.actorName))}</span>`).join("");
   const spot = (bet, label, extra = "") => {
     const key = spotKey(bet);
     const won = pocket ? betWins(bet, pocket) : false;
@@ -605,16 +607,16 @@ export function railHTML(game, stakes = [], { esc = s => String(s ?? ""), outcom
 // wheel with no pockets and while the last round still turns here: Open a
 // round waits for it (table.js openRound refuses it too).
 function wheelState(game, odds, ctx) {
-  if (!odds.pockets || odds.pockets < 2) return "The wheel has no pockets";
+  if (!odds.pockets || odds.pockets < 2) return t("LOOTCRATES.Roulette.NoPockets");
   const round = liveRoundOf(ctx.rounds ?? {}, game.id);
   const state = roundState(round, { now: ctx.now ?? Date.now(), held: !!ctx.held?.(game.id) });
-  if (state.key === "spinning") return "Still spinning";
+  if (state.key === "spinning") return t("LOOTCRATES.Card.StillSpinning");
   if (ctx.isGM) return "";
-  if (state.key === "none") return "No round open yet";
-  if (state.key === "closed") return "Bets are closed";
+  if (state.key === "none") return t("LOOTCRATES.Round.WordsNone");
+  if (state.key === "closed") return t("LOOTCRATES.Round.WordsClosed");
   const cap = maxBetsOf(game);
   const mine = betsPlaced(ctx.log?.filter?.(r => r.roundId === round?.id) ?? [], ctx.actorId);
-  if (cap && mine >= cap) return `${mine} of ${cap} bets placed`;
+  if (cap && mine >= cap) return t("LOOTCRATES.Roulette.BetsPlaced", { mine, cap });
   return "";
 }
 
@@ -623,20 +625,20 @@ function card(game, pools, ctx) {
   const odds = betOdds(game);
   const round = liveRoundOf(ctx.rounds ?? {}, game.id);
   const state = roundState(round, { now: ctx.now ?? Date.now(), held: !!ctx.held?.(game.id) });
-  const reason = wheelState(game, odds, ctx) || (ctx.hasActor && !canAfford(ctx.purse ?? {}, minStakeOf(game)) ? `Needs ${formatPrice(shortfall(ctx.purse ?? {}, minStakeOf(game)))} more` : "");
-  const bounds = [`Stake ${formatPrice(minStakeOf(game))}${maxStakeOf(game) != null ? ` to ${formatPrice(maxStakeOf(game))}` : " or more"}`, maxBetsOf(game) ? `${maxBetsOf(game)} bet${maxBetsOf(game) === 1 ? "" : "s"} a round` : ""].filter(Boolean).join(", ");
+  const reason = wheelState(game, odds, ctx) || (ctx.hasActor && !canAfford(ctx.purse ?? {}, minStakeOf(game)) ? t("LOOTCRATES.Card.Needs", { price: formatPrice(shortfall(ctx.purse ?? {}, minStakeOf(game))) }) : "");
+  const bounds = [maxStakeOf(game) != null ? t("LOOTCRATES.Roulette.StakeRange", { min: formatPrice(minStakeOf(game)), max: formatPrice(maxStakeOf(game)) }) : t("LOOTCRATES.Roulette.StakeOrMore", { min: formatPrice(minStakeOf(game)) }), maxBetsOf(game) ? t(maxBetsOf(game) === 1 ? "LOOTCRATES.Roulette.BetsARoundOne" : "LOOTCRATES.Roulette.BetsARoundMany", { count: maxBetsOf(game) }) : ""].filter(Boolean).join(", ");
   const middle = [
     rouletteOddsHTML(odds, esc),
     `<div class="lc-box__rule">${betLines(odds).map(esc).join("<br>")}</div>`,
     `<div class="lc-box__stock">${esc(bounds)}</div>`,
     `<div class="lc-box__round" data-round="${esc(state.key)}"${state.closesAt ? ` data-lc-countdown="${esc(state.closesAt)}"` : ""}>${esc(state.text)}</div>`,
   ];
-  const label = ctx.isGM ? (round ? "Go to the table" : "Open a round") : "Place a bet";
+  const label = ctx.isGM ? (round ? t("LOOTCRATES.Boxes.GoToTable") : t("LOOTCRATES.Boxes.OpenRound")) : t("LOOTCRATES.Table.PlaceBet");
   const top = odds.rarity.at(-1)?.pick;
   return cardShell(game, ctx, { rarityClass: top ? `lc-rarity-${top}` : "lc-box--wheel", art: WHEEL_ART, middle, reason, label, price: minStakeOf(game) });
 }
 
-const reason = (game, pools, ctx) => wheelState(game, betOdds(game), ctx) || shopReason(ctx) || (ctx.hasActor && !ctx.isGM && !canAfford(ctx.purse ?? {}, minStakeOf(game)) ? `Needs ${formatPrice(shortfall(ctx.purse ?? {}, minStakeOf(game)))} more` : "");
+const reason = (game, pools, ctx) => wheelState(game, betOdds(game), ctx) || shopReason(ctx) || (ctx.hasActor && !ctx.isGM && !canAfford(ctx.purse ?? {}, minStakeOf(game)) ? t("LOOTCRATES.Card.Needs", { price: formatPrice(shortfall(ctx.purse ?? {}, minStakeOf(game))) }) : "");
 
 /* ---------- The manager's words ---------- */
 
@@ -644,7 +646,7 @@ const reason = (game, pools, ctx) => wheelState(game, betOdds(game), ctx) || sho
 export function rouletteRulesText(game) {
   const n = pocketsOf(game).length;
   const max = maxStakeOf(game);
-  return [`${n} pocket${n === 1 ? "" : "s"}`, `bets ${formatPrice(minStakeOf(game))}${max != null ? ` to ${formatPrice(max)}` : " or more"}`, maxBetsOf(game) ? `${maxBetsOf(game)} a round` : "", windowMsOf(game) ? `${windowMsOf(game) / 1000} s` : "until the GM spins", itemOnRarity(game) ? "item on a rarity" : ""].filter(Boolean).join(", ");
+  return [t(n === 1 ? "LOOTCRATES.Roulette.PocketsOne" : "LOOTCRATES.Roulette.PocketsMany", { count: n }), max != null ? t("LOOTCRATES.Roulette.RuleBetsRange", { min: formatPrice(minStakeOf(game)), max: formatPrice(max) }) : t("LOOTCRATES.Roulette.RuleBetsOrMore", { min: formatPrice(minStakeOf(game)) }), maxBetsOf(game) ? t("LOOTCRATES.Roulette.RuleARound", { count: maxBetsOf(game) }) : "", windowMsOf(game) ? t("LOOTCRATES.Roulette.RuleSeconds", { count: windowMsOf(game) / 1000 }) : t("LOOTCRATES.Roulette.RuleUntilSpin"), itemOnRarity(game) ? t("LOOTCRATES.Roulette.RuleItemOnRarity") : ""].filter(Boolean).join(", ");
 }
 
 /*
@@ -665,7 +667,7 @@ export function draftRoulette(game, values, poolIds) {
       ...(game.roulette ?? {}),
       colours,
       pockets: pockets.length ? pockets : pocketsOf(game).map(p => ({ colour: p.colour, rarity: p.rarity })),
-      payouts: Object.fromEntries(BET_TYPES.map(t => [t, num(values[`pay.${t}`], payoutOf(game, t))])),
+      payouts: Object.fromEntries(BET_TYPES.map(type => [type, num(values[`pay.${type}`], payoutOf(game, type))])),
       maxStake: values.maxStake === "" || values.maxStake == null ? null : num(values.maxStake, null),
       maxBets: Math.floor(num(values.maxBets, 0)),
       windowSec: Math.floor(num(values.windowSec, 0)),
@@ -679,11 +681,11 @@ export function draftRoulette(game, values, poolIds) {
 export function roulettePreview(game, pools) {
   const odds = betOdds(game);
   let note = "", warn = false;
-  if (odds.pockets < 2) { note = "The wheel needs at least two pockets: the shop won't sell this."; warn = true; }
+  if (odds.pockets < 2) { note = t("LOOTCRATES.Roulette.PreviewTwoPockets"); warn = true; }
   else if (itemOnRarity(game)) {
     const dry = odds.rarity.filter(r => !drawOfRarity(game, pools, r.pick, () => 0)).map(r => r.name);
-    if (!game.pools?.length) note = "The item on a rarity has no pool ticked, so a winning rarity bet pays coins only.";
-    else if (dry.length) note = `The pools hold nothing ${dry.join(", ")}: a winning bet on ${dry.length === 1 ? "that band" : "those bands"} pays coins only.`;
+    if (!game.pools?.length) note = t("LOOTCRATES.Roulette.PreviewNoPool");
+    else if (dry.length) note = t(dry.length === 1 ? "LOOTCRATES.Roulette.PreviewDryOne" : "LOOTCRATES.Roulette.PreviewDryMany", { bands: dry.join(", ") });
   }
   return { odds, note, warn };
 }
@@ -706,11 +708,11 @@ export const ROULETTE = registerKind({
   stake,
   roll,
   settle,
-  gotText: out => `staked on ${out?.stake?.label ?? "the wheel"}`,
+  gotText: out => t("LOOTCRATES.Roulette.GotText", { on: out?.stake?.label ?? t("LOOTCRATES.Roulette.TheWheel") }),
   // The shared table window's pieces (tableview.js, tablewindow.js).
   tableView: {
-    title: game => `The wheel at ${game?.name ?? "the table"}`,
-    verb: "bets",
+    title: game => t("LOOTCRATES.Roulette.Title", { name: game?.name ?? t("LOOTCRATES.Table.TheTable") }),
+    get verb() { return t("LOOTCRATES.Shelf.Bets"); },
     words: WHEEL_WORDS,
     fields: betFields,
     pickOptions,

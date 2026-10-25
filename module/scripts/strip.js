@@ -6,13 +6,15 @@
 */
 import { flattenPool, weightedPick, rarityRank, shopOdds, oddsModeOf, missChanceOf } from "./odds.js";
 import { DEFAULT_WEIGHTS, RARITIES } from "./config.js";
+import { t } from "./i18n.js";
 
 export const STRIP_LENGTH = 48;
 export const LAND_INDEX = 40;
 
 // The card a pull that found nothing lands on (odds.js rollMiss), and the
 // blanks that fly past in a crate that can miss: an empty slot, no item.
-export const NOTHING_CARD = Object.freeze({ uuid: "", name: "Nothing", img: "", rarity: "none", nothing: true });
+// Its name is read when it is shown, in the module's words.
+export const NOTHING_CARD = Object.freeze(Object.defineProperty({ uuid: "", img: "", rarity: "none", nothing: true }, "name", { enumerable: true, get: () => t("LOOTCRATES.Odds.Nothing") }));
 
 /*
   What the fillers are drawn from. A crate drawing by rarity picks a rarity

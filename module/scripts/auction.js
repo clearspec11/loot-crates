@@ -56,6 +56,7 @@ import { grantData, CRATE } from "./crate.js";
 import { mountSpin } from "./spin.js";
 import { liveRoundOf, isOpenStake, roundState as tableRoundState, clockText } from "./round.js";
 import { PullError, registerKind } from "./kinds.js";
+import { t, words } from "./i18n.js";
 
 export const AUCTION_DEFAULTS = { price: 10, increment: 5, reserve: 0, gavelSec: 20, house: { count: 0, budget: 100, chance: 25 } };
 // How often the house bidders get their chance, on the GM (table.js watchTables).
@@ -86,15 +87,15 @@ export function houseOf(game) {
     chance: Math.min(100, Math.max(0, num(h.chance, AUCTION_DEFAULTS.house.chance))),
   };
 }
-export const houseName = n => `House bidder ${n}`;
+export const houseName = n => t("LOOTCRATES.Auction.HouseBidder", { n });
 
 // The lot in one shape, or null when the record has none it can sell.
 export function lotOf(game) {
   const lot = game?.auction?.lot;
-  if (lot?.type === "crate" && lot.boxId) return { type: "crate", boxId: String(lot.boxId), name: String(lot.name ?? "") || "A crate", img: "", rarity: "none" };
+  if (lot?.type === "crate" && lot.boxId) return { type: "crate", boxId: String(lot.boxId), name: String(lot.name ?? "") || t("LOOTCRATES.Auction.ACrate"), img: "", rarity: "none" };
   if (lot?.type === "item" && lot.uuid) {
     const rarity = normalizeRarity(lot.rarityOverride ?? lot.rarity);
-    return { type: "item", uuid: String(lot.uuid), name: String(lot.name ?? "") || "An item", img: String(lot.img ?? ""), rarity, ...(RARITIES.includes(lot.rarityOverride) ? { rarityOverride: lot.rarityOverride } : {}) };
+    return { type: "item", uuid: String(lot.uuid), name: String(lot.name ?? "") || t("LOOTCRATES.Auction.AnItem"), img: String(lot.img ?? ""), rarity, ...(RARITIES.includes(lot.rarityOverride) ? { rarityOverride: lot.rarityOverride } : {}) };
   }
   return null;
 }
@@ -108,9 +109,9 @@ export function lotFromEntry(entry) {
 export const lotFromCrate = box => ({ type: "crate", boxId: box.id, name: box.name });
 
 // "Sling +2" / "A sealed Adventurer's Crate": the lot as the board and the card name it.
-export const lotName = lot => (!lot ? "No lot" : lot.type === "crate" ? `A sealed ${lot.name}` : lot.name);
+export const lotName = lot => (!lot ? t("LOOTCRATES.Auction.NoLot") : lot.type === "crate" ? t("LOOTCRATES.Auction.Sealed", { name: lot.name }) : lot.name);
 // "Uncommon" / "Opened for the winner at the hammer": the line under it.
-export const lotLine = lot => (!lot ? "" : lot.type === "crate" ? "Opened for the winner at the hammer" : RARITY_LABEL[lot.rarity] ?? "");
+export const lotLine = lot => (!lot ? "" : lot.type === "crate" ? t("LOOTCRATES.Auction.OpenedForWinner") : RARITY_LABEL[lot.rarity] ?? "");
 
 /* ---------- Bids ---------- */
 
@@ -138,14 +139,14 @@ export function minBid(game, stakes = []) {
   least bid. Returns the amount.
 */
 export function bidCheck(game, { actor, stakes = [], price }) {
-  if (!lotOf(game)) throw new PullError(`${game.name} has no lot to bid on. Tell the GM.`);
+  if (!lotOf(game)) throw new PullError(t("LOOTCRATES.Auction.NoLotError", { name: game.name }));
   const top = leaderOf(stakes);
-  if (top && !top.house && top.actorId === actor?.id) throw new PullError(`${actor?.name ?? "This character"} already holds the top bid, ${formatPrice(amountOf(top))}.`);
+  if (top && !top.house && top.actorId === actor?.id) throw new PullError(t("LOOTCRATES.Auction.AlreadyTop", { name: actor?.name ?? t("LOOTCRATES.Roulette.ThisCharacter"), price: formatPrice(amountOf(top)) }));
   const min = minBid(game, stakes);
   if (!(toCp(price) >= toCp(min))) {
     throw new PullError(top
-      ? `The bid is now ${formatPrice(amountOf(top))} by ${top.actorName}; the least you can bid is ${formatPrice(min)}.`
-      : `The opening bid at ${game.name} is ${formatPrice(min)}.`);
+      ? t("LOOTCRATES.Auction.BidIsNow", { price: formatPrice(amountOf(top)), name: top.actorName, min: formatPrice(min) })
+      : t("LOOTCRATES.Auction.OpeningIs", { name: game.name, min: formatPrice(min) }));
   }
   return gp2(num(price));
 }
@@ -156,7 +157,7 @@ const priceOf = ({ game, bet }) => { const n = num(bet?.amount); return n > 0 ? 
 // kinds.js stake: the row's bid, the open bid it beats, and the gavel reset.
 function stake(ctx) {
   const amount = bidCheck(ctx.game, ctx);
-  return { label: `Bid ${formatPrice(amount)}`, amount, outbid: (ctx.stakes ?? []).filter(isOpenStake).map(r => r.id), closesIn: gavelMsOf(ctx.game) };
+  return { label: t("LOOTCRATES.Auction.Bid", { price: formatPrice(amount) }), amount, outbid: (ctx.stakes ?? []).filter(isOpenStake).map(r => r.id), closesIn: gavelMsOf(ctx.game) };
 }
 
 /*
@@ -177,7 +178,7 @@ export function houseBid({ game, stakes = [], rng = Math.random }) {
   const order = Array.from({ length: house.count }, (_, i) => i + 1);
   for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; }
   for (const n of order) {
-    if (rng() * 100 < house.chance) return { label: `Bid ${formatPrice(min)}`, amount: min, house: n, actorName: houseName(n), outbid: [top.id], closesIn: gavelMsOf(game) };
+    if (rng() * 100 < house.chance) return { label: t("LOOTCRATES.Auction.Bid", { price: formatPrice(min) }), amount: min, house: n, actorName: houseName(n), outbid: [top.id], closesIn: gavelMsOf(game) };
   }
   return null;
 }
@@ -238,14 +239,14 @@ function settle({ outcome, row, grants = {} }) {
   const amount = formatPrice(amountOf(row));
   if (row.house) {
     const won = outcome?.verdict === "house" && row.id === outcome.leaderId;
-    return { payoutCp: 0, name: won ? `Won by the house at ${amount}` : `House bid ${amount}`, note: "A house bid: no coins held." };
+    return { payoutCp: 0, name: won ? t("LOOTCRATES.Auction.WonByHouse", { price: amount }) : t("LOOTCRATES.Auction.HouseBid", { price: amount }), note: t("LOOTCRATES.Log.HouseBid") };
   }
   if (!outcome || row.id !== outcome.leaderId) return { refund: "outbid" };
   if (outcome.verdict === "reserve") return { refund: "reserve" };
   if (outcome.verdict !== "sold") return { refund: "lot" };
   const g = grants[row.id] ?? null;
-  const name = g?.result?.name ?? (outcome.lot?.type === "crate" ? `${outcome.lot.name}: nothing` : outcome.lot?.name ?? "The lot");
-  return { payoutCp: 0, name, note: `Won at the hammer for ${amount}.`, refundOnFail: true, ...(g ? { result: g.result, grant: g.grant } : {}) };
+  const name = g?.result?.name ?? (outcome.lot?.type === "crate" ? t("LOOTCRATES.Auction.CrateNothing", { name: outcome.lot.name }) : outcome.lot?.name ?? t("LOOTCRATES.Auction.TheLot"));
+  return { payoutCp: 0, name, note: t("LOOTCRATES.Auction.WonAtHammer", { price: amount }), refundOnFail: true, ...(g ? { result: g.result, grant: g.grant } : {}) };
 }
 
 /* ---------- Words ---------- */
@@ -253,38 +254,38 @@ function settle({ outcome, row, grants = {} }) {
 // The auction's words for what the round is doing (round.js roundState),
 // on the shop card and in the table window's head; the countdown is the
 // gavel, a timer, never announced each second (tableview.js).
-export const AUCTION_WORDS = {
-  none: "No auction open yet",
-  open: "Bidding is open",
-  clock: left => `The gavel falls in ${clockText(left)}`,
-  closed: "Bidding is closed",
-  waiting: "Bidding is closed: waiting for the GM's gavel",
-  held: "The gavel is down",
-  void: "The auction was called off; every bid came back",
-  list: "Bids",
-  stakeOpen: "Open: the top bid, waiting on the hammer.",
-  roundWaiting: "waiting on the hammer",
-};
+export const AUCTION_WORDS = Object.assign(words({
+  none: "LOOTCRATES.Auction.WordsNone",
+  open: "LOOTCRATES.Auction.WordsOpen",
+  closed: "LOOTCRATES.Auction.WordsClosed",
+  waiting: "LOOTCRATES.Auction.WordsWaiting",
+  held: "LOOTCRATES.Auction.WordsHeld",
+  void: "LOOTCRATES.Auction.WordsVoid",
+  list: "LOOTCRATES.Auction.WordsList",
+  stakeOpen: "LOOTCRATES.Auction.WordsStakeOpen",
+  roundWaiting: "LOOTCRATES.Auction.WordsRoundWaiting",
+}), { clock: left => t("LOOTCRATES.Auction.WordsClock", { time: clockText(left) }) });
 export const roundState = (round, opts = {}) => tableRoundState(round, { ...opts, words: AUCTION_WORDS });
 
 // "Crate Tester bids 55 gp", for the list, the status line and the board.
-export const bidSentence = row => `${row?.actorName ?? "Someone"} bids ${formatPrice(amountOf(row))}`;
+export const bidSentence = row => t("LOOTCRATES.Auction.Bids", { name: row?.actorName ?? t("LOOTCRATES.Auction.Someone"), price: formatPrice(amountOf(row)) });
 
 // "5 bids from 3 bidders", "1 bid", "No bids yet": every bid of the round,
 // the ones that were beaten included.
 export function bidCount(history = []) {
   const bids = history.filter(r => r && !(r.refunded && r.refundReason !== "outbid"));
-  if (!bids.length) return "No bids yet";
+  if (!bids.length) return t("LOOTCRATES.Auction.NoBids");
   const who = new Set(bids.map(r => (r.house ? `house:${r.stake?.house ?? r.actorName}` : r.actorId))).size;
-  const n = `${bids.length} bid${bids.length === 1 ? "" : "s"}`;
-  return who > 1 ? `${n} from ${who} bidders` : n;
+  const n = t(bids.length === 1 ? "LOOTCRATES.Auction.BidsOne" : "LOOTCRATES.Auction.BidsMany", { count: bids.length });
+  return who > 1 ? t("LOOTCRATES.Auction.BidsFrom", { bids: n, who }) : n;
 }
 
 // The status line as a bid lands: who bid what, and whose bid it beat (a
 // player's comes back at once, which is said).
 export function bidAnnouncement(row, { outbid = [] } = {}) {
-  const beaten = outbid.map(r => (r.house ? `${r.actorName} is outbid` : `${r.actorName}'s bid came back`));
-  return `${bidSentence(row)}, the top bid${beaten.length ? `; ${beaten.join("; ")}` : ""}.`;
+  const beaten = outbid.map(r => t(r.house ? "LOOTCRATES.Auction.Outbid" : "LOOTCRATES.Auction.BidBack", { name: r.actorName }));
+  const top = t("LOOTCRATES.Auction.TopBid", { bid: bidSentence(row) });
+  return t("LOOTCRATES.Common.Sentence", { text: beaten.length ? [top, ...beaten].join(t("LOOTCRATES.Common.ListSemicolon")) : top });
 }
 
 /*
@@ -304,15 +305,15 @@ export function verdictText(o) {
   if (!o) return "";
   const amount = formatPrice(o.amount);
   if (o.verdict === "sold") {
-    const head = `Sold to ${o.bidder} for ${amount}.`;
+    const head = t("LOOTCRATES.Auction.SoldTo", { name: o.bidder, price: amount });
     if (o.lot?.type !== "crate") return head;
-    return o.result ? `${head} The crate gave ${o.result.name}.` : `${head} The crate held nothing.`;
+    return `${head} ${o.result ? t("LOOTCRATES.Auction.CrateGave", { name: o.result.name }) : t("LOOTCRATES.Auction.CrateHeldNothing")}`;
   }
-  if (o.verdict === "house") return `The house took it at ${amount}. Every player's bid came back.`;
-  if (o.verdict === "reserve") return `No sale: the reserve wasn't met. The top bid of ${amount} came back.`;
-  if (o.verdict === "lot") return `No sale: the lot is gone. The top bid of ${amount} came back.`;
-  if (o.verdict === "grant") return `No sale: the lot couldn't be put on ${o.bidder}'s sheet. The top bid of ${amount} came back.`;
-  return "No sale: nobody bid.";
+  if (o.verdict === "house") return t("LOOTCRATES.Auction.VerdictHouse", { price: amount });
+  if (o.verdict === "reserve") return t("LOOTCRATES.Auction.VerdictReserve", { price: amount });
+  if (o.verdict === "lot") return t("LOOTCRATES.Auction.VerdictLot", { price: amount });
+  if (o.verdict === "grant") return t("LOOTCRATES.Auction.VerdictGrant", { name: o.bidder, price: amount });
+  return t("LOOTCRATES.Auction.VerdictNone");
 }
 
 // What the lot was, for a sale: the item (or the crate's draw) and its rarity.
@@ -345,23 +346,23 @@ export function boardHTML(game, stakes = [], { esc = s => String(s ?? ""), outco
   if (outcome) {
     const sold = outcome.verdict === "sold";
     state = sold ? "sold" : "nosale";
-    line = sold ? "Sold for" : outcome.verdict === "house" ? "The house took it at" : "No sale";
+    line = sold ? t("LOOTCRATES.Auction.SoldFor") : outcome.verdict === "house" ? t("LOOTCRATES.Auction.HouseTookAt") : t("LOOTCRATES.Auction.NoSale");
     amount = outcome.verdict === "none" ? "" : formatPrice(outcome.amount);
-    who = sold ? outcome.bidder : outcome.verdict === "house" ? outcome.bidder : outcome.verdict === "reserve" ? "The reserve wasn't met" : outcome.verdict === "lot" ? "The lot is gone" : outcome.verdict === "grant" ? "The lot couldn't be added to the sheet" : "Nobody bid";
+    who = sold ? outcome.bidder : outcome.verdict === "house" ? outcome.bidder : outcome.verdict === "reserve" ? t("LOOTCRATES.Auction.ReserveNotMet") : outcome.verdict === "lot" ? t("LOOTCRATES.Auction.LotGone") : outcome.verdict === "grant" ? t("LOOTCRATES.Auction.LotNotAdded") : t("LOOTCRATES.Auction.NobodyBid");
   } else {
     state = top ? "open" : "opening";
-    line = top ? "Top bid" : "Opening bid";
+    line = top ? t("LOOTCRATES.Auction.TopBidLine") : t("LOOTCRATES.Auction.OpeningBidLine");
     amount = formatPrice(top ? amountOf(top) : openingOf(game));
-    who = top ? top.actorName : "No bids yet";
+    who = top ? top.actorName : t("LOOTCRATES.Auction.NoBids");
   }
   const met = outcome ? outcome.reserveMet : !!top && toCp(amountOf(top)) >= toCp(reserveOf(game));
-  const reserveLine = reserve && !(outcome && outcome.verdict !== "sold" && outcome.verdict !== "reserve") ? `<span class="lc-auction__reserve" data-met="${met}">${met ? "Reserve met" : "Reserve not met yet"}</span>` : "";
+  const reserveLine = reserve && !(outcome && outcome.verdict !== "sold" && outcome.verdict !== "reserve") ? `<span class="lc-auction__reserve" data-met="${met}">${met ? t("LOOTCRATES.Auction.ReserveMet") : t("LOOTCRATES.Auction.ReserveNotMetYet")}</span>` : "";
   const last = bids.slice(0, 5).map(r => {
     const cls = ["lc-auction__past", r.id === top?.id || r.id === outcome?.leaderId ? "lc-auction__past--top" : "", r.refunded ? "lc-auction__past--beaten" : "", fresh.includes(r.id) ? "lc-auction__past--new" : "", !r.house && actorIds.includes(r.actorId) ? "lc-auction__past--mine" : "", r.house ? "lc-auction__past--house" : ""].filter(Boolean).join(" ");
     return `<li class="${cls}"><span class="lc-auction__past-who">${esc(r.actorName)}</span><span class="lc-auction__past-amount">${esc(formatPrice(amountOf(r)))}</span></li>`;
   }).join("");
   const clock = !outcome && round?.closesAt != null && round.status !== "resolved" ? `<span class="lc-auction__clock" data-gavel data-closes-at="${esc(round.closesAt)}" data-gavel-ms="${esc(gavelMsOf(game))}" hidden></span>` : "";
-  const stamp = outcome ? `<span class="lc-auction__stamp" aria-hidden="true">${outcome.verdict === "sold" ? "Sold" : "No sale"}</span>` : "";
+  const stamp = outcome ? `<span class="lc-auction__stamp" aria-hidden="true">${outcome.verdict === "sold" ? t("LOOTCRATES.Auction.Sold") : t("LOOTCRATES.Auction.NoSale")}</span>` : "";
   return `<div class="lc-auction__lot lc-rarity-${esc(lot?.rarity ?? "none")}">
         <div class="lc-auction__art" aria-hidden="true">${art}</div>
         <div class="lc-auction__lotname"><strong>${esc(lotName(lot))}</strong><span class="lc-auction__sub">${esc(lotLine(lot))}</span></div>
@@ -372,7 +373,7 @@ export function boardHTML(game, stakes = [], { esc = s => String(s ?? ""), outco
         <span class="lc-auction__who">${esc(who)}</span>
         ${reserveLine}${stamp}
       </div>
-      ${last ? `<ol class="lc-auction__bids" aria-label="Last bids">${last}</ol>` : `<p class="lc-auction__bids lc-auction__bids--empty">The first bid opens at ${esc(formatPrice(openingOf(game)))}, then rises by ${esc(formatPrice(incrementOf(game)))}.</p>`}
+      ${last ? `<ol class="lc-auction__bids" aria-label="${t("LOOTCRATES.Auction.LastBids")}">${last}</ol>` : `<p class="lc-auction__bids lc-auction__bids--empty">${t("LOOTCRATES.Auction.FirstBid", { price: esc(formatPrice(openingOf(game))), step: esc(formatPrice(incrementOf(game))) })}</p>`}
       ${clock}`;
 }
 
@@ -526,7 +527,7 @@ export function bidFields(game, { esc = s => String(s ?? ""), values = {}, stake
   const min = minBid(game, stakes);
   const typed = num(values.amount, 0);
   const amount = values.touched === "1" && toCp(typed) >= toCp(min) ? typed : min;
-  return `<label class="lc-table__field lc-table__field--stake"><span class="lc-label">Your bid (gp)</span><input name="amount" type="number" min="${esc(min)}" step="any" value="${esc(amount)}" class="lc-table__stake lc-auction__input" inputmode="decimal"></label>
+  return `<label class="lc-table__field lc-table__field--stake"><span class="lc-label">${t("LOOTCRATES.Auction.YourBid")}</span><input name="amount" type="number" min="${esc(min)}" step="any" value="${esc(amount)}" class="lc-table__stake lc-auction__input" inputmode="decimal"></label>
       <input type="hidden" name="touched" value="${values.touched === "1" ? "1" : ""}">`;
 }
 
@@ -534,7 +535,7 @@ export function bidFields(game, { esc = s => String(s ?? ""), values = {}, stake
 export function bidLabel(game, { stakes = [], values = {} } = {}) {
   const min = minBid(game, stakes);
   const typed = num(values.amount, 0);
-  return `Bid ${formatPrice(toCp(typed) >= toCp(min) ? typed : min)}`;
+  return t("LOOTCRATES.Auction.Bid", { price: formatPrice(toCp(typed) >= toCp(min) ? typed : min) });
 }
 
 // The bid the form's values describe, or a PullError before anything is sent.
@@ -542,8 +543,8 @@ export function readBid(game, values = {}, stakes = []) {
   const amount = gp2(num(values.amount, NaN));
   const min = minBid(game, stakes);
   const top = leaderOf(stakes);
-  if (top && !top.house && values.actorId && top.actorId === values.actorId) throw new PullError(`${top.actorName} already holds the top bid.`);
-  if (!(toCp(amount) >= toCp(min))) throw new PullError(`Bid at least ${formatPrice(min)}.`);
+  if (top && !top.house && values.actorId && top.actorId === values.actorId) throw new PullError(t("LOOTCRATES.Auction.AlreadyHolds", { name: top.actorName }));
+  if (!(toCp(amount) >= toCp(min))) throw new PullError(t("LOOTCRATES.Auction.BidAtLeast", { price: formatPrice(min) }));
   return { bet: { amount }, price: amount };
 }
 
@@ -595,11 +596,11 @@ function chatCard(reveal, { esc, itemLink }) {
   const won = (reveal.stakes ?? []).find(s => s.logId === o.leaderId && s.itemId);
   const result = o.verdict === "sold" ? o.result : null;
   const rarity = result?.rarity ?? (o.verdict === "sold" ? o.lot?.rarity : "none") ?? "none";
-  const name = result ? itemLink(won ? `Actor.${won.actorId}.Item.${won.itemId}` : result.uuid, result.name) : esc(o.verdict === "sold" ? `${o.lot?.name ?? "The lot"}: nothing` : "No sale");
+  const name = result ? itemLink(won ? `Actor.${won.actorId}.Item.${won.itemId}` : result.uuid, result.name) : esc(o.verdict === "sold" ? t("LOOTCRATES.Auction.CrateNothing", { name: o.lot?.name ?? t("LOOTCRATES.Auction.TheLot") }) : t("LOOTCRATES.Auction.NoSale"));
   const img = result?.img ?? (o.lot?.type === "item" ? o.lot.img : "");
   return `
     <div class="loot-crates lc-chat lc-rarity-${esc(rarity)}">
-      <div class="lc-chat__head">The gavel fell at <strong>${esc(reveal.box?.name ?? "")}</strong> <span class="lc-chat__price">${esc(`${o.bids} bid${o.bids === 1 ? "" : "s"}`)}</span></div>
+      <div class="lc-chat__head">${t("LOOTCRATES.Auction.ChatHead", { box: `<strong>${esc(reveal.box?.name ?? "")}</strong>`, bids: `<span class="lc-chat__price">${esc(t(o.bids === 1 ? "LOOTCRATES.Auction.BidsOne" : "LOOTCRATES.Auction.BidsMany", { count: o.bids }))}</span>` })}</div>
       <div class="lc-chat__item">
         ${img ? `<img src="${esc(img)}" alt="">` : `<span class="lc-chat__lot" aria-hidden="true">${CRATE_ART}</span>`}
         <div>
@@ -622,13 +623,13 @@ const roundStakes = (ctx, round) => (round ? (ctx.log ?? []).filter(r => r?.roun
 // card's last word, as for every kind. The GM's card is off only for an
 // auction with no lot and while the last one's gavel still falls here.
 function auctionState(game, ctx) {
-  if (!lotOf(game)) return "No lot set";
+  if (!lotOf(game)) return t("LOOTCRATES.Auction.NoLotSet");
   const round = liveRoundOf(ctx.rounds ?? {}, game.id);
   const state = roundState(round, { now: ctx.now ?? Date.now(), held: !!ctx.held?.(game.id) });
-  if (state.key === "spinning") return "The gavel is down";
+  if (state.key === "spinning") return AUCTION_WORDS.held;
   if (ctx.isGM) return "";
-  if (state.key === "none") return "No auction open yet";
-  if (state.key === "closed") return "Bidding is closed";
+  if (state.key === "none") return AUCTION_WORDS.none;
+  if (state.key === "closed") return AUCTION_WORDS.closed;
   return "";
 }
 
@@ -639,7 +640,7 @@ function nextBidFor(game, ctx) {
 
 const shortOf = (game, ctx) => {
   const min = nextBidFor(game, ctx);
-  return ctx.hasActor && !ctx.isGM && !canAfford(ctx.purse ?? {}, min) ? `Needs ${formatPrice(shortfall(ctx.purse ?? {}, min))} more` : "";
+  return ctx.hasActor && !ctx.isGM && !canAfford(ctx.purse ?? {}, min) ? t("LOOTCRATES.Card.Needs", { price: formatPrice(shortfall(ctx.purse ?? {}, min)) }) : "";
 };
 
 function card(game, pools, ctx) {
@@ -651,14 +652,14 @@ function card(game, pools, ctx) {
   const top = leaderOf(open);
   const min = minBid(game, open);
   const reason = auctionState(game, ctx) || shortOf(game, ctx);
-  const bid = top ? `Top bid ${formatPrice(amountOf(top))} by ${top.actorName}` : `Opening bid ${formatPrice(openingOf(game))}, rising by ${formatPrice(incrementOf(game))}`;
-  const reserve = reserveOf(game) > 0 ? (top && toCp(amountOf(top)) >= toCp(reserveOf(game)) ? "Reserve met" : "Has a reserve") : "No reserve";
+  const bid = top ? t("LOOTCRATES.Auction.CardTopBid", { price: formatPrice(amountOf(top)), name: top.actorName }) : t("LOOTCRATES.Auction.CardOpening", { price: formatPrice(openingOf(game)), step: formatPrice(incrementOf(game)) });
+  const reserve = reserveOf(game) > 0 ? (top && toCp(amountOf(top)) >= toCp(reserveOf(game)) ? t("LOOTCRATES.Auction.ReserveMet") : t("LOOTCRATES.Auction.HasReserve")) : t("LOOTCRATES.Auction.NoReserve");
   const middle = [
     `<div class="lc-box__rule"><strong>${esc(lotName(lot))}</strong>${lot ? `<br>${esc(lotLine(lot))}` : ""}</div>`,
-    `<div class="lc-box__stock">${esc(bid)}. ${esc(reserve)}.</div>`,
+    `<div class="lc-box__stock">${t("LOOTCRATES.Auction.CardStock", { bid: esc(bid), reserve: esc(reserve) })}</div>`,
     `<div class="lc-box__round" data-round="${esc(state.key)}"${state.closesAt ? ` data-lc-countdown="${esc(state.closesAt)}"` : ""}>${esc(state.text)}</div>`,
   ];
-  const label = ctx.isGM ? (round ? "Go to the auction" : "Open the auction") : "Join the bidding";
+  const label = ctx.isGM ? (round ? t("LOOTCRATES.Boxes.GoToAuction") : t("LOOTCRATES.Boxes.OpenAuction")) : t("LOOTCRATES.Auction.Join");
   const art = lot?.type === "item" && lot.img ? `<img src="${esc(lot.img)}" alt="">` : lot?.type === "crate" ? CRATE_ART : AUCTION_ART;
   return cardShell(game, ctx, { rarityClass: `lc-rarity-${lot?.rarity ?? "none"} lc-box--auction`, art, middle, reason, label, price: min });
 }
@@ -670,13 +671,13 @@ const reason = (game, pools, ctx) => auctionState(game, ctx) || shopReason(ctx) 
 // "Opens at 10 gp, +5 gp a bid, reserve 50 gp, 20 s gavel, 2 house bidders up to 100 gp".
 export function auctionRulesText(game) {
   const h = houseOf(game);
-  return [`opens at ${formatPrice(openingOf(game))}`, `+${formatPrice(incrementOf(game))} a bid`, reserveOf(game) ? `reserve ${formatPrice(reserveOf(game))}` : "no reserve", `${gavelMsOf(game) / 1000} s gavel`, h.count ? `${h.count} house bidder${h.count === 1 ? "" : "s"} up to ${formatPrice(h.budget)}` : ""].filter(Boolean).join(", ");
+  return [t("LOOTCRATES.Auction.RuleOpens", { price: formatPrice(openingOf(game)) }), t("LOOTCRATES.Auction.RuleStep", { price: formatPrice(incrementOf(game)) }), reserveOf(game) ? t("LOOTCRATES.Auction.RuleReserve", { price: formatPrice(reserveOf(game)) }) : t("LOOTCRATES.Auction.RuleNoReserve"), t("LOOTCRATES.Auction.RuleGavel", { count: gavelMsOf(game) / 1000 }), h.count ? t(h.count === 1 ? "LOOTCRATES.Auction.RuleHouseOne" : "LOOTCRATES.Auction.RuleHouseMany", { count: h.count, price: formatPrice(h.budget) }) : ""].filter(Boolean).join(", ");
 }
 
 // The Boxes row's odds cell: the lot as a pill in its rarity.
 export function auctionLotHTML(game, esc = s => String(s ?? "")) {
   const lot = lotOf(game);
-  if (!lot) return "<em>no lot</em>";
+  if (!lot) return `<em>${t("LOOTCRATES.Auction.NoLotCell")}</em>`;
   return `<div class="lc-odds"><span class="lc-odd lc-odd--lot lc-rarity-${esc(lot.rarity)}">${esc(lotName(lot))}</span></div>`;
 }
 
@@ -709,13 +710,13 @@ export function auctionPreview(game) {
   const lot = lotOf(game);
   const h = houseOf(game);
   const lines = [
-    lot ? `The lot: ${lotName(lot)}.` : "",
-    `Bids open at ${formatPrice(openingOf(game))} and rise by at least ${formatPrice(incrementOf(game))}; the gavel falls ${gavelMsOf(game) / 1000} s after the last bid.`,
-    reserveOf(game) ? `Below ${formatPrice(reserveOf(game))} nothing is sold and the top bid comes back. Players see only whether the reserve is met.` : "",
-    h.count ? `${h.count} house bidder${h.count === 1 ? "" : "s"} may bid up to ${formatPrice(h.budget)} each, against players only, with a ${h.chance}% chance every ${HOUSE_TICK_MS / 1000} s.` : "",
+    lot ? t("LOOTCRATES.Auction.PreviewLot", { name: lotName(lot) }) : "",
+    t("LOOTCRATES.Auction.PreviewBids", { price: formatPrice(openingOf(game)), step: formatPrice(incrementOf(game)), gavel: gavelMsOf(game) / 1000 }),
+    reserveOf(game) ? t("LOOTCRATES.Auction.PreviewReserve", { price: formatPrice(reserveOf(game)) }) : "",
+    h.count ? t(h.count === 1 ? "LOOTCRATES.Auction.PreviewHouseOne" : "LOOTCRATES.Auction.PreviewHouseMany", { count: h.count, price: formatPrice(h.budget), chance: h.chance, every: HOUSE_TICK_MS / 1000 }) : "",
   ].filter(Boolean);
   const warn = !lot;
-  const note = warn ? "Pick a lot: an auction with none can't be opened." : h.count && toCp(h.budget) < toCp(openingOf(game) + incrementOf(game)) ? "The house's budget is below the first raise, so it will never bid." : "";
+  const note = warn ? t("LOOTCRATES.Auction.PreviewPickLot") : h.count && toCp(h.budget) < toCp(openingOf(game) + incrementOf(game)) ? t("LOOTCRATES.Auction.PreviewBudget") : "";
   return { lines, note, warn };
 }
 
@@ -734,30 +735,30 @@ export const AUCTION = registerKind({
   hammer: true,
   tickMs: HOUSE_TICK_MS,
   // No round opens on an auction with nothing to sell (table.js openRound).
-  openReason: game => (lotOf(game) ? "" : `${game?.name ?? "That auction"} has no lot. Pick one in its editor first.`),
+  openReason: game => (lotOf(game) ? "" : t("LOOTCRATES.Auction.OpenNoLot", { name: game?.name ?? t("LOOTCRATES.Auction.ThatAuction") })),
   priceOf,
   stake,
   tick: houseBid,
   roll,
   settle,
-  gotText: out => `bid ${formatPrice(out?.price ?? 0)}`,
+  gotText: out => t("LOOTCRATES.Auction.GotText", { price: formatPrice(out?.price ?? 0) }),
   // The shared table window's pieces (tableview.js, tablewindow.js).
   tableView: {
-    title: game => `The auction at ${game?.name ?? "the table"}`,
-    verb: "bids",
+    title: game => t("LOOTCRATES.Auction.Title", { name: game?.name ?? t("LOOTCRATES.Table.TheTable") }),
+    get verb() { return t("LOOTCRATES.Auction.Verb"); },
     words: AUCTION_WORDS,
     fields: bidFields,
     readBet: readBid,
     betLabel: bidLabel,
-    busyLabel: "Bidding…",
+    get busyLabel() { return t("LOOTCRATES.Auction.Busy"); },
     syncForm: syncBidForm,
     onInput: onBidInput,
     sentence: bidSentence,
     count: bidCount,
     announce: bidAnnouncement,
-    spinLabel: "Bring the gavel down",
-    spinningLabel: "The gavel falls…",
-    cancelLabel: "Call it off",
+    get spinLabel() { return t("LOOTCRATES.Auction.Spin"); },
+    get spinningLabel() { return t("LOOTCRATES.Auction.Spinning"); },
+    get cancelLabel() { return t("LOOTCRATES.Table.CallOff"); },
     mount: mountBoard,
     rail: boardHTML,
     pockets: game => ({ lot: lotOf(game) }),

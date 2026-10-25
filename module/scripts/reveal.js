@@ -105,6 +105,7 @@ import { withLimit } from "./limits.js";
 import { requestPull } from "./socket.js";
 // The dice game's 3D dice bridge (Dice So Nice), set wherever reveals show.
 import "./dicereveal.js";
+import { t } from "./i18n.js";
 
 export { stripVoice } from "./crate.js";
 
@@ -148,9 +149,11 @@ function usedSlots() {
 const pageHidden = () => document.visibilityState === "hidden";
 
 // The line over the vault for a kind that writes none: the crate's.
-const crateHead = r => `<span class="lc-reveal__who">${esc(r.actorName)}</span> opens
-        <strong class="lc-reveal__crate">${esc(r.box.name)}</strong>
-        <span class="lc-reveal__price">${esc(formatPrice(r.box.price))}</span>`;
+const crateHead = r => t("LOOTCRATES.Reveal.Head", {
+  who: `<span class="lc-reveal__who">${esc(r.actorName)}</span>`,
+  crate: `<strong class="lc-reveal__crate">${esc(r.box.name)}</strong>`,
+  price: `<span class="lc-reveal__price">${esc(formatPrice(r.box.price))}</span>`,
+});
 
 // Each reveal still spinning on this client, by the pull's logId (what its
 // chat card carries in flags): { landed, hide }. `hide` is set for a kind
@@ -280,7 +283,7 @@ function hold(reveal, landed) {
 
 // For tests: nothing held or pre-sealed.
 export function _resetHolds() {
-  for (const t of preSealed.values()) clearTimeout(t);
+  for (const target of preSealed.values()) clearTimeout(target);
   preSealed.clear();
   held.clear();
   opened.clear();
@@ -326,7 +329,8 @@ export class CrateReveal extends ApplicationV2 {
   static DEFAULT_OPTIONS = {
     id: "loot-crates-reveal-{id}",
     classes: ["loot-crates", "lc-reveal"],
-    window: { title: "Opening a crate", resizable: false },
+    // The window's title is its own getter, in the module's words.
+    window: { title: "LOOTCRATES.Crate.Title", resizable: false },
     position: { width: 720, height: "auto" },
     actions: { dismiss: CrateReveal.#dismiss, skip: CrateReveal.#skip, openItem: CrateReveal.#openItem, watchAgain: CrateReveal.#watchAgain, drawAgain: CrateReveal.#drawAgain },
   };
@@ -370,7 +374,7 @@ export class CrateReveal extends ApplicationV2 {
   }
 
   get title() {
-    return this.reveal?.replay ? replayTitle(this.reveal) : this.#kind.title ?? super.title;
+    return this.reveal?.replay ? replayTitle(this.reveal) : this.#kind.title ?? t("LOOTCRATES.Crate.Title");
   }
 
   // Where focus goes back to when a replay closes (its Watch again).
@@ -415,7 +419,7 @@ export class CrateReveal extends ApplicationV2 {
     this.#replaying = true;
     this.#swappedAt = performance.now();
     // The same node keeps focus; only its words and action change.
-    button.textContent = "Skip";
+    button.textContent = t("LOOTCRATES.Reveal.Skip");
     button.dataset.action = "skip";
     this.element.querySelector(".lc-reveal__result").hidden = true;
     this.#mount({ replay: true });
@@ -433,7 +437,7 @@ export class CrateReveal extends ApplicationV2 {
     this.#showAgain(again);
     if (again.off) return;
     this.#drawing = true;
-    button.textContent = "Drawing…";
+    button.textContent = t("LOOTCRATES.Reveal.Drawing");
     button.setAttribute("aria-disabled", "true");
     try {
       const sent = await requestPull({ boxId: this.reveal.box.id, actorId: this.reveal.actorId, price: again.price });
@@ -505,7 +509,7 @@ export class CrateReveal extends ApplicationV2 {
     const item = this.reveal.itemUuid ? await fromUuid(this.reveal.itemUuid).catch(() => null) : null;
     if (!item) {
       button.hidden = true;
-      ui.notifications.warn(`${this.reveal.result.name} is no longer in ${this.reveal.actorName}'s inventory.`);
+      ui.notifications.warn(t("LOOTCRATES.Reveal.ItemGone", { item: this.reveal.result.name, actor: this.reveal.actorName }));
       return;
     }
     item.sheet.render(true);
@@ -618,7 +622,7 @@ export class CrateReveal extends ApplicationV2 {
     root.querySelector(".lc-reveal__watch").hidden = this.#watched || spin.reducedMotion || !this.#kind.replayable;
     this.#showAgain(this.#againOffer());
     btn.dataset.action = "dismiss";
-    btn.textContent = "Close";
+    btn.textContent = t("LOOTCRATES.Common.Close");
     if (focusIsFree(root, r, this.returnTo)) btn.focus({ preventScroll: true });
     // The kind's quiet word for the buyer alone (the well's miss), as the
     // result lands: a player whose window sits behind the shop still hears.
@@ -643,7 +647,7 @@ export class CrateReveal extends ApplicationV2 {
       watch.hidden = true;
       if (had) root.querySelector(".lc-reveal__close").focus({ preventScroll: true });
     } else {
-      watch.textContent = "Watch again";
+      watch.textContent = t("LOOTCRATES.Reveal.WatchAgain");
       watch.dataset.action = "watchAgain";
     }
   }
@@ -668,7 +672,7 @@ export function sealChatCard(message, html) {
   if (!card || card.classList.contains("lc-chat--refunded")) return;
   const sealed = document.createElement("div");
   sealed.className = "lc-chat__sealed";
-  sealed.textContent = "Opening…";
+  sealed.textContent = t("LOOTCRATES.Card.Opening");
   card.classList.add("lc-chat--sealed");
   card.append(sealed);
   const whole = spin.hide && html?.style ? html : null;
@@ -716,8 +720,8 @@ export function watchAgain(message, html) {
   const btn = document.createElement("button");
   btn.type = "button";
   btn.className = "lc-chat__replay";
-  btn.textContent = "Watch again";
-  btn.setAttribute("aria-label", `Watch again: ${snapshot.actorName ?? ""} opens ${snapshot.box?.name ?? "a crate"}`);
+  btn.textContent = t("LOOTCRATES.Reveal.WatchAgain");
+  btn.setAttribute("aria-label", t("LOOTCRATES.Reveal.WatchAgainLabel", { actor: snapshot.actorName ?? "", box: snapshot.box?.name ?? t("LOOTCRATES.Reveal.ACrate") }));
   btn.addEventListener("click", event => {
     event.preventDefault();
     event.stopPropagation();

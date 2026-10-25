@@ -31,6 +31,7 @@
   card's name before the result the host announces.
 */
 import { RARITY_LABEL } from "./config.js";
+import { t } from "./i18n.js";
 
 export const CARD_WIDTH = 120;
 export const CARD_GAP = 8;
@@ -94,7 +95,7 @@ export function cardElement(card) {
   name.textContent = card.name ?? "";
   const bar = document.createElement("div");
   bar.className = "lc-card__bar";
-  bar.title = card.rarity === "none" ? "Nothing" : RARITY_LABEL[card.rarity] ?? card.rarity;
+  bar.title = card.rarity === "none" ? t("LOOTCRATES.Odds.Nothing") : RARITY_LABEL[card.rarity] ?? card.rarity;
   el.append(art, name, bar);
   return el;
 }

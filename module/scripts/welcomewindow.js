@@ -11,7 +11,8 @@
 import { MODULE_ID, SETTINGS } from "./config.js";
 import { getBoxes } from "./store.js";
 import { openManager, addStarterCrates } from "./manager.js";
-import { WELCOME_TITLE, MENU_LABEL, welcomeView, welcomeState, stateAfterClose, newsFor, welcomeHTML } from "./welcome.js";
+import { t } from "./i18n.js";
+import { WELCOME_TITLE, welcomeView, welcomeState, stateAfterClose, newsFor, welcomeHTML } from "./welcome.js";
 
 const { ApplicationV2 } = foundry.applications.api;
 const esc = s => foundry.utils.escapeHTML(String(s ?? ""));
@@ -29,13 +30,16 @@ export class WelcomeWindow extends ApplicationV2 {
   static DEFAULT_OPTIONS = {
     id: "loot-crates-welcome",
     classes: ["loot-crates", "lc-welcome-window"],
-    window: { title: WELCOME_TITLE, icon: "fas fa-box-open", resizable: false },
+    // The window's title is its own getter, in the module's words.
+    window: { title: "LOOTCRATES.Welcome.Title", icon: "fas fa-box-open", resizable: false },
     position: { width: 540, height: "auto" },
     actions: {
       welcomeStarter: WelcomeWindow.#starter, welcomeManager: WelcomeWindow.#manager,
       welcomeDone: WelcomeWindow.#done, welcomeQuiet: WelcomeWindow.#quietly,
     },
   };
+
+  get title() { return WELCOME_TITLE; }
 
   // "welcome" or "news".
   view = "welcome";
@@ -105,9 +109,11 @@ export class WelcomeMenu extends ApplicationV2 {
 export function registerWelcome() {
   game.settings.register(MODULE_ID, SETTINGS.WELCOME, { scope: "world", config: false, type: Object, default: { seen: null, off: false } });
   game.settings.registerMenu(MODULE_ID, "welcomeMenu", {
-    name: "Welcome",
-    label: MENU_LABEL,
-    hint: "Where the shop and the manager are, and the first steps. Closing it turns the short notes after each update back on.",
+    // Getters: Foundry keeps this object and reads its words when Game
+    // Settings renders, by when the module's words have arrived.
+    get name() { return t("LOOTCRATES.Welcome.MenuName"); },
+    get label() { return t("LOOTCRATES.Welcome.MenuLabel"); },
+    get hint() { return t("LOOTCRATES.Welcome.MenuHint"); },
     icon: "fas fa-circle-info",
     type: WelcomeMenu,
     restricted: true,

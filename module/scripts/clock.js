@@ -20,15 +20,19 @@
   a rest only on a GM's client (its _rest: advanceTime && game.user.isGM),
   so a player's long rest from their own sheet leaves the clock where it
   was. The GM therefore keeps each character's own day: a long rest moves
-  it to the day after the later of the clock's day when the rest began and
-  the character's own day (dayAfterRest; socket.js newDayFor, store.js
-  restInto), and the character's day is the later of that and the clock's
-  day (laterDay). So every long rest ends a day at once, and the clock
-  catches up rather than counting again: when the GM moves it over the
-  same night it lands on the day the rest already began. A GM's rest that
-  moved the clock began a duration earlier, so it rests into the clock's
-  new day and adds nothing. Rests taken faster than the clock runs borrow
-  days ahead of it, which the clock then passes through without a new one.
+  it to the day after the clock's day when the rest began (dayAfterRest;
+  socket.js newDayFor, store.js restInto), and the character's day is the
+  later of that and the clock's day (laterDay). So a long rest ends a day
+  at once, and the clock catches up rather than counting again: when the
+  GM moves it over the same night it lands on the day the rest already
+  began. A GM's rest that moved the clock began a duration earlier, so it
+  rests into the clock's new day and adds nothing. The borrow ahead of the
+  clock is one day at most: a second long rest on the same calendar day
+  (the GM's rest that left the clock on that day, then the player's own)
+  finds the character's day already past the clock's and ends no further
+  day, so the well never stays shut for nights the clock hasn't reached.
+  (dnd5e allows one long rest in 24 hours; with the calendar off, where
+  every long rest recovers daily uses, each one still ends a day.)
   One seam: a rest begun on a year's last day rests into a day past it
   (y1492d365), which the clock never names, so the clock's move into the
   new year is one more new day.
@@ -42,6 +46,7 @@
   Null when the world has no way to tell a day at all, in which case
   nothing is counted per day.
 */
+import { t } from "./i18n.js";
 const SECONDS_PER_DAY = 86400;
 
 /*
@@ -116,10 +121,12 @@ export const byRest = mode => mode === "rest" || mode === "manual";
 
 // The character's own day after a long rest begun on `began` (the clock's
 // day then), with `was` the day its last rest moved it to: the day after
-// the later of the two. Null when the clock told no day.
+// `began`, or `was` where that is already as late (a day borrowed ahead of
+// the clock is not borrowed again, nor taken back). Null when the clock
+// told no day.
 export function dayAfterRest(began, was = null) {
-  const from = laterDay(began, was);
-  return from ? nextDay(from) : null;
+  const next = nextDay(began);
+  return next ? laterDay(next, was) : null;
 }
 
 /*
@@ -138,7 +145,5 @@ export function dayKeyFor({ time = null, calendarOn = true, restDay = 0, restedI
 // The editor's line when a day ends at a long rest, said once beside the
 // well's cap and a limit per day (well.js noClockNote, limits.js).
 export function restDayNote(mode) {
-  return mode === "manual"
-    ? "dnd5e's daily recovery is manual: a day ends at each character's long rest."
-    : "dnd5e's calendar is off: a day ends at each character's long rest.";
+  return mode === "manual" ? t("LOOTCRATES.Clock.ManualRecovery") : t("LOOTCRATES.Clock.CalendarOff");
 }

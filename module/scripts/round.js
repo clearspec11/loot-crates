@@ -29,6 +29,7 @@
   kind puts it in its own voice (kinds.js tableView.words).
 */
 import { getKind } from "./kinds.js";
+import { t, words } from "./i18n.js";
 
 // How long an "until the GM spins" round may sit open before the GM's
 // client refunds its stakes. A reload mid-round keeps the round; one left for
@@ -73,9 +74,9 @@ export function liveRoundOf(rounds = {}, boxId) {
 
 // Why a stake on this round can't be taken now, or "" when it can.
 export function stakeReason(round, now = Date.now()) {
-  if (!round) return "There is no round open at this table.";
-  if (round.status === STATUS.RESOLVED) return "That round has already been settled.";
-  if (round.status === STATUS.CLOSED || (round.closesAt != null && now >= round.closesAt)) return "Bets are closed for this round.";
+  if (!round) return t("LOOTCRATES.Round.NoneOpen");
+  if (round.status === STATUS.RESOLVED) return t("LOOTCRATES.Round.AlreadySettled");
+  if (round.status === STATUS.CLOSED || (round.closesAt != null && now >= round.closesAt)) return t("LOOTCRATES.Round.BetsClosedRound");
   return "";
 }
 
@@ -111,7 +112,7 @@ export function orphanRounds(rounds = {}, boxes = {}) {
 // house bidder) holds nothing and is not counted.
 export function heldBy(log = [], roundId) {
   const rows = openStakesOf(log, roundId).filter(r => !r.house);
-  return { count: rows.length, gp: Math.round(rows.reduce((t, r) => t + (Number(r.price) || 0), 0) * 100) / 100 };
+  return { count: rows.length, gp: Math.round(rows.reduce((sum, r) => sum + (Number(r.price) || 0), 0) * 100) / 100 };
 }
 
 // The soonest moment an unresolved round goes stale, for the GM's timer;
@@ -228,31 +229,31 @@ const wordsOf = kind => getKind(kind)?.tableView?.words ?? {};
 // in the Auction's words).
 export function roundLine(g) {
   const n = g.rows.filter(r => rowStatus(r) !== "refunded").length;
-  const stakes = `${n} stake${n === 1 ? "" : "s"}`;
-  if (g.open) return `${stakes}, ${g.open} ${wordsOf(g.rows[0]?.kind).roundWaiting ?? "waiting on the spin"}`;
-  return g.status === STATUS.RESOLVED ? `${stakes}, settled` : stakes;
+  const stakes = t(n === 1 ? "LOOTCRATES.Round.StakesOne" : "LOOTCRATES.Round.StakesMany", { count: n });
+  if (g.open) return t("LOOTCRATES.Round.StakesOpen", { stakes, open: g.open, waiting: wordsOf(g.rows[0]?.kind).roundWaiting ?? t("LOOTCRATES.Round.WaitingOnSpin") });
+  return g.status === STATUS.RESOLVED ? t("LOOTCRATES.Round.StakesSettled", { stakes }) : stakes;
 }
 
 // What happened to a table stake's coins, for its Pull log row: still
 // waiting, or why the resolve (or the GM's recovery) turned it back. A settled
 // row's own note (the Auction's "Won at the hammer for 55 gp.") wins over
 // "Lost at the spin.". "" for any other row.
-const STAKE_REASON = {
-  owner: "Refunded at the spin: the character changed hands.",
-  game: "Refunded at the spin: the game was gone.",
-  gone: "The character was gone at the spin; the stake went with it.",
-  stale: "Refunded: the round was never spun in time.",
-  outbid: "Refunded: outbid.",
-  reserve: "Refunded at the hammer: the reserve wasn't met.",
-  lot: "Refunded at the hammer: the lot was gone.",
-  grant: "Refunded at the hammer: the lot couldn't be added to the sheet.",
-  cancel: "Refunded: the GM called the round off.",
-};
+const STAKE_REASON = words({
+  owner: "LOOTCRATES.Round.ReasonOwner",
+  game: "LOOTCRATES.Round.ReasonGame",
+  gone: "LOOTCRATES.Round.ReasonGone",
+  stale: "LOOTCRATES.Round.ReasonStale",
+  outbid: "LOOTCRATES.Round.ReasonOutbid",
+  reserve: "LOOTCRATES.Round.ReasonReserve",
+  lot: "LOOTCRATES.Round.ReasonLot",
+  grant: "LOOTCRATES.Round.ReasonGrant",
+  cancel: "LOOTCRATES.Round.ReasonCancel",
+});
 export function stakeNote(row) {
   if (!row?.roundId) return "";
   const status = rowStatus(row);
-  if (status === "open") return wordsOf(row.kind).stakeOpen ?? "Open: waiting on the spin.";
-  if (status === "settled") return row.note ?? (Math.round(Number(row.payoutCp) || 0) > 0 ? "" : "Lost at the spin.");
+  if (status === "open") return wordsOf(row.kind).stakeOpen ?? t("LOOTCRATES.Round.StakeOpen");
+  if (status === "settled") return row.note ?? (Math.round(Number(row.payoutCp) || 0) > 0 ? "" : t("LOOTCRATES.Round.LostAtSpin"));
   return STAKE_REASON[row.refundReason] ?? "";
 }
 
@@ -285,14 +286,13 @@ export function clockText(ms) {
   `words` (the wheel's "The wheel is turning"; tableView.words, kinds.js);
   these are the plain ones.
 */
-export const ROUND_WORDS = {
-  none: "No round open yet",
-  closed: "Bets are closed",
-  waiting: "Bets are closed: waiting for the GM",
-  clock: left => `Bets close in ${clockText(left)}`,
-  open: "Bets are open until the GM calls it",
-  held: "The table is settling",
-};
+export const ROUND_WORDS = Object.assign(words({
+  none: "LOOTCRATES.Round.WordsNone",
+  closed: "LOOTCRATES.Round.WordsClosed",
+  waiting: "LOOTCRATES.Round.WordsWaiting",
+  open: "LOOTCRATES.Round.WordsOpen",
+  held: "LOOTCRATES.Round.WordsHeld",
+}), { clock: left => t("LOOTCRATES.Round.WordsClock", { time: clockText(left) }) });
 export function roundState(round, { now = Date.now(), held = false, words = {} } = {}) {
   const w = { ...ROUND_WORDS, ...words };
   if (held) return { key: "spinning", text: w.held };

@@ -167,6 +167,7 @@
                   onInput). fields() and readBet() get the live stakes too.
   The window that plays a round plugs into reveal.js setTableWindow.
 */
+import { t } from "./i18n.js";
 
 // The error a player is shown, as one plain sentence. Here so a kind can
 // throw it without importing the core (pull.js re-exports it).
@@ -194,10 +195,15 @@ export const getKind = id => kinds.get(id) ?? null;
 // "got Sling +2" / "got nothing", or the kind's own phrase (gotText above).
 export function gotText(kind, out) {
   const own = typeof kind?.gotText === "function" ? kind.gotText(out) : null;
-  return own || `got ${out?.result?.name || "nothing"}`;
+  return own || (out?.result?.name ? t("LOOTCRATES.Common.Got", { name: out.result.name }) : t("LOOTCRATES.Common.GotNothing"));
 }
 
 export const kindIds = () => [...kinds.keys()];
+
+// A kind's noun (its `noun`: "crate", "wheel") in the module's words, for
+// a sentence about it ("The wheel jammed."); one the module doesn't know is said as is.
+const NOUN_KEYS = { crate: "LOOTCRATES.Kind.NounCrate", well: "LOOTCRATES.Kind.NounWell", dice: "LOOTCRATES.Kind.NounDice", deck: "LOOTCRATES.Kind.NounDeck", wheel: "LOOTCRATES.Kind.NounWheel", auction: "LOOTCRATES.Kind.NounAuction" };
+export const nounText = noun => (NOUN_KEYS[noun] ? t(NOUN_KEYS[noun]) : String(noun ?? ""));
 
 // The kind of a record, or a PullError naming the game when this client
 // doesn't know it (a record written by a newer module, or a kind whose
@@ -205,7 +211,7 @@ export const kindIds = () => [...kinds.keys()];
 export function kindFor(record) {
   const id = kindOf(record);
   const kind = getKind(id);
-  if (!kind) throw new PullError(`${record?.name ?? "That game"} is a kind of game (${id}) this client can't run.`);
+  if (!kind) throw new PullError(t("LOOTCRATES.Error.UnknownKind", { name: record?.name ?? t("LOOTCRATES.Common.ThatGame"), id }));
   return kind;
 }
 

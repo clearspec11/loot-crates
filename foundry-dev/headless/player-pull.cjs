@@ -118,6 +118,9 @@ async function join(browser, user, { readySweep = false } = {}) {
   await page.click("button[name=join], button[type=submit]");
   await page.waitForURL(/\/game/, { timeout: 30000 });
   await page.waitForFunction(() => window.game?.ready, null, { timeout: 120000 });
+  // What main.js does first: the branch's words, from its own lang/en.json
+  // (the installed release may have no language file, or older words).
+  await page.evaluate(async base => (await import(base + "scripts/i18n.js")).loadStrings(), MODULE_BASE);
   // The branch's socket in place of the installed one.
   await page.evaluate(async ([base, readySweep, canvasOn]) => {
     if (!canvasOn) globalThis.canvas?.app?.ticker?.stop();
@@ -548,6 +551,14 @@ async function gmWatchCheck(page) {
         Hooks.off("updateActor", onCharge);
         const focusAtLanding = where();
         const sameBuyNode = stillBuy();
+        // The branch's words, landed: the shop, the reveal and the pull's
+        // chat card read in English, never a key (i18n.js reads every
+        // sentence by key; the installed release has no lang file, so this
+        // is the branch's own lang/en.json).
+        const textOf = sel => [...document.querySelectorAll(sel)].map(el => el.innerText).join("\n");
+        const shopText = textOf(".application.lc-shop"), revealText = rv?.innerText ?? "", chatText = textOf(".chat-log .loot-crates.lc-chat, #chat .loot-crates.lc-chat");
+        const keysShown = [shopText, revealText, chatText].join("\n").match(/LOOTCRATES\.[\w.]+/g) ?? [];
+        const words = { keysShown, ok: !keysShown.length && !!shopText && !!revealText && !!chatText, shop: shopText.slice(0, 80), reveal: revealText.replace(/\s+/g, " ").slice(0, 120), chat: chatText.replace(/\s+/g, " ").slice(-120) };
         // Close the reveal as the buyer would, and see where focus goes.
         const revealApp = [...foundry.applications.instances.values()].find(a => a.element === rv);
         if (revealApp) { await revealApp.close(); await new Promise(r => setTimeout(r, 400)); }
@@ -562,6 +573,7 @@ async function gmWatchCheck(page) {
           buyLabels: labels,
           focus: { afterCharge: charged, atLanding: focusAtLanding, afterClose: focusAfterClose, sameBuyNode, ok: ["Buy", "reveal Close"].includes(charged) && focusAtLanding === "reveal Close" && focusAfterClose === "Buy" && sameBuyNode },
           result: rv?.querySelector(".lc-reveal__result")?.innerText,
+          words,
           ...(sl ? { seal: await sl.report() } : {}),
         });
       }

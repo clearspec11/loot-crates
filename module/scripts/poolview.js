@@ -24,6 +24,7 @@
 */
 import { RARITIES, RARITY_LABEL } from "./config.js";
 import { normalizeRarity, sourceStatus, effectiveRarity, sourceRarityOf, entryWeight, shopOdds } from "./odds.js";
+import { t, words, listAnd } from "./i18n.js";
 
 export const PAGE_ROWS = 50;
 export const OPEN_UP_TO = 60;
@@ -79,7 +80,7 @@ export function sortRows(rows, recent = []) {
     .map(([r]) => pin.has(r.e.uuid) ? { ...r, recent: true } : r);
 }
 
-const CHIP_NAME = { unset: "No rarity set", never: "Never drops", missing: "Missing", renamed: "Renamed" };
+const CHIP_NAME = words({ unset: "LOOTCRATES.Pools.NoRarity", never: "LOOTCRATES.Pools.NeverDrops", missing: "LOOTCRATES.Pools.Missing", renamed: "LOOTCRATES.Pools.Renamed" });
 
 /*
   Pin the uuids just added to (or already in) a pool: the view that shows
@@ -93,11 +94,11 @@ export function pinRecent(view, rows, uuids) {
   const next = { ...view, recent, open: true, shown: PAGE_ROWS };
   const cleared = [];
   if (next.chip && pinned.some(r => !matchesChip(r, next.chip))) {
-    cleared.push(`the ${RARITY_LABEL[next.chip] ?? CHIP_NAME[next.chip] ?? next.chip} filter`);
+    cleared.push(t("LOOTCRATES.Pools.TheFilter", { name: RARITY_LABEL[next.chip] ?? CHIP_NAME[next.chip] ?? next.chip }));
     next.chip = null;
   }
   if (String(next.q ?? "").trim() && pinned.some(r => !filterRows([r], { q: next.q }).length)) {
-    cleared.push("the search");
+    cleared.push(t("LOOTCRATES.Pools.TheSearch"));
     next.q = "";
   }
   return { view: next, cleared };
@@ -110,17 +111,18 @@ export function pinRecent(view, rows, uuids) {
     "Added 40 items from SRD Items to Core magic items; they are at the top."
 */
 export function dropNotice({ pool, rows = [], label = "", added = rows.length, duplicate = false, cleared = [] }) {
-  const where = pool?.name ?? "the pool";
+  const where = pool?.name ?? t("LOOTCRATES.Pools.ThePool");
   let text;
-  if (duplicate && rows[0]) text = `${rows[0].name} is already in ${where}; it is at the top.`;
+  if (duplicate && rows[0]) text = t("LOOTCRATES.Pools.AlreadyIn", { name: rows[0].name, pool: where });
   else if (added === 1 && rows[0]) {
     const r = rows[0];
-    text = `${r.name} added to ${where}, ${r.unset ? "no rarity set (draws as Common)" : RARITY_LABEL[r.rarity]}, at the top.`;
+    text = t("LOOTCRATES.Pools.AddedOne", { name: r.name, pool: where, rarity: r.unset ? t("LOOTCRATES.Pools.UnsetDrawsCommon") : RARITY_LABEL[r.rarity] });
   } else {
-    const top = added > rows.length ? `the first ${rows.length} are at the top` : "they are at the top";
-    text = `Added ${plural(added, "item", "items")}${label ? ` from ${label}` : ""} to ${where}; ${top}.`;
+    const top = added > rows.length ? t("LOOTCRATES.Pools.FirstAtTop", { count: rows.length }) : t("LOOTCRATES.Pools.AllAtTop");
+    const items = plural(added, "LOOTCRATES.Editor.ItemsOne", "LOOTCRATES.Editor.ItemsMany");
+    text = label ? t("LOOTCRATES.Pools.AddedFrom", { items, label, pool: where, top }) : t("LOOTCRATES.Pools.AddedMany", { items, pool: where, top });
   }
-  if (cleared.length) text += ` Cleared ${cleared.join(" and ")} so ${rows.length === 1 ? "it shows" : "they show"}.`;
+  if (cleared.length) text += ` ${t(rows.length === 1 ? "LOOTCRATES.Pools.ClearedOne" : "LOOTCRATES.Pools.ClearedMany", { what: cleared.join(t("LOOTCRATES.Common.And")) })}`;
   return text;
 }
 
@@ -130,7 +132,7 @@ export function dropNotice({ pool, rows = [], label = "", added = rows.length, d
   or rarity ("Saved: Flame Tongue, weight 3."). One sentence shape for every
   in-place save, so a screen reader hears that it happened and what stands.
 */
-export const savedNotice = (name, value) => `Saved: ${name || "the row"}, ${value}.`;
+export const savedNotice = (name, value) => t("LOOTCRATES.Pools.Saved", { name: name || t("LOOTCRATES.Pools.TheRow"), value });
 
 // The chips, in census order. A rarity chip is what the box can draw at that
 // rarity (live, weight above 0), as the census counts it.
@@ -172,13 +174,16 @@ export function nextRows(rows, drawn, n = PAGE_ROWS) {
   return { rows: page, left, next: Math.min(PAGE_ROWS, left) };
 }
 
-const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+// "1 item", "3 items": `one` and `many` are keys with a {count}.
+const plural = (n, one, many) => t(n === 1 ? one : many, { count: n });
 const CHIP_TEXT = {
-  unset: n => `${n} no rarity set`,
-  never: n => plural(n, "never drops", "never drop"),
-  missing: n => `${n} missing`,
-  renamed: n => `${n} renamed`,
+  unset: n => t("LOOTCRATES.Pools.CountUnset", { count: n }),
+  never: n => plural(n, "LOOTCRATES.Pools.CountNeverOne", "LOOTCRATES.Pools.CountNeverMany"),
+  missing: n => t("LOOTCRATES.Pools.CountMissing", { count: n }),
+  renamed: n => t("LOOTCRATES.Pools.CountRenamed", { count: n }),
 };
+// "8 common": a count of one rarity, its name in lower case.
+const rarityCount = (n, r) => t("LOOTCRATES.Pools.CountRarity", { count: n, rarity: RARITY_LABEL[r].toLowerCase() });
 
 // Every chip with a count, plus the active one even at 0 so it can be
 // turned off. Counts come from matchesChip, so a chip shows what it says.
@@ -188,7 +193,7 @@ export function chipList(rows, active = null) {
     const n = rows.filter(r => matchesChip(r, chip)).length;
     if (!n && chip !== active) continue;
     const rarity = RARITIES.includes(chip);
-    out.push({ chip, n, rarity, label: rarity ? `${n} ${RARITY_LABEL[chip].toLowerCase()}` : CHIP_TEXT[chip](n) });
+    out.push({ chip, n, rarity, label: rarity ? rarityCount(n, chip) : CHIP_TEXT[chip](n) });
   }
   return out;
 }
@@ -202,8 +207,9 @@ export function poolCount(pool, rows) {
   const missing = rows.filter(r => r.status === "missing").length;
   const renamed = rows.filter(r => r.status === "renamed").length;
   const unset = rows.filter(r => r.unset).length;
-  const problems = [missing && `${missing} missing`, renamed && `${renamed} renamed`, unset && `${unset} no rarity set`].filter(Boolean).join(", ");
-  return `${plural(n, "item", "items")}${counts.length ? " · " + counts.map(([r, c]) => `${c} ${RARITY_LABEL[r].toLowerCase()}`).join(", ") : ""}${never ? ` · ${CHIP_TEXT.never(never)}` : ""}${problems ? ` · <span class="lc-pool__problems">${problems}</span>` : ""}`;
+  const comma = t("LOOTCRATES.Common.ListComma");
+  const problems = [missing && CHIP_TEXT.missing(missing), renamed && CHIP_TEXT.renamed(renamed), unset && CHIP_TEXT.unset(unset)].filter(Boolean).join(comma);
+  return `${plural(n, "LOOTCRATES.Editor.ItemsOne", "LOOTCRATES.Editor.ItemsMany")}${counts.length ? " · " + counts.map(([r, c]) => rarityCount(c, r)).join(comma) : ""}${never ? ` · ${CHIP_TEXT.never(never)}` : ""}${problems ? ` · <span class="lc-pool__problems">${problems}</span>` : ""}`;
 }
 
 // The always-visible part of a pool: its name and census, and when `users`
@@ -272,36 +278,35 @@ export function removeImpact(poolId, uuid, pools, boxes) {
 }
 
 // "A", "A and B", "A, B and C".
-export function nameList(names) {
-  return names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
-}
+export const nameList = listAnd;
 const strongList = (boxes, esc) => nameList(boxes.map(b => `<strong>${esc(b.name)}</strong>`));
 export const USERS_SHOWN = 3;
 
 // The header's quiet line: "In Adventurer's Crate, Royal Crate", "In A, B, C
 // and 2 more", or "Not in any box".
 export function usersText(names) {
-  return !names.length ? "Not in any box"
-    : `In ${names.slice(0, USERS_SHOWN).join(", ")}${names.length > USERS_SHOWN ? ` and ${names.length - USERS_SHOWN} more` : ""}`;
+  const shown = names.slice(0, USERS_SHOWN).join(t("LOOTCRATES.Common.ListComma"));
+  return !names.length ? t("LOOTCRATES.Pools.InNoBox")
+    : names.length > USERS_SHOWN ? t("LOOTCRATES.Pools.InBoxesMore", { names: shown, count: names.length - USERS_SHOWN }) : t("LOOTCRATES.Pools.InBoxes", { names: shown });
 }
 export function usersLine(names, esc) {
   return `<span class="lc-pool__users">${esc(usersText(names))}</span>`;
 }
 
-const emptiedText = (emptied, esc) => `${strongList(emptied, esc)} will have nothing inside and can't be bought until ${emptied.length === 1 ? "it has" : "they have"} an item that can drop.`;
+const emptiedText = (emptied, esc) => t(emptied.length === 1 ? "LOOTCRATES.Pools.EmptiedOne" : "LOOTCRATES.Pools.EmptiedMany", { names: strongList(emptied, esc) });
 
 // The Delete pool confirm: the boxes that use it by name, and in a sentence
 // of its own the ones it would leave with nothing inside.
 export function deletePoolText(pool, { users = [], emptied = [], kept = [] }, esc) {
-  const out = [`<p>Delete <strong>${esc(pool.name)}</strong>? ${users.length ? `It is in ${strongList(users, esc)}.` : "No box draws from it."}</p>`];
-  if (kept.length) out.push(`<p>${strongList(kept, esc)} can still drop items from ${kept.length === 1 ? "its" : "their"} other pools.</p>`);
+  const out = [`<p>${t("LOOTCRATES.Game.DeleteAsk", { name: `<strong>${esc(pool.name)}</strong>` })} ${users.length ? t("LOOTCRATES.Pools.ItIsIn", { names: strongList(users, esc) }) : t("LOOTCRATES.Pools.NoBoxDraws")}</p>`];
+  if (kept.length) out.push(`<p>${t(kept.length === 1 ? "LOOTCRATES.Pools.KeptOne" : "LOOTCRATES.Pools.KeptMany", { names: strongList(kept, esc) })}</p>`);
   if (emptied.length) out.push(`<p>${emptiedText(emptied, esc)}</p>`);
   return out.join("");
 }
 
 // The Remove confirm, asked only when the removal empties a box.
 export function removeEntryText(name, pool, emptied, esc) {
-  return `<p>Remove <strong>${esc(name)}</strong> from <strong>${esc(pool.name)}</strong>? It is the last item ${nameList(emptied.map(b => esc(b.name)))} can drop.</p><p>${emptiedText(emptied, esc)}</p>`;
+  return `<p>${t("LOOTCRATES.Pools.RemoveAsk", { name: `<strong>${esc(name)}</strong>`, pool: `<strong>${esc(pool.name)}</strong>`, boxes: nameList(emptied.map(b => esc(b.name))) })}</p><p>${emptiedText(emptied, esc)}</p>`;
 }
 
 export function chipsHTML(pool, rows, view, esc) {
@@ -313,16 +318,16 @@ export function unsetButton(pool, matched, view, esc) {
   const n = matched.filter(r => r.unset).length;
   if (!n) return "";
   const narrowed = !!(view.q?.trim() || view.chip);
-  const title = narrowed ? "Pick one rarity for every item matching the search and filter whose source has none" : "Pick one rarity for every item here whose source has none";
-  return `<button type="button" data-action="setUnsetRarity" data-pool="${esc(pool.id)}" title="${title}">Set rarity for ${n} unset${narrowed ? " matching" : ""}</button>`;
+  const title = narrowed ? t("LOOTCRATES.Pools.SetRarityTipMatching") : t("LOOTCRATES.Pools.SetRarityTip");
+  return `<button type="button" data-action="setUnsetRarity" data-pool="${esc(pool.id)}" title="${title}">${t(narrowed ? "LOOTCRATES.Pools.SetRarityMatching" : "LOOTCRATES.Pools.SetRarity", { count: n })}</button>`;
 }
 
 // "Showing 50 of 273" and "Show 50 more (223 left)", or why nothing shows.
 export function footHTML(pool, all, matched, page, esc) {
   if (!all.length) return "";
-  if (!matched.length) return `<span class="lc-pool__shown">Nothing in this pool matches the search and filter.</span>`;
-  const text = page.left > 0 ? `Showing ${matched.length - page.left} of ${matched.length}` : matched.length < all.length ? `${matched.length} of ${all.length} match` : "";
-  const more = page.left > 0 ? `<button type="button" class="lc-pool__more" data-action="showMore" data-pool="${esc(pool.id)}">Show ${page.next} more (${page.left} left)</button>` : "";
+  if (!matched.length) return `<span class="lc-pool__shown">${t("LOOTCRATES.Pools.NoMatch")}</span>`;
+  const text = page.left > 0 ? t("LOOTCRATES.Pools.Showing", { shown: matched.length - page.left, count: matched.length }) : matched.length < all.length ? t("LOOTCRATES.Pools.Match", { count: matched.length, all: all.length }) : "";
+  const more = page.left > 0 ? `<button type="button" class="lc-pool__more" data-action="showMore" data-pool="${esc(pool.id)}">${t("LOOTCRATES.Pools.ShowMore", { next: page.next, left: page.left })}</button>` : "";
   return `${text ? `<span class="lc-pool__shown">${text}</span>` : ""}${more}`;
 }
 
@@ -335,17 +340,17 @@ export function poolBody(pool, rows, view, esc) {
   const has = rows.length > 0;
   return `
     <div class="lc-pool__bar">
-      ${has ? `<input type="search" class="lc-pool__search" data-pool="${id}" value="${esc(view.q ?? "")}" placeholder="Search by name" aria-label="Search ${esc(pool.name)} by name" autocomplete="off" spellcheck="false">` : ""}
+      ${has ? `<input type="search" class="lc-pool__search" data-pool="${id}" value="${esc(view.q ?? "")}" placeholder="${t("LOOTCRATES.Pools.SearchPlaceholder")}" aria-label="${t("LOOTCRATES.Pools.SearchLabel", { name: esc(pool.name) })}" autocomplete="off" spellcheck="false">` : ""}
       <span class="lc-pool__unset">${unsetButton(pool, matched, view, esc)}</span>
       <span class="lc-tabs__spacer"></span>
-      <button type="button" data-action="bulkAdd" data-pool="${id}" title="Add every item in a compendium that matches a filter"><i class="fas fa-book"></i> Add from compendium</button>
-      <button type="button" data-action="crateFromPool" data-pool="${id}" aria-label="New crate from ${esc(pool.name)}" title="A crate that draws from this pool alone; price it and add it to the shelf"><i class="fas fa-box-open"></i> New crate from this pool</button>
-      <button type="button" data-action="editPool" data-pool="${id}" aria-label="Rename ${esc(pool.name)}"><i class="fas fa-pen"></i></button>
-      <button type="button" data-action="deletePool" data-pool="${id}" aria-label="Delete ${esc(pool.name)}"><i class="fas fa-trash"></i></button>
+      <button type="button" data-action="bulkAdd" data-pool="${id}" title="${t("LOOTCRATES.Pools.BulkAddTip")}"><i class="fas fa-book"></i> ${t("LOOTCRATES.Pools.BulkAdd")}</button>
+      <button type="button" data-action="crateFromPool" data-pool="${id}" aria-label="${t("LOOTCRATES.Pools.CrateFromLabel", { name: esc(pool.name) })}" title="${t("LOOTCRATES.Pools.CrateFromTip")}"><i class="fas fa-box-open"></i> ${t("LOOTCRATES.Pools.CrateFrom")}</button>
+      <button type="button" data-action="editPool" data-pool="${id}" aria-label="${t("LOOTCRATES.Pools.RenameLabel", { name: esc(pool.name) })}"><i class="fas fa-pen"></i></button>
+      <button type="button" data-action="deletePool" data-pool="${id}" aria-label="${t("LOOTCRATES.Boxes.DeleteLabel", { name: esc(pool.name) })}"><i class="fas fa-trash"></i></button>
     </div>
-    ${has ? `<div class="lc-pool__chips" role="group" aria-label="Filter ${esc(pool.name)}">${chipsHTML(pool, rows, view, esc)}</div>` : ""}
-    <p class="lc-pool__hint">Drop items, an Items folder, a compendium or a roll table here.${missing ? " Drop an item on a missing row to relink it." : ""}</p>
-    ${has ? `<p class="lc-pool__hint" id="${esc(rarityHintId(pool.id))}">The granted item carries the rarity picked on its row.</p>` : ""}
+    ${has ? `<div class="lc-pool__chips" role="group" aria-label="${t("LOOTCRATES.Pools.FilterLabel", { name: esc(pool.name) })}">${chipsHTML(pool, rows, view, esc)}</div>` : ""}
+    <p class="lc-pool__hint">${t(missing ? "LOOTCRATES.Pools.DropHintRelink" : "LOOTCRATES.Pools.DropHint")}</p>
+    ${has ? `<p class="lc-pool__hint" id="${esc(rarityHintId(pool.id))}">${t("LOOTCRATES.Pools.RarityHint")}</p>` : ""}
     <ul class="lc-entries">${page.rows.map(r => entryRow(pool.id, r, esc)).join("")}</ul>
     <div class="lc-pool__foot">${footHTML(pool, rows, matched, page, esc)}</div>`;
 }
@@ -359,11 +364,11 @@ export function curateControls(poolId, e, src, status, name, esc) {
   // Teach an older entry its source's raw rarity as it is edited.
   const learn = e.sourceRarity == null && status === "ok" && src?.rawRarity != null ? ` data-source-rarity="${esc(src.rawRarity)}"` : "";
   const options = [
-    `<option value="" ${current === "" ? "selected" : ""}>${blank ? "Not set (Common)" : `${RARITY_LABEL[fromSource]} (source)`}</option>`,
+    `<option value="" ${current === "" ? "selected" : ""}>${blank ? t("LOOTCRATES.Pools.NotSetCommon") : t("LOOTCRATES.Pools.FromSource", { rarity: RARITY_LABEL[fromSource] })}</option>`,
     ...RARITIES.filter(r => blank || r !== fromSource).map(r => `<option value="${r}" ${current === r ? "selected" : ""}>${RARITY_LABEL[r]}</option>`),
   ].join("");
-  return `<select class="lc-entry__rarity" data-curate="rarity" ${ids}${learn} aria-label="Rarity of ${esc(name)}" aria-describedby="${esc(rarityHintId(poolId))}" title="The granted item carries this rarity.">${options}</select>
-    <input class="lc-entry__weight" type="number" min="0" step="1" inputmode="numeric" value="${entryWeight(e)}" data-curate="weight" ${ids}${learn} aria-label="Weight of ${esc(name)}, 0 never drops" title="Weight against items of the same rarity; 0 never drops">`;
+  return `<select class="lc-entry__rarity" data-curate="rarity" ${ids}${learn} aria-label="${t("LOOTCRATES.Pools.RarityOf", { name: esc(name) })}" aria-describedby="${esc(rarityHintId(poolId))}" title="${t("LOOTCRATES.Pools.RarityTip")}">${options}</select>
+    <input class="lc-entry__weight" type="number" min="0" step="1" inputmode="numeric" value="${entryWeight(e)}" data-curate="weight" ${ids}${learn} aria-label="${t("LOOTCRATES.Pools.WeightOf", { name: esc(name) })}" title="${t("LOOTCRATES.Pools.WeightTip")}">`;
 }
 
 // A live row's class and its name-and-status block, rebuilt after an edit.
@@ -375,12 +380,12 @@ export function entryParts(row, esc) {
   const unset = isUnset(e, src);
   const notes = [];
   if (status === "renamed") {
-    if (src.name !== e.name) notes.push(`was ${e.name}`);
-    if (src.rarity != null && normalizeRarity(src.rarity) !== sourceRarityOf(e)) notes.push(`now ${RARITY_LABEL[normalizeRarity(src.rarity)]} at the source`);
+    if (src.name !== e.name) notes.push(t("LOOTCRATES.Pools.WasName", { name: e.name }));
+    if (src.rarity != null && normalizeRarity(src.rarity) !== sourceRarityOf(e)) notes.push(t("LOOTCRATES.Pools.NowAtSource", { rarity: RARITY_LABEL[normalizeRarity(src.rarity)] }));
   }
-  if (unset) notes.push("No rarity set");
-  if (never) notes.push("Never drops");
-  const just = row.recent ? `<span class="lc-entry__new">Just added</span>${notes.length ? " · " : ""}` : "";
+  if (unset) notes.push(CHIP_NAME.unset);
+  if (never) notes.push(CHIP_NAME.never);
+  const just = row.recent ? `<span class="lc-entry__new">${t("LOOTCRATES.Pools.JustAdded")}</span>${notes.length ? " · " : ""}` : "";
   return {
     name,
     className: ["lc-entry", `lc-rarity-${rarity}`, row.recent && "lc-entry--recent", status === "renamed" && "lc-entry--renamed", never && "lc-entry--never", unset && "lc-entry--unset"].filter(Boolean).join(" "),
@@ -394,16 +399,16 @@ export function entryRow(poolId, row, esc) {
   const { e, src, status } = row;
   const ids = `data-pool="${esc(poolId)}" data-uuid="${esc(e.uuid)}"`;
   if (status === "missing") {
-    const remove = `<button type="button" class="lc-entry__remove" data-action="removeEntry" ${ids} aria-label="Remove ${esc(e.name)}" data-tooltip="Remove"><i class="fa-solid fa-xmark" inert></i></button>`;
-    return `<li class="lc-entry lc-entry--missing lc-rarity-${effectiveRarity(e)}" data-entry="${esc(e.uuid)}" data-pool="${esc(poolId)}" data-relink="${esc(e.uuid)}" title="Drop an item here to relink it">
+    const remove = `<button type="button" class="lc-entry__remove" data-action="removeEntry" ${ids} aria-label="${t("LOOTCRATES.Pools.RemoveLabel", { name: esc(e.name) })}" data-tooltip="${t("LOOTCRATES.Pools.Remove")}"><i class="fa-solid fa-xmark" inert></i></button>`;
+    return `<li class="lc-entry lc-entry--missing lc-rarity-${effectiveRarity(e)}" data-entry="${esc(e.uuid)}" data-pool="${esc(poolId)}" data-relink="${esc(e.uuid)}" title="${t("LOOTCRATES.Pools.RelinkTip")}">
       <img src="${esc(e.img || FALLBACK_IMG)}" alt="">
-      <span class="lc-entry__text"><span class="lc-entry__name">${esc(e.name)}</span><small class="lc-entry__status">Source missing, not drawn. Drop an item here to relink.</small></span>
-      <button type="button" class="lc-entry__update" data-action="relinkEntry" ${ids} aria-label="Relink ${esc(e.name)}">Relink</button>
+      <span class="lc-entry__text"><span class="lc-entry__name">${esc(e.name)}</span><small class="lc-entry__status">${t("LOOTCRATES.Pools.SourceMissing")}</small></span>
+      <button type="button" class="lc-entry__update" data-action="relinkEntry" ${ids} aria-label="${t("LOOTCRATES.Pools.RelinkLabel", { name: esc(e.name) })}">${t("LOOTCRATES.Pools.Relink")}</button>
       ${remove}</li>`;
   }
   const parts = entryParts(row, esc);
-  const remove = `<button type="button" class="lc-entry__remove" data-action="removeEntry" ${ids} aria-label="Remove ${esc(parts.name)}" data-tooltip="Remove"><i class="fa-solid fa-xmark" inert></i></button>`;
-  const update = status === "renamed" ? `<button type="button" class="lc-entry__update" data-action="updateEntry" ${ids} aria-label="Update ${esc(e.name)} to ${esc(parts.name)}">Update</button>` : "";
+  const remove = `<button type="button" class="lc-entry__remove" data-action="removeEntry" ${ids} aria-label="${t("LOOTCRATES.Pools.RemoveLabel", { name: esc(parts.name) })}" data-tooltip="${t("LOOTCRATES.Pools.Remove")}"><i class="fa-solid fa-xmark" inert></i></button>`;
+  const update = status === "renamed" ? `<button type="button" class="lc-entry__update" data-action="updateEntry" ${ids} aria-label="${t("LOOTCRATES.Pools.UpdateLabel", { from: esc(e.name), to: esc(parts.name) })}">${t("LOOTCRATES.Pools.Update")}</button>` : "";
   return `<li class="${parts.className}" data-entry="${esc(e.uuid)}">
     <img src="${esc((status === "renamed" && src.img) || e.img || FALLBACK_IMG)}" alt="">
     ${parts.text}
@@ -413,7 +418,22 @@ export function entryRow(poolId, row, esc) {
 
 /* ---------- The preview before a drop goes in ---------- */
 
-export const SKIPPED_NAMES = { spell: ["spell", "spells"], feat: ["feature", "features"], class: ["class", "classes"], subclass: ["subclass", "subclasses"], background: ["background", "backgrounds"], race: ["species", "species"], facility: ["facility", "facilities"] };
+// "{count} spell", "{count} spells": the item types a drop leaves out.
+export const SKIPPED_NAMES = {
+  spell: ["LOOTCRATES.Pools.SpellOne", "LOOTCRATES.Pools.SpellMany"],
+  feat: ["LOOTCRATES.Pools.FeatOne", "LOOTCRATES.Pools.FeatMany"],
+  class: ["LOOTCRATES.Pools.ClassOne", "LOOTCRATES.Pools.ClassMany"],
+  subclass: ["LOOTCRATES.Pools.SubclassOne", "LOOTCRATES.Pools.SubclassMany"],
+  background: ["LOOTCRATES.Pools.BackgroundOne", "LOOTCRATES.Pools.BackgroundMany"],
+  race: ["LOOTCRATES.Pools.SpeciesOne", "LOOTCRATES.Pools.SpeciesMany"],
+  facility: ["LOOTCRATES.Pools.FacilityOne", "LOOTCRATES.Pools.FacilityMany"],
+};
+// The same types' names alone, for "Fireball is a spell, not loot."
+export const SKIPPED_NOUN = words({
+  spell: "LOOTCRATES.Pools.NounSpell", feat: "LOOTCRATES.Pools.NounFeat", class: "LOOTCRATES.Pools.NounClass", subclass: "LOOTCRATES.Pools.NounSubclass",
+  background: "LOOTCRATES.Pools.NounBackground", race: "LOOTCRATES.Pools.NounSpecies", facility: "LOOTCRATES.Pools.NounFacility",
+});
+const skippedName = (type, n) => (SKIPPED_NAMES[type] ? plural(n, ...SKIPPED_NAMES[type]) : `${n} ${n === 1 ? type : `${type}s`}`);
 
 /*
   What a drop left out, and what it did on the way, one line each: "14
@@ -426,14 +446,14 @@ export const SKIPPED_NAMES = { spell: ["spell", "spells"], feat: ["feature", "fe
 */
 export function describeSkipped({ duplicates = 0, notLoot = {}, notItems = 0, text = 0, tooDeep = 0, emptyTables = 0 } = {}, { flattened = 0, textAsNothing = false, depth = 5 } = {}) {
   const lines = [];
-  if (flattened) lines.push(`${plural(flattened, "nested table", "nested tables")} flattened into ${flattened === 1 ? "its" : "their"} items`);
-  if (duplicates) lines.push(`${duplicates} already in this pool, skipped`);
-  const kinds = Object.entries(notLoot).map(([type, n]) => `${n} ${(SKIPPED_NAMES[type] ?? [type, `${type}s`])[n === 1 ? 0 : 1]}`);
-  if (kinds.length) lines.push(`${kinds.join(", ")} skipped, not loot`);
-  if (text) lines.push(`${plural(text, "text result", "text results")} ${textAsNothing ? "counted as nothing" : "skipped"}`);
-  if (notItems) lines.push(`${notItems} table result${notItems === 1 ? "" : "s"} that ${notItems === 1 ? "isn't an item" : "aren't items"}, skipped`);
-  if (tooDeep) lines.push(`${plural(tooDeep, "nested table", "nested tables")} skipped: more than ${depth} deep, or rolling a table above ${tooDeep === 1 ? "it" : "them"}`);
-  if (emptyTables) lines.push(`${plural(emptyTables, "empty nested table", "empty nested tables")} skipped: no results to bring in`);
+  if (flattened) lines.push(plural(flattened, "LOOTCRATES.Pools.FlattenedOne", "LOOTCRATES.Pools.FlattenedMany"));
+  if (duplicates) lines.push(t("LOOTCRATES.Pools.Duplicates", { count: duplicates }));
+  const kinds = Object.entries(notLoot).map(([type, n]) => skippedName(type, n));
+  if (kinds.length) lines.push(t("LOOTCRATES.Pools.NotLoot", { kinds: kinds.join(t("LOOTCRATES.Common.ListComma")) }));
+  if (text) lines.push(t(textAsNothing ? (text === 1 ? "LOOTCRATES.Pools.TextNothingOne" : "LOOTCRATES.Pools.TextNothingMany") : (text === 1 ? "LOOTCRATES.Pools.TextSkippedOne" : "LOOTCRATES.Pools.TextSkippedMany"), { count: text }));
+  if (notItems) lines.push(plural(notItems, "LOOTCRATES.Pools.NotItemsOne", "LOOTCRATES.Pools.NotItemsMany"));
+  if (tooDeep) lines.push(t(tooDeep === 1 ? "LOOTCRATES.Pools.TooDeepOne" : "LOOTCRATES.Pools.TooDeepMany", { count: tooDeep, depth }));
+  if (emptyTables) lines.push(plural(emptyTables, "LOOTCRATES.Pools.EmptyTablesOne", "LOOTCRATES.Pools.EmptyTablesMany"));
   return lines;
 }
 
@@ -451,12 +471,12 @@ export function dropPreviewHTML(plan, poolName, esc = s => String(s ?? "")) {
   for (const e of plan.entries) counts[normalizeRarity(e.rarity)] = (counts[normalizeRarity(e.rarity)] ?? 0) + 1;
   const skipped = describeSkipped(plan.skipped, { flattened: plan.flattened ?? 0 });
   const shown = plan.entries.slice(0, PREVIEW_ROWS);
-  const items = plural(n, "item", "items");
+  const items = plural(n, "LOOTCRATES.Editor.ItemsOne", "LOOTCRATES.Editor.ItemsMany");
   return `<div class="lc-preview">
-        <p class="lc-preview__lead">Add <strong>${items}</strong> from <strong>${esc(plan.label)}</strong> to <strong>${esc(poolName)}</strong>.</p>
-        <p class="lc-preview__rarities" aria-label="By rarity">${RARITIES.filter(r => counts[r]).map(r => `<span class="lc-odd lc-rarity-${r}">${counts[r]} ${RARITY_LABEL[r].toLowerCase()}</span>`).join("")}</p>
+        <p class="lc-preview__lead">${t("LOOTCRATES.Pools.PreviewLead", { items: `<strong>${items}</strong>`, label: `<strong>${esc(plan.label)}</strong>`, pool: `<strong>${esc(poolName)}</strong>` })}</p>
+        <p class="lc-preview__rarities" aria-label="${t("LOOTCRATES.Pools.ByRarity")}">${RARITIES.filter(r => counts[r]).map(r => `<span class="lc-odd lc-rarity-${r}">${rarityCount(counts[r], r)}</span>`).join("")}</p>
         ${skipped.length ? `<ul class="lc-preview__skipped">${skipped.map(line => `<li>${esc(line)}</li>`).join("")}</ul>` : ""}
-        <ul class="lc-preview__list">${shown.map(e => `<li class="lc-entry lc-rarity-${normalizeRarity(e.rarity)}"><img src="${esc(e.img || FALLBACK_IMG)}" alt=""><span class="lc-entry__name">${esc(e.name)}</span>${e.weight > 1 ? `<small class="lc-preview__weight">weight ${esc(e.weight)}</small>` : ""}<em>${RARITY_LABEL[normalizeRarity(e.rarity)]}</em></li>`).join("")}</ul>
-        ${n > shown.length ? `<p class="lc-preview__more">and ${n - shown.length} more</p>` : ""}
+        <ul class="lc-preview__list">${shown.map(e => `<li class="lc-entry lc-rarity-${normalizeRarity(e.rarity)}"><img src="${esc(e.img || FALLBACK_IMG)}" alt=""><span class="lc-entry__name">${esc(e.name)}</span>${e.weight > 1 ? `<small class="lc-preview__weight">${t("LOOTCRATES.Pools.WeightN", { weight: esc(e.weight) })}</small>` : ""}<em>${RARITY_LABEL[normalizeRarity(e.rarity)]}</em></li>`).join("")}</ul>
+        ${n > shown.length ? `<p class="lc-preview__more">${t("LOOTCRATES.Card.AndMore", { count: n - shown.length })}</p>` : ""}
       </div>`;
 }

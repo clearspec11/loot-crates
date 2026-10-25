@@ -26,6 +26,16 @@ import { openTable, openTableFor, refreshTables } from "./tablewindow.js";
 import { draw, oddsTable, seededRng } from "./odds.js";
 import { registerWelcome, welcomeAtLoad, openWelcome } from "./welcomewindow.js";
 import { buildStrip } from "./strip.js";
+import { t, setLocalizer, loadStrings } from "./i18n.js";
+
+// The module's words (i18n.js): this module's own lang/en.json, fetched as
+// the script loads, for a copy whose keys Foundry doesn't know (the
+// working copy a live check serves beside an installed release); then,
+// once Foundry's translations are in, game.i18n for every key it has, so a
+// translation in lang/<code>.json wins. Nothing reads a word before a
+// window opens, by when both are here.
+loadStrings().catch(err => console.error("loot-crates | loading the module's words (lang/en.json) failed", err));
+Hooks.once("i18nInit", () => setLocalizer((key, data) => (game.i18n.has(key) ? (data ? game.i18n.format(key, data) : game.i18n.localize(key)) : null)));
 
 Hooks.once("init", () => {
   registerSettings();
@@ -43,9 +53,11 @@ Hooks.once("init", () => {
   });
   registerIndexFields();
   game.settings.registerMenu(MODULE_ID, "manager", {
-    name: "Pools, boxes and pulls",
-    label: "Open Loot Crates",
-    hint: "Build the pools items drop from, price the boxes, and see who pulled what.",
+    // Getters: Foundry keeps this object and reads its words when Game
+    // Settings renders, by when the module's words have arrived.
+    get name() { return t("LOOTCRATES.Settings.ManagerName"); },
+    get label() { return t("LOOTCRATES.Settings.ManagerLabel"); },
+    get hint() { return t("LOOTCRATES.Settings.ManagerHint"); },
     icon: "fas fa-box-open",
     type: CrateManager,
     restricted: true,
@@ -89,6 +101,15 @@ Hooks.on("renderItemDirectory", (_app, html) => {
 
 // "Make a crate" on a roll table's menu in the Roll Tables sidebar (a GM's).
 Hooks.on("getRollTableContextOptions", (_app, options) => { if (Array.isArray(options)) options.push(makeCrateMenuEntry()); });
+
+// Who the active GM is can change while the world runs: a GM joins or
+// leaves (userConnected, on connect and disconnect), or a user's role
+// changes (updateUser). The GM's timer for the next stale round
+// (table.js watchStale) follows: armed on the client that is now the
+// active GM, cleared on the one that no longer is, so a stake left in a
+// round is refunded while any GM is online, not at the next load.
+Hooks.on("userConnected", () => { if (game.ready) watchStale(); });
+Hooks.on("updateUser", (_user, change) => { if (game.ready && change && "role" in change) watchStale(); });
 
 // A day ends at each character's long rest (clock.js), calendar or not:
 // the rest that starts a new day is noted on the GM (socket.js).

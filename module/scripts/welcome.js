@@ -20,12 +20,17 @@
   No Foundry globals: the caller passes the user, the version and the state.
 */
 import { LATEST } from "./changelog.js";
+import { t, onStrings } from "./i18n.js";
 
-export const WELCOME_TITLE = "Loot Crates";
-export const WELCOME_HEADING = "Welcome to Loot Crates";
-export const newsHeading = version => `What's new in ${version}`;
-export const QUIET_LABEL = "Don't show again";
-export const MENU_LABEL = "Show the welcome";
+export let WELCOME_TITLE = "";
+export let WELCOME_HEADING = "";
+export let QUIET_LABEL = "";
+onStrings(() => {
+  WELCOME_TITLE = t("LOOTCRATES.Welcome.Title");
+  WELCOME_HEADING = t("LOOTCRATES.Welcome.Heading");
+  QUIET_LABEL = t("LOOTCRATES.Welcome.Quiet");
+});
+export const newsHeading = version => t("LOOTCRATES.Welcome.NewsHeading", { version });
 
 // A version's numbers ("0.14.0" → [0, 14, 0]); anything after a number in a
 // part ("1.0.0-beta") is ignored, and a part with none counts as 0.
@@ -107,40 +112,40 @@ export function welcomeHTML({ view = "welcome", version = LATEST.version, entry 
       ${entry?.title ? `<p class="lc-welcome__lede">${esc(entry.title)}.</p>` : ""}
       <div class="lc-welcome__card"><ul class="lc-welcome__list lc-welcome__news">${lines}</ul></div>
       <div class="lc-welcome__actions">
-        ${btn("welcomeDone", "fas fa-check", "Close", true)}
-        ${btn("welcomeManager", "fas fa-screwdriver-wrench", "Open the manager", false)}
-        ${link(changelogUrl, "fas fa-book", "Read the full changelog")}
+        ${btn("welcomeDone", "fas fa-check", t("LOOTCRATES.Common.Close"), true)}
+        ${btn("welcomeManager", "fas fa-screwdriver-wrench", t("LOOTCRATES.Welcome.OpenManager"), false)}
+        ${link(changelogUrl, "fas fa-book", t("LOOTCRATES.Welcome.ReadChangelog"))}
       </div>
       <div class="lc-welcome__end">
-        <p class="lc-welcome__foot">Shown once for each update. Don't show again turns these notes off; Show the welcome, in Game Settings under Loot Crates, brings them back.</p>
+        <p class="lc-welcome__foot">${t("LOOTCRATES.Welcome.NewsFoot")}</p>
         ${quiet}
       </div>
     </section>`;
   }
-  const starter = btn("welcomeStarter", "fas fa-box-open", "Add starter crates", empty);
-  const manager = btn("welcomeManager", "fas fa-screwdriver-wrench", "Open the manager", !empty);
+  const starter = btn("welcomeStarter", "fas fa-box-open", t("LOOTCRATES.Starter.Label"), empty);
+  const manager = btn("welcomeManager", "fas fa-screwdriver-wrench", t("LOOTCRATES.Welcome.OpenManager"), !empty);
   return `<section class="lc-welcome" aria-labelledby="lc-welcome-heading">
       <h2 class="lc-welcome__heading" id="lc-welcome-heading">${WELCOME_HEADING}</h2>
-      <p class="lc-welcome__lede">Build pools of items, price crates and games that draw from them, and let players buy a pull with their character's coins while the whole table watches it open.</p>
+      <p class="lc-welcome__lede">${t("LOOTCRATES.Welcome.Lede")}</p>
       <div class="lc-welcome__card">
-      <h3 class="lc-welcome__sub">Where things are</h3>
+      <h3 class="lc-welcome__sub">${t("LOOTCRATES.Welcome.WhereHeading")}</h3>
       <ul class="lc-welcome__list">
-        <li><strong>Crates</strong>, at the top of the Items sidebar: the shop, for everyone.</li>
-        <li><strong>Manage crates</strong>, beside it: pools, games and the pull log, for you alone.</li>
+        <li>${t("LOOTCRATES.Welcome.WhereShop", { crates: `<strong>${t("LOOTCRATES.Route.Crates")}</strong>` })}</li>
+        <li>${t("LOOTCRATES.Welcome.WhereManager", { manage: `<strong>${t("LOOTCRATES.Route.Manage")}</strong>` })}</li>
       </ul>
-      <h3 class="lc-welcome__sub">First steps</h3>
+      <h3 class="lc-welcome__sub">${t("LOOTCRATES.Welcome.StepsHeading")}</h3>
       <ol class="lc-welcome__list lc-welcome__steps">
-        <li>Press Add starter crates for a ready set, or New pool in the manager and drag items onto it.</li>
-        <li>Look the games over on the Boxes tab, then press On the shelf on each one players may buy.</li>
-        <li>Tell the table where Crates is. The shop starts open; Shop open, beside View shop in the manager, closes it when you want a pause.</li>
+        <li>${t("LOOTCRATES.Welcome.Step1")}</li>
+        <li>${t("LOOTCRATES.Welcome.Step2")}</li>
+        <li>${t("LOOTCRATES.Welcome.Step3")}</li>
       </ol>
       </div>
       <div class="lc-welcome__actions">
         ${empty ? starter + manager : manager + starter}
-        ${link(guideUrl, "fas fa-book", "Read the guide")}
+        ${link(guideUrl, "fas fa-book", t("LOOTCRATES.Welcome.ReadGuide"))}
       </div>
       <div class="lc-welcome__end">
-        <p class="lc-welcome__foot">This opens once. After an update you get a short note of what changed; Don't show again turns that off too. Show the welcome, in Game Settings under Loot Crates, brings it back. Version ${esc(version)}.</p>
+        <p class="lc-welcome__foot">${t("LOOTCRATES.Welcome.Foot", { version: esc(version) })}</p>
         ${quiet}
       </div>
     </section>`;

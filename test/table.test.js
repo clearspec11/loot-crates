@@ -446,6 +446,45 @@ describe("the GM's timer for a stale round", () => {
     world.game.users.activeGM = { id: "other-gm" };
     expect(watchStale()).toBeNull();
   });
+
+  /*
+    A GM handing over (main.js calls watchStale on userConnected and on a
+    role change): the client that is no longer the active GM clears its
+    timer, and the one that now is arms it, so the stake still comes back
+    while any GM is online.
+  */
+  it("clears the timer on a GM who is no longer the active one, so it refunds nothing there", async () => {
+    const round = await threeStakes();
+    const staleMoment = round.opensAt + ROUND_WINDOW_MS;
+    const clock = vi.spyOn(Date, "now").mockReturnValue(staleMoment - 40);
+    expect(watchStale()).toBe(40 + STALE_SLACK_MS);
+    // A second GM, who becomes the active one, joins.
+    world.game.users.activeGM = { id: "other-gm" };
+    expect(watchStale()).toBeNull();
+    clock.mockReturnValue(staleMoment + 1);
+    await wait(40 + STALE_SLACK_MS + 100);
+    expect(getLog().filter(r => rowStatus(r) === "open")).toHaveLength(3);
+    expect(world.notes.warn).not.toHaveBeenCalled();
+  });
+
+  it("arms the timer on a GM who becomes the active one, and refunds a round that went stale before it did", async () => {
+    const round = await threeStakes();
+    // Another GM is active: nothing here.
+    world.game.users.activeGM = { id: "other-gm" };
+    expect(watchStale()).toBeNull();
+    vi.spyOn(Date, "now").mockReturnValue(round.opensAt + ROUND_WINDOW_MS + 5000);
+    await wait(STALE_SLACK_MS + 50);
+    expect(getLog().filter(r => rowStatus(r) === "open")).toHaveLength(3);
+    // That GM leaves and this client is the active GM now: the round is
+    // already stale, so the timer fires at once and refunds it.
+    world.game.users.activeGM = world.game.user;
+    expect(watchStale()).toBe(STALE_SLACK_MS);
+    await wait(STALE_SLACK_MS + 150);
+    expect(getLog().filter(r => rowStatus(r) === "open")).toHaveLength(0);
+    for (const a of world.actors.values()) expect(gp(a)).toBe(100);
+    expect(world.notes.warn).toHaveBeenCalledWith("Loot Crates: 3 open stakes from a round that never spun were refunded.");
+    expect(watchStale()).toBeNull();
+  });
 });
 
 describe("the GM's load", () => {

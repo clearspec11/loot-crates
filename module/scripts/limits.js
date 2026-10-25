@@ -22,9 +22,10 @@
 import { getKind, kindOf } from "./kinds.js";
 import { field } from "./editorfields.js";
 import { byRest, restDayNote } from "./clock.js";
+import { t, words } from "./i18n.js";
 
 export const PER = ["ever", "day"];
-const PER_LABEL = { ever: "in all", day: "a day" };
+const PER_LABEL = words({ ever: "LOOTCRATES.Limits.PerEver", day: "LOOTCRATES.Limits.PerDay" });
 
 const whole = v => (v === "" || v == null || !Number.isFinite(Number(v)) ? null : Math.max(0, Math.floor(Number(v))));
 
@@ -40,7 +41,7 @@ export function stockOf(game) {
 export function stockText(game) {
   const s = stockOf(game);
   if (!s) return "";
-  return s.max != null ? `${s.left} of ${s.max} left` : `${s.left} left`;
+  return s.max != null ? t("LOOTCRATES.Limits.LeftOf", { left: s.left, max: s.max }) : t("LOOTCRATES.Limits.Left", { left: s.left });
 }
 
 // The rules with the stock filled to the GM's number (unchanged without one).
@@ -81,14 +82,14 @@ export function stockFromForm(fresh = {}, { shown, value }) {
 
 // The editor's line once Restock is pressed: nothing is written until Save,
 // so it says what Save will leave ("10 of 10 left once you save").
-export const restockPreview = max => `${max} of ${max} left once you save`;
+export const restockPreview = max => t("LOOTCRATES.Limits.RestockPreview", { max });
 
 // That line from the Stock field as it reads now (`typed`), so it follows
 // a number changed after Restock was pressed: a number fills to it, blank
 // is unlimited (stockFromForm), anything else is the number the form
 // opened with (`shown`).
 export function restockLine(typed, shown) {
-  if (String(typed ?? "").trim() === "") return "Unlimited once you save";
+  if (String(typed ?? "").trim() === "") return t("LOOTCRATES.Limits.UnlimitedOnSave");
   const n = whole(typed);
   return restockPreview(n ?? whole(shown) ?? 0);
 }
@@ -139,22 +140,21 @@ export function limitState(game, ctx = {}) {
   return { ...pc, bought, left: Math.max(0, pc.max - bought), reached: bought >= pc.max };
 }
 
-const until = st => (st.per === "day" ? " until tomorrow" : "");
 
 // The card's line while there is some left: "You can buy 1 more" ("... today").
 export function limitLine(st) {
   if (!st || st.reached) return "";
-  return `You can buy ${st.left} more${st.per === "day" ? " today" : ""}`;
+  return t(st.per === "day" ? "LOOTCRATES.Limits.MoreToday" : "LOOTCRATES.Limits.More", { left: st.left });
 }
 
 // The card's reason once it is reached: "Limit reached: 2 of 2 for Crate Tester".
 export function limitReason(st, actorName = "") {
-  return `Limit reached: ${Math.min(st.bought, st.max)} of ${st.max} for ${actorName || "this character"}${until(st)}`;
+  return t(st.per === "day" ? "LOOTCRATES.Limits.ReachedDay" : "LOOTCRATES.Limits.Reached", { bought: Math.min(st.bought, st.max), max: st.max, name: actorName || t("LOOTCRATES.Common.ThisCharacter") });
 }
 
 // The GM's refusal, and the shop's when a stale card's Buy slips through.
 export function limitRefusal(game, st, actorName = "") {
-  return `${game.name}: limit reached, ${Math.min(st.bought, st.max)} of ${st.max} for ${actorName || "this character"}${until(st)}. Nothing was charged.`;
+  return t(st.per === "day" ? "LOOTCRATES.Limits.RefusalDay" : "LOOTCRATES.Limits.Refusal", { game: game.name, bought: Math.min(st.bought, st.max), max: st.max, name: actorName || t("LOOTCRATES.Common.ThisCharacter") });
 }
 
 /*
@@ -173,7 +173,7 @@ export function withLimit(game, reason, ctx = {}) {
 // The Boxes table's words: "1 per character", "2 per character a day".
 export function perCharacterText(game) {
   const pc = perCharacterOf(game);
-  return pc ? `${pc.max} per character${pc.per === "day" ? " a day" : ""}` : "";
+  return pc ? t(pc.per === "day" ? "LOOTCRATES.Limits.PerCharacterDay" : "LOOTCRATES.Limits.PerCharacter", { max: pc.max }) : "";
 }
 
 // The Boxes table's stock and limit, joined: "3 of 10 left, 1 per character".
@@ -200,19 +200,19 @@ export function limitsFieldset(game, { stock = true, draft = false, hasClock = t
   const full = !s || s.max == null || s.left >= s.max;
   const id = `lc-limits-${esc(game?.id ?? "new")}`;
   const stockPart = stock ? `
-        <label class="lc-row">Stock <input name="stock" type="number" min="0" step="1" value="${esc(stockField(game) ?? "")}" aria-describedby="${id}-stock"></label>
+        <label class="lc-row">${t("LOOTCRATES.Limits.Stock")} <input name="stock" type="number" min="0" step="1" value="${esc(stockField(game) ?? "")}" aria-describedby="${id}-stock"></label>
         <div class="lc-row lc-limits__stock">
-          <span class="lc-limits__left" role="status">${esc(s ? stockText(game) : "Unlimited")}</span>
-          ${s?.max != null && !draft ? `<button type="button" class="lc-limits__restock" data-restock${full ? ` aria-disabled="true"` : ""}><i class="fas fa-rotate-left" inert></i> Restock</button><input type="hidden" name="restock" value="">` : ""}
+          <span class="lc-limits__left" role="status">${esc(s ? stockText(game) : t("LOOTCRATES.Limits.Unlimited"))}</span>
+          ${s?.max != null && !draft ? `<button type="button" class="lc-limits__restock" data-restock${full ? ` aria-disabled="true"` : ""}><i class="fas fa-rotate-left" inert></i> ${t("LOOTCRATES.Limits.Restock")}</button><input type="hidden" name="restock" value="">` : ""}
         </div>
-        <p class="lc-form__hint" id="${id}-stock">How many there are in all; blank for unlimited. Each sale takes one, a refund puts one back, and Restock fills it to this number again.</p>` : "";
+        <p class="lc-form__hint" id="${id}-stock">${t("LOOTCRATES.Limits.StockHint")}</p>` : "";
   const rest = byRest(day);
   const warn = rest ? `<p class="lc-form__hint">${restDayNote(day)}</p>`
-    : !hasClock ? `<p class="lc-form__hint${per === "day" && max ? " lc-form__hint--warn" : ""}">No calendar: a limit per day will not apply.</p>` : "";
+    : !hasClock ? `<p class="lc-form__hint${per === "day" && max ? " lc-form__hint--warn" : ""}">${t("LOOTCRATES.Limits.NoCalendar")}</p>` : "";
   return `
-      <fieldset class="lc-limits"><legend>Limits</legend>${stockPart}
-        <div class="lc-row lc-row--wrap">${field("Each character may buy", `<input name="limitMax" type="number" min="0" step="1" value="${esc(max ?? "")}" aria-describedby="${id}-each">`)} <select name="limitPer" aria-label="How often">${PER.map(p => `<option value="${p}"${p === per ? " selected" : ""}>${PER_LABEL[p]}</option>`).join("")}</select></div>
-        <p class="lc-form__hint" id="${id}-each">Blank for no limit. Counted for each character from the Pull log, so a refund gives the purchase back${rest ? "" : "; a day ends on the world's calendar or at the character's long rest"}.</p>
+      <fieldset class="lc-limits"><legend>${t("LOOTCRATES.Limits.Legend")}</legend>${stockPart}
+        <div class="lc-row lc-row--wrap">${field(t("LOOTCRATES.Limits.EachMayBuy"), `<input name="limitMax" type="number" min="0" step="1" value="${esc(max ?? "")}" aria-describedby="${id}-each">`)} <select name="limitPer" aria-label="${t("LOOTCRATES.Limits.HowOften")}">${PER.map(p => `<option value="${p}"${p === per ? " selected" : ""}>${PER_LABEL[p]}</option>`).join("")}</select></div>
+        <p class="lc-form__hint" id="${id}-each">${t(rest ? "LOOTCRATES.Limits.EachHint" : "LOOTCRATES.Limits.EachHintDay")}</p>
         ${warn}
       </fieldset>`;
 }

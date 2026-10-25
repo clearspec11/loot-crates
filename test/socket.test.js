@@ -1199,18 +1199,60 @@ describe("a day with dnd5e's calendar on", () => {
     game.time = timeAt(at(6, 8));
     await restCompleted(actor, { newDay: true }, { newDay: true, advanceTime: false, duration: 480 });
     expect(todayKey("actor1")).toBe("y1d7");
-    // A player's rest claiming a time far past the GM's clock is one more day, no further.
+    // The character is a day ahead of the clock now: a player's rest the same
+    // calendar day, even one claiming a time far past the GM's clock, ends no further day.
+    await deliver({ type: "newDay", actorId: "actor1", userId: "p1", at: at(40) });
+    expect(todayKey("actor1")).toBe("y1d7");
+    // The clock reaches day 7: the same claim is capped at the GM's clock, one more day.
+    game.time = timeAt(at(7, 8));
     await deliver({ type: "newDay", actorId: "actor1", userId: "p1", at: at(40) });
     expect(todayKey("actor1")).toBe("y1d8");
-    // A rest heard late (an owed one) still ends one day, from the character's own.
+    // A rest heard late (an owed one) ends no further day while the character is ahead.
     await deliver({ type: "newDay", actorId: "actor1", userId: "p1", at: at(2) });
-    expect(game.settings.get("loot-crates", "actorState").restedInto).toEqual({ actor1: { y: 1, d: 9 } });
+    expect(game.settings.get("loot-crates", "actorState").restedInto).toEqual({ actor1: { y: 1, d: 8 } });
     // Someone who doesn't own the character ends nothing; nor does a short rest.
     actor.testUserPermission = u => u.id === GM.id;
-    game.time = timeAt(at(7, 8));
-    await deliver({ type: "newDay", actorId: "actor1", userId: "p1", at: at(7, 8) });
+    game.time = timeAt(at(8, 8));
+    await deliver({ type: "newDay", actorId: "actor1", userId: "p1", at: at(8, 8) });
     await restCompleted(actor, { newDay: false }, { newDay: false });
-    expect(todayKey("actor1")).toBe("y1d9");
+    expect(todayKey("actor1")).toBe("y1d8");
+    // The rest count of calendar-off mode is never touched.
+    expect(game.settings.get("loot-crates", "actorState").days).toBeUndefined();
+  });
+
+  it("ends one day for two long rests on the same calendar day (the GM's, then the player's), so the well opens at the next midnight", async () => {
+    const world = calendarWorld();
+    const { game, actor, deliver } = world;
+    await game.settings.set("loot-crates", "pools", { pool: POOL });
+    await game.settings.set("loot-crates", "boxes", { well: WELL_GAME });
+    await throwAt(world, "a1");
+    await throwAt(world, "a2");
+    // The GM rests the party at 00:00 with advanceTime: the clock moves to 08:00, still day 5.
+    game.time = timeAt(at(5, 0) + 8 * 3600);
+    await restCompleted(actor, { newDay: true }, { newDay: true, advanceTime: true, duration: 480 });
+    expect(todayKey("actor1")).toBe("y1d6");
+    await throwAt(world, "b1");
+    await throwAt(world, "b2");
+    await throwAt(world, "b3");
+    expect(refusal(world, "b3")).toBe("The well is still until tomorrow (2 of 2 today).");
+    // The player's own rest at 08:00 the same calendar day: no further day.
+    await deliver({ type: "newDay", actorId: "actor1", userId: "p1", at: at(5, 8) });
+    expect(todayKey("actor1")).toBe("y1d6");
+    expect(game.settings.get("loot-crates", "actorState").restedInto).toEqual({ actor1: { y: 1, d: 6 } });
+    await throwAt(world, "b4");
+    expect(refusal(world, "b4")).toBe("The well is still until tomorrow (2 of 2 today).");
+    // A refund still gives a use back.
+    const row = game.settings.get("loot-crates", "pullLog").find(r => r.day === "y1d6");
+    expect((await refundPull(row.id)).status).toBe("refunded");
+    await throwAt(world, "b5");
+    expect(thrown(world)).toEqual(["a1", "a2", "b1", "b2", "b5"]);
+    // The clock reaches day 6 (the day already rested into), then day 7: the well opens there.
+    game.time = timeAt(at(6, 6));
+    await throwAt(world, "c1");
+    expect(refusal(world, "c1")).toBe("The well is still until tomorrow (2 of 2 today).");
+    game.time = timeAt(at(7, 1));
+    await throwAt(world, "d1");
+    expect(thrown(world).at(-1)).toBe("d1");
     // The rest count of calendar-off mode is never touched.
     expect(game.settings.get("loot-crates", "actorState").days).toBeUndefined();
   });

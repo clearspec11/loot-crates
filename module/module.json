@@ -2,7 +2,7 @@
   "id": "loot-crates",
   "title": "Loot Crates",
   "description": "GM-curated item pools, boxes priced in gold, and a crate-opening spin the whole table watches. Players buy a box with their character's coins and win a magic item from the pool the GM built.",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "compatibility": {
     "minimum": "13.341",
     "verified": "14"
@@ -13,6 +13,9 @@
   "license": "LICENSE",
   "esmodules": ["scripts/main.js"],
   "styles": ["styles/module.css"],
+  "languages": [
+    { "lang": "en", "name": "English", "path": "lang/en.json" }
+  ],
   "socket": true,
   "relationships": {
     "systems": [

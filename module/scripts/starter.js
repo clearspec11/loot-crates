@@ -30,6 +30,7 @@ import { normalizeRarity, rawRarityOf } from "./odds.js";
 import { newDraft, copyName } from "./newgame.js";
 import { shelfRules } from "./shelf.js";
 import { lotFromCrate } from "./auction.js";
+import { t, words, onStrings, listAnd } from "./i18n.js";
 
 /*
   The packs the pools are filled from, by their name in the system's
@@ -58,16 +59,16 @@ export const STARTER_PACKS = [
 export function starterPackPlan({ system = "dnd5e", listed = [], loaded = () => true, rules = "modern" } = {}) {
   const names = new Set(listed);
   const notes = [];
-  if (system !== "dnd5e") return { packs: [], notes: [`Starter crates are built from the dnd5e system's item compendiums, and this world runs ${system || "another system"}.`] };
+  if (system !== "dnd5e") return { packs: [], notes: [t("LOOTCRATES.Starter.WrongSystem", { system: system || t("LOOTCRATES.Starter.AnotherSystem") })] };
   const order = [...STARTER_PACKS].sort((a, b) => (a.rules === rules ? -1 : b.rules === rules ? 1 : 0));
   const packs = [];
   for (const p of order) {
     const id = `${system}.${p.name}`;
     if (!names.has(p.name) && p.optional) continue;
-    if (!names.has(p.name) || !loaded(id)) { notes.push(`The ${p.label} compendium (${id}) isn't in this world, so its items were left out.`); continue; }
+    if (!names.has(p.name) || !loaded(id)) { notes.push(t("LOOTCRATES.Starter.PackMissing", { label: p.label, id })); continue; }
     packs.push(id);
   }
-  if (!packs.length) notes.push("No dnd5e item compendium could be read.");
+  if (!packs.length) notes.push(t("LOOTCRATES.Starter.NoPacks"));
   return { packs, notes };
 }
 
@@ -227,8 +228,8 @@ export function buildStarter({ entries = {}, reuse = {}, id = () => Math.random(
   return { pools, games, empty };
 }
 
-const list = names => (names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`);
-const count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+const list = listAnd;
+const count = (n, one, many) => t(n === 1 ? one : many, { count: n });
 
 /*
   The Boxes tab's status line once the set is in: what was added, that
@@ -239,11 +240,11 @@ const count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 */
 export function starterNotice({ pools = [], games = [], reused = 0, notes = [], empty = [] } = {}) {
   const out = [];
-  if (!games.length) return [...notes, "Nothing was added."].join(" ");
-  const parts = [pools.length ? count(pools.length, "starter pool", "starter pools") : "", count(games.length, "starter game", "starter games")].filter(Boolean);
-  out.push(`Added ${list(parts)}${reused ? " as copies" : ""}, all off the shelf${reused ? ", drawing from the starter pools already here" : ""}.`);
-  out.push("Players can't see them yet: look each one over, then press On the shelf on its row.");
-  if (empty.length) out.push(`${list(empty)} found nothing in the compendiums, so ${empty.length === 1 ? "it was" : "they were"} left out.`);
+  if (!games.length) return [...notes, t("LOOTCRATES.Starter.NothingAdded")].join(" ");
+  const parts = [pools.length ? count(pools.length, "LOOTCRATES.Starter.PoolsOne", "LOOTCRATES.Starter.PoolsMany") : "", count(games.length, "LOOTCRATES.Starter.GamesOne", "LOOTCRATES.Starter.GamesMany")].filter(Boolean);
+  out.push(t(reused ? "LOOTCRATES.Starter.AddedCopies" : "LOOTCRATES.Starter.Added", { what: list(parts) }));
+  out.push(t("LOOTCRATES.Starter.NotSeenYet"));
+  if (empty.length) out.push(t(empty.length === 1 ? "LOOTCRATES.Starter.EmptyOne" : "LOOTCRATES.Starter.EmptyMany", { names: list(empty) }));
   return [...out, ...notes].join(" ");
 }
 
@@ -251,8 +252,8 @@ export function starterNotice({ pools = [], games = [], reused = 0, notes = [], 
 export function starterAgainText(present) {
   const games = present?.games ?? [];
   const pools = STARTER_POOLS.filter(p => present?.pools?.[p.key]).map(p => p.name);
-  const here = [games.length ? list(games) : "", pools.length ? `the ${pools.length === 1 ? "pool" : "pools"} ${list(pools)}` : ""].filter(Boolean);
-  return `The starter set is already here: ${list(here)}. Add it again? Its games come in as copies, off the shelf, drawing from the starter pools already here; nothing you have is changed.`;
+  const here = [games.length ? list(games) : "", pools.length ? t(pools.length === 1 ? "LOOTCRATES.Starter.ThePool" : "LOOTCRATES.Starter.ThePools", { names: list(pools) }) : ""].filter(Boolean);
+  return t("LOOTCRATES.Starter.Again", { here: list(here) });
 }
 
 /*
@@ -261,12 +262,16 @@ export function starterAgainText(present) {
   "boxes"; the manager's action is starterCrates (not "add…", the New
   buttons' prefix).
 */
-export const STARTER_LABEL = "Add starter crates";
-export const STARTER_OFFER = "Or start from a ready set: four pools filled from the dnd5e compendiums, three crates at rising prices and one of every other game, added off the shelf so you can look them over before players see them.";
-const EMPTY_LINE = {
-  pools: "No pools yet. A pool is the set of items a box can give out: press New pool, then drag items, a folder, a compendium or a roll table onto it.",
-  boxes: "No games yet. A box prices a pull from one or more pools: press a New button above, or drop a roll table here.",
-};
+export let STARTER_LABEL = "";
+export let STARTER_OFFER = "";
+onStrings(() => {
+  STARTER_LABEL = t("LOOTCRATES.Starter.Label");
+  STARTER_OFFER = t("LOOTCRATES.Starter.Offer");
+});
+const EMPTY_LINE = words({
+  pools: "LOOTCRATES.Starter.EmptyPools",
+  boxes: "LOOTCRATES.Starter.EmptyBoxes",
+});
 export function starterCallHTML(where = "boxes", esc = s => String(s ?? "")) {
   return `<div class="lc-starter" role="group" aria-labelledby="lc-starter-offer-${esc(where)}">
         <p class="lc-empty">${esc(EMPTY_LINE[where] ?? EMPTY_LINE.boxes)}</p>

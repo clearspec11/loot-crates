@@ -12,6 +12,7 @@
 */
 import { STARTER_POOLS, starterPackPlan, pickEntries, buildStarter, starterPresent } from "./starter.js";
 import { getPools, getBoxes, newId, indexRows, addRecords } from "./store.js";
+import { t } from "./i18n.js";
 
 // The item subtype (dnd5e's system.type.value): potion or scroll, armour or wondrous.
 const SUBTYPE_FIELD = "system.type.value";
@@ -44,7 +45,7 @@ export async function addStarterSet() {
         packs.push({ id, rows: await indexRows(game.packs.get(id), [SUBTYPE_FIELD]) });
       } catch (err) {
         console.error(`loot-crates | reading ${id} for the starter crates failed`, err);
-        notes.push(`The ${id} compendium couldn't be read, so its items were left out.`);
+        notes.push(t("LOOTCRATES.Starter.PackUnreadable", { id }));
       }
     }
     if (!packs.length && needed.length === STARTER_POOLS.length) return { pools: [], games: [], reused: 0, notes, empty: [] };

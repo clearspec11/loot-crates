@@ -88,7 +88,7 @@
 */
 import { SOCKET } from "./config.js";
 import { performPull, performStake, PullError } from "./pull.js";
-import { getKind, kindOf, gotText } from "./kinds.js";
+import { getKind, kindOf, gotText, nounText } from "./kinds.js";
 import { getBoxes, getPools, getLog, getActorState, setActorState, appendLog, updateLog, newId, isShopOpen, saveBox, enqueueWrite, refreshMissing, markMissing, reportMissing, todayKey, dayMode, countRest, restInto, dayAt, getRounds, saveRound } from "./store.js";
 import { byRest } from "./clock.js";
 import { formatPrice } from "./currency.js";
@@ -96,6 +96,7 @@ import { stakeReason, stakesOf } from "./round.js";
 import { heard as tableHeard, closeStakes, watchTables } from "./table.js";
 import { showReveal } from "./reveal.js";
 import { postPullCard } from "./chat.js";
+import { t, onStrings } from "./i18n.js";
 
 export const GM_TIMEOUT_MS = 30000;
 // After this long without a reveal, the buyer's shop says it is waiting on
@@ -104,7 +105,8 @@ export const WAIT_NOTICE_MS = 1500;
 // A pull slower than this on the GM (request in to reveal out) is worth
 // telling the GM about; a responsive client takes ~0.3 s.
 export const SLOW_PULL_MS = 2000;
-export const TIMED_OUT = "The GM didn't answer in time, so the purchase was called off. If a crate opens anyway, the GM had already started it.";
+export let TIMED_OUT = "";
+onStrings(() => { TIMED_OUT = t("LOOTCRATES.Error.TimedOut"); });
 
 function cancelPull(msg) {
   const sale = charged.get(msg.requestId);
@@ -146,7 +148,7 @@ function lateCancel(sale) {
   sale.late = true;
   const { requestId, userId, buyerName, actorName, boxName, got, logId } = sale;
   console.warn(`loot-crates | ${buyerName} called off ${requestId} after ${actorName} was charged for ${boxName}; the sale stands`);
-  globalThis.ui?.notifications?.warn(`Loot Crates: ${buyerName} gave up waiting on ${boxName}, but ${actorName} had already been charged and ${got ?? "got nothing"}. To undo it, use Refund on the marked row in the Pull log.`);
+  globalThis.ui?.notifications?.warn(t("LOOTCRATES.Error.LateCancelGM", { buyer: buyerName, box: boxName, actor: actorName, got: got ?? t("LOOTCRATES.Common.GotNothing") }));
   game.socket.emit(SOCKET, { type: "late", requestId, userId, boxName, got, actorName });
   return enqueueWrite(() => updateLog(logId, { lateCancel: Date.now() }))
     .catch(err => console.error(`loot-crates | couldn't mark ${requestId}'s log row as called off`, err));
@@ -156,7 +158,7 @@ function lateCancel(sale) {
 // off, so say plainly that it went through. `got` is the kind's own phrase
 // (kinds.js gotText), since not every game opens or hands over an item.
 function openedAfterAll(msg) {
-  globalThis.ui?.notifications?.info(`Your ${msg.boxName} went through after all: ${msg.actorName} ${msg.got ?? "got nothing"}. Ask the GM if you'd like it refunded.`);
+  globalThis.ui?.notifications?.info(t("LOOTCRATES.Error.LateCancelBuyer", { box: msg.boxName, actor: msg.actorName, got: msg.got ?? t("LOOTCRATES.Common.GotNothing") }));
 }
 const uid = () => foundry.utils.randomID(12);
 
@@ -207,7 +209,7 @@ export function registerSocket() {
 // then "hidden" if the GM's client says its tab is in the background.
 // `price` is the one the buyer saw on the Buy: the GM charges that or nothing.
 export function requestPull({ boxId, actorId, price }, { onWait = null } = {}) {
-  if (!game.users.activeGM) return Promise.reject(new PullError("The shop is closed until a GM is online."));
+  if (!game.users.activeGM) return Promise.reject(new PullError(t("LOOTCRATES.Error.NoGM")));
   const msg = { type: "pull", requestId: uid(), boxId, actorId, userId: game.user.id };
   if (price != null) msg.price = price;
   return send(msg, handlePull, onWait);
@@ -218,7 +220,7 @@ export function requestPull({ boxId, actorId, price }, { onWait = null } = {}) {
 // GM drops a stake called off before it charges). `bet` is the kind's (a
 // colour, a number, a bid); `price` what the player chose to stake.
 export function requestStake({ boxId, roundId, actorId, price, bet = null }, { onWait = null } = {}) {
-  if (!game.users.activeGM) return Promise.reject(new PullError("The shop is closed until a GM is online."));
+  if (!game.users.activeGM) return Promise.reject(new PullError(t("LOOTCRATES.Error.NoGM")));
   const msg = { type: "stake", requestId: uid(), boxId, roundId, actorId, userId: game.user.id, bet };
   if (price != null) msg.price = price;
   return send(msg, handleStake, onWait);
@@ -294,11 +296,10 @@ let warnedSlow = false;
 function warnIfSlow(ms, { hidden, buyer, noun = "crate" }) {
   if (ms <= SLOW_PULL_MS) return;
   const secs = (ms / 1000).toFixed(1);
-  const why = hidden ? " while this Foundry tab was in the background. Browsers slow background tabs; keep this tab visible while players shop" : "";
   console.warn(`loot-crates | ${buyer}'s ${noun} took ${secs} s to open on this client${hidden ? " (tab in the background)" : ""}`);
   if (warnedSlow) return;
   warnedSlow = true;
-  globalThis.ui?.notifications?.warn(`Loot Crates: ${buyer}'s ${noun} took ${secs} s to open${why}.`);
+  globalThis.ui?.notifications?.warn(t(hidden ? "LOOTCRATES.Error.SlowHidden" : "LOOTCRATES.Error.Slow", { buyer, noun: nounText(noun), secs }));
 }
 
 // For tests: a new session.
@@ -366,9 +367,9 @@ async function recordPull({ msg, box, actor, out, log }) {
   if (box.rules?.stock != null) writes.push(saveBox({ ...box, rules: { ...box.rules, stock: Math.max(0, box.rules.stock - 1) } }));
   const failed = (await Promise.allSettled(writes)).filter(r => r.status === "rejected");
   if (!failed.length) return;
-  const got = out.result?.name ?? "nothing";
+  const got = out.result?.name ?? t("LOOTCRATES.Common.NothingWord");
   for (const f of failed) console.error(`loot-crates | recording ${actor.name}'s pull of ${got} from ${box.name} failed`, f.reason);
-  globalThis.ui?.notifications?.error(`Loot Crates: ${actor.name} got ${got} from ${box.name}, but the pull log, stock or pity count wasn't saved. Check the console.`);
+  globalThis.ui?.notifications?.error(t("LOOTCRATES.Error.LogFailed", { actor: actor.name, got, box: box.name }));
 }
 
 async function doPull(msg, timer, sent, stopWatching) {
@@ -583,17 +584,17 @@ export function settleOwedRests() {
 // The shop is open and the buyer owns the character, checked on the GM
 // inside the queue for every play (a pull or a stake).
 function guardBuyer(msg) {
-  if (!isShopOpen()) throw new PullError("The GM has closed the shop.");
+  if (!isShopOpen()) throw new PullError(t("LOOTCRATES.Shop.ClosedByGM"));
   const actor = game.actors.get(msg.actorId);
   const buyer = game.users.get(msg.userId);
-  if (!actor || !buyer || !actor.testUserPermission(buyer, "OWNER")) throw new PullError("You don't own that character.");
+  if (!actor || !buyer || !actor.testUserPermission(buyer, "OWNER")) throw new PullError(t("LOOTCRATES.Error.NotOwner"));
   return { actor, buyer };
 }
 
 // A play that failed: the buyer is told in a plain sentence (a PullError's
 // own, or that the game jammed), and the GM's own play throws it back.
 function failPlay(msg, box, err, reply) {
-  const message = err instanceof PullError ? err.message : `The ${getKind(kindOf(box))?.noun ?? "crate"} jammed. Check the GM's console.`;
+  const message = err instanceof PullError ? err.message : t("LOOTCRATES.Error.JammedGM", { noun: nounText(getKind(kindOf(box))?.noun ?? "crate") });
   if (!(err instanceof PullError)) console.error(`loot-crates | ${msg.type} failed`, err);
   reply({ type: "error", userId: msg.userId, message });
   if (msg.userId === game.user.id) throw err instanceof PullError ? err : new PullError(message);
@@ -629,7 +630,7 @@ async function doStake(msg, timer, sent, stopWatching) {
     const { actor, buyer } = guardBuyer(msg);
     box = getBoxes()[msg.boxId];
     let round = getRounds()[msg.roundId] ?? null;
-    if (round && round.boxId !== msg.boxId) throw new PullError("That round is at another table.");
+    if (round && round.boxId !== msg.boxId) throw new PullError(t("LOOTCRATES.Error.OtherTable"));
     const why = stakeReason(round);
     if (why) throw new PullError(why);
     const log = getLog();
@@ -638,18 +639,18 @@ async function doStake(msg, timer, sent, stopWatching) {
     timer.mark("charge");
 
     const logId = newId();
-    const row = { id: logId, kind: out.kind, boxId: box.id, boxName: box.name, actorId: actor.id, actorName: actor.name, userId: msg.userId, itemId: null, price: out.price, payoutCp: 0, status: "open", roundId: round.id, stake: out.stake, name: out.stake.label ?? "Stake" };
+    const row = { id: logId, kind: out.kind, boxId: box.id, boxName: box.name, actorId: actor.id, actorName: actor.name, userId: msg.userId, itemId: null, price: out.price, payoutCp: 0, status: "open", roundId: round.id, stake: out.stake, name: out.stake.label ?? t("LOOTCRATES.Editor.Stake") };
     try {
       await appendLog(row);
     } catch (err) {
       console.error(`loot-crates | recording ${actor.name}'s stake at ${box.name} failed; returning the coins`, err);
       try { await actor.update({ "system.currency": out.before }); } catch (restoreErr) {
         console.error(`loot-crates | could not return ${out.price} gp to ${actor.name}; the GM must refund by hand`, restoreErr);
-        throw new PullError("The stake couldn't be recorded and the coins couldn't be returned. Tell the GM.");
+        throw new PullError(t("LOOTCRATES.Error.StakeAndRestoreFailed"));
       }
-      throw new PullError("The stake couldn't be recorded; your coins were returned.");
+      throw new PullError(t("LOOTCRATES.Error.StakeFailed"));
     }
-    rememberCharge(msg.requestId, { requestId: msg.requestId, userId: msg.userId, buyerName: buyer.name, actorName: actor.name, boxName: box.name, got: `staked ${formatPrice(out.price)}`, logId });
+    rememberCharge(msg.requestId, { requestId: msg.requestId, userId: msg.userId, buyerName: buyer.name, actorName: actor.name, boxName: box.name, got: t("LOOTCRATES.Error.Staked", { price: formatPrice(out.price) }), logId });
     const displaced = stakes.filter(r => out.outbid.includes(r.id) && r.status === "open");
     if (displaced.length) await closeStakes(displaced.map(r => ({ row: r, action: r.house || game.actors.get(r.actorId) ? "refund" : "void", reason: "outbid", payoutCp: 0 })));
     // The coins and the row are settled by now: a clock that can't be

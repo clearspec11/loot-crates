@@ -34,6 +34,7 @@ import { AUCTION_DEFAULTS } from "./auction.js";
 import { formatPrice } from "./currency.js";
 import { restocked } from "./limits.js";
 import { onShelf } from "./shelf.js";
+import { t, words } from "./i18n.js";
 
 const weights = () => ({ ...DEFAULT_WEIGHTS });
 
@@ -51,27 +52,27 @@ const weights = () => ({ ...DEFAULT_WEIGHTS });
   copies.
 */
 export const NEW_DEFAULTS = {
-  crate: () => ({ name: "New box", price: DEFAULT_PRICE_GP, pools: [], weights: weights(), rules: {} }),
-  well: () => ({ kind: "well", name: "New well", price: WELL_DEFAULTS.price, pools: [], weights: weights(), odds: { ...WELL_DEFAULTS.odds }, rules: { cap: WELL_DEFAULTS.cap } }),
-  dice: () => ({ kind: "dice", name: "New dice game", price: DICE_DEFAULTS.price, pools: [], weights: weights(), dice: { formula: DICE_DEFAULTS.formula, target: DICE_DEFAULTS.target, multiplier: DICE_DEFAULTS.multiplier }, rules: { prize: false } }),
-  deck: () => ({ kind: "deck", name: "New deck", price: DECK_DEFAULTS.price, pools: [], weights: weights(), deck: { step: DECK_DEFAULTS.step, shuffledAt: 0, cards: DECK_DEFAULTS.cards.map(c => ({ ...c })) }, rules: {} }),
+  crate: () => ({ name: t("LOOTCRATES.Boxes.NewBox"), price: DEFAULT_PRICE_GP, pools: [], weights: weights(), rules: {} }),
+  well: () => ({ kind: "well", name: t("LOOTCRATES.Boxes.NewWell"), price: WELL_DEFAULTS.price, pools: [], weights: weights(), odds: { ...WELL_DEFAULTS.odds }, rules: { cap: WELL_DEFAULTS.cap } }),
+  dice: () => ({ kind: "dice", name: t("LOOTCRATES.Boxes.NewDice"), price: DICE_DEFAULTS.price, pools: [], weights: weights(), dice: { formula: DICE_DEFAULTS.formula, target: DICE_DEFAULTS.target, multiplier: DICE_DEFAULTS.multiplier }, rules: { prize: false } }),
+  deck: () => ({ kind: "deck", name: t("LOOTCRATES.Boxes.NewDeck"), price: DECK_DEFAULTS.price, pools: [], weights: weights(), deck: { step: DECK_DEFAULTS.step, shuffledAt: 0, cards: DECK_DEFAULTS.cards.map(c => ({ ...c })) }, rules: {} }),
   roulette: () => {
     const d = ROULETTE_DEFAULTS;
-    return { kind: "roulette", name: "New wheel", price: d.price, pools: [], weights: weights(), roulette: { colours: [...d.colours], pockets: d.pockets.map(p => ({ ...p })), payouts: { ...d.payouts }, itemOnRarity: d.itemOnRarity, maxStake: d.maxStake, maxBets: d.maxBets, windowSec: d.windowSec }, rules: {} };
+    return { kind: "roulette", name: t("LOOTCRATES.Boxes.NewWheel"), price: d.price, pools: [], weights: weights(), roulette: { colours: [...d.colours], pockets: d.pockets.map(p => ({ ...p })), payouts: { ...d.payouts }, itemOnRarity: d.itemOnRarity, maxStake: d.maxStake, maxBets: d.maxBets, windowSec: d.windowSec }, rules: {} };
   },
   auction: () => {
     const d = AUCTION_DEFAULTS;
-    return { kind: "auction", name: "New auction", price: d.price, pools: [], weights: weights(), auction: { lot: null, increment: d.increment, reserve: d.reserve, gavelSec: d.gavelSec, house: { ...d.house } }, rules: {} };
+    return { kind: "auction", name: t("LOOTCRATES.Boxes.NewAuction"), price: d.price, pools: [], weights: weights(), auction: { lot: null, increment: d.increment, reserve: d.reserve, gavelSec: d.gavelSec, house: { ...d.house } }, rules: {} };
   },
 };
 
 // The dialog's title: the words on the button that opened it, so what the
 // GM pressed is what they see. An existing record's editor says Edit.
-export const NEW_TITLE = { crate: "New box", well: "New well", dice: "New dice game", deck: "New deck", roulette: "New wheel", auction: "New auction" };
-export const EDIT_TITLE = { crate: "Edit box", well: "Edit well", dice: "Edit dice game", deck: "Edit deck", roulette: "Edit wheel", auction: "Edit auction" };
-export const COPY_TITLE = { crate: "Copy box", well: "Copy well", dice: "Copy dice game", deck: "Copy deck", roulette: "Copy wheel", auction: "Copy auction" };
-export const DELETE_TITLE = { crate: "Delete box", well: "Delete well", dice: "Delete dice game", deck: "Delete deck", roulette: "Delete wheel", auction: "Delete auction" };
-export const deleteTitle = game => DELETE_TITLE[kindOf(game)] ?? "Delete game";
+export const NEW_TITLE = words({ crate: "LOOTCRATES.Boxes.NewBox", well: "LOOTCRATES.Boxes.NewWell", dice: "LOOTCRATES.Boxes.NewDice", deck: "LOOTCRATES.Boxes.NewDeck", roulette: "LOOTCRATES.Boxes.NewWheel", auction: "LOOTCRATES.Boxes.NewAuction" });
+export const EDIT_TITLE = words({ crate: "LOOTCRATES.Game.EditBox", well: "LOOTCRATES.Game.EditWell", dice: "LOOTCRATES.Game.EditDice", deck: "LOOTCRATES.Game.EditDeck", roulette: "LOOTCRATES.Game.EditWheel", auction: "LOOTCRATES.Game.EditAuction" });
+export const COPY_TITLE = words({ crate: "LOOTCRATES.Game.CopyBox", well: "LOOTCRATES.Game.CopyWell", dice: "LOOTCRATES.Game.CopyDice", deck: "LOOTCRATES.Game.CopyDeck", roulette: "LOOTCRATES.Game.CopyWheel", auction: "LOOTCRATES.Game.CopyAuction" });
+export const DELETE_TITLE = words({ crate: "LOOTCRATES.Game.DeleteBox", well: "LOOTCRATES.Game.DeleteWell", dice: "LOOTCRATES.Game.DeleteDice", deck: "LOOTCRATES.Game.DeleteDeck", roulette: "LOOTCRATES.Game.DeleteWheel", auction: "LOOTCRATES.Game.DeleteAuction" });
+export const deleteTitle = game => DELETE_TITLE[kindOf(game)] ?? t("LOOTCRATES.Game.DeleteGame");
 
 /*
   Delete's confirm. A table game with a round not yet settled names what
@@ -79,33 +80,36 @@ export const deleteTitle = game => DELETE_TITLE[kindOf(game)] ?? "Delete game";
   the coins before acting: they are refunded first (table.js cancelRound),
   then the game goes. A bid is the Auction's word, a stake every other's.
 */
-const heldWords = game => (kindOf(game) === "auction" ? { what: "auction", one: "bid" } : { what: "round", one: "stake" });
-const nOf = (n, one) => `${n} ${one}${n === 1 ? "" : "s"}`;
+const HELD_WORDS = {
+  round: { open: "LOOTCRATES.Game.RoundOpenNone", holdsOne: "LOOTCRATES.Game.RoundHoldsOne", holdsMany: "LOOTCRATES.Game.RoundHoldsMany", off: "LOOTCRATES.Game.RoundCalledOff", offWith: "LOOTCRATES.Game.RoundCalledOffWith", refundedOne: "LOOTCRATES.Game.StakesRefundedOne", refundedMany: "LOOTCRATES.Game.StakesRefundedMany", goneOne: "LOOTCRATES.Game.StakesGoneOne", goneMany: "LOOTCRATES.Game.StakesGoneMany" },
+  auction: { open: "LOOTCRATES.Game.AuctionOpenNone", holdsOne: "LOOTCRATES.Game.AuctionHoldsOne", holdsMany: "LOOTCRATES.Game.AuctionHoldsMany", off: "LOOTCRATES.Game.AuctionCalledOff", offWith: "LOOTCRATES.Game.AuctionCalledOffWith", refundedOne: "LOOTCRATES.Game.BidsRefundedOne", refundedMany: "LOOTCRATES.Game.BidsRefundedMany", goneOne: "LOOTCRATES.Game.BidsGoneOne", goneMany: "LOOTCRATES.Game.BidsGoneMany" },
+};
+const heldWords = game => HELD_WORDS[kindOf(game) === "auction" ? "auction" : "round"];
 
 export function deleteGameText(game, held, esc) {
-  const ask = `Delete <strong>${esc(game.name)}</strong>?`;
+  const ask = t("LOOTCRATES.Game.DeleteAsk", { name: `<strong>${esc(game.name)}</strong>` });
   if (!held) return `<p>${ask}</p>`;
-  const { what, one } = heldWords(game);
-  if (!held.count) return `<p>${ask} Its ${what} is still open, with no ${one}s yet; it is called off first.</p>`;
-  return `<p>${ask} Its ${what} still holds ${nOf(held.count, one)} (${esc(formatPrice(held.gp))}); ${held.count === 1 ? "it is" : "they are"} refunded first.</p>`;
+  const w = heldWords(game);
+  if (!held.count) return `<p>${ask} ${t(w.open)}</p>`;
+  return `<p>${ask} ${t(held.count === 1 ? w.holdsOne : w.holdsMany, { count: held.count, price: esc(formatPrice(held.gp)) })}</p>`;
 }
 
 // The Boxes tab's status line once the game is gone, saying the refund
 // once: cancelRound's { refunded, gone } when a round was called off.
 export function deletedNotice(game, cancelled = null) {
-  const done = `Deleted ${game.name}.`;
+  const done = t("LOOTCRATES.Game.Deleted", { name: game.name });
   if (!cancelled) return done;
-  const { what, one } = heldWords(game);
+  const w = heldWords(game);
   const { refunded = 0, gone = 0 } = cancelled;
-  if (!refunded && !gone) return `${done} Its ${what} was called off.`;
+  if (!refunded && !gone) return `${done} ${t(w.off)}`;
   const parts = [];
-  if (refunded) parts.push(`${nOf(refunded, one)} ${refunded === 1 ? "was" : "were"} refunded`);
-  if (gone) parts.push(`${nOf(gone, one)} belonged to a character that is gone`);
-  return `${done} Its ${what} was called off: ${parts.join("; ")}.`;
+  if (refunded) parts.push(t(refunded === 1 ? w.refundedOne : w.refundedMany, { count: refunded }));
+  if (gone) parts.push(t(gone === 1 ? w.goneOne : w.goneMany, { count: gone }));
+  return `${done} ${t(w.offWith, { parts: parts.join(t("LOOTCRATES.Common.ListSemicolon")) })}`;
 }
 export function editorTitle(game, isNew, copy = false) {
-  const [titles, fallback] = copy ? [COPY_TITLE, "Copy game"] : isNew ? [NEW_TITLE, "New game"] : [EDIT_TITLE, "Edit game"];
-  return titles[kindOf(game)] ?? fallback;
+  const [titles, fallback] = copy ? [COPY_TITLE, "LOOTCRATES.Game.CopyGame"] : isNew ? [NEW_TITLE, "LOOTCRATES.Game.NewGame"] : [EDIT_TITLE, "LOOTCRATES.Game.EditGame"];
+  return titles[kindOf(game)] ?? t(fallback);
 }
 
 // The unsaved record a New opens its editor on: the kind's defaults, any
@@ -135,7 +139,7 @@ export const crateFromPool = (pool, id) => newDraft("crate", { id, name: pool.na
 */
 export function crateFromTable(table, poolId, id) {
   const fromTable = { uuid: table.uuid ?? null, name: table.label ?? table.name ?? "", items: table.entries?.length ?? table.items ?? 0, flattened: table.flattened ?? 0, textChance: Number(table.textChance) || 0 };
-  return newDraft("crate", { id, name: fromTable.name || "New box", pools: [{ id: poolId, share: 1 }], rules: { oddsMode: "weight" }, fromTable });
+  return newDraft("crate", { id, name: fromTable.name || t("LOOTCRATES.Boxes.NewBox"), pools: [{ id: poolId, share: 1 }], rules: { oddsMode: "weight" }, fromTable });
 }
 
 /*
@@ -166,12 +170,26 @@ export function copyOf(game, { id, now = 0, names = [] } = {}) {
   2)", never "Crate (copy) (copy)"), and a name already in `names` is
   skipped, so copying one game twice gives two names.
 */
+// A copy's name in the module's words ("{name} (copy)", "{name} (copy
+// {n})"), and a pattern that reads one back: a name made by an earlier
+// copy is counted on from, not copied again. The placeholders become named
+// groups, so a translation may put {n} before {name}.
+const GROUPS = { name: "(?<name>.*)", n: "(?<n>\\d+)" };
+const escape = s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const copyPattern = key => new RegExp(`^${t(key).split(/(\{name\}|\{n\})/).map(p => GROUPS[p.slice(1, -1)] ?? escape(p)).join("")}$`);
+function readCopy(name) {
+  const many = String(name).match(copyPattern("LOOTCRATES.Game.CopyNameN"));
+  if (many?.groups?.name != null) return { base: many.groups.name, n: Number(many.groups.n) || 1 };
+  const one = String(name).match(copyPattern("LOOTCRATES.Game.CopyName"));
+  return one?.groups?.name != null ? { base: one.groups.name, n: 1 } : null;
+}
 export function copyName(name, names = []) {
-  const m = String(name || "Game").match(/^(.*) \(copy(?: (\d+))?\)$/);
-  const base = m ? m[1] : String(name || "Game");
+  const fallback = t("LOOTCRATES.Game.Fallback");
+  const m = readCopy(name || fallback);
+  const base = m ? m.base : String(name || fallback);
   const taken = new Set(names);
-  let n = m ? (Number(m[2]) || 1) + 1 : 1;
-  const nameAt = k => (k === 1 ? `${base} (copy)` : `${base} (copy ${k})`);
+  let n = m ? m.n + 1 : 1;
+  const nameAt = k => (k === 1 ? t("LOOTCRATES.Game.CopyName", { name: base }) : t("LOOTCRATES.Game.CopyNameN", { name: base, n: k }));
   while (taken.has(nameAt(n))) n++;
   return nameAt(n);
 }
@@ -179,15 +197,15 @@ export function copyName(name, names = []) {
 // The New dialog's default button: it puts the game where players buy, or,
 // while the shop is closed or the editor's "On the shelf" is unticked
 // (shelf.js), only on the GM's list.
-export const addLabel = (shopOpen, onShelf = true) => (shopOpen && onShelf ? "Add to shelf" : "Add");
+export const addLabel = (shopOpen, onShelf = true) => (shopOpen && onShelf ? t("LOOTCRATES.Game.AddToShelf") : t("LOOTCRATES.Game.Add"));
 
 // The Boxes tab's status line after the Save: where the game went and
 // whether players can see it. A table game isn't priced; its bets are.
 export function addedNotice(game, { shopOpen = true } = {}) {
-  const name = game?.name || "The game";
-  if (!onShelf(game)) return `${name} added off the shelf. Players can't see it until you put it on the shelf.`;
-  if (!shopOpen) return `${name} added. The shop is closed, so players can't see it yet.`;
+  const name = game?.name || t("LOOTCRATES.Shelf.TheGame");
+  if (!onShelf(game)) return t("LOOTCRATES.Game.AddedOff", { name });
+  if (!shopOpen) return t("LOOTCRATES.Game.AddedClosed", { name });
   const price = formatPrice(Number(game?.price) || 0);
-  if (kindOf(game) === "auction") return `${name} is on the shelf; bids open at ${price}.`;
-  return getKind(kindOf(game))?.table ? `${name} is on the shelf; bets from ${price}.` : `${name} is on the shelf at ${price}.`;
+  if (kindOf(game) === "auction") return t("LOOTCRATES.Game.AddedAuction", { name, price });
+  return t(getKind(kindOf(game))?.table ? "LOOTCRATES.Game.AddedTable" : "LOOTCRATES.Game.AddedAt", { name, price });
 }

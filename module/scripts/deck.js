@@ -51,11 +51,12 @@ import { resultHTML } from "./revealcard.js";
 import { cardShell, oddsRibbon, oddsPills, shopReason, shortReason, draftBox } from "./boxcard.js";
 import { drawItem, grantData, crateLogRow } from "./crate.js";
 import { PullError, registerKind } from "./kinds.js";
+import { t, words } from "./i18n.js";
 
 export const CARD_KINDS = ["item", "coins", "loss", "effect", "blank"];
 // The pills' and the editor's names for what a card does.
-export const CARD_KIND_LABEL = { item: "Item", coins: "Coins", loss: "Loss", effect: "Effect", blank: "Blank" };
-export const CARD_KIND_HINT = { item: "An item from the pools", coins: "Coins into the purse", loss: "Coins out of the purse", effect: "An effect you play out", blank: "Nothing" };
+export const CARD_KIND_LABEL = words({ item: "LOOTCRATES.Common.Item", coins: "LOOTCRATES.Deck.Coins", loss: "LOOTCRATES.Deck.Loss", effect: "LOOTCRATES.Deck.Effect", blank: "LOOTCRATES.Deck.Blank" });
+export const CARD_KIND_HINT = words({ item: "LOOTCRATES.Deck.HintItem", coins: "LOOTCRATES.Deck.HintCoins", loss: "LOOTCRATES.Deck.HintLoss", effect: "LOOTCRATES.Deck.HintEffect", blank: "LOOTCRATES.Odds.Nothing" });
 // A result's tone: what the stage, the vault and the sting do with it.
 export const TONE_OF = { item: "boon", coins: "coin", loss: "bane", effect: "effect", blank: "blank" };
 // The swatch (module.css lc-rarity-*) a non-item card is drawn in: the
@@ -67,14 +68,20 @@ export const STREAK_MS = 120000;
 export const STREAK_MINUTES = STREAK_MS / 60000;
 
 // Placeholders, not a published deck: the GM renames or replaces them.
+// Their words are read when a New deck copies them (getters), in the
+// module's words at that moment.
+const placeholder = (card, label, text) => Object.defineProperties({ ...card }, {
+  label: { enumerable: true, get: () => t(label) },
+  ...(text ? { text: { enumerable: true, get: () => t(text) } } : {}),
+});
 export const DECK_DEFAULTS = {
   price: 10, step: 1.5,
   cards: [
-    { id: "fortune", label: "Fortune", kind: "item", weight: 2 },
-    { id: "windfall", label: "Windfall", kind: "coins", weight: 2, gp: 50 },
-    { id: "ruin", label: "Ruin", kind: "loss", weight: 2, gp: 20 },
-    { id: "omen", label: "Omen", kind: "effect", weight: 1, once: true, text: "Something is set in motion. The GM says what." },
-    { id: "blank", label: "A blank card", kind: "blank", weight: 3 },
+    placeholder({ id: "fortune", kind: "item", weight: 2 }, "LOOTCRATES.Deck.Fortune"),
+    placeholder({ id: "windfall", kind: "coins", weight: 2, gp: 50 }, "LOOTCRATES.Deck.Windfall"),
+    placeholder({ id: "ruin", kind: "loss", weight: 2, gp: 20 }, "LOOTCRATES.Deck.Ruin"),
+    placeholder({ id: "omen", kind: "effect", weight: 1, once: true }, "LOOTCRATES.Deck.Omen", "LOOTCRATES.Deck.OmenText"),
+    placeholder({ id: "blank", kind: "blank", weight: 3 }, "LOOTCRATES.Deck.BlankCard"),
   ],
 };
 
@@ -125,9 +132,9 @@ export function streakMinutesFromForm(value, game) {
 // "2 minutes", "1 minute", "90 seconds" for a window under a minute.
 export function windowText(game) {
   const m = streakMinutesOf(game);
-  if (m > 0 && m < 1) return `${Math.round(m * 60)} seconds`;
+  if (m > 0 && m < 1) return t("LOOTCRATES.Deck.Seconds", { count: Math.round(m * 60) });
   const n = +m.toFixed(2);
-  return `${n} minute${n === 1 ? "" : "s"}`;
+  return t(n === 1 ? "LOOTCRATES.Deck.MinuteOne" : "LOOTCRATES.Deck.MinutesMany", { count: n });
 }
 export const shuffledAt = game => Math.max(0, Number(game?.deck?.shuffledAt) || 0);
 
@@ -158,9 +165,9 @@ export function deckPlan(game, pools, log = [], state = {}) {
   const held = cards.filter(c => !(c.once && drawn.has(c.id)));
   const live = held.filter(c => c.kind !== "item" || canItem);
   let reason = "";
-  if (!cards.length) reason = "The deck has no cards";
-  else if (!held.length) reason = "Every card is drawn";
-  else if (!live.length) reason = "Nothing in the deck can be drawn";
+  if (!cards.length) reason = t("LOOTCRATES.Deck.NoCards");
+  else if (!held.length) reason = t("LOOTCRATES.Deck.AllDrawn");
+  else if (!live.length) reason = t("LOOTCRATES.Deck.NothingDrawable");
   return { cards, live, size: cards.length, left: held.length, drawn: cards.length - held.length, item, canItem, empty: !live.length, reason };
 }
 
@@ -225,7 +232,7 @@ export function streakEndsAt(game, log, { actorId, now = Date.now() }) {
 const priceOf = ({ game, actor, log = [], now = Date.now() }) => nextPrice(game, log, { actorId: actor?.id, now });
 
 // "3rd draw in a row": the ordinal the card and the result use.
-export const ordinal = n => `${n}${n % 10 === 1 && n % 100 !== 11 ? "st" : n % 10 === 2 && n % 100 !== 12 ? "nd" : n % 10 === 3 && n % 100 !== 13 ? "rd" : "th"}`;
+export const ordinal = n => t(n % 10 === 1 && n % 100 !== 11 ? "LOOTCRATES.Deck.Ordinal1" : n % 10 === 2 && n % 100 !== 12 ? "LOOTCRATES.Deck.Ordinal2" : n % 10 === 3 && n % 100 !== 13 ? "LOOTCRATES.Deck.Ordinal3" : "LOOTCRATES.Deck.OrdinalN", { n });
 
 /* ---------- The roll ---------- */
 
@@ -245,7 +252,7 @@ export const ordinal = n => `${n}${n % 10 === 1 && n % 100 !== 11 ? "st" : n % 1
 async function roll(ctx) {
   const { game, actor, state = {}, rng, log = [], now = Date.now(), price = game.price } = ctx;
   const plan = deckPlan(game, ctx.pools, log, state);
-  if (plan.empty) throw new PullError(plan.reason === "The deck has no cards" ? `${game.name} has no cards. Tell the GM.` : `Nothing is left to draw from ${game.name}.`);
+  if (plan.empty) throw new PullError(!plan.cards.length ? t("LOOTCRATES.Deck.NoCardsError", { name: game.name }) : t("LOOTCRATES.Deck.NothingLeftError", { name: game.name }));
   const card = weightedPick(plan.live, c => c.weight, rng) ?? plan.live[0];
   const streak = streakAt(game, log, { actorId: actor.id, now }) + 1;
   const common = {
@@ -256,7 +263,7 @@ async function roll(ctx) {
   if (card.kind === "item") {
     const { result, source, pools } = await drawItem({ ...ctx, state: {} });
     if (result) return { ...common, ...grantData(source, result, game), pools };
-    return { ...common, tone: "blank", result: { name: card.label, outcome: "blank" }, note: "its pools held nothing" };
+    return { ...common, tone: "blank", result: { name: card.label, outcome: "blank" }, note: t("LOOTCRATES.Deck.PoolsHeldNothing") };
   }
   if (card.kind === "coins") return { ...common, payoutCp: Math.round(card.gp * 100) };
   if (card.kind === "loss") {
@@ -327,10 +334,10 @@ export function mountDeck(host, { tone = "blank", swatch = "none", label = "", k
   host.querySelector(".lc-deck__kind").textContent = kindLabel;
 
   const { lift, hold, flip, beats } = DECK_TIMING;
-  const pose = t => {
+  const pose = ms => {
     if (!card?.style) return;
-    const up = ease(clamp01(t / T(lift)));
-    const turn = t < T(lift + hold) ? 0 : ease(clamp01((t - T(lift + hold)) / T(flip)));
+    const up = ease(clamp01(ms / T(lift)));
+    const turn = ms < T(lift + hold) ? 0 : ease(clamp01((ms - T(lift + hold)) / T(flip)));
     card.style.transform = `translateY(${(-14 * up).toFixed(2)}px) scale(${(1 + 0.06 * Math.sin(Math.PI * turn)).toFixed(3)}) rotateY(${(180 * turn).toFixed(1)}deg)`;
   };
   const beatAt = i => T(lift + (i * hold) / beats);
@@ -357,13 +364,13 @@ export function mountDeck(host, { tone = "blank", swatch = "none", label = "", k
         const step = now => {
           if (landed) return;
           t0 ??= now;
-          const t = now - t0;
-          pose(t);
-          while (beat < beats && t >= beatAt(beat)) {
+          const ms = now - t0;
+          pose(ms);
+          while (beat < beats && ms >= beatAt(beat)) {
             try { onBeat?.(beat); } catch (err) { console.error("loot-crates | the deck's beat cue failed", err); }
             beat++;
           }
-          if (t >= total) land();
+          if (ms >= total) land();
           else frame = requestAnimationFrame(step);
         };
         frame = requestAnimationFrame(step);
@@ -392,16 +399,19 @@ function play(host, reveal, { sound = false, pageHidden = () => false, onLand })
 
 // "Tam draws from The Deck 15 gp · 2nd in a row": the window's head line.
 function head(reveal, { esc }) {
-  const again = reveal.streak > 1 ? ` <span class="lc-reveal__streak">· ${esc(ordinal(reveal.streak))} in a row</span>` : "";
-  return `<span class="lc-reveal__who">${esc(reveal.actorName)}</span> draws from
-        <strong class="lc-reveal__crate">${esc(reveal.box.name)}</strong>
-        <span class="lc-reveal__price">${esc(formatPrice(reveal.box.price))}</span>${again}`;
+  const again = reveal.streak > 1 ? ` <span class="lc-reveal__streak">· ${t("LOOTCRATES.Deck.InARow", { nth: esc(ordinal(reveal.streak)) })}</span>` : "";
+  return `${t("LOOTCRATES.Deck.Head", {
+    who: `<span class="lc-reveal__who">${esc(reveal.actorName)}</span>`,
+    crate: `<strong class="lc-reveal__crate">${esc(reveal.box.name)}</strong>`,
+    price: `<span class="lc-reveal__price">${esc(formatPrice(reveal.box.price))}</span>`,
+  })}${again}`;
 }
 
-export const cardsLeftText = (left, size) => `${left} of ${size} card${size === 1 ? "" : "s"} left`;
-// " (it asked 20 gp; the purse had no more)" when the card took less than it named.
-const shortNote = reveal => (reveal.takenCp < reveal.lossCp ? ` (it asked ${formatPrice(reveal.lossCp / 100)}; the purse had no more)` : "");
-const takesText = reveal => `The card takes ${formatPrice((reveal.takenCp ?? 0) / 100)}${shortNote(reveal)}`;
+export const cardsLeftText = (left, size) => t(size === 1 ? "LOOTCRATES.Deck.CardsLeftOne" : "LOOTCRATES.Deck.CardsLeftMany", { left, size });
+// "20 gp taken (it asked 20 gp; the purse had no more)" when the card took
+// less than it named: `text` with that note after it.
+const shortNote = (reveal, text) => (reveal.takenCp < reveal.lossCp ? t("LOOTCRATES.Deck.ShortNote", { text, asked: formatPrice(reveal.lossCp / 100) }) : text);
+const takesText = reveal => shortNote(reveal, t("LOOTCRATES.Deck.Takes", { price: formatPrice((reveal.takenCp ?? 0) / 100) }));
 
 /*
   What the window says once the card has turned, into its live region: an
@@ -415,11 +425,11 @@ function result(reveal, { esc = String, canSee = false } = {}) {
   const left = reveal.cardsLeft != null && reveal.size != null ? [esc(cardsLeftText(reveal.cardsLeft, reveal.size))] : [];
   if (tone === "boon" && reveal.result?.rarity) return resultHTML(reveal, { esc, canSee, extra: left });
   const where = [];
-  if (tone === "coin") where.push(`${esc(formatPrice((reveal.payoutCp ?? 0) / 100))} into ${esc(reveal.actorName)}'s purse`);
+  if (tone === "coin") where.push(t("LOOTCRATES.Deck.IntoPurse", { price: esc(formatPrice((reveal.payoutCp ?? 0) / 100)), name: esc(reveal.actorName) }));
   if (tone === "bane") where.push(esc(takesText(reveal)));
-  if (tone === "effect") where.push("The GM plays it out");
-  if (tone === "blank") where.push(reveal.note ? `Nothing happens: ${esc(reveal.note)}` : "Nothing happens");
-  if (canSee && reveal.purse) where.push(`<span class="lc-reveal__gold">${esc(formatGold(reveal.purse))} left</span>`);
+  if (tone === "effect") where.push(t("LOOTCRATES.Deck.GMPlays"));
+  if (tone === "blank") where.push(reveal.note ? t("LOOTCRATES.Deck.NothingHappensBecause", { note: esc(reveal.note) }) : t("LOOTCRATES.Deck.NothingHappens"));
+  if (canSee && reveal.purse) where.push(`<span class="lc-reveal__gold">${t("LOOTCRATES.Reveal.GoldLeft", { gold: esc(formatGold(reveal.purse)) })}</span>`);
   where.push(...left);
   const text = tone === "effect" && reveal.text ? `<div class="lc-deck__text">${esc(reveal.text)}</div>` : "";
   return `<div class="lc-reveal__quiet${tone === "bane" ? " lc-deck__bane" : ""}">${esc(reveal.card?.label ?? reveal.result?.name ?? "")}</div>${text}`
@@ -438,8 +448,8 @@ function sting(reveal) {
 // window sits behind the shop: the bane and the blank. Not an error.
 function notice(reveal) {
   const tone = toneOf(reveal);
-  if (tone === "bane") return `${reveal.box.name}: ${reveal.card?.label}. ${takesText(reveal)}.`;
-  if (tone === "blank") return `${reveal.box.name}: ${reveal.card?.label}. Nothing happens.`;
+  if (tone === "bane") return t("LOOTCRATES.Deck.BaneNotice", { name: reveal.box.name, card: reveal.card?.label, takes: takesText(reveal) });
+  if (tone === "blank") return t("LOOTCRATES.Deck.BlankNotice", { name: reveal.box.name, card: reveal.card?.label });
   return null;
 }
 
@@ -453,8 +463,8 @@ function again(reveal, { game = null, log = [], pools = {}, purse = {}, now = Da
   if (!game || reveal.replay) return null;
   const price = nextPrice(game, log, { actorId: reveal.actorId, now });
   const plan = deckPlan(game, pools, log);
-  const off = (plan.empty ? plan.reason : "") || shopReason({ hasActor: true, open, gmOnline }) || (!canAfford(purse, price) ? `Needs ${formatPrice(shortfall(purse, price))} more` : "");
-  return { price, label: `Draw again for ${formatPrice(price)}`, off };
+  const off = (plan.empty ? plan.reason : "") || shopReason({ hasActor: true, open, gmOnline }) || (!canAfford(purse, price) ? t("LOOTCRATES.Card.Needs", { price: formatPrice(shortfall(purse, price)) }) : "");
+  return { price, label: t("LOOTCRATES.Deck.DrawAgainFor", { price: formatPrice(price) }), off };
 }
 
 // Every card posts one: the table should see every draw. The card's words
@@ -467,14 +477,14 @@ function chatCard(reveal, { esc, itemLink }) {
   const art = tone === "boon" && r.img ? `<img src="${esc(r.img)}" alt="">` : `<span class="lc-deck__mark" aria-hidden="true"></span>`;
   const name = tone === "boon" && r.rarity ? itemLink(reveal.itemUuid ?? r.uuid, r.name) : esc(label);
   const line = tone === "boon" ? `${esc(label)} · ${esc(RARITY_LABEL[r.rarity] ?? r.rarity ?? "")}`
-    : tone === "coin" ? `Coins · ${esc(formatPrice((reveal.payoutCp ?? 0) / 100))} into the purse`
-    : tone === "bane" ? `Loss · ${esc(formatPrice((reveal.takenCp ?? 0) / 100))} taken${esc(shortNote(reveal))}`
-    : tone === "effect" ? "Effect · the GM plays it out"
-    : "Blank";
+    : tone === "coin" ? t("LOOTCRATES.Deck.ChatCoins", { price: esc(formatPrice((reveal.payoutCp ?? 0) / 100)) })
+    : tone === "bane" ? t("LOOTCRATES.Deck.ChatLoss", { taken: esc(shortNote(reveal, t("LOOTCRATES.Deck.Taken", { price: formatPrice((reveal.takenCp ?? 0) / 100) }))) })
+    : tone === "effect" ? t("LOOTCRATES.Deck.ChatEffect")
+    : t("LOOTCRATES.Deck.Blank");
   const text = tone === "effect" && reveal.text ? `<div class="lc-chat__text">${esc(reveal.text)}</div>` : "";
   return `
     <div class="loot-crates lc-chat lc-rarity-${esc(swatchOf(reveal))}">
-      <div class="lc-chat__head">${esc(reveal.actorName)} drew from <strong>${esc(reveal.box.name)}</strong> <span class="lc-chat__price">${esc(formatPrice(reveal.box.price))}</span></div>
+      <div class="lc-chat__head">${t("LOOTCRATES.Deck.ChatHead", { actor: esc(reveal.actorName), box: `<strong>${esc(reveal.box.name)}</strong>`, price: `<span class="lc-chat__price">${esc(formatPrice(reveal.box.price))}</span>` })}</div>
       <div class="lc-chat__item">
         ${art}
         <div>
@@ -505,14 +515,14 @@ export function deckOddsHTML(odds) {
 // the deck's own.
 export function streakLine(game, n) {
   if (n < 1) return "";
-  return `${ordinal(n + 1)} draw in a row: ${formatPrice(priceAt(game, n))} (back to ${formatPrice(game.price)} after ${windowText(game)})`;
+  return t("LOOTCRATES.Deck.StreakLine", { nth: ordinal(n + 1), price: formatPrice(priceAt(game, n)), base: formatPrice(game.price), window: windowText(game) });
 }
 
 // Why this deck in particular can't be drawn from now, or "": its last
 // card is still turning on this client (the shop holds the result;
 // reveal.js), or it is spent. Being short is the card's last word.
 function deckState(game, odds, ctx) {
-  if (ctx.held?.(game.id)) return "Still turning";
+  if (ctx.held?.(game.id)) return t("LOOTCRATES.Deck.StillTurning");
   if (odds.empty) return odds.reason;
   return "";
 }
@@ -530,7 +540,7 @@ function card(game, pools, ctx) {
     odds.size ? `<div class="lc-box__stock">${esc(cardsLeftText(odds.left, odds.size))}</div>` : "",
     n ? `<div class="lc-box__rule">${esc(streakLine(game, n))}</div>` : "",
   ];
-  return cardShell(game, ctx, { rarityClass: odds.item.top && odds.canItem ? `lc-rarity-${odds.item.top}` : "lc-box--deck", art: DECK_ART, middle, reason, label: `Draw for ${esc(formatPrice(price))}`, price });
+  return cardShell(game, ctx, { rarityClass: odds.item.top && odds.canItem ? `lc-rarity-${odds.item.top}` : "lc-box--deck", art: DECK_ART, middle, reason, label: t("LOOTCRATES.Deck.DrawFor", { price: esc(formatPrice(price)) }), price });
 }
 
 function reason(game, pools, ctx) {
@@ -548,8 +558,9 @@ function reason(game, pools, ctx) {
 export function deckRulesText(game, log = []) {
   const plan = deckPlan(game, {}, log);
   const m = streakMinutesOf(game);
-  const rise = !(m > 0) ? "one price every draw" : `×${+stepOf(game).toFixed(2)} a draw in a row${m === STREAK_MINUTES ? "" : ` within ${windowText(game)}`}`;
-  return [`${plan.size} card${plan.size === 1 ? "" : "s"}`, plan.drawn ? `${plan.drawn} drawn` : "", rise].filter(Boolean).join(", ");
+  const step = +stepOf(game).toFixed(2);
+  const rise = !(m > 0) ? t("LOOTCRATES.Deck.RuleOnePrice") : m === STREAK_MINUTES ? t("LOOTCRATES.Deck.RuleRise", { step }) : t("LOOTCRATES.Deck.RuleRiseWithin", { step, window: windowText(game) });
+  return [t(plan.size === 1 ? "LOOTCRATES.Deck.RuleCardsOne" : "LOOTCRATES.Deck.RuleCardsMany", { count: plan.size }), plan.drawn ? t("LOOTCRATES.Deck.RuleDrawn", { count: plan.drawn }) : "", rise].filter(Boolean).join(", ");
 }
 
 /*
@@ -561,9 +572,9 @@ export function deckRulesText(game, log = []) {
 export function deckRiseFieldsHTML(game, esc = s => String(s ?? "")) {
   const id = `lc-streak-${esc(game?.id ?? "new")}`;
   return `
-      <label class="lc-row">Each draw in a row costs <input name="step" type="number" min="1" step="0.1" value="${esc(stepOf(game))}"> times the last</label>
-      <label class="lc-row">Draws count as in a row within <input name="streakMinutes" type="number" min="0" step="0.5" value="${esc(streakMinutesOf(game))}" aria-describedby="${id}"> minutes</label>
-      <p class="lc-form__hint" id="${id}">After that the price comes back down to the first draw's, and a refund takes a step back. Blank or 0: every draw is a first draw.</p>`;
+      <label class="lc-row">${t("LOOTCRATES.Deck.StepField", { input: `<input name="step" type="number" min="1" step="0.1" value="${esc(stepOf(game))}">` })}</label>
+      <label class="lc-row">${t("LOOTCRATES.Deck.WindowField", { input: `<input name="streakMinutes" type="number" min="0" step="0.5" value="${esc(streakMinutesOf(game))}" aria-describedby="${id}">` })}</label>
+      <p class="lc-form__hint" id="${id}">${t("LOOTCRATES.Deck.WindowHint")}</p>`;
 }
 
 /*
@@ -595,16 +606,16 @@ export function deckPreview(game, pools, log = []) {
   const odds = deckOdds(game, pools, log);
   const items = odds.cards.some(c => c.kind === "item");
   let note = "";
-  if (!odds.cards.length) note = cardsOf(game).length ? "Every card weighs 0, so nothing can be drawn." : "This deck has no cards.";
-  else if (odds.left === 0) note = "Every card is drawn: reshuffle to put them back.";
-  else if (items && !game.pools?.length) note = "The item cards have no pool ticked, so they can never be drawn; the other cards still can.";
-  else if (items && !odds.canItem) note = "The item cards' pools have no item that can drop, so they can never be drawn; the other cards still can.";
+  if (!odds.cards.length) note = cardsOf(game).length ? t("LOOTCRATES.Deck.PreviewAllZero") : t("LOOTCRATES.Deck.PreviewNoCards");
+  else if (odds.left === 0) note = t("LOOTCRATES.Deck.PreviewAllDrawn");
+  else if (items && !game.pools?.length) note = t("LOOTCRATES.Deck.PreviewNoPool");
+  else if (items && !odds.canItem) note = t("LOOTCRATES.Deck.PreviewNoItem");
   return { odds, note, warn: odds.empty };
 }
 
 export function deckPreviewHTML(preview, esc = s => String(s ?? "")) {
   const { odds, note, warn } = preview;
-  const items = odds.canItem && odds.cards.some(c => c.kind === "item") ? `<div class="lc-form__hint">If an item: ${oddsRibbon(odds.item.rows)}<div class="lc-odds">${oddsPills(odds.item.rows)}</div></div>` : "";
+  const items = odds.canItem && odds.cards.some(c => c.kind === "item") ? `<div class="lc-form__hint">${t("LOOTCRATES.Well.IfItem", { odds: `${oddsRibbon(odds.item.rows)}<div class="lc-odds">${oddsPills(odds.item.rows)}</div>` })}</div>` : "";
   const left = odds.size ? `<p class="lc-form__hint">${esc(cardsLeftText(odds.left, odds.size))}</p>` : "";
   return `${deckOddsHTML(odds)}${items}${left}${note ? `<p class="lc-form__hint${warn ? " lc-form__hint--warn" : ""}">${esc(note)}</p>` : ""}`;
 }
@@ -613,7 +624,7 @@ export function deckSummary(preview) {
   const odds = preview.odds.rows.map(r => `${r.name} ${r.label}`).join(", ");
   const items = preview.odds.canItem && preview.odds.cards.some(c => c.kind === "item") ? preview.odds.item.rows.map(r => `${RARITY_LABEL[r.rarity] ?? r.rarity} ${r.label}`).join(", ") : "";
   const left = preview.odds.size ? cardsLeftText(preview.odds.left, preview.odds.size) : "";
-  return [odds, items ? `If an item: ${items}` : "", left, preview.note].filter(Boolean).join(". ");
+  return [odds, items ? t("LOOTCRATES.Well.IfItem", { odds: items }) : "", left, preview.note].filter(Boolean).join(". ");
 }
 
 export const DECK = registerKind({
@@ -623,9 +634,9 @@ export const DECK = registerKind({
   roll,
   logRow,
   // The late-cancel line (socket.js): a card is drawn, not got.
-  gotText: out => `drew ${out.card?.label ?? out.result?.name ?? "a card"}`,
+  gotText: out => t("LOOTCRATES.Deck.GotText", { card: out.card?.label ?? out.result?.name ?? t("LOOTCRATES.Deck.ACard") }),
   reveal: {
-    title: "A card from the deck",
+    get title() { return t("LOOTCRATES.Deck.Title"); },
     head,
     play,
     result,
