@@ -331,10 +331,13 @@ export function recoverRounds() {
   The GM's timer for the next round to go stale, on the active GM only: one
   setTimeout at round.js nextStaleAt (a moment past it, so the round is
   stale when it fires), which runs recoverRounds and arms the next. Armed
-  at load and on every change of the rounds setting (main.js), each call
-  replacing the last, so a round opened, closed or spun moves it. A
+  at load, on every change of the rounds setting, and whenever who the
+  active GM is may have changed (a GM joining or leaving, a role changed:
+  main.js), each call replacing the last, so a round opened, closed or
+  spun moves it, and a GM handing over takes the timer with it. A
   recovery that fails is tried again after WATCH_RETRY_MS. Nothing to wait
-  for, or not the active GM: no timer. Returns the delay armed, or null.
+  for, or not the active GM (any timer this client had is cleared): no
+  timer. Returns the delay armed, or null.
 */
 export const STALE_SLACK_MS = 250;
 // setTimeout's longest delay; a later moment is re-armed when this fires.

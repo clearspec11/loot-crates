@@ -6,7 +6,8 @@ The newest numbered entry's version is the one in `module/module.json`, and its 
 
 ## Unreleased
 
-- Nothing yet.
+- With dnd5e's calendar on, two long rests on the same calendar day (the GM's, then a player's from their sheet) now end one day, not two. Before, the well's cap and a limit per day stayed shut for the next two midnights.
+- When the GM running the game leaves and another GM takes over, a table round left unspun is still refunded once it goes stale. Before, the new GM's client waited for a reload or the next round.
 
 ## 1.0.1
 

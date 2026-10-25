@@ -90,6 +90,15 @@ Hooks.on("renderItemDirectory", (_app, html) => {
 // "Make a crate" on a roll table's menu in the Roll Tables sidebar (a GM's).
 Hooks.on("getRollTableContextOptions", (_app, options) => { if (Array.isArray(options)) options.push(makeCrateMenuEntry()); });
 
+// Who the active GM is can change while the world runs: a GM joins or
+// leaves (userConnected, on connect and disconnect), or a user's role
+// changes (updateUser). The GM's timer for the next stale round
+// (table.js watchStale) follows: armed on the client that is now the
+// active GM, cleared on the one that no longer is, so a stake left in a
+// round is refunded while any GM is online, not at the next load.
+Hooks.on("userConnected", () => { if (game.ready) watchStale(); });
+Hooks.on("updateUser", (_user, change) => { if (game.ready && change && "role" in change) watchStale(); });
+
 // A day ends at each character's long rest (clock.js), calendar or not:
 // the rest that starts a new day is noted on the GM (socket.js).
 Hooks.on("dnd5e.restCompleted", (actor, result, config) => {

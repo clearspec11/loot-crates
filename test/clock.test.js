@@ -119,26 +119,34 @@ describe("a long rest with the calendar on", () => {
     expect(dayKeyFor({ time: TIME, calendarOn: false, restDay: 2, restedInto: { y: 1492, d: 300 } })).toBe("r2");
   });
 
-  it("moves the character's own day one on from the later of the clock's day and its own", () => {
+  it("moves the character's own day to the day after the clock's, borrowing one day ahead of it at most", () => {
     expect(dayAfterRest({ y: 1, d: 5 })).toEqual({ y: 1, d: 6 });
-    expect(dayAfterRest({ y: 1, d: 5 }, { y: 1, d: 6 })).toEqual({ y: 1, d: 7 });
+    // Already a day ahead of the clock: a second rest that day ends no further day.
+    expect(dayAfterRest({ y: 1, d: 5 }, { y: 1, d: 6 })).toEqual({ y: 1, d: 6 });
+    // A day borrowed further ahead (noted before the cap) stays; it is never taken back.
+    expect(dayAfterRest({ y: 1, d: 5 }, { y: 1, d: 8 })).toEqual({ y: 1, d: 8 });
+    // The clock has caught up with the character's day: one more.
+    expect(dayAfterRest({ y: 1, d: 6 }, { y: 1, d: 6 })).toEqual({ y: 1, d: 7 });
     // The clock has passed the character's day: from the clock's.
     expect(dayAfterRest({ y: 1, d: 9 }, { y: 1, d: 6 })).toEqual({ y: 1, d: 10 });
+    expect(dayAfterRest({ y: 1, d: 365 }, { y: 1, d: 6 })).toEqual({ y: 1, d: 366 });
     expect(dayAfterRest({ t: 3 }, { y: 1, d: 6 })).toEqual({ t: 4 });
     expect(dayAfterRest(null, { y: 1, d: 6 })).toBeNull();
   });
 
-  it("ends a day at every long rest on the GM, the clock catching up without another, and leaves the counts and actor state alone", async () => {
+  it("ends a day at a long rest on the GM, once per calendar day, the clock catching up without another, and leaves the counts and actor state alone", async () => {
     const game = world({ calendar: { enabled: true, dailyRecovery: "" } });
     await game.settings.set("loot-crates", "actorState", { "a1.box": { pulls: 2 }, days: { a1: 3 } });
     await expect(restInto("a1", { y: 1492, d: 207 })).resolves.toBe("y1492d208");
-    // A second rest with the clock still on 207: another day.
-    await expect(restInto("a1", { y: 1492, d: 207 })).resolves.toBe("y1492d209");
-    expect(restedIntoOf("a1")).toEqual({ y: 1492, d: 209 });
+    // A second rest with the clock still on 207: no further day.
+    await expect(restInto("a1", { y: 1492, d: 207 })).resolves.toBe("y1492d208");
+    expect(restedIntoOf("a1")).toEqual({ y: 1492, d: 208 });
     expect(todayKey("a2")).toBe("y1492d207");
-    // The clock catches up through 208 and 209 without a new day, then passes it.
+    // The clock catches up to 208 without a new day.
     game.time = { components: { year: 1492, day: 208 }, worldTime: 2 };
-    expect(todayKey("a1")).toBe("y1492d209");
+    expect(todayKey("a1")).toBe("y1492d208");
+    // A rest on the clock's next day moves on.
+    await expect(restInto("a1", { y: 1492, d: 208 })).resolves.toBe("y1492d209");
     game.time = { components: { year: 1492, day: 210 }, worldTime: 3 };
     expect(todayKey("a1")).toBe("y1492d210");
     expect(game.settings.get("loot-crates", "actorState")).toEqual({ "a1.box": { pulls: 2 }, days: { a1: 3 }, restedInto: { a1: { y: 1492, d: 209 } } });

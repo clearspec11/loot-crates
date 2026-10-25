@@ -12,13 +12,19 @@
 //
 //   1. The GM opens the manager, clicks the Boxes tab and presses the real
 //      "Add starter crates" (the toolbar's: cc-dev is not an empty world;
-//      the empty tabs' offer is the same action, seen in the harness). No
-//      confirm may appear (the set must not be in the world yet). Four new
+//      the empty tabs' offer is the same action, seen in the harness).
+//      With the set not in the world, no confirm may appear, and four new
 //      pools must hold real dnd5e items (more than none each, every one a
-//      Compendium.dnd5e.* reference), eight new games one of every kind,
-//      every one off the shelf: its row dimmed, "On the shelf" unpressed, the
-//      first game's Edit focused, the status line saying what came in. The
-//      player's open shop must list none of them.
+//      Compendium.dnd5e.* reference). With the set (or part of it) already
+//      there, the manager's own confirm must appear ("The starter set is
+//      already here: ..."), and the GM presses its Add copies as a person
+//      would; only the starter pools not there yet are made, and the games
+//      draw from the ones already there. Either way: eight new games, one
+//      of every kind (named as copies where the name is taken), every one
+//      off the shelf: its row dimmed, "On the shelf" unpressed, the first
+//      game's Edit focused, the status line saying what came in. The
+//      player's open shop must list none of them. out.before.path says
+//      which way ran ("fresh" or "copies").
 //   2. The GM presses the Adventurer's cache row's "On the shelf"; the
 //      player's shop shows it with its Buy on within 2 s.
 //   3. The player presses that Buy once and closes the reveal when it
@@ -29,8 +35,11 @@
 // Restored in a finally: every pool and game this run's press made is
 // removed (the pools and boxes as they were, by id), and each character's
 // state on those games; the shop's open state as it was. Only records this
-// run created are touched. One real 50 gp purchase, refunded; the log row
-// and the chat card stay, as in every purchase check.
+// run created are touched: a starter pool or game already in the world is
+// never removed or changed. The world's pool and game ids and counts are
+// printed before and after, and the run fails unless they match. One real
+// 50 gp purchase, refunded; the log row and the chat card stay, as in
+// every purchase check.
 /* global game */
 const { chromium } = require("playwright");
 const FOUNDRY = process.env.FOUNDRY_URL || "http://localhost:30000";
@@ -95,7 +104,9 @@ async function prepare(gm) {
       actorId: actor.id, shopOpen,
       boxIds: Object.keys(store.getBoxes()), poolIds: Object.keys(store.getPools()),
       stateKeys: Object.keys(game.settings.get("loot-crates", "actorState") ?? {}),
-      present: { games: Object.values(store.getBoxes()).map(b => b.name).filter(n => games.includes(n)), pools: Object.values(store.getPools()).map(p => p.name).filter(n => pools.includes(n)) },
+      present: { games: Object.values(store.getBoxes()).map(b => b.name).filter(n => games.includes(n)), pools: [...new Set(Object.values(store.getPools()).map(p => p.name).filter(n => pools.includes(n)))] },
+      // The starter pools already here, which copies of the games draw from.
+      starterPoolIds: Object.values(store.getPools()).filter(p => pools.includes(p.name)).map(p => p.id),
       purseCp: toCopper(actor.system.currency),
       items: actor.items.filter(i => !i.flags?.dnd5e?.cachedFor).length,
       logIds: store.getLog().map(r => r.id),
@@ -119,8 +130,9 @@ async function restore(gm, before) {
       const keys = Object.keys(state).filter(k => !before.stateKeys.includes(k) && boxes.some(id => k.endsWith(`.${id}`)));
       if (keys.length) { const next = { ...state }; for (const k of keys) delete next[k]; await game.settings.set("loot-crates", "actorState", next); }
       out.removed = { boxes: boxes.length, pools: pools.length, state: keys.length };
-      out.boxesAsBefore = Object.keys(store.getBoxes()).sort().join() === [...before.boxIds].sort().join();
-      out.poolsAsBefore = Object.keys(store.getPools()).sort().join() === [...before.poolIds].sort().join();
+      out.after = { boxes: Object.keys(store.getBoxes()).length, pools: Object.keys(store.getPools()).length, boxIds: Object.keys(store.getBoxes()).sort(), poolIds: Object.keys(store.getPools()).sort() };
+      out.boxesAsBefore = out.after.boxIds.join() === [...before.boxIds].sort().join();
+      out.poolsAsBefore = out.after.poolIds.join() === [...before.poolIds].sort().join();
       if (!before.shopOpen) { await store.setShopOpen(false); out.shop = "closed again"; }
       const { toCopper } = await import(base + "scripts/currency.js");
       out.purseCp = toCopper(game.actors.get(before.actorId).system.currency);
@@ -153,8 +165,8 @@ const untilCard = (pl, boxId, pred, since) => pl.evaluate(async ({ boxId, pred, 
     gm = await join(browser, "Gamemaster");
     if (!gm) throw new Error("the Gamemaster seat is taken; this check needs the headless Gamemaster");
     before = await prepare(gm.page);
-    out.before = { purseCp: before.purseCp, items: before.items, rows: before.logIds.length, boxes: before.boxIds.length, pools: before.poolIds.length, present: before.present };
-    if (before.present.games.length || before.present.pools.length) throw new Error(`the starter set is already in the world (${[...before.present.games, ...before.present.pools].join(", ")}); this check adds it fresh`);
+    const setPresent = !!(before.present.games.length || before.present.pools.length);
+    out.before = { path: setPresent ? "copies" : "fresh", setPresent, purseCp: before.purseCp, items: before.items, rows: before.logIds.length, boxes: before.boxIds.length, pools: before.poolIds.length, present: before.present, boxIds: [...before.boxIds].sort(), poolIds: [...before.poolIds].sort() };
 
     out.shopOpened = await pl.page.evaluate(async ({ base }) => {
       const wait = ms => new Promise(r => setTimeout(r, ms));
@@ -169,7 +181,7 @@ const untilCard = (pl, boxId, pred, since) => pl.evaluate(async ({ boxId, pred, 
     }, { base: MODULE_BASE });
 
     // 1. The GM presses Add starter crates.
-    out.add = await gm.page.evaluate(async ({ base, before }) => {
+    out.add = await gm.page.evaluate(async ({ base, before, setPresent }) => {
       const wait = ms => new Promise(r => setTimeout(r, ms));
       const until = async (fn, ms = 10000) => { for (let t = 0; t < ms && !fn(); t += 50) await wait(50); return fn(); };
       const click = el => el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, button: 0, view: window }));
@@ -187,28 +199,41 @@ const untilCard = (pl, boxId, pred, since) => pl.evaluate(async ({ boxId, pred, 
       const newBoxes = () => Object.values(store.getBoxes()).filter(b => !before.boxIds.includes(b.id));
       const confirm = () => [...document.querySelectorAll(".application.dialog")].find(d => /starter set is already here/.test(d.textContent));
       await until(() => newBoxes().length >= 8 || confirm(), 60000);
-      if (confirm()) { click([...confirm().querySelectorAll("button")].find(b => /cancel/i.test(b.textContent))); throw new Error("a confirm asked about a starter set already here"); }
+      let confirmText = null;
+      if (confirm()) {
+        confirmText = (confirm().querySelector(".window-content p") ?? confirm()).textContent.replace(/\s+/g, " ").trim();
+        if (!setPresent) { click([...confirm().querySelectorAll("button")].find(b => /cancel/i.test(b.textContent))); throw new Error("a confirm asked about a starter set already here, though none was"); }
+        // The set is here: Add copies, pressed as the GM would.
+        const yes = [...confirm().querySelectorAll("button")].find(b => /add copies/i.test(b.textContent));
+        if (!yes) throw new Error("the confirm has no Add copies");
+        yes.focus();
+        click(yes);
+        await until(() => newBoxes().length >= 8, 60000);
+      } else if (setPresent) {
+        throw new Error("no confirm appeared, though the starter set is already here");
+      }
       const ms = Date.now() - at;
       await until(() => /^Added /.test(app.element.querySelector(".lc-manager__status")?.textContent ?? ""), 8000);
       await wait(300);
       const games = newBoxes();
       const pools = Object.values(store.getPools()).filter(p => !before.poolIds.includes(p.id));
+      const baseName = n => String(n).replace(/ \(copy(?: \d+)?\)$/, "");
       const rows = games.map(g => {
         const t = app.element.querySelector(`button[data-action="toggleShelf"][data-box="${g.id}"]`);
         const tr = t?.closest("tr");
-        return { id: g.id, name: g.name, kind: g.kind ?? "crate", shelved: g.rules?.shelved === false, price: g.price, pools: (g.pools ?? []).map(r => r.id), toggle: t?.textContent.trim(), pressed: t?.getAttribute("aria-pressed"), dimmed: !!tr?.classList.contains("lc-row--off"), tag: tr?.querySelector(".lc-kind--off")?.textContent.trim() };
+        return { id: g.id, name: g.name, base: baseName(g.name), kind: g.kind ?? "crate", shelved: g.rules?.shelved === false, price: g.price, pools: (g.pools ?? []).map(r => r.id), toggle: t?.textContent.trim(), pressed: t?.getAttribute("aria-pressed"), dimmed: !!tr?.classList.contains("lc-row--off"), tag: tr?.querySelector(".lc-kind--off")?.textContent.trim() };
       });
-      const first = games.find(g => g.name === "Adventurer's cache");
+      const first = games.find(g => baseName(g.name) === "Adventurer's cache");
       return {
-        label, ms, rows,
+        label, ms, rows, confirmText,
         pools: pools.map(p => ({ id: p.id, name: p.name, count: p.entries.length, compendium: p.entries.every(e => /^Compendium\.dnd5e\.(items|equipment24)\.Item\./.test(e.uuid)), sample: p.entries.slice(0, 3).map(e => `${e.name} (${e.rarity})`) })),
-        lot: games.find(g => g.kind === "auction")?.auction?.lot ?? null, chestId: games.find(g => g.name === "Dragon's hoard chest")?.id ?? null,
+        lot: games.find(g => g.kind === "auction")?.auction?.lot ?? null, chestId: games.find(g => baseName(g.name) === "Dragon's hoard chest")?.id ?? null,
         status: app.element.querySelector(".lc-manager__status")?.textContent.trim(),
         count: app.element.querySelector(".lc-shelf-count")?.textContent.trim(),
         focusedFirst: !!first && document.activeElement === app.element.querySelector(`button[data-action="editBox"][data-box="${first.id}"]`),
         buyId: first?.id ?? null,
       };
-    }, { base: MODULE_BASE, before });
+    }, { base: MODULE_BASE, before, setPresent });
     const boxId = out.add.buyId;
     await pl.page.waitForTimeout(1500);
     out.playerWhileOff = await pl.page.evaluate(ids => ids.filter(id => document.querySelector(`#loot-crates-shop .lc-box[data-box="${id}"]`)).length, out.add.rows.map(r => r.id));
@@ -285,14 +310,21 @@ const untilCard = (pl, boxId, pred, since) => pl.evaluate(async ({ boxId, pred, 
 
     const a = out.add;
     const kinds = a.rows.map(r => r.kind).sort().join();
+    // The pools the press should make: the starter pools not here yet.
+    const reused = before.present.pools.length;
+    const missingPools = STARTER_POOLS.filter(n => !before.present.pools.includes(n));
+    const parts = [missingPools.length ? `${missingPools.length} starter pool${missingPools.length === 1 ? "" : "s"}` : "", "8 starter games"].filter(Boolean).join(" and ");
+    const said = `Added ${parts}${reused ? " as copies" : ""}, all off the shelf${reused ? ", drawing from the starter pools already here" : ""}. Players can't see them yet: look each one over, then press On the shelf on its row.`;
     out.checks = {
       pressed: a.label === "Add starter crates",
-      fourPoolsFilled: a.pools.length === 4 && a.pools.map(p => p.name).sort().join() === [...STARTER_POOLS].sort().join() && a.pools.every(p => p.count > 0 && p.compendium),
-      eightGames: a.rows.length === 8 && a.rows.map(r => r.name).sort().join() === [...STARTER_GAMES].sort().join() && kinds === "auction,crate,crate,crate,deck,dice,roulette,well",
+      // The confirm appears exactly when the set is already here, and says so.
+      confirm: setPresent ? /^The starter set is already here: .+ Add it again\?/.test(a.confirmText ?? "") : a.confirmText === null,
+      poolsFilled: a.pools.length === missingPools.length && a.pools.map(p => p.name).sort().join() === [...missingPools].sort().join() && a.pools.every(p => p.count > 0 && p.compendium),
+      eightGames: a.rows.length === 8 && a.rows.map(r => r.base).sort().join() === [...STARTER_GAMES].sort().join() && kinds === "auction,crate,crate,crate,deck,dice,roulette,well",
       allOffShelf: a.rows.every(r => r.shelved && r.toggle === "On the shelf" && r.pressed === "false" && r.dimmed && r.tag === "Off the shelf"),
-      drawFromStarterPools: a.rows.filter(r => r.kind !== "roulette" && r.kind !== "auction").every(r => r.pools.length > 0 && r.pools.every(id => a.pools.some(p => p.id === id))),
+      drawFromStarterPools: a.rows.filter(r => r.kind !== "roulette" && r.kind !== "auction").every(r => r.pools.length > 0 && r.pools.every(id => a.pools.some(p => p.id === id) || before.starterPoolIds.includes(id))),
       auctionLot: a.lot?.type === "crate" && a.lot.boxId === a.chestId,
-      said: a.status === "Added 4 starter pools and 8 starter games, all off the shelf. Players can't see them yet: look each one over, then press On the shelf on its row." && a.focusedFirst,
+      said: a.status === said && a.focusedFirst,
       playerSeesNone: out.playerWhileOff === 0,
       putOn: out.putOn.pressed === "true" && out.playerAfterOn.ms != null && out.playerAfterOn.ms <= 2000,
       bought: out.buy.landed && /50 gp/.test(out.buy.text) && out.afterBuy.purseCp === before.purseCp - 5000 && out.afterBuy.items === before.items + 1 && out.afterBuy.rows.length === 1,
@@ -306,6 +338,8 @@ const untilCard = (pl, boxId, pred, since) => pl.evaluate(async ({ boxId, pred, 
     out.ok = false;
   } finally {
     try { out.restored = await restore(gm?.page, before); } catch (err) { out.restored = { error: String(err) }; }
+    // The world's pools and games exactly as before the run, by id and count.
+    if (before && !(out.restored?.boxesAsBefore && out.restored?.poolsAsBefore)) { out.ok = false; out.worldChanged = true; }
     console.log(JSON.stringify(out, null, 1));
     if (!out.ok) process.exitCode = 1;
     await browser.close();
