@@ -1,7 +1,7 @@
 // A real player purchase, timed, with the branch's code on both ends.
 //
 //   FOUNDRY_URL=http://<host>:30000 MODULE_BASE=http://<this machine>:8766/ \
-//     NODE_PATH=$(npm root -g) node foundry-dev/headless/player-pull.cjs [--shot out.png]
+//     NODE_PATH=$(npm root -g) node foundry-dev/checks/player-pull.cjs [--shot out.png]
 //
 // Env: PLAYER (default Player2, must own a character with coins), BOX (crate
 // name, default "Live UI crate").

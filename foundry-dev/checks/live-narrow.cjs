@@ -3,7 +3,7 @@
 // container), with the branch's code on the headless Gamemaster.
 //
 //   FOUNDRY_URL=http://<host>:30000 MODULE_BASE=http://<this machine>:8766/ \
-//     NODE_PATH=$(npm root -g) node foundry-dev/headless/live-narrow.cjs [--shot out.png]
+//     NODE_PATH=$(npm root -g) node foundry-dev/checks/live-narrow.cjs [--shot out.png]
 //
 // Env: BOX (default "Live UI crate", seeded by live-ui.js); WIDTH (default
 // 390) for another width: in a pane wider than 560 px (module.css) the rows

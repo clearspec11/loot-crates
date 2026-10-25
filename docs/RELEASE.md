@@ -68,7 +68,7 @@ The test world (cc-dev) is installed from the dev manifest, so it gets dev build
 
 ## What the zip ships
 
-`npm run build` packs `module/` into `dist/module.zip` and refuses to pack anything but `module.json`, `scripts/*.js`, `styles/*.css` and `lang/*.json` (the rule is `scripts/package-files.mjs`; `test/release.test.js` checks the working tree against it). Screenshots in `docs/images/` are for the README and the package listing only and never ship.
+`npm run build` packs `module/` into `dist/module.zip` and refuses to pack anything but `module.json`, `scripts/*.js`, `styles/*.css` and `lang/*.json` (the rule is `tools/package-files.mjs`; `test/release.test.js` checks the working tree against it). Screenshots in `docs/images/` are for the README and the package listing only and never ship.
 
 Audited on 2026-10-24 at 0.14.0 plus this round's work: 47 files, 276 KB.
 

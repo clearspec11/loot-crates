@@ -3,7 +3,7 @@
    moved, decelerated, overshot on a near-miss, and landed with the result
    centred under the marker.
 
-     NODE_PATH=$(npm root -g) node scripts/probe-spin.mjs [seed] [box] [resize]
+     NODE_PATH=$(npm root -g) node tools/probe-spin.mjs [seed] [box] [resize]
 
    With "resize" the page starts 480px wide and grows to 1000px at 40% of the
    spin, the way the reveal window is sized after its first frame in Foundry,

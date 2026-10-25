@@ -2,7 +2,7 @@
 // window (tablewindow.js) at a real table, with the branch's code on both ends.
 //
 //   FOUNDRY_URL=http://<host>:30000 MODULE_BASE=http://<this machine>:8766/ \
-//     NODE_PATH=$(npm root -g) node foundry-dev/headless/live-roulette.cjs [--shot out.png]
+//     NODE_PATH=$(npm root -g) node foundry-dev/checks/live-roulette.cjs [--shot out.png]
 //
 // Env: PLAYER (default Player2, must own Crate Tester), WHEEL (the game's
 // name, default "Live wheel"), HIDE_GM=0 (the GM's tab visible; hidden by

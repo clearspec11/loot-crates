@@ -1,7 +1,7 @@
 // Live check: a player is charged only the price on the Buy they pressed.
 //
 //   FOUNDRY_URL=http://<host>:30000 MODULE_BASE=http://<this machine>:8766/ \
-//     NODE_PATH=$(npm root -g) node foundry-dev/headless/live-price.cjs [--shot out.png]
+//     NODE_PATH=$(npm root -g) node foundry-dev/checks/live-price.cjs [--shot out.png]
 //
 // Env: PLAYER (default Player2), BOX (default "Live UI crate"), RAISE (gp
 // added to the price, default 5).

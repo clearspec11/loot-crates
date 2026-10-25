@@ -1,7 +1,7 @@
 // Live check: the shop follows ownership while it is open.
 //
 //   FOUNDRY_URL=http://<host>:30000 MODULE_BASE=http://<this machine>:8766/ \
-//     NODE_PATH=$(npm root -g) node foundry-dev/headless/live-ownership.cjs [--shot out.png]
+//     NODE_PATH=$(npm root -g) node foundry-dev/checks/live-ownership.cjs [--shot out.png]
 //
 // Env: PLAYER (default Player2), ACTOR (default "Crate Tester", which must
 // be in the Actors folder "Loot Crates Test" and owned by PLAYER), BOX

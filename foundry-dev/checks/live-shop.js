@@ -5,7 +5,7 @@
 // shown as visible text. --shot for a screenshot.
 //
 //   FOUNDRY_URL=http://<foundry>:30000 MODULE_BASE=http://<this machine>:8766/ \
-//     NODE_PATH=$(npm root -g) node foundry-dev/headless/run.cjs foundry-dev/checks/live-shop.js --shot /tmp/shop.png
+//     NODE_PATH=$(npm root -g) node foundry-dev/run.cjs foundry-dev/checks/live-shop.js --shot /tmp/shop.png
 //
 // Writes nothing: no purchase, no actor, no settings beyond registering the
 // module's own. Needs "Crate Tester" in the Actor folder "Loot Crates Test"

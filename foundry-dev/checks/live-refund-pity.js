@@ -10,7 +10,7 @@
 // sentence), the purse and that the granted item is gone.
 //
 //   FOUNDRY_URL=http://<foundry>:30000 MODULE_BASE=http://<this machine>:8766/ \
-//     NODE_PATH=$(npm root -g) node foundry-dev/headless/run.cjs foundry-dev/checks/live-refund-pity.js
+//     NODE_PATH=$(npm root -g) node foundry-dev/run.cjs foundry-dev/checks/live-refund-pity.js
 //
 // Sets no state: it buys from whatever Crate Tester's state for the box is
 // (after live-shop-pity.js, pity due, so the pull is the guaranteed rarity

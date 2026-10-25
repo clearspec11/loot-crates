@@ -157,4 +157,4 @@ Setup, the harness, the smoke run, the live checks and what to run before a pull
 | `starterbuild.js` | Reads the dnd5e indexes and writes the starter crates in one queued task |
 | `welcomewindow.js` | The welcome window, its setting and the check at load |
 
-Outside `module/`: `harness/` is the no-Foundry page the smoke run screenshots, `test/` is Vitest, `foundry-dev/` holds the live checks, and `scripts/` the build, smoke, live runner and dev release.
+Outside `module/`: `harness/` is the no-Foundry page the smoke run screenshots, `test/` is Vitest, `foundry-dev/` holds the live checks, and `tools/` the build, smoke, live runner and dev release (the module's own `module/scripts/` is the only other folder called scripts).

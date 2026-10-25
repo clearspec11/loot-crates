@@ -2,7 +2,7 @@
 // (tablewindow.js) at a real table, with the branch's code on both ends.
 //
 //   FOUNDRY_URL=http://<host>:30000 MODULE_BASE=http://<this machine>:8766/ \
-//     NODE_PATH=$(npm root -g) node foundry-dev/headless/live-auction.cjs [--shot out.png]
+//     NODE_PATH=$(npm root -g) node foundry-dev/checks/live-auction.cjs [--shot out.png]
 //
 // Env: PLAYER (default Player2, must own Crate Tester), AUCTION (the game's
 // name, default "Live auction"), GAVEL_SEC (default 10), HIDE_GM=1 (hide

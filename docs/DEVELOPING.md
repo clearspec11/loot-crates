@@ -65,7 +65,7 @@ module/                 what ships: Foundry loads this folder
 harness/                the no-Foundry page the smoke run screenshots
 test/                   Vitest, one file per behaviour
 foundry-dev/            live checks against a real world
-scripts/                build, smoke, the live runner, the dev release
+tools/                  build, smoke, the live runner, the dev release
 docs/                   how it works, the design, compatibility, releasing
 ```
 
@@ -77,7 +77,7 @@ docs/                   how it works, the design, compatibility, releasing
 
 **Some text.** Add a key to `module/lang/en.json` and read it with `t("LOOTCRATES.<Area>.<Name>", data)` from `core/i18n.js`. Never write a sentence into a script. `test/i18n.test.js` fails if a key is used but missing, or present but unused.
 
-**A screen or a state of one.** Draw it with a pure function in `views/` (or the game's own file), use it from the window in `foundry/`, and add a harness state (`harness/harness.js`) and a smoke entry (`STATES` in `scripts/smoke.mjs`).
+**A screen or a state of one.** Draw it with a pure function in `views/` (or the game's own file), use it from the window in `foundry/`, and add a harness state (`harness/harness.js`) and a smoke entry (`STATES` in `tools/smoke.mjs`).
 
 **A game.** Write `games/<game>.js`: its defaults, roll, reveal, chat card, shop card and editor, ending in `registerKind({...})`. The contract is the comment at the top of `games/kinds.js`, and `games/well.js` is a small example to copy. The money path, refunds, the log and the reveal's hold are the core's, so a game never charges or grants by itself. Then add its New button and editor in `foundry/manager.js`, its words in `en.json`, tests, harness states and a live check.
 

@@ -1,9 +1,9 @@
 /* npm run live -- <check> [args]: run one live check against a dev world.
 
-   <check> is a check's name, found in foundry-dev/headless/ (a .cjs that
-   drives its own browsers: `npm run live -- live-dice`) or in
-   foundry-dev/checks/ (a page script run as the GM by headless/run.cjs:
-   `npm run live -- live-tabs`). `npm run live -- --list` lists them all.
+   <check> is a check's name in foundry-dev/checks/. A .cjs there is a Node
+   script that drives its own browsers (`npm run live -- live-dice`); a .js
+   is a page script that foundry-dev/run.cjs runs as the GM inside the world
+   (`npm run live -- live-tabs`). `npm run live -- --list` lists them all.
 
    Settings come from the environment, then from an untracked .env at the
    repository root (copy .env.example): FOUNDRY_URL (the dev world),
@@ -17,8 +17,8 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 
 const root = path.resolve(import.meta.dirname, "..");
-const HEADLESS = path.join(root, "foundry-dev/headless");
 const CHECKS = path.join(root, "foundry-dev/checks");
+const RUNNER = path.join(root, "foundry-dev/run.cjs");
 const fail = msg => { console.error(`live: ${msg}`); process.exit(1); };
 
 // KEY=value lines; a value already in the environment wins.
@@ -36,11 +36,10 @@ function about(file) {
   return (/^(.*?\.)(\s|$)/.exec(head)?.[1] ?? head).replace(/^Live check:\s*/, "").slice(0, 110);
 }
 
-function checks() {
-  const own = readdirSync(HEADLESS).filter(f => f.endsWith(".cjs") && f !== "run.cjs").map(f => ({ name: f.replace(/\.cjs$/, ""), kind: "browsers", file: path.join(HEADLESS, f) }));
-  const page = readdirSync(CHECKS).filter(f => f.endsWith(".js")).map(f => ({ name: f.replace(/\.js$/, ""), kind: "in page", file: path.join(CHECKS, f) }));
-  return [...own, ...page].sort((a, b) => a.name.localeCompare(b.name));
-}
+const checks = () => readdirSync(CHECKS)
+  .filter(f => /\.c?js$/.test(f))
+  .map(f => ({ name: f.replace(/\.c?js$/, ""), kind: f.endsWith(".cjs") ? "browsers" : "in page", file: path.join(CHECKS, f) }))
+  .sort((a, b) => a.name.localeCompare(b.name));
 
 const [arg, ...rest] = process.argv.slice(2);
 if (!arg || arg === "--help") fail("usage: npm run live -- <check> [args], or npm run live -- --list");
@@ -49,7 +48,7 @@ if (arg === "--list") {
   process.exit(0);
 }
 
-const name = arg.replace(/\.(c?js)$/, "");
+const name = arg.replace(/\.c?js$/, "");
 const check = checks().find(c => c.name === name);
 if (!check) fail(`no check named ${name}; npm run live -- --list shows them`);
 
@@ -57,6 +56,6 @@ loadEnv(path.join(root, ".env"));
 for (const key of ["FOUNDRY_URL", "MODULE_BASE"]) if (!process.env[key]) fail(`${key} is not set: copy .env.example to .env and fill it in`);
 process.env.NODE_PATH ??= execFileSync("npm", ["root", "-g"], { encoding: "utf8" }).trim();
 
-const args = check.kind === "browsers" ? [check.file, ...rest] : [path.join(HEADLESS, "run.cjs"), check.file, ...rest];
+const args = check.kind === "browsers" ? [check.file, ...rest] : [RUNNER, check.file, ...rest];
 const { status } = spawnSync(process.execPath, args, { cwd: root, stdio: "inherit", env: process.env });
 process.exit(status ?? 1);

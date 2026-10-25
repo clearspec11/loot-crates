@@ -11,7 +11,7 @@
 //    entry points at the new item with its weight kept.
 //
 //   FOUNDRY_URL=http://<foundry>:30000 MODULE_BASE=http://<this machine>:8766/ \
-//     NODE_PATH=$(npm root -g) node foundry-dev/headless/run.cjs foundry-dev/checks/live-edits.js
+//     NODE_PATH=$(npm root -g) node foundry-dev/run.cjs foundry-dev/checks/live-edits.js
 //
 // Never deletes anything and makes no purchase. Writes the module's own
 // settings only (one pool, one box).

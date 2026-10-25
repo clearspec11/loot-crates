@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Serve a folder read-only over HTTP with CORS, so a Foundry page on another
 host can import() this checkout's module scripts without changing that host.
-Usage: python3 foundry-dev/headless/serve-module.py module [port] [foundry-url]
+Usage: python3 foundry-dev/serve-module.py module [port] [foundry-url]
 
 The module's stylesheet borrows dnd5e's and Foundry's textures by relative
 path (../../../systems/dnd5e/..., ../../../ui/...), which from here resolve

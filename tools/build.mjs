@@ -7,7 +7,7 @@
    styles/*.css, lang/*.json) plus the repository's LICENSE, which MIT
    requires in every copy, and says the zip's size and file count.
    `npm run build -- --dev=1.2.0-dev.3` packs a dev-channel build instead:
-   the same files with a dev manifest (scripts/lib/channel.mjs). */
+   the same files with a dev manifest (tools/lib/channel.mjs). */
 import { cp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import path from "node:path";

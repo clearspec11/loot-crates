@@ -3,7 +3,7 @@
 // so no stake waits in escrow for a game that can't be spun.
 //
 //   FOUNDRY_URL=http://<host>:30000 MODULE_BASE=http://<this machine>:8766/ \
-//     NODE_PATH=$(npm root -g) node foundry-dev/headless/live-delete-round.cjs
+//     NODE_PATH=$(npm root -g) node foundry-dev/checks/live-delete-round.cjs
 //
 // Env: PLAYER (default Player2, must own Crate Tester), WHEEL (the game's
 // name, default "Live delete wheel").

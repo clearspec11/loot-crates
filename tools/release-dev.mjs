@@ -1,5 +1,5 @@
 /* npm run release:dev: publish the checked-out commit to the dev channel
-   (scripts/lib/channel.mjs). The commit must be clean and pushed. It
+   (tools/lib/channel.mjs). The commit must be clean and pushed. It
    builds with the next dev version, then replaces the "dev" pre-release
    (and its tag) with one at this commit. The public "latest" release is
    never touched: --latest=false, and a pre-release is never latest. */

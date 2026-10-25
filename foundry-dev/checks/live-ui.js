@@ -4,7 +4,7 @@
 // main.js does at init/ready are called here by hand.
 //
 //   FOUNDRY_URL=... MODULE_BASE=http://<this machine>:8766/ NODE_PATH=$(npm root -g) \
-//     node foundry-dev/headless/run.cjs foundry-dev/checks/live-ui.js --shot /tmp/manager.png
+//     node foundry-dev/run.cjs foundry-dev/checks/live-ui.js --shot /tmp/manager.png
 //
 // Edit WHICH below to "shop" to open the player's shop instead.
 const WHICH = "manager";

@@ -6,7 +6,7 @@
 // must pass both the tab and tab group identifier" and the tab never changed.
 //
 //   FOUNDRY_URL=http://<foundry>:30000 MODULE_BASE=http://<this machine>:8766/ \
-//     NODE_PATH=$(npm root -g) node foundry-dev/headless/run.cjs foundry-dev/checks/live-tabs.js
+//     NODE_PATH=$(npm root -g) node foundry-dev/run.cjs foundry-dev/checks/live-tabs.js
 //
 // Point MODULE_BASE at the installed copy (<FOUNDRY_URL>/modules/loot-crates/)
 // to run the same presses against the released code. Reads only; writes nothing.

@@ -2,7 +2,7 @@
 // code on both ends.
 //
 //   FOUNDRY_URL=http://<host>:30000 MODULE_BASE=http://<this machine>:8766/ \
-//     NODE_PATH=$(npm root -g) node foundry-dev/headless/live-well.cjs [--shot out.png]
+//     NODE_PATH=$(npm root -g) node foundry-dev/checks/live-well.cjs [--shot out.png]
 //
 // Env: PLAYER (default Player2, must own Crate Tester), WELL (the well's
 // name, default "Live well"), HIDE_GM=1 (the GM's tab in the background).

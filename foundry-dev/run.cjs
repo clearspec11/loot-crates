@@ -1,8 +1,8 @@
 // Run a JS file inside a Foundry world as its Gamemaster, headless, so a
 // change can be checked against real dnd5e from a machine with no browser.
 //
-//   FOUNDRY_URL=http://<host>:30000 node foundry-dev/headless/run.cjs check.js [--shot out.png]
-//   FOUNDRY_URL=http://<host>:30000 node foundry-dev/headless/run.cjs live-tabs
+//   FOUNDRY_URL=http://<host>:30000 node foundry-dev/run.cjs check.js [--shot out.png]
+//   FOUNDRY_URL=http://<host>:30000 node foundry-dev/run.cjs live-tabs
 //
 // The check is a path, or a bare name looked up in foundry-dev/checks/
 // (live-tabs and live-tabs.js both find foundry-dev/checks/live-tabs.js).
@@ -18,7 +18,7 @@
 const { chromium } = require("playwright");
 const fs = require("fs");
 const path = require("path");
-const CHECKS = path.join(__dirname, "..", "checks");
+const CHECKS = path.join(__dirname, "checks");
 function resolveCheck(arg) {
   if (!arg) throw new Error(`Name a check: a file path, or a check in ${CHECKS} (e.g. live-tabs).`);
   if (fs.existsSync(arg) && fs.statSync(arg).isFile()) return arg;

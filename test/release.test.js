@@ -9,7 +9,7 @@ import { describe, it, expect } from "vitest";
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
-import { shippable } from "../scripts/package-files.mjs";
+import { shippable } from "../tools/package-files.mjs";
 import { scriptFiles } from "./scripts.js";
 import { STARTER_PACKS } from "../module/scripts/views/starter.js";
 
@@ -135,7 +135,7 @@ describe("module.json's store fields", () => {
     const license = read("LICENSE");
     expect(license).toMatch(/^MIT License/);
     expect(license).toMatch(/Copyright \(c\) 2026 clearspec11/);
-    expect(read("scripts/build.mjs")).toMatch(/"LICENSE"/);
+    expect(read("tools/build.mjs")).toMatch(/"LICENSE"/);
   });
 });
 

@@ -2,7 +2,7 @@
 // hotbar Mute silences them.
 //
 //   FOUNDRY_URL=http://<host>:30000 MODULE_BASE=http://<this machine>:8766/ \
-//     NODE_PATH=$(npm root -g) node foundry-dev/headless/live-sound.cjs
+//     NODE_PATH=$(npm root -g) node foundry-dev/checks/live-sound.cjs
 //
 // Joins as the Gamemaster (only when that seat is free), clicks the chat tab
 // as a real gesture so Foundry creates game.audio.interface, and swaps the

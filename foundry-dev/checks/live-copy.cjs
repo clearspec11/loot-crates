@@ -3,7 +3,7 @@
 // both ends.
 //
 //   FOUNDRY_URL=http://<host>:30000 MODULE_BASE=http://<this machine>:8766/ \
-//     NODE_PATH=$(npm root -g) node foundry-dev/headless/live-copy.cjs [--shot out.png]
+//     NODE_PATH=$(npm root -g) node foundry-dev/checks/live-copy.cjs [--shot out.png]
 //
 // Env: PLAYER (default Player2, must own Crate Tester), BOX (default
 // "Live UI crate", seeded by live-ui.js).

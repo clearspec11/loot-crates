@@ -5,7 +5,7 @@
 // purse after the refund, which must be whole, consolidated coins.
 //
 //   FOUNDRY_URL=http://<foundry>:30000 MODULE_BASE=http://<this machine>:8766/ \
-//     NODE_PATH=$(npm root -g) node foundry-dev/headless/run.cjs foundry-dev/checks/live-refund-focus.js
+//     NODE_PATH=$(npm root -g) node foundry-dev/run.cjs foundry-dev/checks/live-refund-focus.js
 //
 // One real pull on Crate Tester (folder "Loot Crates Test"); the refund deletes
 // only the item this run granted. Writes the module's own settings (one box,

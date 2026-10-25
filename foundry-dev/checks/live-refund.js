@@ -9,7 +9,7 @@
 // "Refunded <time>" line, and that the second refund left it alone.
 //
 //   FOUNDRY_URL=http://<foundry>:30000 MODULE_BASE=http://<this machine>:8766/ \
-//     NODE_PATH=$(npm root -g) node foundry-dev/headless/run.cjs foundry-dev/checks/live-refund.js
+//     NODE_PATH=$(npm root -g) node foundry-dev/run.cjs foundry-dev/checks/live-refund.js
 //
 // Deletes only the item this run granted (by its loot-crates flag). Writes the
 // module's own settings (one box, one log row) and posts two chat cards (the

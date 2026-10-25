@@ -20,7 +20,7 @@
 // anything.
 //
 //   FOUNDRY_URL=http://<foundry>:30000 MODULE_BASE=http://<this machine>:8766/ \
-//     NODE_PATH=$(npm root -g) node foundry-dev/headless/run.cjs foundry-dev/checks/live-pool-users.js [--shot users.png]
+//     NODE_PATH=$(npm root -g) node foundry-dev/run.cjs foundry-dev/checks/live-pool-users.js [--shot users.png]
 if (!document.querySelector("link[data-loot-crates]")) {
   const link = Object.assign(document.createElement("link"), { rel: "stylesheet", href: MODULE_BASE + "styles/module.css" });
   link.dataset.lootCrates = "1";

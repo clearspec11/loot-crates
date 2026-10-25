@@ -2,7 +2,7 @@
 // code on both ends.
 //
 //   FOUNDRY_URL=http://<host>:30000 MODULE_BASE=http://<this machine>:8766/ \
-//     NODE_PATH=$(npm root -g) node foundry-dev/headless/live-limits.cjs [--shot out.png]
+//     NODE_PATH=$(npm root -g) node foundry-dev/checks/live-limits.cjs [--shot out.png]
 //
 // Env: PLAYER (default Player2, must own Crate Tester), BOX (the crate's
 // name, default "Live limit crate").

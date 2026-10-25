@@ -12,7 +12,7 @@
 // (the same showReveal -> landed -> postPullCard chain socket.js runs).
 //
 //   FOUNDRY_URL=http://<foundry>:30000 MODULE_BASE=http://<this machine>:8766/ \
-//     NODE_PATH=$(npm root -g) node foundry-dev/headless/run.cjs foundry-dev/checks/live-payoff.js [--shot out.png]
+//     NODE_PATH=$(npm root -g) node foundry-dev/run.cjs foundry-dev/checks/live-payoff.js [--shot out.png]
 //
 // Never deletes anything. Writes the module's own settings (one pool, one
 // box, one log row); each run adds one item to the test actor and posts

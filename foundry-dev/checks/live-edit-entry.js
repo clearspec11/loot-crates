@@ -17,7 +17,7 @@
 // that the pool editor shows the "granted item carries" hint.
 //
 //   FOUNDRY_URL=http://<foundry>:30000 MODULE_BASE=http://<this machine>:8766/ \
-//     NODE_PATH=$(npm root -g) node foundry-dev/headless/run.cjs foundry-dev/checks/live-edit-entry.js --shot edit.png
+//     NODE_PATH=$(npm root -g) node foundry-dev/run.cjs foundry-dev/checks/live-edit-entry.js --shot edit.png
 //
 // Deletes nothing; writes the module's own settings (one pool, two boxes, one
 // log row), adds one item to the test actor and posts one chat card.

@@ -23,9 +23,10 @@ const FOUNDRY_GLOBALS = {
 };
 
 export default defineConfig([
-  // foundry-dev/checks/*.js are async function bodies run by headless/run.cjs (top-level return), not modules.
+  // foundry-dev/checks/*.js are async function bodies run by foundry-dev/run.cjs (top-level return), not modules;
+  // the .cjs checks beside them are ordinary Node scripts and are linted.
   // .council/ is the improvement council's local files (git-excluded), including a workflow script.
-  globalIgnores(["dist", "node_modules", "screenshots", ".claude", ".council", "foundry-dev/checks"]),
+  globalIgnores(["dist", "node_modules", "screenshots", ".claude", ".council", "foundry-dev/checks/*.js"]),
   {
     files: ["**/*.{js,mjs,cjs}"],
     extends: [js.configs.recommended],
@@ -46,11 +47,11 @@ export default defineConfig([
     languageOptions: { globals: { ...globals.browser, ...FOUNDRY_GLOBALS } },
   },
   {
-    files: ["scripts/**/*.mjs", "foundry-dev/**/*.cjs"],
+    files: ["tools/**/*.mjs", "foundry-dev/**/*.cjs"],
     languageOptions: { sourceType: "script", globals: globals.node },
   },
   {
-    files: ["scripts/**/*.mjs"],
+    files: ["tools/**/*.mjs"],
     languageOptions: { sourceType: "module" },
   },
   {

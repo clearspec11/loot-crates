@@ -4,7 +4,7 @@
 // both ends.
 //
 //   FOUNDRY_URL=http://<host>:30000 MODULE_BASE=http://<this machine>:8766/ \
-//     NODE_PATH=$(npm root -g) node foundry-dev/headless/live-well-day.cjs
+//     NODE_PATH=$(npm root -g) node foundry-dev/checks/live-well-day.cjs
 //
 // Env: PLAYER (default Player2, must own Crate Tester), WELL (default
 // "Live well"), CALENDAR=on (the run below with dnd5e's calendar on).

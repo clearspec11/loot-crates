@@ -4,7 +4,7 @@
 // as the GM, and reports the purse before and after plus the granted item.
 //
 //   FOUNDRY_URL=http://<foundry>:30000 MODULE_BASE=http://<this machine>:8766/ \
-//     NODE_PATH=$(npm root -g) node foundry-dev/headless/run.cjs foundry-dev/checks/live-pull.js
+//     NODE_PATH=$(npm root -g) node foundry-dev/run.cjs foundry-dev/checks/live-pull.js
 //
 // Never deletes anything. Each run adds one item to the test actor.
 const { performPull } = await import(MODULE_BASE + "scripts/foundry/pull.js");
