@@ -172,13 +172,16 @@ export function copyOf(game, { id, now = 0, names = [] } = {}) {
 */
 // A copy's name in the module's words ("{name} (copy)", "{name} (copy
 // {n})"), and a pattern that reads one back: a name made by an earlier
-// copy is counted on from, not copied again.
-const copyPattern = (key, n) => t(key).replace(/[.*+?^$()|[\]\\]/g, "\\$&").replace("{name}", "(.*)").replace("{n}", n);
+// copy is counted on from, not copied again. The placeholders become named
+// groups, so a translation may put {n} before {name}.
+const GROUPS = { name: "(?<name>.*)", n: "(?<n>\\d+)" };
+const escape = s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const copyPattern = key => new RegExp(`^${t(key).split(/(\{name\}|\{n\})/).map(p => GROUPS[p.slice(1, -1)] ?? escape(p)).join("")}$`);
 function readCopy(name) {
-  const many = String(name).match(new RegExp(`^${copyPattern("LOOTCRATES.Game.CopyNameN", "(\\d+)")}$`));
-  if (many) return { base: many[1], n: Number(many[2]) || 1 };
-  const one = String(name).match(new RegExp(`^${copyPattern("LOOTCRATES.Game.CopyName", "")}$`));
-  return one ? { base: one[1], n: 1 } : null;
+  const many = String(name).match(copyPattern("LOOTCRATES.Game.CopyNameN"));
+  if (many?.groups?.name != null) return { base: many.groups.name, n: Number(many.groups.n) || 1 };
+  const one = String(name).match(copyPattern("LOOTCRATES.Game.CopyName"));
+  return one?.groups?.name != null ? { base: one.groups.name, n: 1 } : null;
 }
 export function copyName(name, names = []) {
   const fallback = t("LOOTCRATES.Game.Fallback");
