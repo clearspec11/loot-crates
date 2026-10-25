@@ -1712,14 +1712,30 @@ async function forcedSwitchProblems(page, { shopOpen }) {
   return out;
 }
 
+// A subset while iterating: `npm run smoke -- --only=deck,well --width=1440
+// --theme=dark` (or SMOKE_ONLY / SMOKE_WIDTH / SMOKE_THEME). --only matches a
+// state name exactly or by prefix ("deck" takes deck-held, deck-boon, ...).
+// The subset is for iterating; the full run is the gate before a commit.
+const flag = (name) => process.argv.find(a => a.startsWith(`--${name}=`))?.slice(name.length + 3) ?? process.env[`SMOKE_${name.toUpperCase()}`] ?? "";
+const only = flag("only").split(",").map(x => x.trim()).filter(Boolean);
+const pick = ([name]) => !only.length || only.some(o => name === o || name.startsWith(`${o}-`));
+const RUN_WIDTHS = WIDTHS.filter(w => !flag("width") || w.tag === flag("width"));
+const RUN_THEMES = THEMES.filter(t => !flag("theme") || t === flag("theme"));
+const RUN_STATES = STATES.filter(pick);
+const RUN_FORCED = FORCED_STATES.filter(pick);
+if (only.length || flag("width") || flag("theme")) {
+  if (!RUN_STATES.length && !RUN_FORCED.length) { console.error(`smoke: no state matches --only=${only.join(",")}; states are ${STATES.map(([n]) => n).join(", ")}`); process.exit(2); }
+  console.log(`smoke: subset, ${RUN_STATES.length + RUN_FORCED.length} of ${STATES.length + FORCED_STATES.length} states, widths ${RUN_WIDTHS.map(w => w.tag).join("/")}, themes ${RUN_THEMES.join("/")} (run the full smoke before committing)`);
+}
+
 const server = await serveStatic(root, PORT);
 const browser = await chromium.launch(process.env.PLAYWRIGHT_CHROMIUM ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM } : {});
 let failures = 0;
 try {
-  for (const w of WIDTHS) {
+  for (const w of RUN_WIDTHS) {
     const ctx = await browser.newContext({ viewport: w.viewport, isMobile: w.isMobile, hasTouch: w.hasTouch, reducedMotion: "reduce" });
     await mkdir(path.join(OUT, w.tag), { recursive: true });
-    for (const theme of THEMES) for (const [name, query0] of STATES) {
+    for (const theme of RUN_THEMES) for (const [name, query0] of RUN_STATES) {
       const query = `${query0}&theme=${theme}`;
       const shot = `${name}${theme === "light" ? "-light" : ""}`;
       const page = await ctx.newPage();
@@ -1816,8 +1832,9 @@ try {
       await page.close();
     }
     await ctx.close();
+    if (!RUN_FORCED.length) continue;
     const forced = await browser.newContext({ viewport: w.viewport, isMobile: w.isMobile, hasTouch: w.hasTouch, reducedMotion: "reduce", forcedColors: "active" });
-    for (const theme of THEMES) for (const [name, query0] of FORCED_STATES) {
+    for (const theme of RUN_THEMES) for (const [name, query0] of RUN_FORCED) {
       const shot = `${name}${theme === "light" ? "-light" : ""}`;
       const page = await forced.newPage();
       const errors = [];
