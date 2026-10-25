@@ -27,7 +27,10 @@
 //      pull's chat card is noted with whether it was sealed. The dice
 //      themselves are watched too: a settled die's foot must keep the
 //      vault's line until the stage tells the total (lc-dice--told; 0
-//      frames otherwise), and take the win's colour from then. The reveal's
+//      frames otherwise), and take the win's colour from then; with Dice So
+//      Nice active (it stays on: real tables use it) the stage waits on the
+//      3D roll and tells the total a frame before it lands, and the run
+//      reports the path it took (bet.path, "3D" or "2D"). The reveal's
 //      faces, total, result (in a live region), focus (on Close) and
 //      Watch again (none) are read; the GM's reveal (and the watcher's,
 //      landed at once in its hidden tab) must show the same faces. The
@@ -300,11 +303,14 @@ async function refundFromLog(gm, { rowId, press }) {
       // The dice's feet: the vault's own line, read off a die before any has
       // settled; a settled die must keep it until the stage is told the
       // total, or the first die to land reads the win 440 ms early.
-      let footTellFrames = 0, lineColor = null, feetAtTotal = null;
+      let footTellFrames = 0, lineColor = null, feetAtTotal = null, threeFrames = 0;
       const footTellAt = [];
       const watchFeet = r => {
         const stage = r?.querySelector(".lc-dice");
         if (!stage) return;
+        // The path the stage took: Dice So Nice's 3D roll (lc-dice--three
+        // while it waits) or the 2D tumble.
+        if (stage.classList.contains("lc-dice--three")) threeFrames++;
         const dice = [...stage.querySelectorAll(".lc-dice__die")];
         const loose = dice.find(d => !d.classList.contains("lc-dice__die--set"));
         if (loose) lineColor ??= getComputedStyle(loose).borderBottomColor;
@@ -366,6 +372,7 @@ async function refundFromLog(gm, { rowId, press }) {
       const row = getLog().filter(r => r.boxId === gameId).sort((a, b) => b.at - a.at)[0] ?? null;
       return {
         start, buyLabels: labels, purseBefore, purseAfter: foundry.utils.deepClone(actor.system.currency), reveal,
+        path: threeFrames ? "3D" : "2D", threeFrames, diceSoNice: !!game.modules.get("dice-so-nice")?.active && !!game.dice3d,
         frames, leakFrames, leakAt, shownFrames, shownAt, footTellFrames, footTellAt, feetAtTotal, chatCards: cards.map(c => ({ ...c, ms: Math.round(c.at - t0) })), chatRenders: renders.map(r => ({ ms: Math.round(r.ms - t0), sealed: r.sealed, hidden: r.hidden, verdictShown: r.verdictShown })), chatAfter,
         focusAfterClose, cardAfter: read(), row: row && { id: row.id, win: row.win, faces: row.faces, total: row.total, target: row.target, price: row.price, payoutCp: row.payoutCp, name: row.name, itemId: row.itemId },
         toasts: globalThis.__lcToasts ?? null,

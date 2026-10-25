@@ -472,6 +472,12 @@ describe("the stage", () => {
     expect(frames).toHaveLength(0);
     expect(onLand).not.toHaveBeenCalled();
     resolve3d(true);
+    await Promise.resolve();
+    // Told first: the faces and the total with the feet coloured, not yet landed.
+    expect(h.classList.contains("lc-dice--told")).toBe(true);
+    expect(h.classList.contains("lc-dice--landed")).toBe(false);
+    expect(onLand).not.toHaveBeenCalled();
+    runTo(0);
     await played;
     expect(h.classList.contains("lc-dice--landed")).toBe(true);
     expect(h.classList.contains("lc-dice--three")).toBe(false);
@@ -491,10 +497,58 @@ describe("the stage", () => {
     vi.advanceTimersByTime(DICE_TIMING.threeTimeout - 1);
     expect(onLand).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1);
+    runTo(0);
     await played;
     expect(onLand).toHaveBeenCalledTimes(1);
     expect(faceTexts(h)).toEqual(["2", "3", "4"]);
     expect(h.querySelector(".lc-dice__total").textContent).toBe("9");
+    vi.useRealTimers();
+  });
+
+  it("on the timeout, tells the total a frame before it lands, as the tumble does", async () => {
+    vi.useFakeTimers();
+    const h = host();
+    const onLand = vi.fn();
+    const ctrl = mountDice(h, { faces: [4, 6, 5], sides: 6, target: 12, outcome: "win", rarity: "coin", three: () => new Promise(() => {}), onLand });
+    const played = ctrl.play();
+    vi.advanceTimersByTime(DICE_TIMING.threeTimeout);
+    // The told frame: the 3D wait over, every die settled on its face, the
+    // total shown and the feet coloured (lc-dice--told), but not landed, so
+    // the seal (onLand) still waits.
+    expect(h.classList.contains("lc-dice--three")).toBe(false);
+    expect(h.classList.contains("lc-dice--told")).toBe(true);
+    expect(h.classList.contains("lc-dice--landed")).toBe(false);
+    expect(h.querySelectorAll(".lc-dice__die--set")).toHaveLength(3);
+    expect(faceTexts(h)).toEqual(["4", "6", "5"]);
+    expect(h.querySelector(".lc-dice__total").textContent).toBe("15");
+    expect(onLand).not.toHaveBeenCalled();
+    expect(frames).toHaveLength(1);
+    // The next frame lands it.
+    runTo(0);
+    await played;
+    expect(h.classList.contains("lc-dice--landed")).toBe(true);
+    expect(h.classList.contains("lc-dice--told")).toBe(true);
+    expect(onLand).toHaveBeenCalledTimes(1);
+    // The fallback timer was cleared by the landing: nothing lands twice.
+    vi.advanceTimersByTime(DICE_TIMING.tellFallback * 2);
+    expect(onLand).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
+  it("lands on the timer after the tell when no frame comes (a hidden tab)", async () => {
+    vi.useFakeTimers();
+    const h = host();
+    const onLand = vi.fn();
+    const ctrl = mountDice(h, { faces: [1, 2], sides: 6, target: 5, outcome: "lose", three: () => new Promise(() => {}), onLand });
+    const played = ctrl.play();
+    vi.advanceTimersByTime(DICE_TIMING.threeTimeout);
+    expect(h.classList.contains("lc-dice--told")).toBe(true);
+    expect(onLand).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(DICE_TIMING.tellFallback);
+    await played;
+    expect(h.classList.contains("lc-dice--landed")).toBe(true);
+    expect(onLand).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
   });
 
   it("tumbles the faces in one frame loop when the 3D dice say they weren't shown, settling left to right", async () => {
@@ -571,7 +625,10 @@ describe("the stage", () => {
     const reveal = { kind: "dice", roll, total: 15, target: 12, formula: "3d6", win: true, payoutCp: 3000, box: { name: "Dragon's Teeth", price: 10 }, actorName: "Tam", purse: { gp: 1020 } };
     const onLand = vi.fn();
     const ctrl = getKind("dice").reveal.play(h, reveal, { sound: true, pageHidden: () => false, onLand });
-    await ctrl.play();
+    const played = ctrl.play();
+    await Promise.resolve();
+    runTo(0);
+    await played;
     expect(bridge).toHaveBeenCalledWith(roll);
     expect(faceTexts(h)).toEqual(["4", "6", "5"]);
     expect(onLand).toHaveBeenCalledTimes(1);

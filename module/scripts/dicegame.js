@@ -226,8 +226,9 @@ function logRow({ out }) {
 
 // The timeline, in ms: the dice tumble, then settle one after another from
 // the left, then the total shows. With Dice So Nice the 3D roll stands in
-// for the tumble and its end is the landing, within threeTimeout.
-export const DICE_TIMING = { tumble: 900, settleGap: 150, total: 350, flip: 90, threeTimeout: 6000 };
+// for the tumble: its end (or threeTimeout) tells the total, and the stage
+// lands on the next frame, or after tellFallback where frames have stopped.
+export const DICE_TIMING = { tumble: 900, settleGap: 150, total: 350, flip: 90, threeTimeout: 6000, tellFallback: 500 };
 export const landTime = n => DICE_TIMING.tumble + DICE_TIMING.settleGap * Math.max(0, n - 1) + DICE_TIMING.total;
 
 // The 3D dice bridge (dicereveal.js): (rollData) -> Promise<boolean> that
@@ -243,9 +244,9 @@ export function setDice3D(fn) { dice3d = typeof fn === "function" ? fn : null; }
   landing), skip() (lands now), skipped, reducedMotion. `duration` scales
   the whole timeline (the harness lands at 0); reduced motion or 0 lands at
   once in the final pose. `three` is the 3D bridge for this roll: when it
-  gives a promise the stage waits on it (or `timeout`), and lands when it
-  resolves; a bridge that says the roll wasn't shown (false) hands over to
-  the tumble. onSettle(i) fires as die i lands (a tick); the sting is the
+  gives a promise the stage waits on it (or `timeout`), and when it
+  resolves tells the total, then lands on the next frame; a bridge that
+  says the roll wasn't shown (false) hands over to the tumble. onSettle(i) fires as die i lands (a tick); the sting is the
   core's call once the result is shown.
 */
 export function mountDice(host, { faces = [], sides = 6, target = 0, outcome = "lose", rarity = "none", duration, reducedMotion, rng = Math.random, three = null, timeout = DICE_TIMING.threeTimeout, onSettle = null, onLand = null } = {}) {
@@ -301,7 +302,7 @@ export function mountDice(host, { faces = [], sides = 6, target = 0, outcome = "
     if (shown !== told) { told = shown; host.classList[shown ? "add" : "remove"]("lc-dice--told"); }
   };
 
-  let landed = false, frame = null, t0 = null, resolveDone = null, timer = null;
+  let landed = false, telling = false, frame = null, t0 = null, resolveDone = null, timer = null;
   const land = () => {
     if (landed) return;
     landed = true;
@@ -312,6 +313,22 @@ export function mountDice(host, { faces = [], sides = 6, target = 0, outcome = "
     host.classList.add("lc-dice--landed");
     onLand?.();
     resolveDone?.();
+  };
+  /*
+    The 3D roll is over, or never reported: the settled dice and the total,
+    told (the feet in the outcome's colour) on this frame, and the landing
+    (the seal lifts, onLand) on the next, so a viewer sees the total before
+    the landing as the tumble shows it. A hidden tab runs no frames, so the
+    timer lands it there.
+  */
+  const tellThenLand = () => {
+    if (landed || telling) return;
+    telling = true;
+    if (timer != null) clearTimeout(timer);
+    host.classList.remove("lc-dice--three");
+    pose(Infinity);
+    if (typeof requestAnimationFrame === "function") frame = requestAnimationFrame(() => land());
+    timer = setTimeout(land, DICE_TIMING.tellFallback);
   };
   const tumble = () => {
     const step = now => {
@@ -333,13 +350,14 @@ export function mountDice(host, { faces = [], sides = 6, target = 0, outcome = "
       return new Promise(resolve => {
         resolveDone = resolve;
         // Dice So Nice: its dice are the show; this stage waits, blank,
-        // and lands with them, or after `timeout` if they never report.
+        // and tells the total then lands with them, or after `timeout` if
+        // they never report.
         let shown;
         try { shown = three?.(); } catch (err) { console.error("loot-crates | the 3D dice failed to start", err); shown = null; }
         if (shown && typeof shown.then === "function") {
           host.classList.add("lc-dice--three");
           pose(0);
-          const done = ok => { if (landed) return; if (ok === false) { host.classList.remove("lc-dice--three"); tumble(); } else land(); };
+          const done = ok => { if (landed || telling) return; if (ok === false) { host.classList.remove("lc-dice--three"); tumble(); } else tellThenLand(); };
           timer = setTimeout(() => done(true), timeout);
           shown.then(done, err => { console.error("loot-crates | the 3D dice failed", err); done(false); });
           return;
