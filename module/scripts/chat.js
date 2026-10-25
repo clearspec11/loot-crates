@@ -68,7 +68,7 @@ export async function postRefundCard({ row, actor, removedItem }) {
     : t("LOOTCRATES.Chat.RefundCoinBack");
   const content = `
     <div class="loot-crates lc-chat lc-rarity-${esc(row.rarity ?? "none")}">
-      <div class="lc-chat__head">${t("LOOTCRATES.Chat.RefundHead", { actor: esc(actor?.name ?? row.actorName), box: `<strong>${esc(row.boxName)}</strong>` })}${payout ? "" : ` <span class="lc-chat__price">${esc(formatPrice(row.price))}</span>`}</div>
+      <div class="lc-chat__head">${t("LOOTCRATES.Chat.RefundHead", { actor: esc(actor?.name || row.actorName || t("LOOTCRATES.Auction.Someone")), box: `<strong>${esc(row.boxName)}</strong>` })}${payout ? "" : ` <span class="lc-chat__price">${esc(formatPrice(row.price))}</span>`}</div>
       <div class="lc-chat__refund">${line}</div>
     </div>`;
   return ChatMessage.create({
