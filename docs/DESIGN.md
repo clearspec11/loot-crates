@@ -266,6 +266,7 @@ Small, square-ish corners: 4px cards, buttons, fields and strip cards; 3px pills
 - **Primary** (dnd5e's black button): black with gold lettering, bold, 36px, the card shadow, and a 1px gold rule inset 3px on all sides. Hover brightens the lettering and turns the inset rule pin gold. Used for "Open for 150 gp", the reveal's Close, and dialog defaults.
 - **Disabled buy:** the row-alt ground, mute ink, no shadow, a dashed soft inset rule, and its reason as a visible 12px line beneath. It is `aria-disabled="true"`, never `disabled`, so the Buy a keyboard user pressed keeps focus while it reads "Opening…"; style it by `[aria-disabled="true"]`.
 - **Quiet:** field ground, soft rule, 30px; hover darkens the border to the gold rule; disabled turns dashed and mute. Font Awesome icons Foundry ships sit inside at a 6px gap.
+- **Closing countdown** (linger.js): a finished game window's "Closes in 30 s" (or "Paused, 12 s left") as one 12px line in mute ink with tabular figures, at the start of the actions row (margin-right auto), so the result above it never moves; beside it **Keep open**, a quiet button at 30px and 12px. Not a live region, never a colour, nothing at all when the player's setting is Off.
 
 ### Chips
 - **Odds pill:** field ground, soft rule, 3px corners, condensed bold 12px ink naming rarity and chance, led by a 6px rarity diamond.

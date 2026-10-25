@@ -1078,7 +1078,18 @@
       "SoundHint": "Play the tick, slow-down and reveal sounds when a crate opens.",
       "ManagerName": "Pools, boxes and pulls",
       "ManagerLabel": "Open Loot Crates",
-      "ManagerHint": "Build the pools items drop from, price the boxes, and see who pulled what."
+      "ManagerHint": "Build the pools items drop from, price the boxes, and see who pulled what.",
+      "LingerName": "Close finished game windows",
+      "LingerHint": "How long a crate, well, dice, deck or table window stays open after its result shows, on your screen only. It waits while your pointer is over the window or you're using it, and Keep open stops it. Watch again on the chat card plays a result again.",
+      "LingerOff": "Never: I close them myself",
+      "Linger10": "After 10 seconds",
+      "Linger30": "After 30 seconds",
+      "Linger60": "After 1 minute"
+    },
+    "Linger": {
+      "ClosesIn": "Closes in {seconds} s",
+      "Paused": "Paused, {seconds} s left",
+      "Keep": "Keep open"
     }
   }
 }

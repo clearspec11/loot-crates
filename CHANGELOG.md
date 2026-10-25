@@ -6,7 +6,7 @@ The newest numbered entry's version is the one in `module/module.json`, and its 
 
 ## Unreleased
 
-- Nothing yet.
+- Finished game windows now close by themselves, so they no longer pile up on every screen. Once a crate, the Wishing Well, Dragon's Teeth or the Deck has shown its result, or a Roulette or Auction round has been settled or called off, the window closes after 30 seconds. A small line says "Closes in 30 s" with Keep open beside it. The countdown waits while the pointer is over the window or someone is using it from the keyboard. Each player picks the delay under Close finished game windows in Game Settings: never, 10 seconds, 30 seconds or a minute. Watch again on the chat card still plays any result again. The shop, the manager and dialogs never close by themselves.
 
 ## 1.1.1
 

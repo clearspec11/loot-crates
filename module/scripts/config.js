@@ -12,6 +12,8 @@ export const SETTINGS = {
   // The table rounds (round.js): one betting window per round, by id.
   ROUNDS: "tableRounds",
   SOUND: "sound",
+  // How long a finished game window stays open on this client (linger.js).
+  LINGER: "closeFinished",
   // The GM's welcome (welcome.js): the last version a GM saw, and Don't
   // show again.
   WELCOME: "welcome",
