@@ -14,7 +14,7 @@
 // source's name, and that dropping an item on a missing row relinked it with
 // its weight kept. --shot shows the pool with one missing and one renamed row.
 //
-//   FOUNDRY_URL=http://192.168.0.57:30000 MODULE_BASE=http://192.168.0.190:8766/ \
+//   FOUNDRY_URL=http://<foundry>:30000 MODULE_BASE=http://<this machine>:8766/ \
 //     NODE_PATH=$(npm root -g) node foundry-dev/headless/run.cjs foundry-dev/checks/live-missing.js
 //
 // Never deletes anything. Writes the module's own settings (one pool, one

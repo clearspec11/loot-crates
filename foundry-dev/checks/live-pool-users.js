@@ -19,7 +19,7 @@
 // line node and text node). The box is put back as it was. Never deletes
 // anything.
 //
-//   FOUNDRY_URL=http://192.168.0.57:30000 MODULE_BASE=http://192.168.0.190:8766/ \
+//   FOUNDRY_URL=http://<foundry>:30000 MODULE_BASE=http://<this machine>:8766/ \
 //     NODE_PATH=$(npm root -g) node foundry-dev/headless/run.cjs foundry-dev/checks/live-pool-users.js [--shot users.png]
 if (!document.querySelector("link[data-loot-crates]")) {
   const link = Object.assign(document.createElement("link"), { rel: "stylesheet", href: MODULE_BASE + "styles/module.css" });

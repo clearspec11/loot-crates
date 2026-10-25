@@ -6,7 +6,7 @@
 // same row's select, not the top of the page. Deletes nothing; empties its
 // own pool at the end.
 //
-//   FOUNDRY_URL=http://192.168.0.57:30000 MODULE_BASE=http://192.168.0.190:8766/ \
+//   FOUNDRY_URL=http://<foundry>:30000 MODULE_BASE=http://<this machine>:8766/ \
 //     NODE_PATH=$(npm root -g) node foundry-dev/headless/run.cjs foundry-dev/checks/live-focus.js
 const store = await import(MODULE_BASE + "scripts/foundry/store.js");
 try { store.registerSettings(); } catch (e) { if (!/already registered/i.test(String(e))) throw e; }

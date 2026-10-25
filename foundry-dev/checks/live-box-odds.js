@@ -7,7 +7,7 @@
 //
 // Edit THEME below to "light" for Foundry's light theme.
 //
-//   FOUNDRY_URL=http://192.168.0.57:30000 MODULE_BASE=http://192.168.0.190:8766/ \
+//   FOUNDRY_URL=http://<foundry>:30000 MODULE_BASE=http://<this machine>:8766/ \
 //     NODE_PATH=$(npm root -g) node foundry-dev/headless/run.cjs foundry-dev/checks/live-box-odds.js --shot /tmp/box-odds.png
 const THEME = "dark";
 // The installed copy's stylesheet may be older than the branch's: add the branch's.

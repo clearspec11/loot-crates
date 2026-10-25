@@ -4,7 +4,7 @@
 // on that row's "refunded <date>" status, not the page body. Also reports the
 // purse after the refund, which must be whole, consolidated coins.
 //
-//   FOUNDRY_URL=http://192.168.0.57:30000 MODULE_BASE=http://192.168.0.190:8766/ \
+//   FOUNDRY_URL=http://<foundry>:30000 MODULE_BASE=http://<this machine>:8766/ \
 //     NODE_PATH=$(npm root -g) node foundry-dev/headless/run.cjs foundry-dev/checks/live-refund-focus.js
 //
 // One real pull on Crate Tester (folder "Loot Crates Test"); the refund deletes

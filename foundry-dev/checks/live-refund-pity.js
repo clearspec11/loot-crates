@@ -9,7 +9,7 @@
 // write. It also reports the dialog's text (the pity / "can drop again"
 // sentence), the purse and that the granted item is gone.
 //
-//   FOUNDRY_URL=http://192.168.0.57:30000 MODULE_BASE=http://192.168.0.190:8766/ \
+//   FOUNDRY_URL=http://<foundry>:30000 MODULE_BASE=http://<this machine>:8766/ \
 //     NODE_PATH=$(npm root -g) node foundry-dev/headless/run.cjs foundry-dev/checks/live-refund-pity.js
 //
 // Sets no state: it buys from whatever Crate Tester's state for the box is

@@ -23,7 +23,7 @@
 // alone (branch "owns-every-high"); either branch passes on the module.
 // It also checks the reveal's odds were the shop's.
 //
-//   FOUNDRY_URL=http://192.168.0.57:30000 MODULE_BASE=http://192.168.0.190:8766/ \
+//   FOUNDRY_URL=http://<foundry>:30000 MODULE_BASE=http://<this machine>:8766/ \
 //     NODE_PATH=$(npm root -g) node foundry-dev/headless/run.cjs foundry-dev/checks/live-shop-pity.js --shot /tmp/pity.png
 //
 // Writes only the module's own settings (the test pool and box, Crate

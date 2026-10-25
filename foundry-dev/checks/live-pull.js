@@ -3,7 +3,7 @@
 // test actor with 500 gp in the "Loot Crates Test" folder, performs the pull
 // as the GM, and reports the purse before and after plus the granted item.
 //
-//   FOUNDRY_URL=http://192.168.0.57:30000 MODULE_BASE=http://192.168.0.190:8766/ \
+//   FOUNDRY_URL=http://<foundry>:30000 MODULE_BASE=http://<this machine>:8766/ \
 //     NODE_PATH=$(npm root -g) node foundry-dev/headless/run.cjs foundry-dev/checks/live-pull.js
 //
 // Never deletes anything. Each run adds one item to the test actor.

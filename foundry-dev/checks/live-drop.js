@@ -18,7 +18,7 @@
 // goes in is announced once: the status line, and no info toast (toasts
 // raised while the manager drops are recorded and reported).
 //
-//   FOUNDRY_URL=http://192.168.0.57:30000 MODULE_BASE=http://192.168.0.190:8766/ \
+//   FOUNDRY_URL=http://<foundry>:30000 MODULE_BASE=http://<this machine>:8766/ \
 //     NODE_PATH=$(npm root -g) node foundry-dev/headless/run.cjs foundry-dev/checks/live-drop.js --shot drop.png
 //
 // Never deletes anything. Writes the module's own settings (two pools, the

@@ -1,10 +1,82 @@
 # Checking against a real Foundry world
 
-`headless/run.cjs` joins a world as its Gamemaster in headless Chromium and runs a script as an async function body in the page, printing its return value as JSON. `headless/serve-module.py` serves this checkout's `module/` folder with CORS so the script can `import(MODULE_BASE + "scripts/x.js")` and test the working copy without installing anything on the Foundry host.
+The live checks run the branch's code in a real dev world, the way a player and a GM would: they click the real buttons, then report what happened as JSON. Use them for anything that touches the purchase path, refunds, the data model, sheets, sound, the manager or the shop.
+
+## Running a check
+
+One-time setup:
+
+```
+cp .env.example .env        # then fill in FOUNDRY_URL and MODULE_BASE
+npm run foundry:serve &     # serves this checkout's module/ on port 8766, with CORS
+```
+
+Then, with nobody logged in to the dev world:
+
+```
+npm run live -- --list               # every check, with what it covers
+npm run live -- live-dice            # run one
+SEAL=1 npm run live -- player-pull   # env for one run goes before npm
+npm run live -- live-reveal --shot out.png
+```
+
+The world needs a Gamemaster with no password and a player (default Player2, or `PLAYER` in `.env`) who owns a test character in the Actor folder "Loot Crates Test". Checks restore what they change in a `finally`, and make at most one purchase per run.
+
+## The checks
+
+There are two kinds. **browsers** checks (`headless/*.cjs`) drive a GM and a player in two headless browsers, each running the branch's code. **in page** checks (`checks/*.js`) are run as the Gamemaster by `headless/run.cjs`, as an async function body inside the world's page. `npm run live` runs either kind by name.
+
+| Check | Kind | What it checks |
+|---|---|---|
+| `live-auction` | browsers | The Auction (auction.js) on the shared table window (tablewindow.js) at a real table, with the branch's code on both ends. |
+| `live-big-pool` | in page | A big pool is a craft table. |
+| `live-box-odds` | in page | The box editor shows the odds a player will see, live. |
+| `live-box-price` | browsers | The price typed into a Boxes row (VIB-201), at a real table with the branch's code on both ends. |
+| `live-copy` | browsers | Copy on a game's row of the manager's Boxes tab opens its editor on an unsaved copy (newgame.js copyOf), with the branch's code on both ends. |
+| `live-deck` | browsers | The Deck of Many Things (deck.js) at a real table, with the branch's code on both ends. |
+| `live-delete-round` | browsers | Delete on a table game with its round open (manager.js #deleteBox, P13). |
+| `live-dice` | browsers | Dragon's Teeth (dicegame.js) at a real table, with the branch's code on both ends. |
+| `live-drop` | in page | A whole compendium, a world Items folder and a roll table can go into a pool, each with a preview first. |
+| `live-edit-entry` | in page | A pool entry's rarity and weight are edited in place in the pool editor, and the box odds follow. |
+| `live-edits` | in page | The manager's edits keep what changed while their dialog was open, and a missing entry can be relinked without dragging. |
+| `live-focus` | in page | A full render of the pool editor keeps the GM where they were. |
+| `live-limits` | browsers | Stock limits (limits.js) at a real table, with the branch's code on both ends. |
+| `live-linger` | browsers | Finished game windows close by themselves (linger.js, VIB-206), at a real table with the branch's code on both ends. |
+| `live-missing` | in page | A pool entry whose source is gone is never drawn, and the pool editor shows it. |
+| `live-narrow` | browsers | The manager's Boxes and Pull log tabs in a window a GM has sized down to 390 px (boxestable.js, logtable.js, module.css's lc-tab container), with the branch's code on the headless Gamemaster. |
+| `live-new-game` | browsers | A New on the manager's Boxes tab opens its editor on an unsaved draft (newgame.js), with the branch's code on both ends. |
+| `live-ownership` | browsers | The shop follows ownership while it is open. |
+| `live-payoff` | in page | The payoff after the spin. |
+| `live-pool-users` | in page | A pool shows which boxes draw from it, and its destructive actions name the boxes they would empty before anything happens. |
+| `live-price` | browsers | A player is charged only the price on the Buy they pressed. |
+| `live-pull` | in page | One real pull in the dev world, with the branch's scripts and no module installed. |
+| `live-refund` | in page | One real pull at a fractional price, then a refund, in the dev world with the branch's scripts and no module installed. |
+| `live-refund-focus` | in page | Refund a pull from the manager's Pull log the way a GM does (focus the Refund button, press it, confirm the dialog) and report where keyboard focus lands after the re-render: it must be inside the log table, on that row's "refunded <date>" status, not the page body. |
+| `live-refund-pity` | in page | A refund puts the buyer's pity count and no-duplicates record back. |
+| `live-reveal` | in page | Play the reveal window in the dev world with the branch's scripts and no module installed, and measure where the result lands. |
+| `live-roulette` | browsers | Roulette, the Wheel of Fate (roulette.js) on the shared table window (tablewindow.js) at a real table, with the branch's code on both ends. |
+| `live-route` | browsers | The one-click ways between the Items sidebar, the shop and the manager (route.js, VIB-201), with the branch's code on both ends. |
+| `live-shelf` | browsers | On the shelf (shelf.js) at a real table, with the branch's code on both ends. |
+| `live-shop` | in page | Open the player's Crate Shop for the test actor with the branch's scripts and read what a buyer sees: every odds pill names its rarity and none reads "0%", each box's colour is the best rarity it can actually drop, and every disabled Buy points (aria-describedby) at a reason shown as visible text. |
+| `live-shop-pity` | in page | The Crate Shop shows Crate Tester's own odds for a box with noDuplicates and pity, and follows a pull. |
+| `live-sound` | browsers | Crate sounds play on Foundry's interface channel, so the hotbar Mute silences them. |
+| `live-starter` | browsers | The starter crates (starter.js, starterbuild.js) at a real table, with the branch's code on both ends. |
+| `live-sweep` | in page | Rarity is read one way from one registered index field list, and the source sweep of a big pool is fast. |
+| `live-table-crate` | browsers | "Make a crate" from a roll table (B1), with the branch's code on both ends. |
+| `live-tabs` | in page | Switch the manager's tabs the way a GM does, by pressing each tab button (Pools -> Boxes -> Pull log -> Pools), and report for each press whether the window shows that tab, the pressed tab keeps keyboard focus, and nothing was thrown or logged as an error. |
+| `live-ui` | in page | Boot the branch's module inside the live world without installing it, then open the manager (GM) or the shop and take a screenshot with --shot. |
+| `live-welcome` | browsers | The GM's welcome (welcome.js, welcomewindow.js), with the branch's code on both ends. |
+| `live-well` | browsers | The Wishing Well (well.js) at a real table, with the branch's code on both ends. |
+| `live-well-day` | browsers | With dnd5e's calendar off (dnd5e 6's default), a day ends at each character's long rest (clock.js), so the Wishing Well's daily cap opens again after one without the world's time moving. |
+| `player-pull` | browsers | A real player purchase, timed, with the branch's code on both ends. |
+
+## How they work
+
+`headless/run.cjs` joins a world as its Gamemaster in headless Chromium and runs a script as an async function body in the page, printing its return value as JSON. `headless/serve-module.py` serves this checkout's `module/` folder with CORS so the script can `import(MODULE_BASE + "scripts/core/odds.js")` and test the working copy without installing anything on the Foundry host. Without `npm run live`, the same run by hand is:
 
 ```
 python3 foundry-dev/headless/serve-module.py module 8766 &
-FOUNDRY_URL=http://192.168.0.57:30000 MODULE_BASE=http://<this machine>:8766/ \
+FOUNDRY_URL=http://<foundry>:30000 MODULE_BASE=http://<this machine>:8766/ \
   NODE_PATH=$(npm root -g) node foundry-dev/headless/run.cjs foundry-dev/checks/live-pull.js
 ```
 

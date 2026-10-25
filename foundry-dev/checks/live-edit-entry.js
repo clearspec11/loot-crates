@@ -16,7 +16,7 @@
 // flags, _stats.compendiumSource and the newest log row's sourceRarity, and
 // that the pool editor shows the "granted item carries" hint.
 //
-//   FOUNDRY_URL=http://192.168.0.57:30000 MODULE_BASE=http://192.168.0.190:8766/ \
+//   FOUNDRY_URL=http://<foundry>:30000 MODULE_BASE=http://<this machine>:8766/ \
 //     NODE_PATH=$(npm root -g) node foundry-dev/headless/run.cjs foundry-dev/checks/live-edit-entry.js --shot edit.png
 //
 // Deletes nothing; writes the module's own settings (one pool, two boxes, one

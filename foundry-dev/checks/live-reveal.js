@@ -7,7 +7,7 @@
 // (the window is sized after the first frame, which is the case that used to
 // land the wrong card under the marker).
 //
-//   FOUNDRY_URL=http://192.168.0.57:30000 MODULE_BASE=http://192.168.0.190:8766/ \
+//   FOUNDRY_URL=http://<foundry>:30000 MODULE_BASE=http://<this machine>:8766/ \
 //     NODE_PATH=$(npm root -g) node foundry-dev/headless/run.cjs foundry-dev/checks/live-reveal.js --shot /tmp/reveal.png
 //
 // Writes nothing to the world: no actor, no purchase, no settings beyond
