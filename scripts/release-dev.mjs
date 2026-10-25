@@ -9,7 +9,7 @@ import path from "node:path";
 import { DEV_TAG, DEV_MANIFEST, nextDevVersion } from "./lib/channel.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
-const run = (cmd, args, opts = {}) => execFileSync(cmd, args, { cwd: root, encoding: "utf8", ...opts }).trim();
+const run = (cmd, args, opts = {}) => String(execFileSync(cmd, args, { cwd: root, encoding: "utf8", ...opts }) ?? "").trim();
 const fail = msg => { console.error(`release:dev: ${msg}`); process.exit(1); };
 
 if (run("git", ["status", "--porcelain", "--untracked-files=no"])) fail("commit or stash your changes first");
@@ -21,7 +21,7 @@ if (!run("git", ["branch", "-r", "--contains", sha])) fail(`${sha.slice(0, 7)} i
 const { version } = JSON.parse(await readFile(path.join(root, "module/module.json"), "utf8"));
 let current = null;
 try {
-  const r = JSON.parse(run("gh", ["release", "view", DEV_TAG, "--json", "name"]));
+  const r = JSON.parse(run("gh", ["release", "view", DEV_TAG, "--json", "name"], { stdio: "pipe" }));
   current = /(\d+\.\d+\.\d+-dev\.\d+)/.exec(r.name)?.[1] ?? null;
 } catch { /* no dev release yet */ }
 const dev = nextDevVersion(version, current);
