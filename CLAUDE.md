@@ -25,7 +25,7 @@ Loot Crates is a Foundry VTT module (v13/v14, dnd5e 5/6) for GM-curated item poo
 - `npm run lint` (0 errors)
 - `npm run test:run`
 - `npm run build`
-- `NODE_PATH=$(npm root -g) npm run smoke` for any UI change; look at the PNGs.
+- `NODE_PATH=$(npm root -g) npm run smoke` for any UI change; look at the PNGs. While iterating, run only what you touched: `npm run smoke -- --only=deck,well --width=1440 --theme=dark` (a state name or prefix); the full run is the gate before a commit.
 - For anything touching the purchase path or the data model: the live check in `foundry-dev/README.md`.
 
 ## Conventions
