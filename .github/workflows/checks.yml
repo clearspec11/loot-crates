@@ -1,0 +1,23 @@
+# The offline gate every pull request to main must pass (the main ruleset
+# requires this job by its name, "checks"). Smoke and the live checks need
+# a browser and the LAN Foundry, so they run on the dev machine instead.
+name: checks
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run test:run
+      - run: npm run build

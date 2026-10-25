@@ -9,6 +9,7 @@
     "test": "vitest",
     "test:run": "vitest run",
     "build": "node scripts/build.mjs",
+    "release:dev": "node scripts/release-dev.mjs",
     "smoke": "node scripts/smoke.mjs",
     "harness": "node scripts/serve.mjs",
     "foundry:serve": "python3 foundry-dev/headless/serve-module.py module 8766"
