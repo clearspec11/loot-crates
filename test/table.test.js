@@ -12,7 +12,7 @@ vi.mock("../module/scripts/chat.js", () => ({ postPullCard: vi.fn(async () => nu
 
 const { registerSocket, requestStake } = await import("../module/scripts/socket.js");
 const { registerSettings, getLog, getRounds, enqueueWrite } = await import("../module/scripts/store.js");
-const { openRound, closeRound, resolveRound, recoverRounds, refundOrphanRounds, onTable, watchStale, stopStaleWatch, STALE_SLACK_MS } = await import("../module/scripts/table.js");
+const { openRound, closeRound, resolveRound, recoverRounds, refundOrphanRounds, onTable, watchStale, stopStaleWatch, watchTables, stopWatching, STALE_SLACK_MS } = await import("../module/scripts/table.js");
 const { refundPull, describeRefund } = await import("../module/scripts/refund.js");
 const { performPull, PullError } = await import("../module/scripts/pull.js");
 const { registerKind, kindIds, _resetKinds } = await import("../module/scripts/kinds.js");
@@ -484,6 +484,78 @@ describe("the GM's timer for a stale round", () => {
     for (const a of world.actors.values()) expect(gp(a)).toBe(100);
     expect(world.notes.warn).toHaveBeenCalledWith("Loot Crates: 3 open stakes from a round that never spun were refunded.");
     expect(watchStale()).toBeNull();
+  });
+});
+
+/*
+  The auction's watch (table.js watchTables: its gavel and house bidders)
+  on a GM handover, as the stale timer above: main.js calls it beside
+  watchStale on userConnected and on a role change, so the client that is
+  no longer the active GM stops watching at once and the one that now is
+  starts, and a live auction's gavel still falls while any GM is online.
+  A stub kind that runs itself (kinds.js `tick`) counts the watch's turns.
+*/
+describe("the auction's watch on a GM handover", () => {
+  const SELF = registerKind({ id: "stubwatch", noun: "table", table: true, tickMs: 0, tick: vi.fn(() => null), roll: vi.fn(async () => ({})) });
+  const WATCHED = { id: "watched", name: "Watched", kind: "stubwatch", price: 10, pools: [] };
+  const settle = async () => { for (let i = 0; i < 20; i++) await tick(); };
+
+  beforeEach(async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    SELF.tick.mockClear();
+    await seed(world, { wheel: TABLE, watched: WATCHED });
+  });
+  afterEach(() => {
+    stopWatching();
+    vi.useRealTimers();
+  });
+
+  it("stops at once on a GM who is no longer the active one, so the old GM takes no more turns", async () => {
+    await openRound("watched");
+    await settle();
+    expect(vi.getTimerCount()).toBe(1);
+    expect(SELF.tick).toHaveBeenCalled();
+    // A second GM, who becomes the active one, joins.
+    world.game.users.activeGM = { id: "other-gm" };
+    expect(watchTables()).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+    SELF.tick.mockClear();
+    await vi.advanceTimersByTimeAsync(5000);
+    await settle();
+    expect(SELF.tick).not.toHaveBeenCalled();
+  });
+
+  it("starts on a GM who becomes the active one while an auction is live, and takes its turns there", async () => {
+    await openRound("watched");
+    world.game.users.activeGM = { id: "other-gm" };
+    watchTables();
+    expect(vi.getTimerCount()).toBe(0);
+    SELF.tick.mockClear();
+    // That GM leaves and this client is the active GM now.
+    world.game.users.activeGM = world.game.user;
+    expect(watchTables()).toBe(true);
+    expect(vi.getTimerCount()).toBe(1);
+    // A second call while it watches starts no second watch.
+    expect(watchTables()).toBe(false);
+    expect(vi.getTimerCount()).toBe(1);
+    await settle();
+    await vi.advanceTimersByTimeAsync(2000);
+    await settle();
+    expect(SELF.tick.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("is followed in main.js on a GM joining or leaving and on a role change, beside the stale timer", async () => {
+    const { readFileSync } = await import("node:fs");
+    const main = readFileSync(new URL("../module/scripts/main.js", import.meta.url), "utf8");
+    expect(main).toMatch(/const followActiveGM = \(\) => \{ watchStale\(\); watchTables\(\); \};/);
+    expect(main).toMatch(/Hooks\.on\("userConnected", \(\) => \{ if \(game\.ready\) followActiveGM\(\); \}\);/);
+    expect(main).toMatch(/Hooks\.on\("updateUser", \(_user, change\) => \{ if \(game\.ready && change && "role" in change\) followActiveGM\(\); \}\);/);
+  });
+
+  it("starts nothing on a client that isn't the active GM", () => {
+    world.game.users.activeGM = { id: "other-gm" };
+    expect(watchTables()).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
   });
 });
 

@@ -460,9 +460,13 @@ export function tableTick(roundId, { rng = rollRng() } = {}) {
   keeps its gavel), and one taking stakes gets its tick every tickMs. A
   hammer that fails (the resolve rolled back, as Spin's does) is tried
   again after WATCH_RETRY_MS, and the GM is told once. Started when such a
-  round opens or is staked, and on the GM's load (main.js), so a GM who
+  round opens or is staked, on the GM's load (main.js), so a GM who
   reloads mid-auction brings its gavel down (or, past the grace, the load's
-  recovery refunds it first); it stops itself when nothing is left to watch.
+  recovery refunds it first), and whenever who the active GM is may have
+  changed (main.js, as watchStale), so a GM taking over a live auction
+  takes its watch with it. It stops itself when nothing is left to watch,
+  and at once on a client that is not the active GM. Returns true when it
+  started a watch.
 */
 export const WATCH_MS = 1000;
 export const WATCH_RETRY_MS = 10000;
@@ -474,7 +478,11 @@ const failedAt = new Map();
 const selfRunning = kind => !!(kind?.hammer || typeof kind?.tick === "function");
 
 export function watchTables() {
-  if (watch || !globalThis.game?.user || game.users?.activeGM?.id !== game.user.id) return false;
+  if (!globalThis.game?.user || game.users?.activeGM?.id !== game.user.id) {
+    stopWatching();
+    return false;
+  }
+  if (watch) return false;
   watch = setInterval(watchTick, WATCH_MS);
   watchTick();
   return true;

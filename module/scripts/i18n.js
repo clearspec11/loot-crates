@@ -7,14 +7,17 @@
   does.
 
   t() asks the localizer first: main.js installs one at i18nInit that
-  returns game.i18n.format(key, data) when Foundry has the key and null
-  when it hasn't, so a translation in lang/<code>.json wins at the table.
-  Then the English table (setStrings), which main.js fills from this
-  module's own lang/en.json (loadStrings), for a copy whose keys Foundry
-  doesn't know, such as the working copy a live check imports beside an
-  installed release; the harness and the tests fill it the same way. A key
-  in neither comes back as itself, so a missing word shows rather than
-  vanishing.
+  returns game.i18n.localize(key), the sentence with its placeholders
+  still in it, when Foundry has the key and null when it hasn't, so a
+  translation in lang/<code>.json wins at the table. Then the English
+  table (setStrings), which main.js fills from this module's own
+  lang/en.json (loadStrings), for a copy whose keys Foundry doesn't know,
+  such as the working copy a live check imports beside an installed
+  release; the harness and the tests fill it the same way. A key in
+  neither comes back as itself, so a missing word shows rather than
+  vanishing. Either way the placeholders are filled here (fill), not by
+  Foundry's format, which writes a missing value as "undefined": a name
+  that is gone (a deleted character's) reads as nothing under both.
 
   Nothing reads a word when a script loads: the strings arrive after the
   scripts have, so a text constant is a getter (words()) or a live binding
@@ -35,16 +38,18 @@ function flatten(obj, prefix = "", out = {}) {
   return out;
 }
 
-// "{name}" in `text` becomes data.name; a placeholder data hasn't got stays.
+// "{name}" in `text` becomes data.name, once. A value data holds as
+// undefined or null (a name that is gone) reads as nothing, never as
+// "undefined", "null" or "{name}"; a placeholder data hasn't got at all
+// stays, as test/i18n.test.js checks every call passes them.
 export function fill(text, data) {
-  if (!data) return text;
-  return text.replace(/{([^{}]+)}/g, (m, k) => (data[k] === undefined || data[k] === null ? m : String(data[k])));
+  if (!data || typeof data !== "object") return text;
+  return text.replace(/{([^{}]+)}/g, (m, k) => (!(k in data) ? m : data[k] == null ? "" : String(data[k])));
 }
 
 export function t(key, data) {
-  const local = localize?.(key, data);
-  if (typeof local === "string") return local;
-  const text = strings[key];
+  const local = localize?.(key);
+  const text = typeof local === "string" ? local : strings[key];
   return typeof text === "string" ? fill(text, data) : key;
 }
 
@@ -53,7 +58,8 @@ function changed() {
   for (const fn of listeners) fn();
 }
 
-// fn(key, data) returns the text, or null when it has no such key.
+// fn(key) returns the sentence, placeholders unfilled, or null when it has
+// no such key; t() fills it.
 export function setLocalizer(fn) {
   localize = typeof fn === "function" ? fn : null;
   changed();
