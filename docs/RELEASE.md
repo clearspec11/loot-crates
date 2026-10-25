@@ -26,9 +26,9 @@ styles/module.css
 - [x] **License.** MIT (the user's choice, 2026-10-24): `LICENSE` at the root, `"license": "LICENSE"` in `module/module.json`, and the build copies it into every zip.
 - [x] **Author.** `authors` is the user's GitHub handle, `{ "name": "clearspec11", "url": "https://github.com/clearspec11" }` (the user's choice, 2026-10-24).
 - [x] **History check.** Done on 2026-10-24 over all 152 commits on every branch; see below.
-- [ ] **Flip the repository public** on GitHub (Settings, General, Danger Zone, Change visibility).
-- [ ] **Check the README on GitHub**: every image shows and the manifest URL installs on a clean Foundry.
-- [ ] **Point cc-dev at the GitHub manifest.** In cc-dev's setup screen, reinstall Loot Crates from `https://github.com/clearspec11/loot-crates/releases/latest/download/module.json`, so it updates like any user's copy.
+- [x] **Flip the repository public** on GitHub (Settings, General, Danger Zone, Change visibility).
+- [x] **Check the README on GitHub**: every image shows and the manifest URL installs on a clean Foundry.
+- [x] **Point cc-dev at the GitHub manifest.** In cc-dev's setup screen, reinstall Loot Crates from `https://github.com/clearspec11/loot-crates/releases/latest/download/module.json`, so it updates like any user's copy.
 - [ ] **Retire the LAN server** that served the working copy to cc-dev (`npm run foundry:serve`, port 8766) once nothing installs from it.
 - [ ] **Optional: submit to the Foundry package list** at foundryvtt.com (Community Packages, Submit a Package) with the manifest URL. The listing reads `readme`, `changelog`, `bugs` and the `media` screenshots from `module/module.json`.
 
