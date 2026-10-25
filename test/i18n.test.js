@@ -152,10 +152,48 @@ describe("i18n.js", () => {
   });
 
   it("asks the localizer first, and reads the English table when it has no such key", () => {
-    setLocalizer((key, data) => (key === "LOOTCRATES.Shop.Title" ? "Kistenladen" : key === "LOOTCRATES.Card.OpenFor" ? `Öffnen für ${data.price}` : null));
+    setLocalizer(key => (key === "LOOTCRATES.Shop.Title" ? "Kistenladen" : key === "LOOTCRATES.Card.OpenFor" ? "Öffnen für {price}" : null));
     expect(t("LOOTCRATES.Shop.Title")).toBe("Kistenladen");
     expect(t("LOOTCRATES.Card.OpenFor", { price: "25 gp" })).toBe("Öffnen für 25 gp");
     expect(t("LOOTCRATES.Card.SoldOut")).toBe("Sold out");
+  });
+
+  /*
+    A name that is gone at run time (a deleted character's or item's, a
+    pool with no name) reaches t() as undefined or null. Foundry's format
+    would write it as "undefined"; t() fills the placeholders itself under
+    both localizers, so it reads as nothing. The localizer here behaves as
+    main.js's: Foundry's sentence for a key it has, placeholders unfilled.
+  */
+  it("never says 'undefined', 'null' or '{name}' for a missing name, with Foundry's localizer or without", () => {
+    const foundryLike = key => (table[key] ?? null);
+    for (const localizer of [null, foundryLike]) {
+      setLocalizer(localizer);
+      for (const name of [undefined, null]) {
+        const said = t("LOOTCRATES.Card.NothingNewFor", { name });
+        expect(said).not.toMatch(/undefined|null|\{name\}/);
+        expect(said).toBe(fill(table["LOOTCRATES.Card.NothingNewFor"], { name: "" }));
+        const head = t("LOOTCRATES.Shelf.Refusal", { name });
+        expect(head).not.toMatch(/undefined|null|\{name\}/);
+      }
+      expect(t("LOOTCRATES.Card.NothingNewFor", { name: "Tam" })).toBe(fill(table["LOOTCRATES.Card.NothingNewFor"], { name: "Tam" }));
+      expect(t("LOOTCRATES.Card.OpenFor", { price: 0 })).toBe("Open for 0");
+    }
+    expect(fill("{a}, {b} and {c}", { a: undefined, b: null, c: 0 })).toBe(",  and 0");
+  });
+
+  it("main.js's localizer hands over Foundry's sentence unfilled, never through game.i18n.format", () => {
+    const main = readFileSync(path.join(dir, "main.js"), "utf8");
+    expect(main).toMatch(/setLocalizer\(key => \(game\.i18n\.has\(key\) \? game\.i18n\.localize\(key\) : null\)\)/);
+    expect(main).not.toMatch(/i18n\.format\(/);
+  });
+
+  it("asks the localizer for the sentence alone and fills it here, so a translation reads a missing name as nothing too", () => {
+    const asked = vi.fn(key => (key === "LOOTCRATES.Card.OpenFor" ? "Öffnen für {price}" : null));
+    setLocalizer(asked);
+    expect(t("LOOTCRATES.Card.OpenFor", { price: undefined })).toBe("Öffnen für ");
+    expect(asked).toHaveBeenCalledWith("LOOTCRATES.Card.OpenFor");
+    expect(asked.mock.calls.every(c => c.length === 1)).toBe(true);
   });
 
   it("words(): labels read when read, so a table made before the words arrive is right after", () => {

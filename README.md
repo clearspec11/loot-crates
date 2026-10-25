@@ -107,6 +107,8 @@ Players press **Crates** at the top of the Items sidebar. The shop shows every g
 
 **Can players see what they will get before the spin ends?** No. The result is decided first, but the chat card, the sheet row and the shop's pity line stay hidden on each screen until that screen's spin lands.
 
+**When does an in-game day end?** A character's throws at the Wishing Well and their purchases under a limit per day start again when their day ends. With dnd5e's calendar off, a day ends at each long rest that character takes. With the calendar on, it ends when the world's clock passes midnight or when the character takes a long rest, whichever comes first, and a second long rest on the same calendar day doesn't end another. If dnd5e's calendar is on but its daily uses come back at a long rest rather than on the clock, each long rest ends a day, as with the calendar off. A long rest ends only that character's day, and you never reset anything by hand.
+
 **Does it respect reduced motion?** Yes. With reduced motion turned on in the operating system or browser, every game skips straight to its result. A tab in the background lands at once too.
 
 **Does it work with Dice So Nice?** Yes. Dragon's Teeth waits for Dice So Nice's 3D roll and lands with it. The dice are Foundry's own, rolled on the GM.

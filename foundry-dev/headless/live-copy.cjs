@@ -164,6 +164,7 @@ const READ_SHOP = `globalThis.__lcCards = () => [...document.querySelectorAll("#
     // 1. The row's Copy: the dialog on the copy, nothing written.
     out.open = await gm.page.evaluate(async ({ base, id }) => {
       const store = await import(base + "scripts/store.js");
+      const { parsePrice } = await import(base + "scripts/currency.js");
       const rows = __lc.rows();
       const btn = __lc.app.element.querySelector(`[data-action="copyBox"][data-box="${id}"]`);
       const label = btn.getAttribute("aria-label");
@@ -178,7 +179,8 @@ const READ_SHOP = `globalThis.__lcCards = () => [...document.querySelectorAll("#
       const open = {
         label, cell, rows, title: __lc.title(), okLabel: __lc.ok()?.textContent.trim(),
         name: __lc.field("name")?.value, nameFocused: document.activeElement === __lc.field("name"),
-        price: Number(__lc.field("price")?.value), pools, weights,
+        // The price field is text ("75 gp", "12 gp 5 sp"): read as the editor's Save reads it.
+        priceText: __lc.field("price")?.value, price: parsePrice(__lc.field("price")?.value), pools, weights,
         pity: { minRarity: __lc.field("pityRarity")?.value, after: Number(__lc.field("pityAfter")?.value) }, noDuplicates: !!__lc.field("noDuplicates")?.checked,
         stock: __lc.field("stock")?.value, restock: !!d.querySelector("[data-restock]"),
         preview: d.querySelector(".lc-form__preview")?.textContent.trim(),
@@ -280,23 +282,30 @@ const READ_SHOP = `globalThis.__lcCards = () => [...document.querySelectorAll("#
 
     const o = out.open, s = out.saved;
     const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-    // A game's settings: all but its id, name and stock count; a rule the
-    // editor's Save writes as null (no pity, no limit) is the same as none.
-    const settings = b => { const { id, name, rules, ...rest } = b; void id; void name; return { ...rest, rules: Object.fromEntries(Object.entries(rules ?? {}).filter(([k, v]) => k !== "stock" && v != null)) }; };
-    const srcPools = Object.fromEntries((source.pools ?? []).map(r => [r.id, r.share ?? 1]));
-    const price = Math.round(Number(source.price) || 0);
     const { formatPrice } = await import("../../module/scripts/currency.js");
+    const { DEFAULT_WEIGHTS, RARITIES } = await import("../../module/scripts/config.js");
+    // A game's rarity weights as every draw reads them (odds.js, strip.js):
+    // a rarity the record leaves out weighs its default, which is also what
+    // the editor shows and its Save writes.
+    const weightsOf = b => Object.fromEntries(RARITIES.map(r => [r, Number({ ...DEFAULT_WEIGHTS, ...(b.weights ?? {}) }[r])]));
+    // A game's settings: all but its id, name and stock count; a rule the
+    // editor's Save writes as null or false (no pity, no limit, duplicates
+    // allowed) is the same as none, except shelved: false (off the shelf).
+    const kept = (k, v) => k !== "stock" && v != null && (v !== false || k === "shelved");
+    const settings = b => { const { id, name, rules, weights, ...rest } = b; void id; void name; void weights; return { ...rest, weights: weightsOf(b), rules: Object.fromEntries(Object.entries(rules ?? {}).filter(([k, v]) => kept(k, v))) }; };
+    const srcPools = Object.fromEntries((source.pools ?? []).map(r => [r.id, r.share ?? 1]));
+    const price = Number(source.price) || 0;
     const expectedStatus = out.before.shopOpen ? `${copyName} is on the shelf at ${formatPrice(source.price)}.` : `${copyName} added. The shop is closed, so players can't see it yet.`;
     out.checks = {
       rowButton: o.label === `Copy ${BOX}` && o.cell.slice(-3).join("|") === "editBox|copyBox|deleteBox",
       dialog: o.title === "Copy box" && o.okLabel === addLabel && o.name === copyName && o.nameFocused,
-      dialogHoldsSource: o.price === price && same(o.pools, srcPools) && Object.entries(o.weights).every(([r, w]) => w === Number(source.weights?.[r] ?? (o.weights[r]))) && o.pity.minRarity === (source.rules?.pity?.minRarity ?? "") && o.noDuplicates === !!source.rules?.noDuplicates && !o.restock && /\d+%/.test(o.preview ?? ""),
+      dialogHoldsSource: o.price === price && o.priceText === formatPrice(source.price) && same(o.pools, srcPools) && same(o.weights, weightsOf(source)) && o.pity.minRarity === (source.rules?.pity?.minRarity ?? "") && o.noDuplicates === !!source.rules?.noDuplicates && !o.restock && /\d+%/.test(o.preview ?? ""),
       writesNothingWhileOpen: o.boxes === out.before.boxIds.length && o.boxesLater === out.before.boxIds.length && out.openCards === out.shop.cards,
       added: !!copy && s.added.length === 1 && same(settings(copy), settings(source)) && (copy.rules?.stockMax == null || copy.rules.stock === copy.rules.stockMax) && same(out.saved.copyState, {}),
       shown: s.tab === "boxes" && s.focusOnEdit && s.editLabel === `Edit ${copyName}` && s.rowNew && s.rowInView && s.rows === o.rows + 1,
       said: s.status === expectedStatus,
       card: out.copyCard.shown && out.copyCard.ms <= 2000 && out.copyCard.cards === out.shop.cards + 1,
-      pulled: out.pull.skipped ? "skipped" : out.pull.landed && out.afterPull.rows.length === 1 && out.afterPull.rows[0].boxId === copy.id && out.afterPull.purseCp === out.before.purseCp - price * 100 && out.afterPull.items === out.before.items + 1,
+      pulled: out.pull.skipped ? "skipped" : out.pull.landed && out.afterPull.rows.length === 1 && out.afterPull.rows[0].boxId === copy.id && out.afterPull.purseCp === out.before.purseCp - Math.round(price * 100) && out.afterPull.items === out.before.items + 1,
       sourceUntouched: out.pull.skipped ? "skipped" : out.afterPull.sourceRows === out.before.sourceRows && same(out.afterPull.sourceState, out.before.sourceState) && same(out.afterPull.source, source),
       cancel: out.cancel.title === "Copy box" && out.cancel.after.boxes === out.cancel.before.boxes && out.cancel.after.rows === out.cancel.before.rows && out.cancel.after.html === out.cancel.before.html && !out.cancel.after.dialog,
     };

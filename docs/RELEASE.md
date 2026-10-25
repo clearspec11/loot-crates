@@ -2,12 +2,44 @@
 
 How a version goes out, and the one-time checklist for making the repository public (Linear VIB-199).
 
-## Every release
+## Who runs what
 
-1. Move the changelog's **Unreleased** entry under the new version number in [CHANGELOG.md](../CHANGELOG.md), and put three to five of its lines in `module/scripts/changelog.js` (the GM's "What's new" note). `test/welcome.test.js` checks they agree.
-2. Bump `version` in `module/module.json` and `package.json`. If the release changes the Foundry or dnd5e versions it supports, or starts using a new hook or API, update [COMPATIBILITY.md](COMPATIBILITY.md) and the README's table in the same commit (`test/release.test.js` checks them against the manifest).
-3. `npm run lint && npm run test:run && npm run build` all green, and `NODE_PATH=$(npm root -g) npm run smoke` for any UI change.
-4. Tag `vX.Y.Z` on `main` and publish a GitHub release with `dist/module.json` and `dist/module.zip` attached. The manifest's `manifest` and `download` URLs point at the latest release, so Foundry finds the update by itself.
+| Step | How it starts | Where it runs |
+|---|---|---|
+| CI: lint, tests, build | Automatically, on every pull request and every push to `main` | GitHub Actions, `.github/workflows/checks.yml` |
+| Smoke and live checks | By hand, during a round | The dev machine (they need a browser and the LAN Foundry) |
+| Dev release | By hand: `npm run release:dev` | The dev machine, with its `gh` login |
+| Public release | By hand: `gh release create`, after the pull request merges | The dev machine, with its `gh` login, from `main` |
+
+Only CI is in GitHub Actions. Publishing dev builds from Actions is in the backlog (Linear VIB-207); until then both releases are the manual steps below.
+
+## A round, from branch to release
+
+1. Cut the round's branch from `main` (`council/round-N`). All work, including the release commit, goes on it: `main` takes changes only through a pull request.
+2. Make the release commit on the branch (see "The release commit").
+3. Push the branch and open a pull request to `main`. CI runs on it by itself.
+4. Publish a dev build from the branch (see "The dev channel") and update the test world.
+5. The owner merges the pull request once CI is green.
+6. Publish the public release from `main` (see "The public release").
+
+## The release commit
+
+1. In [CHANGELOG.md](../CHANGELOG.md), move the **Unreleased** bullets under a new `## X.Y.Z` heading with a one-line summary, and leave `- Nothing yet.` under Unreleased (`test/release.test.js` wants a bullet in every entry).
+2. The GM's "What's new" note: put the summary in `module/lang/en.json` under `LOOTCRATES.News.Title` and three to five of the new entry's bullets, word for word, as `LOOTCRATES.News.Line1` and on. List those keys and the version in `module/scripts/changelog.js`. `test/welcome.test.js` checks they match the changelog and `module.json`. The note is plain text inside Foundry: no backticks or markup, and no word of four or more capitals (a bullet naming the README stays in the changelog only).
+3. Bump `version` in `module/module.json`, `package.json` and `package-lock.json`. If the release changes the Foundry or dnd5e versions it supports, or starts using a new hook or API, update [COMPATIBILITY.md](COMPATIBILITY.md) and the README's table in the same commit (`test/release.test.js` checks them against the manifest).
+4. `npm run lint && npm run test:run && npm run build` all green, and `NODE_PATH=$(npm root -g) npm run smoke` for any UI change.
+
+## The public release
+
+After the pull request merges, on an up-to-date `main`:
+
+```
+git checkout main && git pull --ff-only origin main
+npm run lint && npm run test:run && npm run build
+gh release create vX.Y.Z dist/module.zip dist/module.json --target main --title "Loot Crates X.Y.Z" --notes-file <the X.Y.Z changelog entry>
+```
+
+The manifest's `manifest` and `download` URLs point at the latest release, so every world installed from the public manifest finds the update by itself. GitHub can take a minute or two to serve the new files; check that `https://github.com/clearspec11/loot-crates/releases/latest/download/module.json` reports the new version.
 
 ## Main is protected
 
@@ -25,7 +57,14 @@ updates to every dev build and never to a public release; the public manifest ne
 
 GitHub serves a new release's files a minute or two after it is made, so the script waits until the dev manifest has the new version and the zip downloads, then says it is live; update the test world after that.
 
-When: once a round's pull request is open with its release commit, and again after any fix pushed to it. After the merge, the public release goes out from `main` as above.
+When: once a round's pull request is open with its release commit, and again after any fix pushed to it. The checked-out commit must be committed and pushed, or the script refuses. After the merge, the public release goes out from `main` as above; the dev release is left as it is until the next round's first dev build replaces it.
+
+```
+git checkout council/round-N && git push
+npm run release:dev
+```
+
+The test world (cc-dev) is installed from the dev manifest, so it gets dev builds only; a public release reaches it only as the next dev build.
 
 ## What the zip ships
 
@@ -46,8 +85,8 @@ styles/module.css
 - [x] **History check.** Done on 2026-10-24 over all 152 commits on every branch; see below.
 - [x] **Flip the repository public** on GitHub (Settings, General, Danger Zone, Change visibility).
 - [x] **Check the README on GitHub**: every image shows and the manifest URL installs on a clean Foundry.
-- [x] **Point cc-dev at the GitHub manifest.** In cc-dev's setup screen, reinstall Loot Crates from `https://github.com/clearspec11/loot-crates/releases/latest/download/module.json`, so it updates like any user's copy.
-- [ ] **Retire the LAN server** that served the working copy to cc-dev (`npm run foundry:serve`, port 8766) once nothing installs from it.
+- [x] **Point cc-dev at the GitHub manifest.** Done 2026-10-25; since then cc-dev installs from the dev manifest instead (see "The dev channel").
+- [x] **Retire the LAN package server** (port 8767) that installed private builds into cc-dev: stopped 2026-10-25. The working-copy server on port 8766 (`npm run foundry:serve`) stays: the live checks import the branch's code from it.
 - [ ] **Optional: submit to the Foundry package list** at foundryvtt.com (Community Packages, Submit a Package) with the manifest URL. The listing reads `readme`, `changelog`, `bugs` and the `media` screenshots from `module/module.json`.
 
 ## History check

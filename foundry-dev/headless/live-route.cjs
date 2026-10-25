@@ -21,12 +21,18 @@
 //      crates". Clicking it opens the shop: its header controls (Foundry
 //      v14 gives every window "Detach Window") hold no "Manage crates", and
 //      the window has none anywhere.
-//   5. With every game taken off the shelf (by the GM, written directly:
-//      the setup, not the thing checked), the player's open shop says the
-//      shelf is empty without any talk of Game Settings, and has no button.
+//   5. The GM takes every game the world holds off the shelf with its
+//      Boxes row's "On the shelf" toggle, one click each: the player's open
+//      shop says the shelf is empty without any talk of Game Settings, and
+//      has no button.
 //
-// Restored in a finally: each game's shelf flag as it was, every window
-// this run opened closed. No purchase; nothing is created or deleted.
+// Every window here is the branch's: the installed module's sidebar hook is
+// taken out first, or its buttons would open the installed shop, which the
+// branch's redraw never reaches (an open shop that never empties).
+//
+// Restored in a finally: each game's shelf flag as it was (written back
+// through the store), every window this run opened closed. No purchase;
+// nothing is created or deleted.
 /* global game, foundry */
 const { chromium } = require("playwright");
 const FOUNDRY = process.env.FOUNDRY_URL || "http://localhost:30000";
@@ -79,7 +85,10 @@ async function join(browser, user) {
     const route = await import(base + "scripts/route.js");
     const { openShop } = await import(base + "scripts/shop.js");
     const { openManager } = await import(base + "scripts/manager.js");
-    for (const h of [...(globalThis.Hooks.events?.renderItemDirectory ?? [])]) if (/Crates/.test(String(h.fn))) globalThis.Hooks.off("renderItemDirectory", h.fn);
+    // The installed module's hook calls addDirectoryButtons (route.js); left
+    // in, its buttons are drawn first and open the installed shop and
+    // manager, which this page's redraw no longer reaches.
+    for (const h of [...(globalThis.Hooks.events?.renderItemDirectory ?? [])]) if (/Crates|addDirectoryButtons/.test(String(h.fn))) globalThis.Hooks.off("renderItemDirectory", h.fn);
     globalThis.Hooks.on("renderItemDirectory", (_app, html) => {
       const root = html instanceof HTMLElement ? html : html?.[0];
       if (root) route.addDirectoryButtons(root, { isGM: !!game.user.isGM, open: { shop: () => openShop(), manager: () => openManager() } });
@@ -172,14 +181,22 @@ const closeOurs = page => page?.evaluate(() => { for (const a of [...foundry.app
       await pl.page.keyboard.press("Escape").catch(() => {});
     }
 
-    // 5. Every game off the shelf: the player's empty shelf.
+    // 5. Every game off the shelf, by the GM's toggles: the player's empty shelf.
     shelf = await gm.page.evaluate(async base => {
       const store = await import(base + "scripts/store.js");
-      const { onShelf, shelfRules } = await import(base + "scripts/shelf.js");
-      const was = Object.fromEntries(Object.values(store.getBoxes()).map(b => [b.id, b.rules?.shelved]));
-      for (const b of Object.values(store.getBoxes())) if (onShelf(b)) await store.updateBox(b.id, f => ({ ...f, rules: shelfRules(f.rules ?? {}, false) }));
-      return was;
+      return Object.fromEntries(Object.values(store.getBoxes()).map(b => [b.id, b.rules?.shelved]));
     }, MODULE_BASE);
+    await gm.page.locator('#loot-crates-manager .lc-tabs [data-tab="boxes"]').click();
+    const onToggle = gm.page.locator('#loot-crates-manager button[data-action="toggleShelf"][aria-pressed="true"]');
+    await gm.page.locator('#loot-crates-manager button[data-action="toggleShelf"]').first().waitFor({ timeout: 10000 });
+    out.toggled = 0;
+    for (let left = await onToggle.count(); left > 0 && out.toggled < 200; left = await onToggle.count()) {
+      const id = await onToggle.first().getAttribute("data-box");
+      await onToggle.first().click();
+      await gm.page.locator(`#loot-crates-manager button[data-action="toggleShelf"][data-box="${id}"][aria-pressed="false"]`).waitFor({ timeout: 8000 });
+      out.toggled++;
+    }
+    out.gmCount = (await gm.page.locator("#loot-crates-manager .lc-shelf-count").textContent().catch(() => ""))?.trim();
     await pl.page.waitForFunction(() => document.querySelector("#loot-crates-shop .lc-shop__empty"), null, { timeout: 8000 }).catch(() => {});
     out.playerEmpty = await pl.page.evaluate(() => {
       const empty = document.querySelector("#loot-crates-shop .lc-shop__empty");
@@ -195,6 +212,7 @@ const closeOurs = page => page?.evaluate(() => { for (const a of [...foundry.app
       headerManage: out.menu.map(x => x.trim()).includes("Manage crates") && b.managers === 1 && b.managerApps === 1 && b.shops === 1 && b.managerFront,
       playerSidebar: ps.shop.join() === "Crates" && ps.manage === 0,
       playerShopNoControl: !p.manageAnywhere && p.managers === 0 && !(p.menu ?? []).some(x => /Manage/.test(x)),
+      allToggledOff: out.toggled === Object.values(shelf).filter(v => v !== false).length,
       playerEmpty: e.cards === 0 && e.text === "No crates on the shelf yet. The GM hasn't put any out." && e.buttons === 0 && !/Game Settings/.test(e.text ?? ""),
     };
     out.ok = Object.values(out.checks).every(Boolean);

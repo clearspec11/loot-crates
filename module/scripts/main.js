@@ -32,10 +32,11 @@ import { t, setLocalizer, loadStrings } from "./i18n.js";
 // the script loads, for a copy whose keys Foundry doesn't know (the
 // working copy a live check serves beside an installed release); then,
 // once Foundry's translations are in, game.i18n for every key it has, so a
-// translation in lang/<code>.json wins. Nothing reads a word before a
+// translation in lang/<code>.json wins. i18n.js fills the placeholders
+// either way, so a missing name never reads "undefined". Nothing reads a word before a
 // window opens, by when both are here.
 loadStrings().catch(err => console.error("loot-crates | loading the module's words (lang/en.json) failed", err));
-Hooks.once("i18nInit", () => setLocalizer((key, data) => (game.i18n.has(key) ? (data ? game.i18n.format(key, data) : game.i18n.localize(key)) : null)));
+Hooks.once("i18nInit", () => setLocalizer(key => (game.i18n.has(key) ? game.i18n.localize(key) : null)));
 
 Hooks.once("init", () => {
   registerSettings();
@@ -105,11 +106,14 @@ Hooks.on("getRollTableContextOptions", (_app, options) => { if (Array.isArray(op
 // Who the active GM is can change while the world runs: a GM joins or
 // leaves (userConnected, on connect and disconnect), or a user's role
 // changes (updateUser). The GM's timer for the next stale round
-// (table.js watchStale) follows: armed on the client that is now the
-// active GM, cleared on the one that no longer is, so a stake left in a
-// round is refunded while any GM is online, not at the next load.
-Hooks.on("userConnected", () => { if (game.ready) watchStale(); });
-Hooks.on("updateUser", (_user, change) => { if (game.ready && change && "role" in change) watchStale(); });
+// (table.js watchStale) and the auction's watch, its gavel and house
+// bidders (table.js watchTables), follow: armed on the client that is now
+// the active GM, cleared on the one that no longer is, so a stake left in
+// a round is refunded and a live auction's gavel falls while any GM is
+// online, not at the next load.
+const followActiveGM = () => { watchStale(); watchTables(); };
+Hooks.on("userConnected", () => { if (game.ready) followActiveGM(); });
+Hooks.on("updateUser", (_user, change) => { if (game.ready && change && "role" in change) followActiveGM(); });
 
 // A day ends at each character's long rest (clock.js), calendar or not:
 // the rest that starts a new day is noted on the GM (socket.js).

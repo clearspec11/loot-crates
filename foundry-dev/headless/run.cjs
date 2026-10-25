@@ -2,6 +2,10 @@
 // change can be checked against real dnd5e from a machine with no browser.
 //
 //   FOUNDRY_URL=http://<host>:30000 node foundry-dev/headless/run.cjs check.js [--shot out.png]
+//   FOUNDRY_URL=http://<host>:30000 node foundry-dev/headless/run.cjs live-tabs
+//
+// The check is a path, or a bare name looked up in foundry-dev/checks/
+// (live-tabs and live-tabs.js both find foundry-dev/checks/live-tabs.js).
 //
 // The script is the body of an async function run in the page; its return
 // value is printed as JSON. MODULE_BASE is in scope: point it at this
@@ -13,12 +17,23 @@
 // a Gamemaster with no password: use a dev world only.
 const { chromium } = require("playwright");
 const fs = require("fs");
+const path = require("path");
+const CHECKS = path.join(__dirname, "..", "checks");
+function resolveCheck(arg) {
+  if (!arg) throw new Error(`Name a check: a file path, or a check in ${CHECKS} (e.g. live-tabs).`);
+  if (fs.existsSync(arg) && fs.statSync(arg).isFile()) return arg;
+  const named = path.join(CHECKS, arg.endsWith(".js") ? arg : `${arg}.js`);
+  if (!arg.includes("/") && fs.existsSync(named)) return named;
+  throw new Error(`No check "${arg}": not a file, and not in ${CHECKS}.`);
+}
 const FOUNDRY = process.env.FOUNDRY_URL || "http://localhost:30000";
 const MODULE_BASE = process.env.MODULE_BASE || "http://localhost:8765/";
 (async () => {
   const [file, ...rest] = process.argv.slice(2);
   const shot = rest.includes("--shot") ? rest[rest.indexOf("--shot") + 1] : null;
-  const body = fs.readFileSync(file, "utf8");
+  let body;
+  try { body = fs.readFileSync(resolveCheck(file), "utf8"); }
+  catch (e) { console.error(e.message); process.exit(2); }
   const b = await chromium.launch();
   const p = await (await b.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
   const errors = []; p.on("pageerror", e => errors.push(e.message));
