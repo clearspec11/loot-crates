@@ -31,4 +31,15 @@ if (current) run("gh", ["release", "delete", DEV_TAG, "--cleanup-tag", "--yes"])
 const notes = `Dev build ${dev} of ${branch} at ${sha.slice(0, 7)}. Not for players: install from ${DEV_MANIFEST} in a test world to get each dev build as an update.`;
 run("gh", ["release", "create", DEV_TAG, "dist/module.zip", "dist/module.json", "--prerelease", "--latest=false",
   "--target", sha, "--title", `Loot Crates ${dev} (dev)`, "--notes", notes]);
-console.log(`release:dev: published ${dev} (was ${current ?? "none"}); manifest ${DEV_MANIFEST}`);
+console.log(`release:dev: published ${dev} (was ${current ?? "none"}); waiting for GitHub to serve it`);
+
+// GitHub serves a new release's download URLs a minute or two after it is
+// made (a 404 or the old build until then), so say when Foundry can update.
+const zipUrl = DEV_MANIFEST.replace(/module\.json$/, "module.zip");
+for (let i = 0; i < 30; i++) {
+  const m = await fetch(DEV_MANIFEST, { cache: "no-store" }).then(r => (r.ok ? r.json() : null)).catch(() => null);
+  const z = await fetch(zipUrl, { method: "HEAD", cache: "no-store" }).then(r => r.ok).catch(() => false);
+  if (m?.version === dev && z) { console.log(`release:dev: ${dev} is live at ${DEV_MANIFEST}`); process.exit(0); }
+  await new Promise(r => setTimeout(r, 10_000));
+}
+fail(`${dev} is published but GitHub isn't serving it after 5 minutes; check ${DEV_MANIFEST} by hand`);

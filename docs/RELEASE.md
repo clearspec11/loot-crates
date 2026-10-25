@@ -23,6 +23,8 @@ https://github.com/clearspec11/loot-crates/releases/download/dev/module.json
 
 updates to every dev build and never to a public release; the public manifest never sees a dev build, since a pre-release is never "latest". Foundry counts `1.2.0-dev.1` as newer than `1.1.0`, and `dev.2` as newer than `dev.1` (`test/channel.test.js`). A dev build shows no "What's new" note, because the note is keyed on the release version.
 
+GitHub serves a new release's files a minute or two after it is made, so the script waits until the dev manifest has the new version and the zip downloads, then says it is live; update the test world after that.
+
 When: once a round's pull request is open with its release commit, and again after any fix pushed to it. After the merge, the public release goes out from `main` as above.
 
 ## What the zip ships
