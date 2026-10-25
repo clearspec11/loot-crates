@@ -85,21 +85,76 @@ A reveal window (`reveal.js`, any kind's) and a table window (`tablewindow.js`) 
 
 ## Development
 
-```
-npm install
-npm run lint          # eslint, 0 errors
-npm run test:run      # vitest: the odds, the currency maths, the strip
-npm run build         # checks module.json, parses every script, packs dist/module.zip
-NODE_PATH=$(npm root -g) npm run smoke   # harness screenshots at 1440 and 390 wide, dark and light
-npm run harness       # serve the harness at http://localhost:5281/harness/ (?theme=light for the light theme)
-```
-
-The harness runs the module's pure scripts and its stylesheet with sample data outside Foundry so the shop, the spin and the pool editor can be looked at without a world. The stylesheet borrows dnd5e's fonts and textures and Foundry's item icons; set `FOUNDRY_URL=http://<foundry>:30000` for `npm run harness` or `npm run smoke` and the harness passes those requests through to that world, so it renders with the real assets (without it, system fonts and plain grounds stand in). `foundry-dev/` has the headless runner for a real check against a dev world.
+Setup, the harness, the smoke run, the live checks and what to run before a pull request are in [DEVELOPING.md](DEVELOPING.md).
 
 ## Layout
 
-- `module/` is what ships: `module.json`, `scripts/`, `styles/`, `lang/en.json` (every word, by key).
-  - Pure, tested, no Foundry globals: `i18n.js` (the module's words: `t()`, the localizer Foundry's `game.i18n` is installed as, the English table and `loadStrings()`), `kinds.js` (the games of chance and their contract), `crate.js` (the crate: the first kind's roll, spin, card), `well.js` (the Wishing Well: its roll, cap, reveal, card and folded log), `dicegame.js` (Dragon's Teeth: the verdict, the exact odds, Foundry's Roll read back as faces, the tumbling dice and the 3D-dice wait, its card), `deck.js` (the Deck of Many Things: the cards as written, the plan that leaves drawn once cards out, the rising price from the log, the roll for every kind of card, the one card's lift, hold and turn, its words, card and editor), `round.js` (the table round's state: open stakes, the stale window, the resolve's plan, the log's round lines), `roulette.js` (the Wheel of Fate: the pockets, the exact odds per bet type, the bets, the spin with Foundry's die, the settle, the wheel and the rail, its words, card and editor), `auction.js` (the Auction: the lot, the bid checks, the house bidders, the hammer and its settle, the board with the gavel's bar and the sealed crate's strip, its words, card and editor), `tableview.js` (the shared table window's words and markup), `linger.js` (a finished game window's countdown to closing by itself: the setting's choices, the pauses, the "Closes in 30 s" line and Keep open), `clock.js` (the in-game day's key), `limits.js` (a game's stock and its limit per character: the words, the count from the log and the editor's Limits group), `shelf.js` (whether players can see a game: the shop's filter, the GM's refusal, the editor's box and the Boxes row's toggle), `newgame.js` (what each New on the Boxes tab starts from: the draft per kind, the dialog's words, the status line once it is on the shelf), `starter.js` (the starter crates: the dnd5e packs read, the four pools picked by type, subtype and rarity, one game of every kind, the empty tabs' offer and the status line), `welcome.js` (the GM's welcome and the note after an update: when each shows, what a close records, the words and markup), `changelog.js` (the newest version's lines for that note, kept in step with CHANGELOG.md), `boxestable.js` (the Boxes tab's toolbar and table, every kind tagged and every cell captioned so a narrow pane stacks the rows, each price a field typed in place, shared with the harness), `route.js` (the ways between the sidebar, the shop and the manager: the sidebar buttons, the Roll Tables menu entry in both Foundry versions' shape, the manager's nav with View shop, the shop's Manage crates and its empty shelf, shared with the harness), `logtable.js` (the Pull log's table: misses folded, rounds grouped, the notes under a row, shared with the harness), `odds.js` (the pull and the shop's odds), `currency.js` (coins, `settle()` for every game's charge and payout, and `parsePrice()`, the inverse of how a price is shown), `boxcard.js` (the shop's box card and odds pills, shared with the manager and the harness), `revealcard.js` (the reveal's result block, where its window opens, and the replay snapshot a chat card keeps, shared with the harness), `chatcard.js` (what a pull's chat card becomes after a refund, and finding that card), `poolview.js` (the pool editor's rows, search, filter chips and 50-row pages, shared with the harness), `strip.js` (the reveal row), `spin.js` (the animation, DOM only), `redraw.js` (which open windows redraw when a world setting changes, once per burst of writes).
-  - Foundry-side: `store.js` (settings-backed pools/boxes/log), `starterbuild.js` (reads the dnd5e indexes and writes the starter crates in one queued task), `welcomewindow.js` (the welcome window, its world setting, the Show the welcome menu and the check at load), `pull.js` (one purchase of any kind: the money path), `socket.js` (player to GM), `table.js` (a table round on the GM: open, close, resolve once, the load's refund of stale stakes), `tablewindow.js` (the shared table window: the chips as bets arrive, the clock, the bet form, the GM's Spin, the round's reveal through the one hold), `shop.js`, `reveal.js`, `dicereveal.js` (the Dice So Nice bridge), `manager.js`, `chat.js`, `sound.js`, `main.js`.
-- `harness/` is the no-Foundry page used by `npm run smoke`.
-- `test/` is Vitest. `scripts/` are the checks. [`docs/DESIGN.md`](DESIGN.md) holds the design tokens and rules; [`docs/RELEASE.md`](RELEASE.md) the steps to publish a release; [`docs/COMPATIBILITY.md`](COMPATIBILITY.md) the Foundry and dnd5e versions it supports and the evidence for each API it uses.
+`module/` is what ships: `module.json`, `lang/en.json` (every word, by key), `styles/module.css` and `scripts/`. `scripts/main.js` is the entry point Foundry loads: the settings, the hooks and the module API. The rest sit in four folders. `games/`, `core/` and `views/` are pure: no Foundry globals, so Vitest and the harness run them, and lint enforces it. `foundry/` is everything that talks to Foundry.
+
+**games/**: the games of chance
+
+| File | What it holds |
+|---|---|
+| `kinds.js` | The game contract every game fills in, `registerKind`, and the shared `PullError` |
+| `crate.js` | The crate: the first kind's roll, spin and card |
+| `well.js` | The Wishing Well: its roll, daily cap, reveal, card and folded log |
+| `dicegame.js` | Dragon's Teeth: the verdict, the exact odds, Foundry's Roll read back as faces, the tumbling dice and the 3D-dice wait, its card |
+| `deck.js` | The Deck of Many Things: the cards, the plan that leaves drawn once cards out, the rising price, each card's roll, its card and editor |
+| `roulette.js` | The Wheel of Fate: the pockets, exact odds per bet, the spin with Foundry's die, the settle, the wheel and rail, its card and editor |
+| `auction.js` | The Auction: the lot, bid checks, house bidders, the hammer and its settle, the board, its card and editor |
+
+**core/**: rules, money and words
+
+| File | What it holds |
+|---|---|
+| `config.js` | The module id, setting keys, rarities and default weights |
+| `i18n.js` | The module's words: `t()`, the localizer `game.i18n` is installed as, the English table and `loadStrings()` |
+| `currency.js` | Coins: `settle()` for every charge and payout, and `parsePrice()`, the inverse of how a price is shown |
+| `odds.js` | The draw and the shop's odds, pity and no-duplicates |
+| `strip.js` | The reveal row the spin plays, built after the result is rolled |
+| `round.js` | A table round's state: open stakes, the stale window, the resolve's plan, the log's round lines |
+| `clock.js` | The in-game day's key, with dnd5e's calendar on or off |
+| `limits.js` | A game's stock and its limit per character: the words, the count from the log and the editor's group |
+| `shelf.js` | Whether players can see a game: the shop's filter, the GM's refusal, the editor's box and the row's toggle |
+| `linger.js` | The countdown that closes a finished game window, and its line |
+| `redraw.js` | Which open windows redraw when a world setting changes, once per burst of writes |
+| `changelog.js` | The newest version's lines for the GM's "What's new" note |
+
+**views/**: markup and DOM, shared by the windows and the harness
+
+| File | What it holds |
+|---|---|
+| `boxcard.js` | The shop's box card and odds pills |
+| `boxestable.js` | The Boxes tab's toolbar and table, each price a field typed in place |
+| `logtable.js` | The Pull log's table: misses folded, rounds grouped, notes under a row |
+| `poolview.js` | The pool editor's rows, search, filter chips and 50-row pages |
+| `editorfields.js` | The editors' shared named fields |
+| `newgame.js` | What each New on the Boxes tab starts from, Copy, and the status line |
+| `starter.js` | The starter crates: the packs read, the pools picked, one game of every kind |
+| `revealcard.js` | The reveal's result block, where its window opens, and the replay snapshot |
+| `chatcard.js` | A pull's chat card after a refund, and finding that card |
+| `tableview.js` | The shared table window's words and markup |
+| `route.js` | The ways between the sidebar, the shop and the manager |
+| `welcome.js` | The GM's welcome and the note after an update: when each shows, its words and markup |
+| `spin.js` | The spin animation: one loop, one `translateX` |
+
+**foundry/**: everything that talks to Foundry
+
+| File | What it holds |
+|---|---|
+| `store.js` | The settings-backed pools, games, log and state |
+| `pull.js` | One purchase of any kind on the GM: the money path |
+| `socket.js` | Player to GM: the request, the write queue, the broadcast |
+| `refund.js` | One refund for every kind |
+| `table.js` | A table round on the GM: open, close, resolve once, stale refunds, the watches |
+| `reveal.js` | The reveal window and its one hold until the spin lands |
+| `tablewindow.js` | The shared table window |
+| `shop.js` | The player's Crate Shop |
+| `manager.js` | The GM's manager: Pools, Boxes and Pull log |
+| `chat.js` | The sealed chat card and Watch again |
+| `sound.js` | The synthesised sounds, on Foundry's interface channel |
+| `dicereveal.js` | The Dice So Nice bridge |
+| `starterbuild.js` | Reads the dnd5e indexes and writes the starter crates in one queued task |
+| `welcomewindow.js` | The welcome window, its setting and the check at load |
+
+Outside `module/`: `harness/` is the no-Foundry page the smoke run screenshots, `test/` is Vitest, `foundry-dev/` holds the live checks, and `scripts/` the build, smoke, live runner and dev release.

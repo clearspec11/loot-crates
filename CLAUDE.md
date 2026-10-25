@@ -4,11 +4,11 @@ Guidance for Claude Code in this repository.
 
 ## What this is
 
-Loot Crates is a Foundry VTT module (v13/v14, dnd5e 5/6) for GM-curated item pools, gold-priced boxes and a crate-opening spin. Plain ES modules loaded by Foundry, no bundler, no framework. See docs/ARCHITECTURE.md for how it works and the layout (README.md is the guide for GMs and players).
+Loot Crates is a Foundry VTT module (v13/v14, dnd5e 5/6) for GM-curated item pools, gold-priced boxes and a crate-opening spin. Plain ES modules loaded by Foundry, no bundler, no framework. See docs/ARCHITECTURE.md for how it works and the layout, and docs/DEVELOPING.md for setup and the dev loops (README.md is the guide for GMs and players).
 
 ## Rules that keep it working
 
-- **Pure first.** `i18n.js`, `kinds.js`, `crate.js`, `well.js`, `dicegame.js`, `deck.js`, `roulette.js`, `auction.js`, `round.js`, `tableview.js`, `linger.js`, `clock.js`, `limits.js`, `shelf.js`, `newgame.js`, `starter.js`, `welcome.js`, `changelog.js`, `editorfields.js`, `boxestable.js`, `route.js`, `logtable.js`, `odds.js`, `currency.js`, `boxcard.js`, `revealcard.js`, `chatcard.js`, `poolview.js`, `strip.js` and `spin.js` must not touch Foundry globals (`game`, `Hooks`, `ui`, `foundry`, `fromUuid`), so Vitest and the harness can run them. Put anything Foundry-aware in the other scripts (`dicegame.js` reaches Foundry's `Roll` through `globalThis` with a pure fallback, as `pull.js` reaches `CONFIG`; its Dice So Nice bridge is `dicereveal.js`).
+- **Pure first.** `module/scripts/` has `main.js` and four folders: `games/` (the game contract and one file per game), `core/` (rules, money, words, days), `views/` (markup and DOM) and `foundry/` (everything that talks to Foundry). Nothing in `games/`, `core/` or `views/` may touch Foundry globals (`game`, `Hooks`, `ui`, `foundry`, `fromUuid`), so Vitest and the harness can run them; lint enforces it by folder. Put anything Foundry-aware in `foundry/` or `main.js` (`dicegame.js` reaches Foundry's `Roll` through `globalThis` with a pure fallback, as `pull.js` reaches `CONFIG`; its Dice So Nice bridge is `foundry/dicereveal.js`). A new script goes in the folder for its job; docs/ARCHITECTURE.md lists every file.
 - **Dice are Foundry's, rolled on the GM with `allowInteractive: false`,** inside the write queue, decided and logged before any client shows a die; the faces travel as the serialised Roll and every client rebuilds them from it. Never create a ChatMessage carrying a Roll: it renders the total everywhere at once, past the seal.
 - **The result is rolled before the strip is built** (the kind's roll, then `strip.js`). The animation never decides the outcome.
 - **Every game runs on the core.** A game is a kind (`kinds.js`): it supplies the roll, the reveal's animation and result, the chat card and the shop card, nothing else. The money path (`pull.js`), the request and broadcast (`socket.js`), the log row, the refund (`refund.js`) and the hold (`reveal.js`) are one copy; never duplicate them in a kind. A roll may give no item, pay coins out or take coins (`payoutCp`, negative for a loss: the deck's bane); a kind may price a play (`priceOf`: the deck's rising draw price) and the core charges, checks and logs that price; coins move only through `currency.js` `settle()`. Anything counted "per day" is keyed on the in-game day (`clock.js`: with dnd5e's calendar on, the later of the clock's day and the character's own day after their last long rest; with it off, from each character's long rests, as dnd5e recovers daily uses; a rest taken with no GM online is kept in the player's browser and sent once a GM joins) and counted from unrefunded log rows, never reset by hand (the well's cap).
@@ -26,7 +26,7 @@ Loot Crates is a Foundry VTT module (v13/v14, dnd5e 5/6) for GM-curated item poo
 - `npm run test:run`
 - `npm run build`
 - `NODE_PATH=$(npm root -g) npm run smoke` for any UI change; look at the PNGs. While iterating, run only what you touched: `npm run smoke -- --only=deck,well --width=1440 --theme=dark` (a state name or prefix); the full run is the gate before a commit.
-- For anything touching the purchase path or the data model: the live check in `foundry-dev/README.md`.
+- For anything touching the purchase path or the data model: the live checks, `npm run live -- <check>` (`npm run live -- --list`; settings in an untracked `.env`, see `foundry-dev/README.md`).
 
 ## Conventions
 
