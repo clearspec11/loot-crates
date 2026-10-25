@@ -100,6 +100,9 @@ async function join(browser, user) {
   await page.click("button[name=join], button[type=submit]");
   await page.waitForURL(/\/game/, { timeout: 30000 });
   await page.waitForFunction(() => window.game?.ready, null, { timeout: 120000 });
+  // What main.js does first: the branch's words, from its own lang/en.json
+  // (the installed release may have no language file, or older words).
+  await page.evaluate(async base => (await import(base + "scripts/i18n.js")).loadStrings(), MODULE_BASE);
   await wire(page);
   return { page, logs };
 }

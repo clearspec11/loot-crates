@@ -3,6 +3,7 @@ import { refundedCardContent } from "./chatcard.js";
 import { replaySnapshot } from "./revealcard.js";
 import { getLog } from "./store.js";
 import { getKind, kindOf } from "./kinds.js";
+import { t } from "./i18n.js";
 // The crate registers itself when imported, so a row or record with no kind is found.
 import "./crate.js";
 
@@ -59,15 +60,15 @@ export async function postRefundCard({ row, actor, removedItem }) {
   const stake = Math.round((Number(row.price) || 0) * 100);
   const payout = Math.round(Number(row.payoutCp) || 0);
   const net = stake - payout;
-  const line = removedItem ? `${esc(removedItem)} was removed from their inventory.`
-    : row.itemId ? `${esc(row.name)} was already gone, so only the coins came back.`
-    : payout < 0 ? `${esc(formatPrice(net / 100))} went back into their purse: the ${esc(formatPrice(stake / 100))} stake and the ${esc(formatPrice(-payout / 100))} the card took.`
-    : net > 0 ? `${esc(formatPrice(net / 100))} went back into their purse.`
-    : net < 0 ? `${esc(formatPrice(-net / 100))} was taken back from their purse: the ${esc(formatPrice(payout / 100))} won, less the ${esc(formatPrice(stake / 100))} stake.`
-    : "The coin had already come back, so nothing moved.";
+  const line = removedItem ? t("LOOTCRATES.Chat.RefundRemoved", { name: esc(removedItem) })
+    : row.itemId ? t("LOOTCRATES.Chat.RefundGone", { name: esc(row.name) })
+    : payout < 0 ? t("LOOTCRATES.Chat.RefundBane", { net: esc(formatPrice(net / 100)), stake: esc(formatPrice(stake / 100)), took: esc(formatPrice(-payout / 100)) })
+    : net > 0 ? t("LOOTCRATES.Chat.RefundBack", { net: esc(formatPrice(net / 100)) })
+    : net < 0 ? t("LOOTCRATES.Chat.RefundTaken", { net: esc(formatPrice(-net / 100)), won: esc(formatPrice(payout / 100)), stake: esc(formatPrice(stake / 100)) })
+    : t("LOOTCRATES.Chat.RefundCoinBack");
   const content = `
     <div class="loot-crates lc-chat lc-rarity-${esc(row.rarity ?? "none")}">
-      <div class="lc-chat__head">${esc(actor?.name ?? row.actorName)}'s <strong>${esc(row.boxName)}</strong> was refunded${payout ? "" : ` <span class="lc-chat__price">${esc(formatPrice(row.price))}</span>`}</div>
+      <div class="lc-chat__head">${t("LOOTCRATES.Chat.RefundHead", { actor: esc(actor?.name ?? row.actorName), box: `<strong>${esc(row.boxName)}</strong>` })}${payout ? "" : ` <span class="lc-chat__price">${esc(formatPrice(row.price))}</span>`}</div>
       <div class="lc-chat__refund">${line}</div>
     </div>`;
   return ChatMessage.create({

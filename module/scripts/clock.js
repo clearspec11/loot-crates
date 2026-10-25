@@ -46,6 +46,7 @@
   Null when the world has no way to tell a day at all, in which case
   nothing is counted per day.
 */
+import { t } from "./i18n.js";
 const SECONDS_PER_DAY = 86400;
 
 /*
@@ -144,7 +145,5 @@ export function dayKeyFor({ time = null, calendarOn = true, restDay = 0, restedI
 // The editor's line when a day ends at a long rest, said once beside the
 // well's cap and a limit per day (well.js noClockNote, limits.js).
 export function restDayNote(mode) {
-  return mode === "manual"
-    ? "dnd5e's daily recovery is manual: a day ends at each character's long rest."
-    : "dnd5e's calendar is off: a day ends at each character's long rest.";
+  return mode === "manual" ? t("LOOTCRATES.Clock.ManualRecovery") : t("LOOTCRATES.Clock.CalendarOff");
 }

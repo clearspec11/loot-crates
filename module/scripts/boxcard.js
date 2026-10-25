@@ -15,10 +15,11 @@ import { RARITIES, RARITY_SHORT, RARITY_LABEL } from "./config.js";
 import { shopOdds, oddsTable, flattenPool, rarityRank, chanceLabel, missChanceOf, oddsModeOf } from "./odds.js";
 import { canAfford, formatPrice, shortfall } from "./currency.js";
 import { stockOf, stockText, limitState, limitLine, withLimit } from "./limits.js";
-import { onShelf, OFF_SHELF_REASON } from "./shelf.js";
+import { onShelf, offShelfReason } from "./shelf.js";
+import { t, words } from "./i18n.js";
 
 // What an odds row is called: its rarity, or "Nothing" for a crate's miss.
-const rowName = (row, names = RARITY_SHORT) => (row.rarity === "none" ? "Nothing" : names[row.rarity] ?? row.rarity);
+const rowName = (row, names = RARITY_SHORT) => (row.rarity === "none" ? t("LOOTCRATES.Odds.Nothing") : names[row.rarity] ?? row.rarity);
 
 // "Rare 12%": the rarity's name is on screen, not only its colour.
 export function oddPill(row) {
@@ -49,9 +50,9 @@ export function chanceLines(odds, max = CARD_CHANCES) {
   if (rest.length) {
     const chance = rest.reduce((n, it) => n + it.chance, 0);
     const pct = rest.reduce((n, it) => n + (it.pct ?? 0), 0);
-    lines.push({ name: `and ${rest.length} more`, rarity: "rest", label: chanceLabel(chance, pct), rest: true });
+    lines.push({ name: t("LOOTCRATES.Card.AndMore", { count: rest.length }), rarity: "rest", label: chanceLabel(chance, pct), rest: true });
   }
-  if (odds?.nothing) lines.push({ name: "Nothing", rarity: "none", label: odds.nothing.label });
+  if (odds?.nothing) lines.push({ name: t("LOOTCRATES.Odds.Nothing"), rarity: "none", label: odds.nothing.label });
   return lines;
 }
 
@@ -149,8 +150,8 @@ export function pickActor(storedId, actors = [], mainCharacter = null) {
 // Why no crate can be bought at all, or "": the shop is shut, no GM is there
 // to roll, or there's no character to pay. Said once, not under every card.
 export function shopReason({ hasActor = false, open = true, gmOnline = true } = {}) {
-  if (!open) return gmOnline ? "The GM has closed the shop." : "Closed until a GM is online.";
-  if (!hasActor) return "You have no character to buy for.";
+  if (!open) return gmOnline ? t("LOOTCRATES.Shop.ClosedByGM") : t("LOOTCRATES.Shop.ClosedNoGM");
+  if (!hasActor) return t("LOOTCRATES.Shop.NoCharacter");
   return "";
 }
 
@@ -165,7 +166,7 @@ export function crateReason(box, odds, ctx = {}) {
 // "Needs 3 gp more": this character is short of the price, said even while
 // the shop is shut, so a player knows what to save for. Every kind's last word.
 export function shortReason(game, { purse = {}, hasActor = false } = {}) {
-  if (hasActor && !canAfford(purse, game.price)) return `Needs ${formatPrice(shortfall(purse, game.price))} more`;
+  if (hasActor && !canAfford(purse, game.price)) return t("LOOTCRATES.Card.Needs", { price: formatPrice(shortfall(purse, game.price)) });
   return "";
 }
 
@@ -176,10 +177,10 @@ export function shortReason(game, { purse = {}, hasActor = false } = {}) {
 // keep the result secret, and the GM would roll a second pull at the new
 // ones ("guaranteed this pull" after the pity was spent on the spin).
 function crateState(box, odds, { actorName = "", held } = {}) {
-  if (held?.(box.id)) return "Still spinning";
-  if (!odds.rows.length && !odds.nothingNew) return "Nothing inside";
-  if (box.rules?.stock != null && box.rules.stock <= 0) return "Sold out";
-  if (odds.nothingNew) return actorName ? `Nothing new for ${actorName}` : "Nothing new for this character";
+  if (held?.(box.id)) return t("LOOTCRATES.Card.StillSpinning");
+  if (!odds.rows.length && !odds.nothingNew) return t("LOOTCRATES.Card.NothingInside");
+  if (box.rules?.stock != null && box.rules.stock <= 0) return t("LOOTCRATES.Card.SoldOut");
+  if (odds.nothingNew) return actorName ? t("LOOTCRATES.Card.NothingNewFor", { name: actorName }) : t("LOOTCRATES.Card.NothingNew");
   return "";
 }
 
@@ -189,12 +190,15 @@ function crateState(box, odds, { actorName = "", held } = {}) {
   those rarities), else "Rare or better within 4 pulls". "" when the box
   has no pity this buyer can reach.
 */
+const PITY_LINE = {
+  pulls: { due: "LOOTCRATES.Pity.DuePull", within: "LOOTCRATES.Pity.WithinPulls" },
+  throws: { due: "LOOTCRATES.Pity.DueThrow", within: "LOOTCRATES.Pity.WithinThrows" },
+};
 export function pityLine(odds, noun = "pulls") {
   const pity = odds?.pity;
   if (!pity) return "";
-  const what = `${RARITY_LABEL[pity.minRarity] ?? pity.minRarity} or better`;
-  const one = noun.replace(/s$/, "");
-  return pity.due ? `${what} guaranteed this ${one}` : `${what} within ${pity.left} ${noun}`;
+  const keys = PITY_LINE[noun] ?? PITY_LINE.pulls;
+  return t(pity.due ? keys.due : keys.within, { rarity: RARITY_LABEL[pity.minRarity] ?? pity.minRarity, left: pity.left });
 }
 
 /*
@@ -209,14 +213,14 @@ export function refundRulesLine({ actorName, itemName, box, before = {}, after =
   const parts = [];
   if (pity?.after && pity.minRarity) {
     const from = Math.min(before.sinceRare ?? 0, pity.after), to = Math.min(after.sinceRare ?? 0, pity.after);
-    const due = to >= pity.after ? ` (${RARITY_LABEL[pity.minRarity] ?? pity.minRarity} or better is due on the next pull)` : "";
-    parts.push(`${actorName}'s pity count ${to === from ? "stays at" : "goes back to"} ${to} of ${pity.after} pulls${due}`);
+    const count = t(to === from ? "LOOTCRATES.Refund.PityStays" : "LOOTCRATES.Refund.PityBack", { name: actorName, to, after: pity.after });
+    parts.push(to >= pity.after ? t("LOOTCRATES.Refund.PityDue", { count, rarity: RARITY_LABEL[pity.minRarity] ?? pity.minRarity }) : count);
   }
   const freed = box?.rules?.noDuplicates && (before.owned ?? []).length > (after.owned ?? []).length;
-  if (freed) parts.push(`${itemName} can drop for ${actorName} again`);
+  if (freed) parts.push(t("LOOTCRATES.Refund.Freed", { item: itemName, name: actorName }));
   if (!parts.length) return "";
-  const line = parts.join(", and ");
-  return `${line[0].toUpperCase()}${line.slice(1)}.`;
+  const line = parts.length > 1 ? t("LOOTCRATES.Refund.RulesBoth", { pity: parts[0], item: parts[1] }) : parts[0];
+  return t("LOOTCRATES.Common.Sentence", { text: `${line[0].toUpperCase()}${line.slice(1)}` });
 }
 
 /*
@@ -229,10 +233,10 @@ export function refundRulesLine({ actorName, itemName, box, before = {}, after =
 */
 export const SHOP_NOTICE_ID = "lc-shop-notice";
 
-const WAITING = {
-  gm: "Waiting for the GM: their client hasn't rolled yet.",
-  hidden: "Waiting for the GM: their Foundry tab is in the background, which slows it down.",
-};
+const WAITING = words({
+  gm: "LOOTCRATES.Shop.WaitingGM",
+  hidden: "LOOTCRATES.Shop.WaitingHidden",
+});
 
 export function shopNotice(ctx = {}) {
   const reason = shopReason(ctx);
@@ -255,18 +259,18 @@ export function shopNotice(ctx = {}) {
   notice's own, so the caller leaves those out.
 */
 export function refusalLine({ box, reason = "", shown, price = box?.price, purse = {}, actorName = "" }) {
-  if (!box) return "That crate is no longer on the shelf.";
-  const who = actorName || "this character";
+  if (!box) return t("LOOTCRATES.Shop.GoneFromShelf");
+  const who = actorName || t("LOOTCRATES.Common.ThisCharacter");
   const raised = shown != null && shown !== "" && Number(shown) !== Number(price);
-  if (raised && !canAfford(purse, price)) return `${box.name} now costs ${formatPrice(price)}, more than ${who} has.`;
+  if (raised && !canAfford(purse, price)) return t("LOOTCRATES.Shop.Raised", { name: box.name, price: formatPrice(price), who });
   if (!reason) return "";
-  return `Couldn't open ${box.name}: ${reason[0].toLowerCase()}${reason.slice(1)}.`;
+  return t("LOOTCRATES.Shop.CouldNotOpen", { name: box.name, reason: `${reason[0].toLowerCase()}${reason.slice(1)}` });
 }
 
 // The shop re-picked its character (pickActor) between the redraw and the
 // press: the cards were someone else's, so nothing was sent.
 export function changedCharacterLine(name) {
-  return `Your character changed to ${name}; check the crate and press Buy again.`;
+  return t("LOOTCRATES.Shop.CharacterChanged", { name });
 }
 
 /*
@@ -280,12 +284,12 @@ export function changedCharacterLine(name) {
 export function actorPicker({ actors = [], actorId = null, busy = false, esc = s => String(s ?? "") }) {
   if (actors.length > 1) {
     const options = actors.map(a => `<option value="${esc(a.id)}"${a.id === actorId ? " selected" : ""}>${esc(a.name)}</option>`).join("");
-    return `<label class="lc-shop__field"><span class="lc-label">Character</span><select class="lc-shop__actor"${busy ? ` aria-disabled="true"` : ""}>${options}</select></label>`;
+    return `<label class="lc-shop__field"><span class="lc-label">${t("LOOTCRATES.Shop.Character")}</span><select class="lc-shop__actor"${busy ? ` aria-disabled="true"` : ""}>${options}</select></label>`;
   }
   // Focusable as a target only (tabindex -1), for focus on a select that
   // gives way to it (patchShop); morph keeps the attribute on later renders.
-  const name = actors.find(a => a.id === actorId)?.name ?? "No character";
-  return `<div class="lc-shop__field"><span class="lc-label">Character</span><span class="lc-shop__who" tabindex="-1">${esc(name)}</span></div>`;
+  const name = actors.find(a => a.id === actorId)?.name ?? t("LOOTCRATES.Shop.NoCharacterName");
+  return `<div class="lc-shop__field"><span class="lc-label">${t("LOOTCRATES.Shop.Character")}</span><span class="lc-shop__who" tabindex="-1">${esc(name)}</span></div>`;
 }
 
 /*
@@ -330,7 +334,7 @@ export function boxCard(box, pools, ctx) {
     pity ? `<div class="lc-box__pity lc-rarity-${odds.pity.minRarity}${odds.pity.due ? " lc-box__pity--due" : ""}">${esc(pity)}</div>` : "",
     stock,
   ];
-  return cardShell(box, ctx, { rarityClass, art: peek.length ? peekHTML(peek, esc) : ctx.art ?? "", middle, reason, label: `Open for ${esc(formatPrice(box.price))}` });
+  return cardShell(box, ctx, { rarityClass, art: peek.length ? peekHTML(peek, esc) : ctx.art ?? "", middle, reason, label: t("LOOTCRATES.Card.OpenFor", { price: esc(formatPrice(box.price)) }) });
 }
 
 /*
@@ -355,7 +359,7 @@ export function cardShell(box, ctx, { rarityClass, art = "", middle: lines = [],
   // the card's reason, whatever the kind said.
   const limit = limitState(box, ctx);
   const more = limitLine(limit);
-  const reason = onShelf(box) ? withLimit(box, own, ctx) : OFF_SHELF_REASON;
+  const reason = onShelf(box) ? withLimit(box, own, ctx) : offShelfReason();
   const middle = more ? [...lines, `<div class="lc-box__limit">${esc(more)}</div>`] : lines;
   const notice = shopNotice(ctx).text;
   const whyId = `lc-why-${box.id}`;
@@ -372,7 +376,7 @@ export function cardShell(box, ctx, { rarityClass, art = "", middle: lines = [],
           <div class="lc-box__art" aria-hidden="true">${art}</div>
           ${middle.join("\n          ")}
           <button type="button" class="lc-box__buy" data-action="buy" data-box="${esc(box.id)}"${price ? ` data-price="${esc(price)}"` : ""}${off ? ` aria-disabled="true"` : ""}${off && describedBy ? ` aria-describedby="${esc(describedBy)}"` : ""}>
-            <span class="lc-sr-only">${esc(box.name)}: </span>${opening ? (waiting ? "Waiting for the GM…" : "Opening…") : label}
+            <span class="lc-sr-only">${esc(box.name)}: </span>${opening ? (waiting ? t("LOOTCRATES.Card.Waiting") : t("LOOTCRATES.Card.Opening")) : label}
           </button>
           ${reason ? `<div class="lc-box__why" id="${esc(whyId)}">${esc(reason)}</div>` : ""}
         </div>
@@ -572,9 +576,9 @@ export function boxPreview(box, pools) {
   const held = new Set();
   for (const ref of box.pools ?? []) for (const e of flattenPool(ref.id, pools)) held.add(e.rarity);
   let note = "";
-  if (!box.pools?.length) note = "This box can drop nothing: tick a pool above.";
-  else if (!odds.rows.length) note = "This box can drop nothing: its pools have no item that can drop.";
-  else if (oddsModeOf(box) === "rarity" && oddsTable(box, pools).every(row => row.chance === 0)) note = "Every rarity these pools hold weighs 0, so each is equally likely.";
+  if (!box.pools?.length) note = t("LOOTCRATES.Editor.DropsNothingTick");
+  else if (!odds.rows.length) note = t("LOOTCRATES.Editor.DropsNothingPools");
+  else if (oddsModeOf(box) === "rarity" && oddsTable(box, pools).every(row => row.chance === 0)) note = t("LOOTCRATES.Editor.AllWeighZero");
   return { odds, held, note, empty: !odds.rows.length };
 }
 

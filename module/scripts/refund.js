@@ -21,6 +21,7 @@ import { settle, toCopper, formatPrice } from "./currency.js";
 import { getLog, updateLog, getBoxes, saveBox, enqueueWrite, getActorState, setActorState } from "./store.js";
 import { getKind, kindOf } from "./kinds.js";
 import { stockAfterRefund } from "./limits.js";
+import { t } from "./i18n.js";
 // The crate registers itself when imported, so a row or record with no kind is found.
 import "./crate.js";
 import { findPullCard, isRefundedCard, refundedCardContent } from "./chatcard.js";
@@ -54,7 +55,7 @@ export function shortMessage(row, actor) {
   const take = -refundCoins(row) / 100;
   const won = Math.max(0, Math.round(Number(row?.payoutCp) || 0)) / 100;
   const have = Math.max(0, take - short);
-  return `${actor.name} has spent ${formatPrice(short)} of the ${formatPrice(won)} won at ${row.boxName} (${formatPrice(have)} of the ${formatPrice(take)} to take back is left). Nothing was refunded; refund it once the purse can cover it.`;
+  return t("LOOTCRATES.Refund.Spent", { actor: actor.name, short: formatPrice(short), won: formatPrice(won), box: row.boxName, have: formatPrice(have), take: formatPrice(take) });
 }
 
 // The item this row granted, if the actor still has it. Matching on the
@@ -72,10 +73,10 @@ export function grantedItem(row, actor) {
 // `coins` is what the character gets back, in copper (negative: gives back).
 export function describeRefund(rowId) {
   const row = getLog().find(r => r.id === rowId);
-  if (!row) return { status: "missing", message: "That pull is no longer in the log." };
-  if (row.refunded) return { status: "already", row, message: "That pull was already refunded." };
+  if (!row) return { status: "missing", message: t("LOOTCRATES.Refund.Missing") };
+  if (row.refunded) return { status: "already", row, message: t("LOOTCRATES.Refund.Already") };
   const actor = game.actors.get(row.actorId);
-  if (!actor) return { status: "no-actor", row, message: "That character is gone." };
+  if (!actor) return { status: "no-actor", row, message: t("LOOTCRATES.Refund.NoActor") };
   const box = getBoxes()[row.boxId] ?? null;
   const short = spentWinnings(row, actor);
   if (short > 0) return { status: "short", row, actor, box, short, message: shortMessage(row, actor) };
@@ -141,7 +142,7 @@ async function doRefund(rowId) {
       state = next;
     } catch (err) {
       console.error(`loot-crates | could not put back ${row.actorName}'s pity count and no-duplicates record for ${row.boxName}`, err);
-      globalThis.ui?.notifications?.error(`Loot Crates: ${row.name} was refunded, but ${row.actorName}'s pity count and no-duplicates record for ${row.boxName} weren't put back. Check the console.`);
+      globalThis.ui?.notifications?.error(t("LOOTCRATES.Refund.StateFailed", { name: row.name, actor: row.actorName, box: row.boxName }));
     }
   }
 

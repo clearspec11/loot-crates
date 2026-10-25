@@ -14,6 +14,7 @@ import { MODULE_ID, SETTINGS } from "./config.js";
 import { normalizeRarity, flattenPool, markEntriesMissing, rawRarityOf, sourceRarityOf, curateEntries } from "./odds.js";
 import { dayModeOf, dayKeyFor, byRest, dayOf, dayAfterRest, keyOfDay } from "./clock.js";
 import { pruneRounds } from "./round.js";
+import { t } from "./i18n.js";
 
 const uid = () => (globalThis.foundry?.utils?.randomID?.(10)) ?? Math.random().toString(36).slice(2, 12);
 
@@ -41,8 +42,10 @@ export function registerSettings() {
   world(SETTINGS.SHOP_OPEN, Boolean, true);
   world(SETTINGS.ROUNDS, Object, {});
   game.settings.register(MODULE_ID, SETTINGS.SOUND, {
-    name: "Crate sounds",
-    hint: "Play the tick, slow-down and reveal sounds when a crate opens.",
+    // Getters: Foundry keeps this object and reads its words when Game
+    // Settings renders, by when the module's words have arrived.
+    get name() { return t("LOOTCRATES.Settings.SoundName"); },
+    get hint() { return t("LOOTCRATES.Settings.SoundHint"); },
     scope: "client", config: true, type: Boolean, default: true,
   });
 }
@@ -161,7 +164,7 @@ export const setShopOpen = open => set(SETTINGS.SHOP_OPEN, !!open);
 export async function savePool(pool) {
   const pools = getPools();
   const id = pool.id ?? uid();
-  pools[id] = { name: "New pool", entries: [], pools: [], ...pool, id };
+  pools[id] = { name: t("LOOTCRATES.Pools.NewPool"), entries: [], pools: [], ...pool, id };
   await set(SETTINGS.POOLS, pools);
   return pools[id];
 }
@@ -179,7 +182,7 @@ export async function deletePool(id) {
 export async function saveBox(box) {
   const boxes = getBoxes();
   const id = box.id ?? uid();
-  boxes[id] = { name: "New box", price: 100, pools: [], weights: {}, rules: {}, ...box, id };
+  boxes[id] = { name: t("LOOTCRATES.Boxes.NewBox"), price: 100, pools: [], weights: {}, rules: {}, ...box, id };
   await set(SETTINGS.BOXES, boxes);
   return boxes[id];
 }
@@ -791,8 +794,8 @@ export function sweepAllPools() {
 export function reportMissing(found) {
   if (!found?.length) return;
   for (const f of found) console.warn(`loot-crates | ${f.name} (${f.uuid}) in pool ${f.poolName} has no source; it won't be drawn until it is fixed or removed`);
-  const list = found.map(f => `${f.name} in ${f.poolName}`).join(", ");
-  globalThis.ui?.notifications?.warn(`Loot Crates: ${list} ${found.length === 1 ? "is" : "are"} missing ${found.length === 1 ? "its source and is" : "their sources and are"} no longer drawn. Fix or remove ${found.length === 1 ? "it" : "them"} in the pool editor.`);
+  const list = found.map(f => t("LOOTCRATES.Pools.EntryIn", { name: f.name, pool: f.poolName })).join(", ");
+  globalThis.ui?.notifications?.warn(t(found.length === 1 ? "LOOTCRATES.Pools.MissingOne" : "LOOTCRATES.Pools.MissingMany", { list }));
 }
 
 /*

@@ -9,6 +9,7 @@
 */
 import { RARITY_LABEL, RARITIES } from "./config.js";
 import { formatGold } from "./currency.js";
+import { t } from "./i18n.js";
 
 export const REVEAL_WIDTH = 720;
 // The reveal's rendered height in cc-dev at 1440x900, used only to centre the
@@ -60,11 +61,11 @@ export function canSeePurse(reveal, viewer = {}) {
 export function resultHTML(reveal, { esc = String, canSee = false, extra = [] } = {}) {
   const res = reveal.result;
   const where = [];
-  if (reveal.itemUuid) where.push(`Added to ${esc(reveal.actorName)}'s inventory`);
-  if (canSee && reveal.purse) where.push(`<span class="lc-reveal__gold">${esc(formatGold(reveal.purse))} left</span>`);
+  if (reveal.itemUuid) where.push(t("LOOTCRATES.Reveal.AddedTo", { name: esc(reveal.actorName) }));
+  if (canSee && reveal.purse) where.push(`<span class="lc-reveal__gold">${t("LOOTCRATES.Reveal.GoldLeft", { gold: esc(formatGold(reveal.purse)) })}</span>`);
   where.push(...extra);
   return `<div class="lc-reveal__name">${esc(res.name)}</div>`
-    + `<div class="lc-reveal__rarity">${esc(RARITY_LABEL[res.rarity] ?? res.rarity)}${res.pity ? " · pity" : ""}</div>`
+    + `<div class="lc-reveal__rarity">${esc(RARITY_LABEL[res.rarity] ?? res.rarity)}${res.pity ? ` · ${t("LOOTCRATES.Common.Pity")}` : ""}</div>`
     + (where.length ? `<div class="lc-reveal__where">${where.join(" · ")}</div>` : "");
 }
 
@@ -73,8 +74,8 @@ export function resultHTML(reveal, { esc = String, canSee = false, extra = [] } 
   the item's name would be, then, for the buyer and GMs, the gold left.
 */
 export function missHTML(reveal, { esc = String, canSee = false } = {}) {
-  const where = canSee && reveal.purse ? `<div class="lc-reveal__where"><span class="lc-reveal__gold">${esc(formatGold(reveal.purse))} left</span></div>` : "";
-  return `<div class="lc-reveal__quiet">Nothing this time.</div>${where}`;
+  const where = canSee && reveal.purse ? `<div class="lc-reveal__where"><span class="lc-reveal__gold">${t("LOOTCRATES.Reveal.GoldLeft", { gold: esc(formatGold(reveal.purse)) })}</span></div>` : "";
+  return `<div class="lc-reveal__quiet">${t("LOOTCRATES.Reveal.NothingThisTime")}</div>${where}`;
 }
 
 // The odds a crate's reveal and replay show: its rarities, then the share
@@ -106,7 +107,7 @@ export function replaySnapshot(reveal) {
     odds: (reveal.odds ?? []).map(({ rarity, chance, label }) => ({ rarity, chance, label })),
     box: { name: String(reveal.box?.name ?? ""), price: reveal.box?.price ?? 0 },
     actorName: String(reveal.actorName ?? ""),
-    result: nothing ? { name: "Nothing", rarity: "none", nothing: true } : { name: String(reveal.result.name ?? ""), rarity: reveal.result.rarity, pity: !!reveal.result.pity },
+    result: nothing ? { name: t("LOOTCRATES.Odds.Nothing"), rarity: "none", nothing: true } : { name: String(reveal.result.name ?? ""), rarity: reveal.result.rarity, pity: !!reveal.result.pity },
   };
 }
 
@@ -142,7 +143,7 @@ export function replayReveal(snapshot, key) {
 
 // The replay window's title: says it is a replay, so nobody takes it for a
 // second purchase.
-export const replayTitle = reveal => `Replay: ${reveal.actorName} opens ${reveal.box.name}`;
+export const replayTitle = reveal => t("LOOTCRATES.Reveal.ReplayTitle", { actor: reveal.actorName, box: reveal.box.name });
 export const replayWindowId = key => `loot-crates-reveal-replay-${key}`;
 
 /*
@@ -157,8 +158,8 @@ export const replayWindowId = key => `loot-crates-reveal-replay-${key}`;
 */
 export const revealActionsHTML = () => `<div class="lc-reveal__actions">
         <span class="lc-reveal__why" hidden></span>
-        <button type="button" class="lc-reveal__again" data-action="drawAgain" hidden>Draw again</button>
-        <button type="button" class="lc-reveal__open" data-action="openItem" hidden>Open item</button>
-        <button type="button" class="lc-reveal__watch" data-action="watchAgain" hidden>Watch again</button>
-        <button type="button" class="lc-reveal__close" data-action="skip">Skip</button>
+        <button type="button" class="lc-reveal__again" data-action="drawAgain" hidden>${t("LOOTCRATES.Reveal.DrawAgain")}</button>
+        <button type="button" class="lc-reveal__open" data-action="openItem" hidden>${t("LOOTCRATES.Reveal.OpenItem")}</button>
+        <button type="button" class="lc-reveal__watch" data-action="watchAgain" hidden>${t("LOOTCRATES.Reveal.WatchAgain")}</button>
+        <button type="button" class="lc-reveal__close" data-action="skip">${t("LOOTCRATES.Reveal.Skip")}</button>
       </div>`;

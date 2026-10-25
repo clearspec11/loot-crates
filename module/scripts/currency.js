@@ -5,6 +5,8 @@
   (carried 10 cp to 1 sp, 10 sp to 1 gp, so change never reads "12 sp"), and
   returns the new purse or null when the actor can't afford it.
 */
+import { t } from "./i18n.js";
+
 export const COPPER_PER = { pp: 1000, gp: 100, ep: 50, sp: 10, cp: 1 };
 const ORDER = ["pp", "gp", "ep", "sp", "cp"];
 
@@ -68,7 +70,7 @@ export function parsePrice(text) {
 }
 
 // What the Boxes row and the editors say about a price they can't read.
-export const unreadablePrice = text => (String(text ?? "").trim() ? `Couldn't read "${String(text).trim()}"; try 5 gp or 5 sp.` : "Type a price, such as 5 gp or 5 sp.");
+export const unreadablePrice = text => (String(text ?? "").trim() ? t("LOOTCRATES.Price.Unreadable", { text: String(text).trim() }) : t("LOOTCRATES.Price.Empty"));
 
 // A purse as gold, the way the shop's header and the reveal show it, in the
 // same coins as every price beside it: "450 gp", or "450 gp 5 sp 3 cp" when

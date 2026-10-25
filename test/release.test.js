@@ -226,4 +226,10 @@ describe("docs/COMPATIBILITY.md", () => {
     expect(fields.filter(f => !md.includes(`\`${f}\``))).toEqual([]);
     expect(STARTER_PACKS.map(p => `dnd5e.${p.name}`).filter(id => !md.includes(`\`${id}\``))).toEqual([]);
   });
+
+  it("names every game.i18n call the scripts make (the module's words, i18n.js)", () => {
+    const i18n = uses(/\bgame\.i18n\.[a-z]\w*/g);
+    expect(i18n).toEqual(expect.arrayContaining(["game.i18n.has", "game.i18n.format", "game.i18n.localize"]));
+    expect(i18n.filter(call => !md.includes(`\`${call}\``))).toEqual([]);
+  });
 });

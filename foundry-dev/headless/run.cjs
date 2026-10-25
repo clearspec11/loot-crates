@@ -29,6 +29,9 @@ const MODULE_BASE = process.env.MODULE_BASE || "http://localhost:8765/";
     await p.waitForURL(/\/game/, { timeout: 30000 });
   }
   await p.waitForFunction(() => window.game?.ready, null, { timeout: 120000 });
+  // What main.js does first: the branch's words, from its own lang/en.json
+  // (the installed release may have no language file, or older words).
+  await p.evaluate(async base => (await import(base + "scripts/i18n.js")).loadStrings(), MODULE_BASE);
   const out = await p.evaluate(async ({ body, MODULE_BASE }) => {
     try { return { ok: true, value: await (new Function("MODULE_BASE", `return (async () => {\n${body}\n})()`))(MODULE_BASE) }; }
     catch (e) { return { ok: false, error: String(e?.stack || e) }; }

@@ -53,28 +53,30 @@ import { formatPrice } from "./currency.js";
 import { limitsText } from "./limits.js";
 import { onShelf, shelfCountText, shelfToggleHTML } from "./shelf.js";
 import { starterCallHTML, STARTER_LABEL } from "./starter.js";
+import { t, words, onStrings } from "./i18n.js";
 
 // The New buttons, in the order the kinds arrived; their action names are
 // the manager's (test/actions.test.js keeps them off ApplicationV2's own).
-export const NEW_BUTTONS = [["addBox", "New box"], ["addWell", "New well"], ["addDice", "New dice game"], ["addDeck", "New deck"], ["addWheel", "New wheel"], ["addAuction", "New auction"]];
+const NEW_KEYS = [["addBox", "LOOTCRATES.Boxes.NewBox"], ["addWell", "LOOTCRATES.Boxes.NewWell"], ["addDice", "LOOTCRATES.Boxes.NewDice"], ["addDeck", "LOOTCRATES.Boxes.NewDeck"], ["addWheel", "LOOTCRATES.Boxes.NewWheel"], ["addAuction", "LOOTCRATES.Boxes.NewAuction"]];
+export const NEW_BUTTONS = NEW_KEYS.map(([action, key]) => Object.defineProperty([action], 1, { enumerable: true, get: () => t(key) }));
 
 // The table's columns, as its header reads them and as a stacked row
 // captions them (the last, the buttons, needs no caption; its header is
 // named for a screen reader only, tableHTML).
-export const BOXES_COLUMNS = ["Box", "Price", "Pools", "Odds", "Rules", ""];
+export const BOXES_COLUMNS = words(["LOOTCRATES.Boxes.ColBox", "LOOTCRATES.Boxes.ColPrice", "LOOTCRATES.Boxes.ColPools", "LOOTCRATES.Boxes.ColOdds", "LOOTCRATES.Boxes.ColRules", ""]);
 
 // The table kinds' rows open their round ("Open a round", "Go to the
 // table"; an auction's "Open the auction", "Go to the auction").
 const TABLE_KINDS = ["roulette", "auction"];
-const TABLE_WORDS = { roulette: ["Open a round", "Go to the table"], auction: ["Open the auction", "Go to the auction"] };
+const TABLE_WORDS = { roulette: words(["LOOTCRATES.Boxes.OpenRound", "LOOTCRATES.Boxes.GoToTable"]), auction: words(["LOOTCRATES.Boxes.OpenAuction", "LOOTCRATES.Boxes.GoToAuction"]) };
 export const tableLabel = (b, rounds = {}) => (TABLE_WORDS[kindOf(b)] ?? TABLE_WORDS.roulette)[liveRoundOf(rounds, b.id) ? 1 : 0];
 
 // Each kind's tag in the Box column, the crate's included.
-const KIND_TAG = { crate: "Crate", well: "Well", dice: "Dice", deck: "Deck", roulette: "Wheel", auction: "Auction" };
+const KIND_TAG = words({ crate: "LOOTCRATES.Kind.Crate", well: "LOOTCRATES.Kind.Well", dice: "LOOTCRATES.Kind.Dice", deck: "LOOTCRATES.Kind.Deck", roulette: "LOOTCRATES.Kind.Wheel", auction: "LOOTCRATES.Kind.Auction" });
 export const kindTag = record => KIND_TAG[kindOf(record)] ?? kindOf(record);
 
 // A box's odds in the Boxes table: its ribbon over its named pills.
-const oddsCell = rows => rows.length ? `${oddsRibbon(rows)}<div class="lc-odds">${oddsPills(rows)}</div>` : "<em>empty</em>";
+const oddsCell = rows => rows.length ? `${oddsRibbon(rows)}<div class="lc-odds">${oddsPills(rows)}</div>` : `<em>${t("LOOTCRATES.Boxes.Empty")}</em>`;
 
 // One cell, captioned with its column's name for a stacked row. The label
 // is one of the column constants, never a user's text.
@@ -84,7 +86,8 @@ export const cell = (label, html, attrs = "") => `<td role="cell" data-label="${
 // The roles say what the display property no longer does once a narrow
 // panel stacks the rows. A column without words (the buttons') is named
 // "Actions" for a screen reader, so every columnheader has a name.
-export const UNNAMED_COLUMN = "Actions";
+export let UNNAMED_COLUMN = "";
+onStrings(() => { UNNAMED_COLUMN = t("LOOTCRATES.Boxes.ColActions"); });
 export function tableHTML(cls, columns, rowsHTML) {
   return `<table class="lc-table lc-table--stack ${cls}" role="table"><thead role="rowgroup"><tr role="row">${columns.map(c => `<th role="columnheader">${c || `<span class="lc-sr-only">${UNNAMED_COLUMN}</span>`}</th>`).join("")}</tr></thead><tbody role="rowgroup">
         ${rowsHTML}</tbody></table>`;
@@ -102,12 +105,12 @@ export function boxesToolbarHTML(status = "", esc = s => String(s ?? ""), boxes 
 export function boxesTableHTML({ boxes, pools, log = [], rounds = {}, recent = null, esc }) {
   if (!boxes.length) return starterCallHTML("boxes", esc);
   const kind = b => kindOf(b);
-  const tag = b => ` <span class="lc-kind">${esc(kindTag(b))}</span>${onShelf(b) ? "" : ` <span class="lc-kind lc-kind--off">Off the shelf</span>`}`;
+  const tag = b => ` <span class="lc-kind">${esc(kindTag(b))}</span>${onShelf(b) ? "" : ` <span class="lc-kind lc-kind--off">${t("LOOTCRATES.Boxes.OffShelfTag")}</span>`}`;
   const odds = b => ({
-    well: () => wellOddsHTML(wellOdds(b, pools)) || "<em>dry</em>",
-    dice: () => diceOddsHTML(diceOdds(b, pools)) || "<em>unbeatable</em>",
-    deck: () => deckOddsHTML(deckOdds(b, pools, log)) || "<em>empty</em>",
-    roulette: () => rouletteOddsHTML(betOdds(b), esc) || "<em>no pockets</em>",
+    well: () => wellOddsHTML(wellOdds(b, pools)) || `<em>${t("LOOTCRATES.Boxes.Dry")}</em>`,
+    dice: () => diceOddsHTML(diceOdds(b, pools)) || `<em>${t("LOOTCRATES.Boxes.Unbeatable")}</em>`,
+    deck: () => deckOddsHTML(deckOdds(b, pools, log)) || `<em>${t("LOOTCRATES.Boxes.Empty")}</em>`,
+    roulette: () => rouletteOddsHTML(betOdds(b), esc) || `<em>${t("LOOTCRATES.Boxes.NoPockets")}</em>`,
     auction: () => auctionLotHTML(b, esc),
   }[kind(b)] ?? (() => oddsCell(oddsRows(shopOdds(b, pools)))))();
   const own = b => ({
@@ -116,23 +119,23 @@ export function boxesTableHTML({ boxes, pools, log = [], rounds = {}, recent = n
     deck: () => deckRulesText(b, log),
     roulette: () => rouletteRulesText(b),
     auction: () => auctionRulesText(b),
-  }[kind(b)] ?? (() => [oddsModeOf(b) === "weight" ? (b.fromTable ? "the table's odds" : "by item weight") : "", b.rules?.pity ? `${RARITY_LABEL[b.rules.pity.minRarity] ?? b.rules.pity.minRarity} or better after ${b.rules.pity.after} pulls` : "", b.rules?.noDuplicates ? "no dupes" : ""].filter(Boolean).join(", ")))();
+  }[kind(b)] ?? (() => [oddsModeOf(b) === "weight" ? (b.fromTable ? t("LOOTCRATES.Boxes.RuleTableOdds") : t("LOOTCRATES.Boxes.RuleByWeight")) : "", b.rules?.pity ? t("LOOTCRATES.Boxes.RulePityPulls", { rarity: RARITY_LABEL[b.rules.pity.minRarity] ?? b.rules.pity.minRarity, after: b.rules.pity.after }) : "", b.rules?.noDuplicates ? t("LOOTCRATES.Boxes.RuleNoDupes") : ""].filter(Boolean).join(", ")))();
   const rules = b => esc([own(b), TABLE_KINDS.includes(kind(b)) ? "" : limitsText(b)].filter(Boolean).join(", "));
   // A deck's row reshuffles; a wheel's opens its round (or brings the open one
   // forward). The text button sits on a line of its own over the icons
   // (module.css lc-table__extra), so the buttons' cell, the one that never
   // wraps, is never wider than the three icons and the table fits every
   // pane down to where its rows stack.
-  const extra = b => (kind(b) === "deck" ? `<button type="button" class="lc-table__extra" data-action="reshuffle" data-box="${esc(b.id)}" aria-label="Reshuffle ${esc(b.name)}">Reshuffle</button> `
-    : TABLE_KINDS.includes(kind(b)) && (onShelf(b) || liveRoundOf(rounds, b.id)) ? `<button type="button" class="lc-table__extra" data-action="openTable" data-box="${esc(b.id)}" aria-label="${tableLabel(b, rounds)} at ${esc(b.name)}">${tableLabel(b, rounds)}</button> ` : "");
+  const extra = b => (kind(b) === "deck" ? `<button type="button" class="lc-table__extra" data-action="reshuffle" data-box="${esc(b.id)}" aria-label="${t("LOOTCRATES.Boxes.ReshuffleLabel", { name: esc(b.name) })}">${t("LOOTCRATES.Boxes.Reshuffle")}</button> `
+    : TABLE_KINDS.includes(kind(b)) && (onShelf(b) || liveRoundOf(rounds, b.id)) ? `<button type="button" class="lc-table__extra" data-action="openTable" data-box="${esc(b.id)}" aria-label="${t("LOOTCRATES.Boxes.TableAt", { label: tableLabel(b, rounds), name: esc(b.name) })}">${tableLabel(b, rounds)}</button> ` : "");
   const [BOX, PRICE, POOLS, ODDS, RULES, ACT] = BOXES_COLUMNS;
   const rowClass = b => [b.id === recent ? "lc-row--new" : "", onShelf(b) ? "" : "lc-row--off"].filter(Boolean).join(" ");
   return tableHTML("lc-table--boxes", BOXES_COLUMNS, boxes.map(b => `<tr${rowClass(b) ? ` class="${rowClass(b)}"` : ""} role="row">
           ${cell(BOX, `<span class="lc-table__name">${esc(b.name)}${tag(b)}</span>`)}${cell(PRICE, priceInputHTML(b, esc))}
-          ${cell(POOLS, (b.pools ?? []).map(r => esc(pools[r.id]?.name ?? "missing")).join(", ") || "<em>none</em>")}
+          ${cell(POOLS, (b.pools ?? []).map(r => esc(pools[r.id]?.name ?? t("LOOTCRATES.Boxes.MissingPool"))).join(", ") || `<em>${t("LOOTCRATES.Boxes.NoPools")}</em>`)}
           ${cell(ODDS, odds(b))}
           ${cell(RULES, rules(b))}
-          ${cell(ACT, `${shelfToggleHTML(b, esc)} ${extra(b)}<button type="button" data-action="editBox" data-box="${esc(b.id)}" aria-label="Edit ${esc(b.name)}" data-tooltip="Edit"><i class="fas fa-pen" inert></i></button> <button type="button" data-action="copyBox" data-box="${esc(b.id)}" aria-label="Copy ${esc(b.name)}" data-tooltip="Copy"><i class="fas fa-copy" inert></i></button> <button type="button" data-action="deleteBox" data-box="${esc(b.id)}" aria-label="Delete ${esc(b.name)}" data-tooltip="Delete"><i class="fas fa-trash" inert></i></button>`)}
+          ${cell(ACT, `${shelfToggleHTML(b, esc)} ${extra(b)}<button type="button" data-action="editBox" data-box="${esc(b.id)}" aria-label="${t("LOOTCRATES.Boxes.EditLabel", { name: esc(b.name) })}" data-tooltip="${t("LOOTCRATES.Boxes.Edit")}"><i class="fas fa-pen" inert></i></button> <button type="button" data-action="copyBox" data-box="${esc(b.id)}" aria-label="${t("LOOTCRATES.Boxes.CopyLabel", { name: esc(b.name) })}" data-tooltip="${t("LOOTCRATES.Boxes.Copy")}"><i class="fas fa-copy" inert></i></button> <button type="button" data-action="deleteBox" data-box="${esc(b.id)}" aria-label="${t("LOOTCRATES.Boxes.DeleteLabel", { name: esc(b.name) })}" data-tooltip="${t("LOOTCRATES.Boxes.Delete")}"><i class="fas fa-trash" inert></i></button>`)}
         </tr>`).join(""));
 }
 
@@ -144,19 +147,19 @@ export function boxesTableHTML({ boxes, pools, log = [], rounds = {}, recent = n
   says what the price is for the game's kind: a crate's price, a deck's
   first draw, a wheel's lowest bet, a well's or dice game's stake.
 */
-const PRICE_NAME = { deck: "First draw at", roulette: "Lowest bet at", well: "Stake at", dice: "Stake at", auction: "Opening bid at" };
-export const priceLabel = b => `${PRICE_NAME[kindOf(b)] ?? "Price of"} ${b.name ?? ""}`.trim();
+const PRICE_NAME = { deck: "LOOTCRATES.Boxes.PriceDeck", roulette: "LOOTCRATES.Boxes.PriceWheel", well: "LOOTCRATES.Boxes.PriceStake", dice: "LOOTCRATES.Boxes.PriceStake", auction: "LOOTCRATES.Boxes.PriceAuction" };
+export const priceLabel = b => t(PRICE_NAME[kindOf(b)] ?? "LOOTCRATES.Boxes.PriceCrate", { name: b.name ?? "" }).trim();
 export function priceInputHTML(b, esc = s => String(s ?? "")) {
   return `<input type="text" class="lc-price-input" data-box-price="${esc(b.id)}" value="${esc(formatPrice(b.price))}" aria-label="${esc(priceLabel(b))}" autocomplete="off" spellcheck="false">`;
 }
 
 // Under the table, how a roll table becomes a crate (manager.js
 // makeCrateFromTable): the tab takes a dropped table, as a pool takes items.
-export const TABLE_DROP_HINT = "Drop a roll table here to make a crate with its items and odds.";
+export const tableDropHint = () => t("LOOTCRATES.Boxes.TableDropHint");
 
 // The whole tab. An empty one says where a dropped table goes in its own
 // first line, so the hint under the table is left out.
 export function boxesTabHTML({ status = "", ...rest }) {
-  const hint = rest.boxes?.length ? `<p class="lc-form__hint lc-boxes__drop">${TABLE_DROP_HINT}</p>` : "";
+  const hint = rest.boxes?.length ? `<p class="lc-form__hint lc-boxes__drop">${tableDropHint()}</p>` : "";
   return `${boxesToolbarHTML(status, rest.esc, rest.boxes)}${boxesTableHTML(rest)}${hint}`;
 }

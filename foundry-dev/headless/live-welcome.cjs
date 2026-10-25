@@ -44,6 +44,9 @@ const shot = process.argv.includes("--shot") ? process.argv[process.argv.indexOf
 // ready step. Returns whether a window opened.
 async function load(page) {
   await page.waitForFunction(() => window.game?.ready, null, { timeout: 120000 });
+  // What main.js does first: the branch's words, from its own lang/en.json
+  // (the installed release may have no language file, or older words).
+  await page.evaluate(async base => (await import(base + "scripts/i18n.js")).loadStrings(), MODULE_BASE);
   return page.evaluate(async base => {
     globalThis.canvas?.app?.ticker?.stop();
     if (!document.querySelector("link[data-lc-branch]")) {

@@ -68,6 +68,7 @@ import { onShelf, shelfRoundRefusal } from "./shelf.js";
 // the other only inside a function.
 import { showRound, boxHeld } from "./reveal.js";
 import { postPullCard } from "./chat.js";
+import { t } from "./i18n.js";
 
 const listeners = new Set();
 
@@ -96,7 +97,7 @@ export function announce(msg) {
 
 function gmOnly() {
   const gm = game.users.activeGM;
-  if (!gm || gm.id !== game.user.id) throw new PullError("Only the GM running the game can do that.");
+  if (!gm || gm.id !== game.user.id) throw new PullError(t("LOOTCRATES.Error.NotActiveGM"));
 }
 
 /*
@@ -107,16 +108,16 @@ export function openRound(boxId, { windowMs = 0 } = {}) {
   gmOnly();
   return enqueueWrite(async () => {
     const box = getBoxes()[boxId];
-    if (!box) throw new PullError("That game no longer exists.");
-    if (!kindFor(box).table) throw new PullError(`${box.name} isn't played at the table.`);
+    if (!box) throw new PullError(t("LOOTCRATES.Error.GameGone"));
+    if (!kindFor(box).table) throw new PullError(t("LOOTCRATES.Error.NotTable", { name: box.name }));
     const live = liveRoundOf(getRounds(), boxId);
     if (live) return live;
     // The last round still plays on the GM's screen: the next one opens
     // once it lands, never under it.
-    if (boxHeld(boxId)) throw new PullError(`The last round at ${box.name} is still playing. Open the next one once it lands.`);
+    if (boxHeld(boxId)) throw new PullError(t("LOOTCRATES.Error.StillPlaying", { name: box.name }));
     // Off the shelf, no new round; one already open runs to its resolve.
     if (!onShelf(box)) throw new PullError(shelfRoundRefusal(box));
-    if (box.rules?.stock != null && box.rules.stock <= 0) throw new PullError(`${box.name} is sold out.`);
+    if (box.rules?.stock != null && box.rules.stock <= 0) throw new PullError(t("LOOTCRATES.Error.SoldOut", { name: box.name }));
     // The kind's own word on a game that can't be played yet (the Auction with no lot).
     const unready = kindFor(box).openReason?.(box);
     if (unready) throw new PullError(unready);
@@ -168,7 +169,7 @@ export async function closeStakes(lines, now = Date.now()) {
       l.itemId = created?.id ?? null;
     } catch (err) {
       console.error(`loot-crates | granting ${l.result?.name ?? "the item"} to ${l.row.actorName} at the spin failed; ${l.refundOnFail ? "the stake is refunded" : "the stake is paid in coins only"}`, err);
-      globalThis.ui?.notifications?.error(`Loot Crates: ${l.row.actorName} won ${l.result?.name ?? "an item"} at ${l.row.boxName}, but it couldn't be added to their sheet. Check the console.`);
+      globalThis.ui?.notifications?.error(t("LOOTCRATES.Error.WonNotAdded", { actor: l.row.actorName, item: l.result?.name ?? t("LOOTCRATES.Error.AnItem"), box: l.row.boxName }));
       l.itemId = null;
     }
     if (!l.itemId) {
@@ -189,7 +190,7 @@ export async function closeStakes(lines, now = Date.now()) {
       unpaid.push(actor.name);
     }
   }
-  if (unpaid.length) globalThis.ui?.notifications?.error(`Loot Crates: ${unpaid.join(", ")} weren't paid what the round owed them. Check the console.`);
+  if (unpaid.length) globalThis.ui?.notifications?.error(t("LOOTCRATES.Error.Unpaid", { names: unpaid.join(", ") }));
   return unpaid;
 }
 
@@ -198,9 +199,9 @@ function guardNotice(plan, boxName) {
   const refunded = plan.filter(l => l.action === "refund").length;
   const gone = plan.filter(l => l.action === "void").length;
   const parts = [];
-  if (refunded) parts.push(`${refunded} stake${refunded === 1 ? " was" : "s were"} refunded, not paid: the character changed hands or its game is gone`);
-  if (gone) parts.push(`${gone} stake${gone === 1 ? "'s character is" : "s' characters are"} gone, so ${gone === 1 ? "it" : "they"} went with ${gone === 1 ? "it" : "them"}`);
-  if (parts.length) globalThis.ui?.notifications?.warn(`Loot Crates: at ${boxName}, ${parts.join("; ")}.`);
+  if (refunded) parts.push(t(refunded === 1 ? "LOOTCRATES.Error.RoundRefundedOne" : "LOOTCRATES.Error.RoundRefundedMany", { count: refunded }));
+  if (gone) parts.push(t(gone === 1 ? "LOOTCRATES.Error.RoundGoneOne" : "LOOTCRATES.Error.RoundGoneMany", { count: gone }));
+  if (parts.length) globalThis.ui?.notifications?.warn(t("LOOTCRATES.Error.RoundAt", { box: boxName, parts: parts.join(t("LOOTCRATES.Common.ListSemicolon")) }));
 }
 
 /*
@@ -218,12 +219,12 @@ export function resolveRound(roundId, { rng = rollRng(), ifDue = false } = {}) {
 
 async function doResolve(roundId, rng, { ifDue = false } = {}) {
   const round = getRounds()[roundId];
-  if (!round) throw new PullError("That round is gone.");
+  if (!round) throw new PullError(t("LOOTCRATES.Error.RoundGone"));
   if (round.status === STATUS.RESOLVED) return { status: "already", round };
   if (ifDue && round.status === STATUS.OPEN && !(round.closesAt != null && Date.now() >= round.closesAt)) return { status: "not-due", round };
   const box = getBoxes()[round.boxId] ?? null;
   const kind = box ? getKind(round.kind) : null;
-  if (box && !kind) throw new PullError(`${box.name} is a kind of game (${round.kind}) this client can't run.`);
+  if (box && !kind) throw new PullError(t("LOOTCRATES.Error.UnknownKind", { name: box.name, id: round.kind }));
   const log = getLog();
   const rows = openStakesOf(log, roundId);
   const now = Date.now();
@@ -289,9 +290,9 @@ async function undoResolve({ round, plan, boxName, now, err }) {
     const kept = plan.filter(l => l.itemId).map(l => `${l.result?.name ?? "an item"} on ${l.row.actorName}`);
     console.error(`loot-crates | rolling back the spin at ${boxName} failed; its stakes are refunded on the GM's next load${kept.length ? `. Granted and possibly still on the sheet: ${kept.join(", ")}` : ""}`, undoErr);
     announce({ type: "round", event: "void", roundIds: [round.id], refunded: [], onReload: true });
-    throw new PullError(`The spin at ${boxName} failed and couldn't be undone: every stake is refunded when you reload Foundry.`);
+    throw new PullError(t("LOOTCRATES.Error.SpinUndoFailed", { box: boxName }));
   }
-  throw new PullError(`The spin at ${boxName} failed and nothing was paid: press Spin to try again.`);
+  throw new PullError(t("LOOTCRATES.Error.SpinFailed", { box: boxName }));
 }
 
 /*
@@ -318,9 +319,8 @@ export function recoverRounds() {
     const refunded = said.filter(l => l.action === "refund").length;
     const gone = said.length - refunded;
     if (said.length) {
-      const what = `${said.length} open stake${said.length === 1 ? "" : "s"} from a round that never spun`;
-      const back = gone ? `: ${refunded} refunded, ${gone} belonged to a character that is gone` : ` ${said.length === 1 ? "was" : "were"} refunded`;
-      globalThis.ui?.notifications?.warn(`Loot Crates: ${what}${back}.`);
+      const count = said.length;
+      globalThis.ui?.notifications?.warn(gone ? t(count === 1 ? "LOOTCRATES.Error.StaleGoneOne" : "LOOTCRATES.Error.StaleGoneMany", { count, refunded, gone }) : t(count === 1 ? "LOOTCRATES.Error.StaleOne" : "LOOTCRATES.Error.StaleMany", { count }));
     }
     announce({ type: "round", event: "void", roundIds: stale.map(r => r.id), refunded: rows.map(r => r.id) });
     return { refunded, gone, voided: stale.length };
@@ -380,7 +380,7 @@ export function cancelRound(roundId) {
   gmOnly();
   return enqueueWrite(async () => {
     const round = getRounds()[roundId];
-    if (!round) throw new PullError("That round is gone.");
+    if (!round) throw new PullError(t("LOOTCRATES.Error.RoundGone"));
     if (round.status === STATUS.RESOLVED) return { status: "already", refunded: 0, gone: 0 };
     const now = Date.now();
     await saveRound({ ...round, status: STATUS.RESOLVED, closedAt: round.closedAt ?? now, resolvedAt: now, voided: now, cancelled: true });
@@ -409,14 +409,14 @@ export async function refundOrphanRounds() {
   const orphans = orphanRounds(getRounds(), getBoxes());
   const out = [];
   for (const round of orphans) {
-    const name = getLog().find(r => r?.roundId === round.id)?.boxName || "A deleted game";
+    const name = getLog().find(r => r?.roundId === round.id)?.boxName || t("LOOTCRATES.Error.ADeletedGame");
     const result = await cancelRound(round.id);
     if (result.status !== "cancelled") continue;
     out.push({ roundId: round.id, name, ...result });
     const { refunded, gone } = result;
     if (!refunded && !gone) continue;
-    const back = [refunded ? `${refunded} stake${refunded === 1 ? " was" : "s were"} refunded` : "", gone ? `${gone} belonged to a character that is gone` : ""].filter(Boolean).join("; ");
-    globalThis.ui?.notifications?.warn(`Loot Crates: ${name} was deleted with its round open; ${back}.`);
+    const back = [refunded ? t(refunded === 1 ? "LOOTCRATES.Game.StakesRefundedOne" : "LOOTCRATES.Game.StakesRefundedMany", { count: refunded }) : "", gone ? t("LOOTCRATES.Error.CountGone", { count: gone }) : ""].filter(Boolean).join(t("LOOTCRATES.Common.ListSemicolon"));
+    globalThis.ui?.notifications?.warn(t("LOOTCRATES.Error.DeletedWithRound", { name, back }));
   }
   return out;
 }
@@ -504,7 +504,7 @@ function watchTick() {
           const told = failedAt.has(round.id);
           failedAt.set(round.id, Date.now());
           console.error("loot-crates | bringing the gavel down failed; trying again shortly", err);
-          if (!told) globalThis.ui?.notifications?.warn(err instanceof PullError ? err.message : "Loot Crates: the gavel jammed. Check the console; it is tried again shortly.");
+          if (!told) globalThis.ui?.notifications?.warn(err instanceof PullError ? err.message : t("LOOTCRATES.Error.GavelJammed"));
         })
         .finally(() => busy.delete(round.id));
     } else if (due === "tick") {

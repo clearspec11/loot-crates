@@ -39,7 +39,7 @@ import { limitState, limitRefusal, withLimit } from "./limits.js";
 import { requestPull } from "./socket.js";
 import { heldState, boxHeld, onHold, onRelease } from "./reveal.js";
 import { getKind, kindOf } from "./kinds.js";
-import { onShelf, shelfFor, OFF_SHELF_REASON } from "./shelf.js";
+import { onShelf, shelfFor, offShelfReason } from "./shelf.js";
 import { shopControls, shopEmptyHTML } from "./route.js";
 // A table game's Buy opens the table (tablewindow.js), loaded when it is
 // first pressed: that window imports this file for the characters a player
@@ -55,6 +55,7 @@ import "./dicegame.js";
 import "./deck.js";
 import "./roulette.js";
 import "./auction.js";
+import { t } from "./i18n.js";
 
 const { ApplicationV2 } = foundry.applications.api;
 // How long past a card's changesAt its redraw runs, so the moment has passed.
@@ -72,7 +73,7 @@ const cardFor = (game, pools, ctx) => (shopOf(game).card ?? boxCard)(game, pools
 // The game's own reason (the kind's, else the crate's), then the limit per
 // character over it (limits.js), as the card shows it (boxcard.js cardShell).
 const ownReason = (game, pools, ctx) => (shopOf(game).reason ?? ((b, p, c) => buyReason(b, shopOdds(b, p, c.stateOf(b.id)), c)))(game, pools, ctx);
-const reasonFor = (game, pools, ctx) => (onShelf(game) ? withLimit(game, ownReason(game, pools, ctx), ctx) : OFF_SHELF_REASON);
+const reasonFor = (game, pools, ctx) => (onShelf(game) ? withLimit(game, ownReason(game, pools, ctx), ctx) : offShelfReason());
 
 /*
   The games this client's shop sells, by id: a player sees only those on
@@ -105,10 +106,13 @@ export class CrateShop extends ApplicationV2 {
   static DEFAULT_OPTIONS = {
     id: "loot-crates-shop",
     classes: ["loot-crates", "lc-shop"],
-    window: { title: "Crate Shop", resizable: true },
+    // The window's title is its own getter, in the module's words.
+    window: { title: "LOOTCRATES.Shop.Title", resizable: true },
     position: { width: 640, height: "auto" },
     actions: { buy: CrateShop.#buy, openManager: CrateShop.#openManager },
   };
+
+  get title() { return t("LOOTCRATES.Shop.Title"); }
 
   // A GM's way to the manager from here: "Manage crates" in the window's
   // header controls, and on an empty shelf (route.js). A player has neither.
@@ -147,7 +151,7 @@ export class CrateShop extends ApplicationV2 {
   // delay armed, or null when no card will change by itself.
   #armRedraw(boxes, ctx) {
     this.#clearRedraw();
-    const times = boxes.map(b => shopOf(b).changesAt?.(b, ctx)).filter(t => typeof t === "number" && Number.isFinite(t));
+    const times = boxes.map(b => shopOf(b).changesAt?.(b, ctx)).filter(target => typeof target === "number" && Number.isFinite(target));
     if (!times.length) return null;
     const ms = Math.min(2 ** 31 - 1, Math.max(0, Math.min(...times) - Date.now()) + REDRAW_SLACK_MS);
     this.#redrawTimer = setTimeout(() => {
@@ -334,7 +338,7 @@ export class CrateShop extends ApplicationV2 {
     // longer owns it, so the field names who it charges.
     const shown = actor && !actors.includes(actor) ? [actor, ...actors] : actors;
     const picker = actorPicker({ actors: shown, actorId: this.actorId, busy: this.busy, esc });
-    const purseField = actor ? `<div class="lc-shop__field lc-shop__field--purse"><span class="lc-label">Purse</span><span class="lc-shop__purse">${esc(formatGold(purse))}</span></div>` : "";
+    const purseField = actor ? `<div class="lc-shop__field lc-shop__field--purse"><span class="lc-label">${t("LOOTCRATES.Shop.Purse")}</span><span class="lc-shop__purse">${esc(formatGold(purse))}</span></div>` : "";
 
     // The shop-wide reason (closed, no GM, no character) or the wait is said
     // once, in the header's live region; the cards only point at it.

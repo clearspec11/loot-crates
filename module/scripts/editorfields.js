@@ -13,6 +13,7 @@
 */
 import { RARITIES, RARITY_LABEL } from "./config.js";
 import { oddsModeOf, missChanceOf, chanceLabel } from "./odds.js";
+import { t, words } from "./i18n.js";
 
 const plain = s => String(s ?? "");
 
@@ -30,11 +31,11 @@ export const field = (labelText, control) => `<label class="lc-field">${labelTex
 */
 export function poolPicks(pools, refs = [], { share = true, esc = plain } = {}) {
   const shares = Object.fromEntries((refs ?? []).map(p => [p.id, p.share ?? 1]));
-  if (!pools.length) return "<p>No pools yet.</p>";
+  if (!pools.length) return `<p>${t("LOOTCRATES.Editor.NoPools")}</p>`;
   return pools.map(p => {
     const on = p.id in shares;
     const id = esc(p.id);
-    const shareInput = share ? ` <input name="share.${id}" type="number" min="0" step="1" value="${esc(shares[p.id] ?? 1)}" title="Share" aria-label="Share of pulls from ${esc(p.name)}" data-share="${id}"${on ? "" : " disabled"}>` : "";
+    const shareInput = share ? ` <input name="share.${id}" type="number" min="0" step="1" value="${esc(shares[p.id] ?? 1)}" title="${t("LOOTCRATES.Editor.Share")}" aria-label="${t("LOOTCRATES.Editor.ShareOf", { name: esc(p.name) })}" data-share="${id}"${on ? "" : " disabled"}>` : "";
     return `<div class="lc-row lc-pool-pick">${field(`<input type="checkbox" name="pool.${id}"${on ? " checked" : ""}>`, esc(p.name))}${shareInput}</div>`;
   }).join("");
 }
@@ -53,29 +54,34 @@ export function syncShares(root) {
 }
 
 // What the pity count is called, by what a play is called.
-const PITY_COUNT = { pulls: "Pulls before the guarantee", throws: "Throws before the guarantee" };
+const PITY_COUNT = words({ pulls: "LOOTCRATES.Editor.PityCountPulls", throws: "LOOTCRATES.Editor.PityCountThrows" });
+const PITY_NOUN = words({ pulls: "LOOTCRATES.Editor.PityNounPulls", throws: "LOOTCRATES.Editor.PityNounThrows" });
 
 // "Pity: guarantee [rarity] after [n] pulls": the rarity named by its
 // label, the count by what it counts.
 export function pityRow(pity, { noun = "pulls", esc = plain } = {}) {
-  const select = `<select name="pityRarity"><option value="">off</option>${RARITIES.map(r => `<option value="${r}"${pity?.minRarity === r ? " selected" : ""}>${RARITY_LABEL[r]} or better</option>`).join("")}</select>`;
-  return `<div class="lc-row lc-row--wrap">${field("Pity: guarantee", select)} after <input name="pityAfter" type="number" min="1" step="1" value="${esc(pity?.after ?? 10)}" aria-label="${PITY_COUNT[noun] ?? PITY_COUNT.pulls}"> ${noun}</div>`;
+  const select = `<select name="pityRarity"><option value="">${t("LOOTCRATES.Editor.PityOff")}</option>${RARITIES.map(r => `<option value="${r}"${pity?.minRarity === r ? " selected" : ""}>${t("LOOTCRATES.Editor.OrBetter", { rarity: RARITY_LABEL[r] })}</option>`).join("")}</select>`;
+  const count = `<input name="pityAfter" type="number" min="1" step="1" value="${esc(pity?.after ?? 10)}" aria-label="${PITY_COUNT[noun] ?? PITY_COUNT.pulls}">`;
+  return `<div class="lc-row lc-row--wrap">${t("LOOTCRATES.Editor.PityRow", { guarantee: field(t("LOOTCRATES.Editor.PityGuarantee"), select), count, noun: PITY_NOUN[noun] ?? noun })}</div>`;
 }
 
 // The well's and the dice game's stake: an amount, then its coin.
 export function stakeRow(stake, esc = plain) {
-  return `<div class="lc-row lc-row--wrap lc-form__stake">${field("Stake", `<input name="stake" type="number" min="0" step="1" value="${esc(stake.amount)}">`)} <select name="coin" aria-label="Coin">${["cp", "sp", "gp"].map(c => `<option value="${c}"${c === stake.coin ? " selected" : ""}>${c}</option>`).join("")}</select></div>`;
+  return `<div class="lc-row lc-row--wrap lc-form__stake">${field(t("LOOTCRATES.Editor.Stake"), `<input name="stake" type="number" min="0" step="1" value="${esc(stake.amount)}">`)} <select name="coin" aria-label="${t("LOOTCRATES.Editor.Coin")}">${["cp", "sp", "gp"].map(c => `<option value="${c}"${c === stake.coin ? " selected" : ""}>${c}</option>`).join("")}</select></div>`;
 }
 
 // The wheel's "From [least] to [most] gp a bet", each bound named for itself.
 export function betRangeRow(least, most, esc = plain) {
-  return `<div class="lc-row lc-row--wrap">From <input name="price" type="number" min="0" step="1" value="${esc(least)}" aria-label="Smallest bet in gp"> to <input name="maxStake" type="number" min="0" step="1" value="${esc(most ?? "")}" placeholder="any" aria-label="Largest bet in gp, blank for any"> gp a bet</div>`;
+  const from = `<input name="price" type="number" min="0" step="1" value="${esc(least)}" aria-label="${t("LOOTCRATES.Editor.BetLeast")}">`;
+  const to = `<input name="maxStake" type="number" min="0" step="1" value="${esc(most ?? "")}" placeholder="${t("LOOTCRATES.Editor.BetAny")}" aria-label="${t("LOOTCRATES.Editor.BetMost")}">`;
+  return `<div class="lc-row lc-row--wrap">${t("LOOTCRATES.Editor.BetRange", { from, to })}</div>`;
 }
 
 // The dice game's "Roll [2d6] over the dragon's [n]".
 export function dragonRow(formulas, dice, esc = plain) {
   const select = `<select name="formula">${formulas.map(f => `<option value="${esc(f)}"${f === dice.formula ? " selected" : ""}>${esc(f)}</option>`).join("")}</select>`;
-  return `<div class="lc-row lc-row--wrap">${field("Roll", select)} over the dragon's <input name="target" type="number" min="0" step="1" value="${esc(dice.target)}" aria-label="The dragon's number"></div>`;
+  const target = `<input name="target" type="number" min="0" step="1" value="${esc(dice.target)}" aria-label="${t("LOOTCRATES.Editor.DragonNumber")}">`;
+  return `<div class="lc-row lc-row--wrap">${t("LOOTCRATES.Editor.DragonRow", { roll: field(t("LOOTCRATES.Editor.Roll"), select), target })}</div>`;
 }
 
 /*
@@ -84,12 +90,12 @@ export function dragonRow(formulas, dice, esc = plain) {
   a dozen times; `renumberCards` keeps the numbers right after a remove.
 */
 export const CARD_FIELDS = {
-  label: n => `Name of card ${n}`,
-  kind: n => `What card ${n} does`,
-  gp: n => `Gold pieces for card ${n}`,
-  weight: n => `Weight of card ${n}`,
-  once: n => `Card ${n} once per deck`,
-  text: n => `Effect text of card ${n}`,
+  label: n => t("LOOTCRATES.Deck.CardName", { n }),
+  kind: n => t("LOOTCRATES.Deck.CardKind", { n }),
+  gp: n => t("LOOTCRATES.Deck.CardGp", { n }),
+  weight: n => t("LOOTCRATES.Deck.CardWeight", { n }),
+  once: n => t("LOOTCRATES.Deck.CardOnce", { n }),
+  text: n => t("LOOTCRATES.Deck.CardText", { n }),
 };
 export function renumberCards(rows) {
   [...rows.children].forEach((row, i) => {
@@ -108,12 +114,12 @@ export function oddsModeFieldset(box, { esc = plain } = {}) {
   const id = esc(box.id);
   const table = !!box.fromTable;
   const options = [
-    ["rarity", "By rarity", "A pull picks a rarity by the weights below, then an item of that rarity."],
-    ["weight", table ? "Use the table's odds" : "By item weight", table
-      ? "Each item's chance is its weight against the rest of the table, so 1 in 100 stays 1 in 100. Rarity weights are not used."
-      : "Each item's chance is its weight against the rest of its pool, as on a roll table. Rarity weights are not used."],
+    ["rarity", t("LOOTCRATES.Editor.ByRarity"), t("LOOTCRATES.Editor.ByRarityHint")],
+    ["weight", table ? t("LOOTCRATES.Editor.TableOdds") : t("LOOTCRATES.Editor.ByWeight"), table
+      ? t("LOOTCRATES.Editor.TableOddsHint")
+      : t("LOOTCRATES.Editor.ByWeightHint")],
   ];
-  return `<fieldset class="lc-form__mode"><legend>Odds</legend>
+  return `<fieldset class="lc-form__mode"><legend>${t("LOOTCRATES.Editor.Odds")}</legend>
         ${options.map(([value, label, hint]) => `<div class="lc-mode">
           <label class="lc-row lc-mode__pick"><input type="radio" name="oddsMode" value="${value}"${mode === value ? " checked" : ""} aria-describedby="lc-mode-${id}-${value}"> ${label}</label>
           <p class="lc-form__hint lc-mode__hint" id="lc-mode-${id}-${value}">${hint}</p>
@@ -126,10 +132,12 @@ export function oddsModeFieldset(box, { esc = plain } = {}) {
   table is read once, when the crate is made, never again.
 */
 export function tableNoteHTML(box, { esc = plain } = {}) {
-  const t = box.fromTable;
-  if (!t) return "";
-  const what = [`${t.items} item${t.items === 1 ? "" : "s"}`, t.flattened ? `${t.flattened} nested table${t.flattened === 1 ? "" : "s"} flattened` : ""].filter(Boolean).join(", ");
-  return `<p class="lc-form__hint lc-form__from">Copied from <strong>${esc(t.name)}</strong> (${esc(what)}); edit the table and make the crate again to pick up changes.</p>`;
+  const from = box.fromTable;
+  if (!from) return "";
+  const items = t(from.items === 1 ? "LOOTCRATES.Editor.ItemsOne" : "LOOTCRATES.Editor.ItemsMany", { count: from.items });
+  const nested = from.flattened ? t(from.flattened === 1 ? "LOOTCRATES.Editor.FlattenedOne" : "LOOTCRATES.Editor.FlattenedMany", { count: from.flattened }) : "";
+  const what = nested ? t("LOOTCRATES.Editor.ItemsAndFlattened", { items, nested }) : items;
+  return `<p class="lc-form__hint lc-form__from">${t("LOOTCRATES.Editor.CopiedFrom", { name: `<strong>${esc(from.name)}</strong>`, what: esc(what) })}</p>`;
 }
 
 /*
@@ -143,6 +151,6 @@ export function nothingRow(box, { esc = plain } = {}) {
   if (!chance) return "";
   const on = missChanceOf(box) > 0;
   const id = `lc-nothing-${esc(box.id)}`;
-  return `<div class="lc-row lc-row--wrap lc-form__nothing">${field(`<input type="checkbox" name="countNothing"${on ? " checked" : ""} aria-describedby="${id}">`, "Count text results as nothing")}
-        <p class="lc-form__hint" id="${id}">The table's text results are ${esc(chanceLabel(chance))} of it. Ticked, that share of pulls gives no item; unticked, they are left out.</p></div>`;
+  return `<div class="lc-row lc-row--wrap lc-form__nothing">${field(`<input type="checkbox" name="countNothing"${on ? " checked" : ""} aria-describedby="${id}">`, t("LOOTCRATES.Editor.CountNothing"))}
+        <p class="lc-form__hint" id="${id}">${t("LOOTCRATES.Editor.CountNothingHint", { chance: esc(chanceLabel(chance)) })}</p></div>`;
 }

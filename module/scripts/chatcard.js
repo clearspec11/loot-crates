@@ -9,6 +9,8 @@
   when it was refunded, the same time the manager's log shows.
 */
 
+import { t } from "./i18n.js";
+
 export const REFUNDED_CLASS = "lc-chat--refunded";
 // A card from before pulls carried their log row's id is matched by item,
 // buyer and time instead: the card posts when the spin lands, a few seconds
@@ -69,7 +71,7 @@ export function refundedCardContent(content, row, { esc = String, when = refundT
   html = html.replace(/<a\b[^>]*data-uuid="Actor\.[^"]*"[^>]*>([\s\S]*?)<\/a>/g, "$1");
 
   const at = Number.isFinite(row.refunded) ? ` datetime="${new Date(row.refunded).toISOString()}"` : "";
-  const note = `<div class="lc-chat__refund">Refunded <time${at}>${esc(when)}</time></div>`;
+  const note = `<div class="lc-chat__refund">${t("LOOTCRATES.Chat.RefundedAt", { time: `<time${at}>${esc(when)}</time>` })}</div>`;
   const end = html.lastIndexOf("</div>");
   return end < 0 ? html + note : html.slice(0, end) + note + html.slice(end);
 }

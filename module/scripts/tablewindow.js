@@ -20,7 +20,7 @@
 */
 import { MODULE_ID, SETTINGS } from "./config.js";
 import { getBoxes, getLog, getRounds } from "./store.js";
-import { getKind, kindOf, PullError } from "./kinds.js";
+import { getKind, kindOf, PullError, nounText } from "./kinds.js";
 import { stakesOf, liveRoundOf, STATUS } from "./round.js";
 import { onTable, openRound, resolveRound, cancelRound } from "./table.js";
 import { requestStake, isActiveGM } from "./socket.js";
@@ -30,6 +30,7 @@ import { tableBodyHTML, phaseOf, stateText, stakeSentence, countFor, countdownTe
 import { cascadeOffset } from "./revealcard.js";
 import "./roulette.js";
 import "./auction.js";
+import { t } from "./i18n.js";
 
 const { ApplicationV2 } = foundry.applications.api;
 const esc = s => foundry.utils.escapeHTML(String(s ?? ""));
@@ -51,7 +52,8 @@ export class TableWindow extends ApplicationV2 {
   static DEFAULT_OPTIONS = {
     id: "loot-crates-table-{id}",
     classes: ["loot-crates", "lc-table"],
-    window: { title: "The table", resizable: false },
+    // The window's title is its own getter, in the module's words.
+    window: { title: "LOOTCRATES.Table.Title", resizable: false },
     position: { width: 760, height: "auto" },
     actions: { spin: TableWindow.#spin, cancelRound: TableWindow.#cancel, dismiss: TableWindow.#dismiss, skip: TableWindow.#skip },
   };
@@ -97,7 +99,7 @@ export class TableWindow extends ApplicationV2 {
     return game ?? this.#lastGame;
   }
   get kind() { return getKind(kindOf(this.game ?? this.reveal ?? {})) ?? null; }
-  get title() { return this.kind?.tableView?.title?.(this.game) ?? "The table"; }
+  get title() { return this.kind?.tableView?.title?.(this.game) ?? t("LOOTCRATES.Table.Title"); }
   get phase() { return phaseOf(this.round, { reveal: this.reveal, landed: this.landed, voided: !!this.voided }); }
   get stateOpts() { return { kind: this.kind, onReload: !!this.voided?.onReload }; }
 
@@ -134,7 +136,7 @@ export class TableWindow extends ApplicationV2 {
   // "Placing…", still focused) and the live region are the same elements.
   heardStake(msg) {
     const view = this.kind?.tableView;
-    const row = { id: msg.logId, actorId: msg.actorId, actorName: msg.actorName, price: msg.price, stake: msg.stake, name: msg.stake?.label ?? "Stake", status: "open", roundId: msg.roundId, ...(msg.house ? { house: true } : {}) };
+    const row = { id: msg.logId, actorId: msg.actorId, actorName: msg.actorName, price: msg.price, stake: msg.stake, name: msg.stake?.label ?? t("LOOTCRATES.Editor.Stake"), status: "open", roundId: msg.roundId, ...(msg.house ? { house: true } : {}) };
     const before = this.history();
     const outbid = (msg.outbid ?? []).map(id => before.find(r => r.id === id)).filter(Boolean);
     // The stakes it displaced are refunded already on the GM: shown so here
@@ -190,7 +192,7 @@ export class TableWindow extends ApplicationV2 {
     const root = document.createElement("div");
     root.className = "lc-table__body";
     const kind = this.kind;
-    if (!kind?.tableView) { root.innerHTML = `<p class="lc-empty">This client can't show this table.</p>`; return root; }
+    if (!kind?.tableView) { root.innerHTML = `<p class="lc-empty">${t("LOOTCRATES.Table.CantShow")}</p>`; return root; }
     root.innerHTML = tableBodyHTML({ kind, game: this.game ?? { id: this.boxId, name: this.reveal?.box?.name ?? "" }, round: this.round, stakes: this.stakes(), history: this.history(), viewer: { isGM: game.user.isGM, actors: viewerActors().map(a => ({ id: a.id, name: a.name })) }, phase: this.phase, esc, values: this.#values, onReload: !!this.voided?.onReload });
     const form = root.querySelector(".lc-table__form");
     if (form) {
@@ -271,16 +273,16 @@ export class TableWindow extends ApplicationV2 {
     let bet;
     try { bet = view.readBet(this.game, values, this.stakes()); } catch (err) { if (why) why.textContent = err.message; return; }
     const actorId = values.actorId ?? viewerActors()[0]?.id;
-    if (!actorId) { if (why) why.textContent = "You have no character to bet with."; return; }
+    if (!actorId) { if (why) why.textContent = t("LOOTCRATES.Table.NoCharacter"); return; }
     this.#busy = true;
     if (why) why.textContent = "";
     btn.setAttribute("aria-disabled", "true");
-    btn.textContent = view.busyLabel ?? "Placing…";
+    btn.textContent = view.busyLabel ?? t("LOOTCRATES.Table.Placing");
     try {
       await requestStake({ boxId: this.game.id, roundId: this.roundId, actorId, price: bet.price, bet: bet.bet });
       if (why) why.textContent = "";
     } catch (err) {
-      if (why) why.textContent = err instanceof PullError ? err.message : "The bet couldn't be placed. Check the GM's console.";
+      if (why) why.textContent = err instanceof PullError ? err.message : t("LOOTCRATES.Table.BetFailed");
       if (!(err instanceof PullError)) console.error("loot-crates | the bet failed", err);
     } finally {
       this.#busy = false;
@@ -300,13 +302,13 @@ export class TableWindow extends ApplicationV2 {
     if (button.getAttribute("aria-disabled") === "true") return;
     const view = this.kind?.tableView;
     button.setAttribute("aria-disabled", "true");
-    button.textContent = view?.spinningLabel ?? "Spinning…";
+    button.textContent = view?.spinningLabel ?? t("LOOTCRATES.Table.Spinning");
     try {
       await resolveRound(this.roundId);
     } catch (err) {
-      ui.notifications.warn(err instanceof PullError ? err.message : `The ${this.kind?.noun ?? "wheel"} jammed. Check the console.`);
+      ui.notifications.warn(err instanceof PullError ? err.message : t("LOOTCRATES.Table.Jammed", { noun: nounText(this.kind?.noun ?? "wheel") }));
       if (!(err instanceof PullError)) console.error("loot-crates | the spin failed", err);
-      if (button.isConnected) { button.removeAttribute("aria-disabled"); button.textContent = view?.spinLabel ?? "Spin"; }
+      if (button.isConnected) { button.removeAttribute("aria-disabled"); button.textContent = view?.spinLabel ?? t("LOOTCRATES.Table.Spin"); }
     }
   }
 
@@ -314,13 +316,13 @@ export class TableWindow extends ApplicationV2 {
   // every open stake comes back (table.js cancelRound), once confirmed.
   static async #cancel(_event, button) {
     if (button.getAttribute("aria-disabled") === "true") return;
-    const ok = await foundry.applications.api.DialogV2.confirm({ window: { title: this.kind?.tableView?.cancelLabel ?? "Call it off" }, content: `<p>Call off <strong>${esc(this.game?.name ?? "this round")}</strong>? Every open ${this.kind?.tableView?.verb === "bids" ? "bid" : "stake"} goes back to its character, and nothing is sold.</p>` });
+    const ok = await foundry.applications.api.DialogV2.confirm({ window: { title: this.kind?.tableView?.cancelLabel ?? t("LOOTCRATES.Table.CallOff") }, content: `<p>${t(this.kind?.id === "auction" ? "LOOTCRATES.Table.CallOffBids" : "LOOTCRATES.Table.CallOffStakes", { name: `<strong>${esc(this.game?.name ?? t("LOOTCRATES.Table.ThisRound"))}</strong>` })}</p>` });
     if (!ok) return button.isConnected && button.focus();
     button.setAttribute("aria-disabled", "true");
     try {
       await cancelRound(this.roundId);
     } catch (err) {
-      ui.notifications.warn(err instanceof PullError ? err.message : "The round couldn't be called off. Check the console.");
+      ui.notifications.warn(err instanceof PullError ? err.message : t("LOOTCRATES.Table.CallOffFailed"));
       if (!(err instanceof PullError)) console.error("loot-crates | calling the round off failed", err);
       if (button.isConnected) button.removeAttribute("aria-disabled");
     }
@@ -392,7 +394,7 @@ export class TableWindow extends ApplicationV2 {
     const btn = root.querySelector(".lc-reveal__close");
     if (!btn) return;
     btn.dataset.action = "dismiss";
-    btn.textContent = "Close";
+    btn.textContent = t("LOOTCRATES.Common.Close");
     const a = document.activeElement;
     if (!a || a === document.body || root.contains(a)) btn.focus({ preventScroll: true });
   }
@@ -452,7 +454,7 @@ export async function openTableFor(boxId) {
   if (!kind?.table) return null;
   let round = liveRoundOf(getRounds(), boxId);
   if (!round) {
-    if (!isActiveGM()) { ui.notifications.warn(`No round is open at ${box.name} yet.`); return null; }
+    if (!isActiveGM()) { ui.notifications.warn(t("LOOTCRATES.Table.NoRoundYet", { name: box.name })); return null; }
     round = await openRound(boxId, { windowMs: kind.tableView?.windowMs?.(box) ?? 0 });
   }
   return openTable(round.id, boxId);

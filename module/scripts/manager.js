@@ -106,7 +106,7 @@ const cancelTableRound = roundId => import("./table.js").then(m => m.cancelRound
 const openShopWindow = () => import("./shop.js").then(m => m.openShop());
 import { getRounds, getPools, getBoxes, getLog, dayMode, newId, createPool, updatePool, removePool, createBox, updateBox, removeBox, entryFromItem, entriesFromDrop, addEntries, packHasLoot, LOOT_TYPES, isLootType, isShopOpen, setShopOpen, checkSources, sweepPools, removeEntry, patchEntry } from "./store.js";
 import { flattenPool, withSources, entryWeight, curateEntries, oddsModeOf } from "./odds.js";
-import { SKIPPED_NAMES, describeSkipped, dropPreviewHTML, savedNotice, PAGE_ROWS, defaultView, poolRows, sortRows, filterRows, pageRows, nextRows, poolCount, poolSummary, poolBody, chipsHTML, unsetButton, footHTML, entryRow, entryParts, pinRecent, dropNotice, poolUsers, usersText, deleteImpact, removeImpact, deletePoolText, removeEntryText } from "./poolview.js";
+import { SKIPPED_NOUN, describeSkipped, dropPreviewHTML, savedNotice, PAGE_ROWS, defaultView, poolRows, sortRows, filterRows, pageRows, nextRows, poolCount, poolSummary, poolBody, chipsHTML, unsetButton, footHTML, entryRow, entryParts, pinRecent, dropNotice, poolUsers, usersText, deleteImpact, removeImpact, deletePoolText, removeEntryText } from "./poolview.js";
 import { formatPrice, parsePrice, unreadablePrice } from "./currency.js";
 import { managerNavHTML, MANAGER_TABS, directoryMenuEntry } from "./route.js";
 import { describeRefund, refundPull } from "./refund.js";
@@ -118,6 +118,7 @@ import { onShelf, shelfRules, shelfFieldHTML, shelfNotice } from "./shelf.js";
 import { starterPresent, hasStarter, starterAgainText, starterNotice, starterCallHTML, STARTER_LABEL } from "./starter.js";
 import { addStarterSet } from "./starterbuild.js";
 import { poolsFieldset, poolPicks, syncShares, pityRow, stakeRow, betRangeRow, dragonRow, CARD_FIELDS, renumberCards, oddsModeFieldset, tableNoteHTML, nothingRow } from "./editorfields.js";
+import { t } from "./i18n.js";
 
 const { ApplicationV2, DialogV2 } = foundry.applications.api;
 const esc = s => foundry.utils.escapeHTML(String(s ?? ""));
@@ -130,7 +131,8 @@ export class CrateManager extends ApplicationV2 {
   static DEFAULT_OPTIONS = {
     id: "loot-crates-manager",
     classes: ["loot-crates", "lc-manager"],
-    window: { title: "Loot Crates", resizable: true },
+    // The window's title is its own getter, in the module's words.
+    window: { title: "LOOTCRATES.Manager.Title", resizable: true },
     position: { width: 760, height: 620 },
     actions: {
       // Not "tab": ApplicationV2 sends that action to its own changeTab,
@@ -145,6 +147,8 @@ export class CrateManager extends ApplicationV2 {
       starterCrates: CrateManager.#starterCrates,
     },
   };
+
+  get title() { return t("LOOTCRATES.Manager.Title"); }
 
   tab = "pools";
 
@@ -164,7 +168,7 @@ export class CrateManager extends ApplicationV2 {
     return this.#sources ?? new Map(entries.map(e => [e.uuid, e.missing ? null : { name: e.name, img: e.img, rarity: null }]));
   }
 
-  static #switchTab(_e, t) { this.tab = t.dataset.tab; this.render(); }
+  static #switchTab(_e, target) { this.tab = target.dataset.tab; this.render(); }
 
   // Each pool's view: open, name search, filter chip, rows shown.
   #view = new Map();
@@ -290,21 +294,21 @@ export class CrateManager extends ApplicationV2 {
     el.querySelector(".lc-pool__foot").innerHTML = footHTML(pool, rows, matched, page, esc);
     el.querySelector(".lc-pool__unset").innerHTML = unsetButton(pool, matched, view, esc);
     const narrowed = view.q.trim() || view.chip;
-    this.#announce(narrowed ? `${matched.length} of ${rows.length} items in ${pool.name} match.` : `Filter cleared in ${pool.name}.`);
+    this.#announce(narrowed ? t("LOOTCRATES.Manager.FilterMatch", { count: matched.length, all: rows.length, pool: pool.name }) : t("LOOTCRATES.Manager.FilterCleared", { pool: pool.name }));
   }
 
-  static #filterChip(_e, t) {
-    const pool = getPools()[t.dataset.pool];
+  static #filterChip(_e, target) {
+    const pool = getPools()[target.dataset.pool];
     if (!pool) return this.render();
     const view = this.#viewOf(pool);
-    view.chip = view.chip === t.dataset.chip ? null : t.dataset.chip;
+    view.chip = view.chip === target.dataset.chip ? null : target.dataset.chip;
     this.#refilter(pool.id);
   }
 
   // The next 50 matching rows, appended; focus goes to the first new one.
-  static #showMore(_e, t) {
-    const el = this.#poolEl(t.dataset.pool);
-    const pool = getPools()[t.dataset.pool];
+  static #showMore(_e, target) {
+    const el = this.#poolEl(target.dataset.pool);
+    const pool = getPools()[target.dataset.pool];
     const list = el?.querySelector(".lc-entries");
     if (!pool || !list) return this.render();
     const view = this.#viewOf(pool);
@@ -317,7 +321,7 @@ export class CrateManager extends ApplicationV2 {
     view.shown = list.childElementCount;
     el.querySelector(".lc-pool__foot").innerHTML = footHTML(pool, rows, matched, page, esc);
     list.children[before]?.querySelector("select, input, button")?.focus();
-    this.#announce(`Showing ${list.childElementCount} of ${matched.length} in ${pool.name}.`);
+    this.#announce(t("LOOTCRATES.Manager.ShowingIn", { shown: list.childElementCount, count: matched.length, pool: pool.name }));
   }
 
   // A pool opened or closed: draw its body, or drop it.
@@ -342,11 +346,11 @@ export class CrateManager extends ApplicationV2 {
     });
   }
 
-  static async #addPool() { await createPool({ name: "New pool" }); this.render(); }
+  static async #addPool() { await createPool({ name: t("LOOTCRATES.Pools.NewPool") }); this.render(); }
 
-  static async #editPool(_e, t) {
-    const pool = getPools()[t.dataset.pool];
-    const data = await promptForm("Edit pool", `<label>Name <input name="name" value="${esc(pool.name)}"></label>`);
+  static async #editPool(_e, target) {
+    const pool = getPools()[target.dataset.pool];
+    const data = await promptForm(t("LOOTCRATES.Manager.EditPool"), `<label>${t("LOOTCRATES.Manager.Name")} <input name="name" value="${esc(pool.name)}"></label>`);
     if (data) { await updatePool(pool.id, { name: data.name || pool.name }); this.render(); }
   }
 
@@ -359,72 +363,73 @@ export class CrateManager extends ApplicationV2 {
 
   // The confirm names the boxes that draw from the pool, and apart from
   // them the ones it would leave with nothing inside.
-  static async #deletePool(_e, t) {
-    const pool = getPools()[t.dataset.pool];
+  static async #deletePool(_e, target) {
+    const pool = getPools()[target.dataset.pool];
     if (!pool) return this.render();
     const content = deletePoolText(pool, deleteImpact(pool.id, this.#livePools(), getBoxes()), esc);
-    if (await DialogV2.confirm({ window: { title: "Delete pool" }, content })) {
+    if (await DialogV2.confirm({ window: { title: t("LOOTCRATES.Manager.DeletePool") }, content })) {
       await removePool(pool.id); this.render();
     }
   }
 
   // Removed at once, unless it is the last item some box can drop: then a
   // confirm names those boxes first.
-  static async #removeEntry(_e, t) {
-    const { pool: poolId, uuid } = t.dataset;
-    const list = t.closest(".lc-entries");
+  static async #removeEntry(_e, target) {
+    const { pool: poolId, uuid } = target.dataset;
+    const list = target.closest(".lc-entries");
     const at = list ? [...list.children].findIndex(li => li.dataset.entry === uuid) : -1;
     const pools = this.#livePools();
     const emptied = pools[poolId] ? removeImpact(poolId, uuid, pools, getBoxes()) : [];
     if (emptied.length) {
       const row = this.#rowsOf(pools[poolId]).find(r => r.e.uuid === uuid);
       const content = removeEntryText(row?.name ?? uuid, pools[poolId], emptied, esc);
-      if (!await DialogV2.confirm({ window: { title: "Remove item" }, content })) return t.focus?.();
+      if (!await DialogV2.confirm({ window: { title: t("LOOTCRATES.Manager.RemoveItem") }, content })) return target.focus?.();
     }
     await removeEntry(poolId, uuid);
     this.#repaint(poolId, { at: at < 0 ? null : at });
   }
 
   // Renamed at the source: take its current name, image and rarity.
-  static async #updateEntry(_e, t) {
-    const src = (await checkSources([{ uuid: t.dataset.uuid }])).get(t.dataset.uuid);
-    if (src === undefined) return ui.notifications.warn("Couldn't read that item's compendium just now; try again.");
-    if (!src) { ui.notifications.warn("That item's source is gone; drop an item on the row to relink it."); return this.render(); }
-    await patchEntry(t.dataset.pool, t.dataset.uuid, { name: src.name, img: src.img, rarity: src.rarity, sourceRarity: src.rawRarity ?? undefined });
-    this.#sources?.set(t.dataset.uuid, src);
-    this.#repaint(t.dataset.pool, { uuid: t.dataset.uuid });
+  static async #updateEntry(_e, target) {
+    const src = (await checkSources([{ uuid: target.dataset.uuid }])).get(target.dataset.uuid);
+    if (src === undefined) return ui.notifications.warn(t("LOOTCRATES.Manager.CompendiumBusy"));
+    if (!src) { ui.notifications.warn(t("LOOTCRATES.Manager.SourceGone")); return this.render(); }
+    await patchEntry(target.dataset.pool, target.dataset.uuid, { name: src.name, img: src.img, rarity: src.rarity, sourceRarity: src.rawRarity ?? undefined });
+    this.#sources?.set(target.dataset.uuid, src);
+    this.#repaint(target.dataset.pool, { uuid: target.dataset.uuid });
   }
 
   // Relink without dragging (keyboard, screen reader, touch): paste the
   // UUID of the item that replaces a missing source.
-  static async #relinkEntry(_e, t) {
-    const entry = getPools()[t.dataset.pool]?.entries?.find(e => e.uuid === t.dataset.uuid);
+  static async #relinkEntry(_e, target) {
+    const entry = getPools()[target.dataset.pool]?.entries?.find(e => e.uuid === target.dataset.uuid);
     if (!entry) return this.render();
-    const data = await promptForm(`Relink ${entry.name}`, `
-      <p>The source of <strong>${esc(entry.name)}</strong> is gone. Paste the UUID of the item that replaces it; its weight stays.</p>
-      <label>Item UUID <input name="uuid" required placeholder="Compendium.dnd5e.items.Item.…" autocomplete="off"></label>
-      <p class="lc-form__hint">Copy it from an item sheet's ID button, or drag the item onto the row instead.</p>`);
-    if (data?.uuid) await this.#relink(t.dataset.pool, t.dataset.uuid, String(data.uuid).trim());
+    const data = await promptForm(t("LOOTCRATES.Pools.RelinkLabel", { name: entry.name }), `
+      <p>${t("LOOTCRATES.Manager.RelinkLead", { name: `<strong>${esc(entry.name)}</strong>` })}</p>
+      <label>${t("LOOTCRATES.Manager.ItemUuid")} <input name="uuid" required placeholder="Compendium.dnd5e.items.Item.…" autocomplete="off"></label>
+      <p class="lc-form__hint">${t("LOOTCRATES.Manager.RelinkHint")}</p>`);
+    if (data?.uuid) await this.#relink(target.dataset.pool, target.dataset.uuid, String(data.uuid).trim());
   }
 
   // One rarity for every entry in the pool whose source has none, of those
   // the pool's search and chip let through.
-  static async #setUnsetRarity(_e, t) {
-    const poolId = t.dataset.pool;
+  static async #setUnsetRarity(_e, target) {
+    const poolId = target.dataset.pool;
     const pool = getPools()[poolId];
     if (!pool) return this.render();
     const view = this.#viewOf(pool);
     const unset = filterRows(this.#rowsOf(pool), view).filter(r => r.unset).map(r => r.e.uuid);
     if (!unset.length) return this.#repaint(poolId);
     const n = unset.length;
-    const matching = view.q.trim() || view.chip ? " matching the search and filter" : "";
-    const data = await promptForm(`Set rarity in ${pool.name}`, `
-      <p>${n} item${n === 1 ? "" : "s"}${matching} ${n === 1 ? "has" : "have"} no rarity at the source and draw${n === 1 ? "s" : ""} as Common until you pick one.</p>
-      <label>Rarity <select name="rarity">${RARITIES.map(r => `<option value="${r}">${RARITY_LABEL[r]}</option>`).join("")}</select></label>
-      <p class="lc-form__hint">The granted item carries this rarity. Each item's rarity can still be changed on its own row.</p>`);
+    const matching = !!(view.q.trim() || view.chip);
+    const lead = target(n === 1 ? (matching ? "LOOTCRATES.Manager.UnsetOneMatching" : "LOOTCRATES.Manager.UnsetOne") : (matching ? "LOOTCRATES.Manager.UnsetManyMatching" : "LOOTCRATES.Manager.UnsetMany"), { count: n });
+    const data = await promptForm(t("LOOTCRATES.Manager.SetRarityIn", { pool: pool.name }), `
+      <p>${lead}</p>
+      <label>${t("LOOTCRATES.Roulette.Rarity")} <select name="rarity">${RARITIES.map(r => `<option value="${r}">${RARITY_LABEL[r]}</option>`).join("")}</select></label>
+      <p class="lc-form__hint">${t("LOOTCRATES.Manager.SetRarityHint")}</p>`);
     if (!RARITIES.includes(data?.rarity)) return;
     const saved = await updatePool(poolId, fresh => ({ ...fresh, entries: curateEntries(fresh.entries, unset, { sourceRarity: "", rarityOverride: data.rarity }) }));
-    if (saved) ui.notifications.info(`${n} item${n === 1 ? "" : "s"} in ${pool.name} set to ${RARITY_LABEL[data.rarity]}.`);
+    if (saved) ui.notifications.info(target(n === 1 ? "LOOTCRATES.Manager.SetToOne" : "LOOTCRATES.Manager.SetToMany", { count: n, pool: pool.name, rarity: RARITY_LABEL[data.rarity] }));
     this.#repaint(poolId);
   }
 
@@ -461,7 +466,7 @@ export class CrateManager extends ApplicationV2 {
     const unsetEl = poolEl.querySelector(".lc-pool__unset");
     if (unsetEl) unsetEl.innerHTML = unsetButton(saved, filterRows(rows, view), view, esc);
     // Said in the tab's status line, as a Boxes row's price is.
-    const what = el.dataset.curate === "weight" ? `weight ${entryWeight(entry)}` : RARITY_LABEL[change.rarityOverride] ?? el.selectedOptions?.[0]?.textContent?.trim() ?? "rarity from its source";
+    const what = el.dataset.curate === "weight" ? t("LOOTCRATES.Pools.WeightN", { weight: entryWeight(entry) }) : RARITY_LABEL[change.rarityOverride] ?? el.selectedOptions?.[0]?.textContent?.trim() ?? t("LOOTCRATES.Manager.RarityFromSource");
     this.#announce(savedNotice(entry.name, what));
   }
 
@@ -475,16 +480,16 @@ export class CrateManager extends ApplicationV2 {
 
   // Only packs and types that can hold loot are offered: a pool should never
   // fill up with spells or class features.
-  static async #bulkAdd(_e, t) {
-    const pool = getPools()[t.dataset.pool];
+  static async #bulkAdd(_e, target) {
+    const pool = getPools()[target.dataset.pool];
     const packs = game.packs.filter(packHasLoot);
-    if (!packs.length) return ui.notifications.warn("No compendium holds weapons, equipment, consumables, tools, loot or containers.");
+    if (!packs.length) return ui.notifications.warn(t("LOOTCRATES.Manager.NoLootPacks"));
     const types = LOOT_TYPES.filter(k => k in (CONFIG.Item.typeLabels ?? {}));
-    const data = await promptForm("Add from compendium", `
-      <label>Compendium <select name="pack">${packs.map(p => `<option value="${esc(p.collection)}">${esc(p.metadata.label)} (${esc(p.collection)})</option>`).join("")}</select></label>
-      <label>Types <select name="types" multiple size="5">${types.map(k => `<option value="${esc(k)}" ${["weapon", "equipment", "consumable", "tool"].includes(k) ? "selected" : ""}>${esc(game.i18n.localize(CONFIG.Item.typeLabels[k]))}</option>`).join("")}</select></label>
-      <label>Rarities <select name="rarities" multiple size="6">${RARITIES.map(r => `<option value="${r}" ${r === "common" ? "" : "selected"}>${RARITY_LABEL[r]}</option>`).join("")}</select></label>
-      <label>Name contains <input name="name" placeholder="wand"></label>`);
+    const data = await promptForm(t("LOOTCRATES.Pools.BulkAdd"), `
+      <label>${t("LOOTCRATES.Manager.Compendium")} <select name="pack">${packs.map(p => `<option value="${esc(p.collection)}">${esc(p.metadata.label)} (${esc(p.collection)})</option>`).join("")}</select></label>
+      <label>${t("LOOTCRATES.Manager.Types")} <select name="types" multiple size="5">${types.map(k => `<option value="${esc(k)}" ${["weapon", "equipment", "consumable", "tool"].includes(k) ? "selected" : ""}>${esc(game.i18n.localize(CONFIG.Item.typeLabels[k]))}</option>`).join("")}</select></label>
+      <label>${t("LOOTCRATES.Manager.Rarities")} <select name="rarities" multiple size="6">${RARITIES.map(r => `<option value="${r}" ${r === "common" ? "" : "selected"}>${RARITY_LABEL[r]}</option>`).join("")}</select></label>
+      <label>${t("LOOTCRATES.Manager.NameContains")} <input name="name" placeholder="${t("LOOTCRATES.Manager.NameContainsPlaceholder")}"></label>`);
     if (!data) return;
     const filter = { types: data.types, rarities: data.rarities, name: data.name };
     const plan = await entriesFromDrop({ type: "Compendium", collection: data.pack, filter }, { known: pool.entries.map(e => e.uuid) });
@@ -497,25 +502,25 @@ export class CrateManager extends ApplicationV2 {
     const n = plan.entries.length;
     const skipped = describeSkipped(plan.skipped, { flattened: plan.flattened ?? 0 });
     if (!n) {
-      ui.notifications.info(`Nothing to add to ${pool.name} from ${plan.label}${skipped.length ? `: ${skipped.join("; ")}` : ""}.`);
+      ui.notifications.info(skipped.length ? t("LOOTCRATES.Manager.NothingToAddWhy", { pool: pool.name, label: plan.label, why: skipped.join(t("LOOTCRATES.Common.ListSemicolon")) }) : t("LOOTCRATES.Manager.NothingToAdd", { pool: pool.name, label: plan.label }));
       return false;
     }
-    const items = `${n} item${n === 1 ? "" : "s"}`;
+    const items = t(n === 1 ? "LOOTCRATES.Editor.ItemsOne" : "LOOTCRATES.Editor.ItemsMany", { count: n });
     const action = await DialogV2.wait({
-      window: { title: `Add to ${pool.name}` },
+      window: { title: t("LOOTCRATES.Manager.AddTo", { pool: pool.name }) },
       classes: ["loot-crates", "lc-dialog"],
       position: { width: 460 },
       content: dropPreviewHTML(plan, pool.name, esc),
       buttons: [
-        { action: "add", label: `Add ${items}`, icon: "fas fa-plus", default: true },
-        { action: "cancel", label: "Cancel" },
+        { action: "add", label: t("LOOTCRATES.Manager.AddItems", { items }), icon: "fas fa-plus", default: true },
+        { action: "cancel", label: t("LOOTCRATES.Common.Cancel") },
       ],
       rejectClose: false,
     });
     if (action !== "add") return false;
     const had = new Set((getPools()[poolId]?.entries ?? []).map(e => e.uuid));
     const added = await addEntries(poolId, plan.entries);
-    if (!added) { ui.notifications.info(`Nothing new to add to ${pool.name} from ${plan.label}.`); this.render(); return false; }
+    if (!added) { ui.notifications.info(t("LOOTCRATES.Manager.NothingNewToAdd", { pool: pool.name, label: plan.label })); this.render(); return false; }
     this.#pinDrop(poolId, plan.entries.map(e => e.uuid).filter(u => !had.has(u)), { label: plan.label, added });
     return true;
   }
@@ -543,8 +548,8 @@ export class CrateManager extends ApplicationV2 {
   // "New crate from this pool" on a pool's bar: the crate's editor on a
   // draft named for the pool and drawing only from it, the price focused,
   // so a first crate is one dialog away from a pool with items in it.
-  static #crateFromPool(_e, t) {
-    const pool = getPools()[t.dataset.pool];
+  static #crateFromPool(_e, target) {
+    const pool = getPools()[target.dataset.pool];
     if (!pool) return this.render();
     return this.#openEditor(crateFromPool(pool, newId()), { isNew: true, focus: "price" });
   }
@@ -563,10 +568,10 @@ export class CrateManager extends ApplicationV2 {
   async makeCrateFromTable(uuid) {
     let plan = null;
     try { plan = uuid ? await entriesFromDrop({ type: "RollTable", uuid }) : null; } catch (err) { console.error(`loot-crates | reading roll table ${uuid} failed`, err); }
-    if (!plan || plan.kind !== "RollTable") return ui.notifications.warn("That roll table couldn't be read.");
+    if (!plan || plan.kind !== "RollTable") return ui.notifications.warn(t("LOOTCRATES.Manager.TableUnreadable"));
     if (!plan.entries.length) {
       const why = describeSkipped(plan.skipped, { flattened: plan.flattened });
-      return ui.notifications.warn(`${plan.label} has no item a crate can give${why.length ? `: ${why.join("; ")}` : ""}.`);
+      return ui.notifications.warn(why.length ? t("LOOTCRATES.Manager.TableNoItemWhy", { name: plan.label, why: why.join(t("LOOTCRATES.Common.ListSemicolon")) }) : t("LOOTCRATES.Manager.TableNoItem", { name: plan.label }));
     }
     const pool = await createPool({ name: plan.label });
     await addEntries(pool.id, plan.entries);
@@ -585,7 +590,7 @@ export class CrateManager extends ApplicationV2 {
     event.preventDefault();
     let data;
     try { data = dragData(event); } catch { return; }
-    if (data?.type !== "RollTable" || !data.uuid) return ui.notifications.info("Drop a roll table here to make a crate from it.");
+    if (data?.type !== "RollTable" || !data.uuid) return ui.notifications.info(t("LOOTCRATES.Manager.DropTable"));
     return this.makeCrateFromTable(data.uuid);
   }
 
@@ -612,7 +617,7 @@ export class CrateManager extends ApplicationV2 {
     };
     if (!isNew) {
       const saved = await updateBox(box.id, build);
-      if (!saved) ui.notifications.warn(`${box.name} was deleted while you were editing it.`);
+      if (!saved) ui.notifications.warn(t("LOOTCRATES.Manager.DeletedWhileEditing", { name: box.name }));
       return this.render();
     }
     const saved = await createBox(build(box));
@@ -635,7 +640,7 @@ export class CrateManager extends ApplicationV2 {
     a second press is ignored.
   */
   #starting = false;
-  static #starterCrates(_e, t) { return this.addStarterCrates(t); }
+  static #starterCrates(_e, target) { return this.addStarterCrates(target); }
   async addStarterCrates(button = null) {
     if (this.#starting) return null;
     const present = starterPresent(getPools(), getBoxes());
@@ -643,21 +648,21 @@ export class CrateManager extends ApplicationV2 {
       const ok = await DialogV2.confirm({
         window: { title: STARTER_LABEL },
         content: `<p>${esc(starterAgainText(present))}</p>`,
-        yes: { label: "Add copies", default: false },
-        no: { label: "Cancel", default: true },
+        yes: { label: t("LOOTCRATES.Manager.AddCopies"), default: false },
+        no: { label: t("LOOTCRATES.Common.Cancel"), default: true },
       });
       if (!ok) { button?.focus?.(); return null; }
     }
     this.#starting = true;
     const busy = [...(this.element?.querySelectorAll('[data-action="starterCrates"]') ?? [])];
     for (const b of busy) b.setAttribute("aria-disabled", "true");
-    this.#announce("Reading the dnd5e compendiums for the starter crates…");
+    this.#announce(t("LOOTCRATES.Manager.ReadingStarter"));
     let report;
     try {
       report = await addStarterSet();
     } catch (err) {
       console.error("loot-crates | adding the starter crates failed", err);
-      report = { games: [], notes: ["The starter crates couldn't be added; the console has the error."] };
+      report = { games: [], notes: [t("LOOTCRATES.Manager.StarterFailed")] };
     } finally {
       this.#starting = false;
       for (const b of busy) b.removeAttribute("aria-disabled");
@@ -674,26 +679,26 @@ export class CrateManager extends ApplicationV2 {
 
   // The table's round from the Boxes tab: opened (or brought forward) as
   // the shop card does it (tablewindow.js).
-  static async #openTable(_e, t) {
-    try { await openTableFor(t.dataset.box); } catch (err) { ui.notifications.warn(err.message); }
+  static async #openTable(_e, target) {
+    try { await openTableFor(target.dataset.box); } catch (err) { ui.notifications.warn(err.message); }
     this.render();
   }
 
   // Every once card drawn goes back in: the mark the drawn count is read
   // from (deck.js drawnIds) moves to now. The log keeps its rows.
-  static async #reshuffle(_e, t) {
-    const box = getBoxes()[t.dataset.box];
+  static async #reshuffle(_e, target) {
+    const box = getBoxes()[target.dataset.box];
     if (!box) return this.render();
     const drawn = deckOdds(box, getPools(), getLog()).drawn;
-    const ok = await DialogV2.confirm({ window: { title: "Reshuffle" }, content: `<p>Reshuffle <strong>${esc(box.name)}</strong>? ${drawn ? `${drawn} drawn card${drawn === 1 ? " goes" : "s go"} back into the deck.` : "No card is drawn; every card is already in the deck."}</p>` });
-    if (!ok) return t.focus?.();
+    const ok = await DialogV2.confirm({ window: { title: t("LOOTCRATES.Boxes.Reshuffle") }, content: `<p>${t("LOOTCRATES.Manager.ReshuffleAsk", { name: `<strong>${esc(box.name)}</strong>` })} ${drawn ? target(drawn === 1 ? "LOOTCRATES.Manager.ReshuffleOne" : "LOOTCRATES.Manager.ReshuffleMany", { count: drawn }) : t("LOOTCRATES.Manager.ReshuffleNone")}</p>` });
+    if (!ok) return target.focus?.();
     const saved = await updateBox(box.id, fresh => ({ ...fresh, deck: { ...(fresh.deck ?? {}), shuffledAt: Date.now() } }));
-    if (saved) ui.notifications.info(`${box.name} reshuffled: every card is back in the deck.`);
+    if (saved) ui.notifications.info(t("LOOTCRATES.Manager.Reshuffled", { name: box.name }));
     this.render();
   }
 
-  static #editBox(_e, t) {
-    const box = getBoxes()[t.dataset.box];
+  static #editBox(_e, target) {
+    const box = getBoxes()[target.dataset.box];
     if (!box) return this.render();
     return this.#openEditor(box);
   }
@@ -702,8 +707,8 @@ export class CrateManager extends ApplicationV2 {
   // (newgame.js copyOf), titled "Copy box" with the name focused for the
   // GM to rename; Add to shelf creates it as any New does, and Cancel
   // writes nothing.
-  static #copyBox(_e, t) {
-    const box = getBoxes()[t.dataset.box];
+  static #copyBox(_e, target) {
+    const box = getBoxes()[target.dataset.box];
     if (!box) return this.render();
     return this.#openEditor(copyOf(box, { id: newId(), now: Date.now(), names: Object.values(getBoxes()).map(b => b.name) }), { isNew: true, copy: true });
   }
@@ -714,23 +719,23 @@ export class CrateManager extends ApplicationV2 {
     const pools = Object.values(getPools());
     const poolIds = pools.map(p => p.id);
     const data = await promptForm(editorTitle(box, isNew, opts.copy), `
-      <label>Name <input name="name" value="${esc(box.name)}"${autofocus("name", opts)}></label>
-      ${priceFieldHTML("Price", box, opts)}
+      <label>${t("LOOTCRATES.Manager.Name")} <input name="name" value="${esc(box.name)}"${autofocus("name", opts)}></label>
+      ${priceFieldHTML(t("LOOTCRATES.Boxes.ColPrice"), box, opts)}
       ${tableNoteHTML(box, { esc })}
-      ${poolsFieldset("Pools and their share of pulls", pools, box.pools, { esc })}
+      ${poolsFieldset(t("LOOTCRATES.Manager.PoolsShare"), pools, box.pools, { esc })}
       ${oddsModeFieldset(box, { esc })}
-      <fieldset class="lc-form__weights"${oddsModeOf(box) === "weight" ? " hidden" : ""}><legend>Rarity weights</legend>
+      <fieldset class="lc-form__weights"${oddsModeOf(box) === "weight" ? " hidden" : ""}><legend>${t("LOOTCRATES.Manager.RarityWeights")}</legend>
         ${RARITIES.map(r => `<label class="lc-row">${RARITY_LABEL[r]} <input name="w.${r}" type="number" min="0" step="1" value="${esc(box.weights?.[r] ?? DEFAULT_WEIGHTS[r])}"><span class="lc-form__hint" data-held="${r}"></span></label>`).join("")}
       </fieldset>
       ${nothingRow(box, { esc })}
       <div class="lc-form__odds" role="group" aria-labelledby="lc-odds-${esc(box.id)}">
-        <div class="lc-form__label" id="lc-odds-${esc(box.id)}">Chances a player sees</div>
+        <div class="lc-form__label" id="lc-odds-${esc(box.id)}">${t("LOOTCRATES.Manager.ChancesSeen")}</div>
         <div class="lc-form__preview"></div>
         <p class="lc-sr-only" role="status" aria-live="polite"></p>
       </div>
-      <fieldset><legend>Rules</legend>
+      <fieldset><legend>${t("LOOTCRATES.Boxes.ColRules")}</legend>
         ${pityRow(box.rules?.pity, { noun: "pulls", esc })}
-        <label class="lc-row"><input type="checkbox" name="noDuplicates" ${box.rules?.noDuplicates ? "checked" : ""}> No duplicates per character</label>
+        <label class="lc-row"><input type="checkbox" name="noDuplicates" ${box.rules?.noDuplicates ? "checked" : ""}> ${t("LOOTCRATES.Manager.NoDuplicates")}</label>
       </fieldset>
       ${limitsFieldset(box, { draft: isNew, ...dayOpts(), esc })}
       ${shelfFieldHTML(box, opts)}`, {
@@ -781,25 +786,25 @@ export class CrateManager extends ApplicationV2 {
     const stake = stakeCoins(box.price);
     const odds = { ...WELL_DEFAULTS.odds, ...(box.odds ?? {}) };
     const data = await promptForm(editorTitle(box, isNew, opts.copy), `
-      <label>Name <input name="name" value="${esc(box.name)}"${autofocus("name", opts)}></label>
+      <label>${t("LOOTCRATES.Manager.Name")} <input name="name" value="${esc(box.name)}"${autofocus("name", opts)}></label>
       ${stakeRow(stake, esc)}
-      <fieldset><legend>Outcomes, by weight</legend>
-        ${[["nothing", "Nothing"], ["coin", "Coin back"], ["item", "An item from the pools"]].map(([k, l]) => `<label class="lc-row">${l} <input name="o.${k}" type="number" min="0" step="1" value="${esc(odds[k])}"></label>`).join("")}
+      <fieldset><legend>${t("LOOTCRATES.Manager.Outcomes")}</legend>
+        ${[["nothing", t("LOOTCRATES.Odds.Nothing")], ["coin", t("LOOTCRATES.Well.CoinBack")], ["item", t("LOOTCRATES.Deck.HintItem")]].map(([k, l]) => `<label class="lc-row">${l} <input name="o.${k}" type="number" min="0" step="1" value="${esc(odds[k])}"></label>`).join("")}
       </fieldset>
-      ${poolsFieldset("Pools the item comes from, and their share", pools, box.pools, { esc })}
-      <fieldset class="lc-form__weights"><legend>The item's rarity weights</legend>
+      ${poolsFieldset(t("LOOTCRATES.Manager.PoolsItem"), pools, box.pools, { esc })}
+      <fieldset class="lc-form__weights"><legend>${t("LOOTCRATES.Manager.ItemRarityWeights")}</legend>
         ${RARITIES.map(r => `<label class="lc-row">${RARITY_LABEL[r]} <input name="w.${r}" type="number" min="0" step="1" value="${esc(box.weights?.[r] ?? DEFAULT_WEIGHTS[r])}"><span class="lc-form__hint" data-held="${r}"></span></label>`).join("")}
       </fieldset>
       <div class="lc-form__odds" role="group" aria-labelledby="lc-odds-${esc(box.id)}">
-        <div class="lc-form__label" id="lc-odds-${esc(box.id)}">Chances a player sees</div>
+        <div class="lc-form__label" id="lc-odds-${esc(box.id)}">${t("LOOTCRATES.Manager.ChancesSeen")}</div>
         <div class="lc-form__preview"></div>
         <p class="lc-sr-only" role="status" aria-live="polite"></p>
       </div>
-      <fieldset><legend>Rules</legend>
-        <label class="lc-row">Each character may throw <input name="cap" type="number" min="0" step="1" value="${box.rules?.cap ?? ""}"> times a day (blank for no limit${byRest(dayMode()) ? "" : "; a day ends on the world's calendar or at the character's long rest"})</label>
+      <fieldset><legend>${t("LOOTCRATES.Boxes.ColRules")}</legend>
+        <label class="lc-row">${t(byRest(dayMode()) ? "LOOTCRATES.Manager.WellCap" : "LOOTCRATES.Manager.WellCapDay", { input: `<input name="cap" type="number" min="0" step="1" value="${box.rules?.cap ?? ""}">` })}</label>
         ${noClockNote({ ...dayOpts(), cap: box.rules?.cap })}
         ${pityRow(box.rules?.pity, { noun: "throws", esc })}
-        <label class="lc-row"><input type="checkbox" name="noDuplicates" ${box.rules?.noDuplicates ? "checked" : ""}> No duplicates per character</label>
+        <label class="lc-row"><input type="checkbox" name="noDuplicates" ${box.rules?.noDuplicates ? "checked" : ""}> ${t("LOOTCRATES.Manager.NoDuplicates")}</label>
       </fieldset>
       ${shelfFieldHTML(box, opts)}`, {
       onForm: form => {
@@ -846,23 +851,23 @@ export class CrateManager extends ApplicationV2 {
     const stake = stakeCoins(box.price);
     const dice = { ...DICE_DEFAULTS, ...(box.dice ?? {}) };
     const data = await promptForm(editorTitle(box, isNew, opts.copy), `
-      <label>Name <input name="name" value="${esc(box.name)}"${autofocus("name", opts)}></label>
+      <label>${t("LOOTCRATES.Manager.Name")} <input name="name" value="${esc(box.name)}"${autofocus("name", opts)}></label>
       ${stakeRow(stake, esc)}
-      <fieldset><legend>Beat the dragon</legend>
+      <fieldset><legend>${t("LOOTCRATES.Manager.BeatDragon")}</legend>
         ${dragonRow(FORMULAS, dice, esc)}
-        <label class="lc-row">A win pays <input name="multiplier" type="number" min="0" step="0.5" value="${esc(dice.multiplier)}"> times the stake</label>
-        <p class="lc-form__hint">A total equal to the dragon's number loses.</p>
+        <label class="lc-row">${t("LOOTCRATES.Manager.WinPays", { input: `<input name="multiplier" type="number" min="0" step="0.5" value="${esc(dice.multiplier)}">` })}</label>
+        <p class="lc-form__hint">${t("LOOTCRATES.Manager.TieLoses")}</p>
       </fieldset>
       <div class="lc-form__odds" role="group" aria-labelledby="lc-odds-${esc(box.id)}">
-        <div class="lc-form__label" id="lc-odds-${esc(box.id)}">Chances a player sees</div>
+        <div class="lc-form__label" id="lc-odds-${esc(box.id)}">${t("LOOTCRATES.Manager.ChancesSeen")}</div>
         <div class="lc-form__preview"></div>
         <p class="lc-sr-only" role="status" aria-live="polite"></p>
       </div>
-      <fieldset><legend>Prize</legend>
-        <label class="lc-row"><input type="checkbox" name="prize" ${box.rules?.prize ? "checked" : ""}> A perfect roll (every die on its top face) also wins an item from the pools below</label>
+      <fieldset><legend>${t("LOOTCRATES.Manager.Prize")}</legend>
+        <label class="lc-row"><input type="checkbox" name="prize" ${box.rules?.prize ? "checked" : ""}> ${t("LOOTCRATES.Manager.PrizeField")}</label>
       </fieldset>
-      ${poolsFieldset("Pools the prize comes from, and their share", pools, box.pools, { esc })}
-      <fieldset class="lc-form__weights"><legend>The prize's rarity weights</legend>
+      ${poolsFieldset(t("LOOTCRATES.Manager.PoolsPrize"), pools, box.pools, { esc })}
+      <fieldset class="lc-form__weights"><legend>${t("LOOTCRATES.Manager.PrizeRarityWeights")}</legend>
         ${RARITIES.map(r => `<label class="lc-row">${RARITY_LABEL[r]} <input name="w.${r}" type="number" min="0" step="1" value="${esc(box.weights?.[r] ?? DEFAULT_WEIGHTS[r])}"><span class="lc-form__hint" data-held="${r}"></span></label>`).join("")}
       </fieldset>
       ${limitsFieldset(box, { stock: false, draft: isNew, ...dayOpts(), esc })}
@@ -905,21 +910,21 @@ export class CrateManager extends ApplicationV2 {
     const pools = Object.values(getPools());
     const poolIds = pools.map(p => p.id);
     const data = await promptForm(editorTitle(box, isNew, opts.copy), `
-      <label>Name <input name="name" value="${esc(box.name)}"${autofocus("name", opts)}></label>
-      ${priceFieldHTML("First draw", box, opts)}
+      <label>${t("LOOTCRATES.Manager.Name")} <input name="name" value="${esc(box.name)}"${autofocus("name", opts)}></label>
+      ${priceFieldHTML(t("LOOTCRATES.Manager.FirstDraw"), box, opts)}
       ${deckRiseFieldsHTML(box, esc)}
-      <fieldset class="lc-cards"><legend>Cards</legend>
-        <div class="lc-cards__head" aria-hidden="true"><span>Card</span><span>Does</span><span>Gold</span><span>Weight</span><span>Once</span><span></span></div>
+      <fieldset class="lc-cards"><legend>${t("LOOTCRATES.Manager.Cards")}</legend>
+        <div class="lc-cards__head" aria-hidden="true"><span>${t("LOOTCRATES.Manager.CardHead")}</span><span>${t("LOOTCRATES.Manager.DoesHead")}</span><span>${t("LOOTCRATES.Manager.GoldHead")}</span><span>${t("LOOTCRATES.Manager.WeightHead")}</span><span>${t("LOOTCRATES.Manager.OnceHead")}</span><span></span></div>
         <div class="lc-cards__rows">${cardsOf(box).map((c, i) => cardRow(c, i + 1)).join("")}</div>
-        <div class="lc-cards__foot"><button type="button" class="lc-cards__add"><i class="fas fa-plus"></i> Add card</button></div>
-        <p class="lc-form__hint">A card marked once leaves the deck when drawn, until you reshuffle. Gold is what a coins card pays or a loss card takes; an effect card's text is posted to chat for you to play out. Weight 0 never draws.</p>
+        <div class="lc-cards__foot"><button type="button" class="lc-cards__add"><i class="fas fa-plus"></i> ${t("LOOTCRATES.Manager.AddCard")}</button></div>
+        <p class="lc-form__hint">${t("LOOTCRATES.Manager.CardsHint")}</p>
       </fieldset>
-      ${poolsFieldset("Pools the item cards draw from, and their share", pools, box.pools, { esc })}
-      <fieldset class="lc-form__weights"><legend>The item's rarity weights</legend>
+      ${poolsFieldset(t("LOOTCRATES.Manager.PoolsCards"), pools, box.pools, { esc })}
+      <fieldset class="lc-form__weights"><legend>${t("LOOTCRATES.Manager.ItemRarityWeights")}</legend>
         ${RARITIES.map(r => `<label class="lc-row">${RARITY_LABEL[r]} <input name="w.${r}" type="number" min="0" step="1" value="${esc(box.weights?.[r] ?? DEFAULT_WEIGHTS[r])}"><span class="lc-form__hint" data-held="${r}"></span></label>`).join("")}
       </fieldset>
       <div class="lc-form__odds" role="group" aria-labelledby="lc-odds-${esc(box.id)}">
-        <div class="lc-form__label" id="lc-odds-${esc(box.id)}">Chances a player sees</div>
+        <div class="lc-form__label" id="lc-odds-${esc(box.id)}">${t("LOOTCRATES.Manager.ChancesSeen")}</div>
         <div class="lc-form__preview"></div>
         <p class="lc-sr-only" role="status" aria-live="polite"></p>
       </div>
@@ -988,27 +993,27 @@ export class CrateManager extends ApplicationV2 {
     const poolIds = pools.map(p => p.id);
     const colours = coloursOf(box);
     const data = await promptForm(editorTitle(box, isNew, opts.copy), `
-      <label>Name <input name="name" value="${esc(box.name)}"${autofocus("name", opts)}></label>
-      <fieldset><legend>Bets</legend>
+      <label>${t("LOOTCRATES.Manager.Name")} <input name="name" value="${esc(box.name)}"${autofocus("name", opts)}></label>
+      <fieldset><legend>${t("LOOTCRATES.Manager.Bets")}</legend>
         ${betRangeRow(box.price, maxStakeOf(box), esc)}
-        <label class="lc-row">Each character may place <input name="maxBets" type="number" min="0" step="1" value="${esc(maxBetsOf(box))}"> bets a round (0 for no limit)</label>
-        <label class="lc-row">Bets stay open for <input name="windowSec" type="number" min="0" step="5" value="${esc(windowMsOf(box) / 1000)}"> seconds (0: until you press Spin)</label>
+        <label class="lc-row">${t("LOOTCRATES.Manager.MaxBets", { input: `<input name="maxBets" type="number" min="0" step="1" value="${esc(maxBetsOf(box))}">` })}</label>
+        <label class="lc-row">${t("LOOTCRATES.Manager.Window", { input: `<input name="windowSec" type="number" min="0" step="5" value="${esc(windowMsOf(box) / 1000)}">` })}</label>
       </fieldset>
-      <fieldset class="lc-pockets"><legend>Pockets</legend>
-        <div class="lc-row lc-pockets__colours"><label>First colour <input name="colourA" class="lc-pockets__colour" data-colour="0" value="${esc(colours[0])}"></label><label>Second colour <input name="colourB" class="lc-pockets__colour" data-colour="1" value="${esc(colours[1])}"></label></div>
+      <fieldset class="lc-pockets"><legend>${t("LOOTCRATES.Manager.Pockets")}</legend>
+        <div class="lc-row lc-pockets__colours"><label>${t("LOOTCRATES.Manager.FirstColour")} <input name="colourA" class="lc-pockets__colour" data-colour="0" value="${esc(colours[0])}"></label><label>${t("LOOTCRATES.Manager.SecondColour")} <input name="colourB" class="lc-pockets__colour" data-colour="1" value="${esc(colours[1])}"></label></div>
         <div class="lc-pockets__rows">${pocketsOf(box).map(p => pocketRow(p, colours)).join("")}</div>
-        <div class="lc-cards__foot"><button type="button" class="lc-pockets__add"><i class="fas fa-plus"></i> Add pocket</button></div>
-        <p class="lc-form__hint">A pocket's number is its place on the wheel. The rim of each pocket shows its rarity.</p>
+        <div class="lc-cards__foot"><button type="button" class="lc-pockets__add"><i class="fas fa-plus"></i> ${t("LOOTCRATES.Manager.AddPocket")}</button></div>
+        <p class="lc-form__hint">${t("LOOTCRATES.Manager.PocketsHint")}</p>
       </fieldset>
-      <fieldset><legend>What a winning bet pays, times the stake</legend>
-        ${BET_TYPES.map(t => `<label class="lc-row">${esc(BET_TYPE_LABEL[t])} <input name="pay.${t}" type="number" min="0" step="0.5" value="${esc(payoutOf(box, t))}">×</label>`).join("")}
+      <fieldset><legend>${t("LOOTCRATES.Manager.Payouts")}</legend>
+        ${BET_TYPES.map(target => `<label class="lc-row">${esc(BET_TYPE_LABEL[target])} <input name="pay.${target}" type="number" min="0" step="0.5" value="${esc(payoutOf(box, target))}">×</label>`).join("")}
       </fieldset>
-      <fieldset><legend>Item on a rarity</legend>
-        <label class="lc-row"><input type="checkbox" name="itemOnRarity" ${itemOnRarity(box) ? "checked" : ""}> A winning bet on a rarity band also draws an item of that rarity from the pools below</label>
+      <fieldset><legend>${t("LOOTCRATES.Manager.ItemOnRarity")}</legend>
+        <label class="lc-row"><input type="checkbox" name="itemOnRarity" ${itemOnRarity(box) ? "checked" : ""}> ${t("LOOTCRATES.Manager.ItemOnRarityField")}</label>
         ${poolPicks(pools, box.pools, { share: false, esc })}
       </fieldset>
       <div class="lc-form__odds" role="group" aria-labelledby="lc-odds-${esc(box.id)}">
-        <div class="lc-form__label" id="lc-odds-${esc(box.id)}">Chances a player sees</div>
+        <div class="lc-form__label" id="lc-odds-${esc(box.id)}">${t("LOOTCRATES.Manager.ChancesSeen")}</div>
         <div class="lc-form__preview"></div>
         <p class="lc-sr-only" role="status" aria-live="polite"></p>
       </div>
@@ -1073,25 +1078,30 @@ export class CrateManager extends ApplicationV2 {
     const choices = auctionLotChoices(box);
     const house = houseOf(box);
     const data = await promptForm(editorTitle(box, isNew, opts.copy), `
-      <label>Name <input name="name" value="${esc(box.name)}"${autofocus("name", opts)}></label>
-      <fieldset class="lc-auction-lot"><legend>The lot</legend>
-        <label class="lc-field">What is sold <select name="lot" class="lc-auction-lot__pick">${lotOptionsHTML(choices, lotKey(lotOf(box)))}</select></label>
-        <div class="lc-auction-lot__drop" data-lot-drop>Or drop an item here from the Items sidebar or a compendium.</div>
+      <label>${t("LOOTCRATES.Manager.Name")} <input name="name" value="${esc(box.name)}"${autofocus("name", opts)}></label>
+      <fieldset class="lc-auction-lot"><legend>${t("LOOTCRATES.Auction.TheLotLegend")}</legend>
+        <label class="lc-field">${t("LOOTCRATES.Auction.WhatIsSold")} <select name="lot" class="lc-auction-lot__pick">${lotOptionsHTML(choices, lotKey(lotOf(box)))}</select></label>
+        <div class="lc-auction-lot__drop" data-lot-drop>${t("LOOTCRATES.Auction.DropLot")}</div>
         <p class="lc-form__hint" data-lot-said role="status"></p>
       </fieldset>
-      <fieldset><legend>Bids</legend>
-        ${priceFieldHTML("Opening bid", box, opts)}
-        <div class="lc-row lc-row--wrap">Each bid raises the last by at least <input name="increment" type="number" min="0" step="any" value="${esc(incrementOf(box))}" aria-label="Least raise in gp"> gp</div>
-        <div class="lc-row lc-row--wrap">Reserve <input name="reserve" type="number" min="0" step="any" value="${esc(reserveOf(box))}" aria-label="Reserve in gp, 0 for none"> gp, 0 for none</div>
-        <div class="lc-row lc-row--wrap">The gavel falls <input name="gavelSec" type="number" min="${MIN_GAVEL_SEC}" step="1" value="${esc(gavelMsOf(box) / 1000)}" aria-label="Seconds the gavel waits after the last bid"> seconds after the last bid</div>
-        <p class="lc-form__hint">Players see whether the reserve is met, never its amount. Every bid resets the gavel; when it falls, the top bid wins and pays, and every other bid has already come back.</p>
+      <fieldset><legend>${t("LOOTCRATES.Auction.WordsList")}</legend>
+        ${priceFieldHTML(t("LOOTCRATES.Auction.OpeningBidLine"), box, opts)}
+        <div class="lc-row lc-row--wrap">${t("LOOTCRATES.Auction.IncrementField", { input: `<input name="increment" type="number" min="0" step="any" value="${esc(incrementOf(box))}" aria-label="${t("LOOTCRATES.Auction.IncrementLabel")}">` })}</div>
+        <div class="lc-row lc-row--wrap">${t("LOOTCRATES.Auction.ReserveField", { input: `<input name="reserve" type="number" min="0" step="any" value="${esc(reserveOf(box))}" aria-label="${t("LOOTCRATES.Auction.ReserveLabel")}">` })}</div>
+        <div class="lc-row lc-row--wrap">${t("LOOTCRATES.Auction.GavelField", { input: `<input name="gavelSec" type="number" min="${MIN_GAVEL_SEC}" step="1" value="${esc(gavelMsOf(box) / 1000)}" aria-label="${t("LOOTCRATES.Auction.GavelLabel")}">` })}</div>
+        <p class="lc-form__hint">${t("LOOTCRATES.Auction.BidsHint")}</p>
       </fieldset>
-      <fieldset><legend>House bidders</legend>
-        <div class="lc-row lc-row--wrap"><input name="houseCount" type="number" min="0" max="${MAX_HOUSE}" step="1" value="${esc(house.count)}" aria-label="How many house bidders"> house bidders, each bidding up to <input name="houseBudget" type="number" min="0" step="any" value="${esc(house.budget)}" aria-label="Each house bidder's budget in gp"> gp, with a <input name="houseChance" type="number" min="0" max="100" step="1" value="${esc(house.chance)}" aria-label="Chance a house bidder bids, in percent"> % chance every ${HOUSE_TICK_MS / 1000} s</div>
-        <p class="lc-form__hint">They bid only against a player, never past their budget, and hold no coins: a house win sells nothing and every bid comes back.</p>
+      <fieldset><legend>${t("LOOTCRATES.Auction.HouseLegend")}</legend>
+        <div class="lc-row lc-row--wrap">${t("LOOTCRATES.Auction.HouseField", {
+          count: `<input name="houseCount" type="number" min="0" max="${MAX_HOUSE}" step="1" value="${esc(house.count)}" aria-label="${t("LOOTCRATES.Auction.HouseCountLabel")}">`,
+          budget: `<input name="houseBudget" type="number" min="0" step="any" value="${esc(house.budget)}" aria-label="${t("LOOTCRATES.Auction.HouseBudgetLabel")}">`,
+          chance: `<input name="houseChance" type="number" min="0" max="100" step="1" value="${esc(house.chance)}" aria-label="${t("LOOTCRATES.Auction.HouseChanceLabel")}">`,
+          every: HOUSE_TICK_MS / 1000,
+        })}</div>
+        <p class="lc-form__hint">${t("LOOTCRATES.Auction.HouseHint")}</p>
       </fieldset>
       <div class="lc-form__odds" role="group" aria-labelledby="lc-odds-${esc(box.id)}">
-        <div class="lc-form__label" id="lc-odds-${esc(box.id)}">What the table sees</div>
+        <div class="lc-form__label" id="lc-odds-${esc(box.id)}">${t("LOOTCRATES.Auction.TableSees")}</div>
         <div class="lc-form__preview"></div>
         <p class="lc-sr-only" role="status" aria-live="polite"></p>
       </div>
@@ -1115,17 +1125,17 @@ export class CrateManager extends ApplicationV2 {
           let drop;
           try { drop = dragData(e); } catch { drop = null; }
           const item = drop?.type === "Item" && drop.uuid ? await fromUuid(drop.uuid).catch(() => null) : null;
-          if (!item || !isLootType(item.type)) { if (said) said.textContent = "Drop an item: a weapon, armour, a potion, a tool or loot."; return; }
+          if (!item || !isLootType(item.type)) { if (said) said.textContent = t("LOOTCRATES.Auction.DropItemOnly"); return; }
           const lot = lotFromEntry(entryFromItem(item, drop.uuid));
           const key = lotKey(lot);
           choices.set(key, lot);
           if (!pick.querySelector(`option[value="${CSS.escape(key)}"]`)) {
             let group = pick.querySelector("optgroup[data-dropped]");
-            if (!group) { pick.insertAdjacentHTML("beforeend", `<optgroup label="Dropped here" data-dropped></optgroup>`); group = pick.querySelector("optgroup[data-dropped]"); }
+            if (!group) { pick.insertAdjacentHTML("beforeend", `<optgroup label="${t("LOOTCRATES.Auction.DroppedHere")}" data-dropped></optgroup>`); group = pick.querySelector("optgroup[data-dropped]"); }
             group.insertAdjacentHTML("beforeend", `<option value="${esc(key)}">${esc(lot.name)}</option>`);
           }
           pick.value = key;
-          if (said) said.textContent = `${lot.name} is the lot.`;
+          if (said) said.textContent = t("LOOTCRATES.Auction.IsTheLot", { name: lot.name });
           paint();
         });
       },
@@ -1152,20 +1162,20 @@ export class CrateManager extends ApplicationV2 {
     Spin and no Call it off; the confirm names what the round holds and the
     status line says the refund once. A call-off that fails deletes nothing.
   */
-  static async #deleteBox(_e, t) {
-    const box = getBoxes()[t.dataset.box];
+  static async #deleteBox(_e, target) {
+    const box = getBoxes()[target.dataset.box];
     if (!box) return this.render();
     const round = liveRoundOf(getRounds(), box.id);
     const content = deleteGameText(box, round ? heldBy(getLog(), round.id) : null, esc);
-    if (!await DialogV2.confirm({ window: { title: deleteTitle(box) }, content })) return t.focus?.();
+    if (!await DialogV2.confirm({ window: { title: deleteTitle(box) }, content })) return target.focus?.();
     let cancelled = null;
     if (round) {
       try {
         cancelled = await cancelTableRound(round.id);
       } catch (err) {
         if (!(err instanceof PullError)) console.error(`loot-crates | calling off the round at ${box.name} failed; the game is kept`, err);
-        ui.notifications.warn(err instanceof PullError ? `${err.message} ${box.name} was not deleted.` : `The round at ${box.name} couldn't be called off, so it was not deleted. Check the console.`);
-        return t.focus?.();
+        ui.notifications.warn(err instanceof PullError ? t("LOOTCRATES.Manager.NotDeleted", { why: err.message, name: box.name }) : t("LOOTCRATES.Manager.NotDeletedRound", { name: box.name }));
+        return target.focus?.();
       }
     }
     await removeBox(box.id);
@@ -1173,15 +1183,15 @@ export class CrateManager extends ApplicationV2 {
     this.#announce(deletedNotice(box, cancelled));
   }
 
-  static async #refund(_e, t) {
-    const plan = describeRefund(t.dataset.row);
-    if (plan.status === "already") { ui.notifications.info("That pull was already refunded."); this.#focusRow = t.dataset.row; return this.render(); }
+  static async #refund(_e, target) {
+    const plan = describeRefund(target.dataset.row);
+    if (plan.status === "already") { ui.notifications.info(t("LOOTCRATES.Refund.Already")); this.#focusRow = target.dataset.row; return this.render(); }
     // Winnings the character has spent can't come back: the confirm's
     // place is taken by the sentence naming the shortfall, and nothing is
     // written. Focus returns to the row's Refund, which still stands.
     if (plan.status === "short") {
-      await DialogV2.prompt({ window: { title: "Refund" }, content: `<p>${esc(plan.message)}</p>`, ok: { label: "Close" }, rejectClose: false });
-      return t.focus?.();
+      await DialogV2.prompt({ window: { title: t("LOOTCRATES.Log.Refund") }, content: `<p>${esc(plan.message)}</p>`, ok: { label: t("LOOTCRATES.Common.Close") }, rejectClose: false });
+      return target.focus?.();
     }
     if (plan.status !== "ready") return ui.notifications.warn(plan.message);
     const { row, actor, item, box } = plan;
@@ -1189,31 +1199,32 @@ export class CrateManager extends ApplicationV2 {
     // that paid more than the stake takes the difference back; a coin that
     // already came back (a well's coin return) moves nothing.
     const coins = plan.coins ?? Math.round(row.price * 100);
-    const moneyLine = coins > 0 ? `Return <strong>${esc(formatPrice(coins / 100))}</strong> to ${esc(actor.name)}`
-      : coins < 0 ? `Take <strong>${esc(formatPrice(-coins / 100))}</strong> back from ${esc(actor.name)}`
-      : `${esc(actor.name)}'s coin already came back, so no coins move`;
-    const itemLine = item
-      ? ` and remove <strong>${esc(item.name)}</strong> from their inventory`
-      : row.itemId ? ` (<strong>${esc(row.name)}</strong> is no longer in their inventory, so nothing is removed)` : "";
+    const money = coins > 0 ? t("LOOTCRATES.Refund.Return", { price: `<strong>${esc(formatPrice(coins / 100))}</strong>`, name: esc(actor.name) })
+      : coins < 0 ? t("LOOTCRATES.Refund.TakeBack", { price: `<strong>${esc(formatPrice(-coins / 100))}</strong>`, name: esc(actor.name) })
+      : t("LOOTCRATES.Refund.CoinBack", { name: esc(actor.name) });
+    const ask = item ? t("LOOTCRATES.Refund.AskRemove", { money, item: `<strong>${esc(item.name)}</strong>` })
+      : row.itemId ? t("LOOTCRATES.Refund.AskGone", { money, item: `<strong>${esc(row.name)}</strong>` }) : t("LOOTCRATES.Refund.Ask", { money });
     const stockBack = row.roundId ? null : stockAfterRefund(box);
-    const stockLine = stockBack != null ? ` ${esc(box.name)} goes back to ${stockBack} in stock.` : "";
+    const stockLine = stockBack != null ? ` ${t("LOOTCRATES.Refund.StockBack", { name: esc(box.name), count: stockBack })}` : "";
     // A throw that gave no item still counted toward the pity (row.before).
     const rules = box && (row.uuid || row.before) ? refundRulesLine({ actorName: actor.name, itemName: row.name, box, ...plan.state }) : "";
     const rulesLine = rules ? ` ${esc(rules)}` : "";
     const ok = await DialogV2.confirm({
-      window: { title: "Refund" },
-      content: `<p>${moneyLine}${itemLine}?${stockLine}${rulesLine}</p><p>A pull can only be refunded once.</p>`,
+      window: { title: t("LOOTCRATES.Log.Refund") },
+      content: `<p>${ask}${stockLine}${rulesLine}</p><p>${t("LOOTCRATES.Refund.Once")}</p>`,
     });
     if (!ok) return;
     // The Refund button is gone after the render; land on the row's status.
     this.#focusRow = row.id;
     const done = await refundPull(row.id);
     if (done.status === "refunded") {
-      const what = done.removedItem ? ` and ${done.removedItem} removed` : "";
-      ui.notifications.info(coins === 0 ? `${row.boxName} refunded for ${actor.name}; no coins moved${what}.` : `${coins > 0 ? `${formatPrice(coins / 100)} returned to` : `${formatPrice(-coins / 100)} taken back from`} ${actor.name}${what}.`);
+      const keys = coins === 0 ? ["LOOTCRATES.Refund.DoneNoCoins", "LOOTCRATES.Refund.DoneNoCoinsRemoved"]
+        : coins > 0 ? ["LOOTCRATES.Refund.DoneReturned", "LOOTCRATES.Refund.DoneReturnedRemoved"]
+        : ["LOOTCRATES.Refund.DoneTaken", "LOOTCRATES.Refund.DoneTakenRemoved"];
+      ui.notifications.info(t(keys[done.removedItem ? 1 : 0], { box: row.boxName, name: actor.name, price: formatPrice(Math.abs(coins) / 100), item: done.removedItem }));
       await postRefundCard({ row, actor, removedItem: done.removedItem });
     } else if (done.status === "already") {
-      ui.notifications.info("That pull was already refunded.");
+      ui.notifications.info(t("LOOTCRATES.Refund.Already"));
     } else {
       ui.notifications.warn(done.message);
     }
@@ -1272,8 +1283,8 @@ export class CrateManager extends ApplicationV2 {
     toggle (focusKey: its action and data-box) and the status line says
     what the players can see now.
   */
-  static async #toggleShelf(_e, t) {
-    const saved = await updateBox(t.dataset.box, fresh => ({ ...fresh, rules: shelfRules(fresh.rules ?? {}, !onShelf(fresh)) }));
+  static async #toggleShelf(_e, target) {
+    const saved = await updateBox(target.dataset.box, fresh => ({ ...fresh, rules: shelfRules(fresh.rules ?? {}, !onShelf(fresh)) }));
     await this.render();
     if (saved) this.#announce(shelfNotice(saved));
   }
@@ -1349,15 +1360,15 @@ export class CrateManager extends ApplicationV2 {
     const pool = getPools()[poolId];
     if (!pool) return;
     const plan = await entriesFromDrop(data, { known: pool.entries.map(e => e.uuid) });
-    if (!plan) return ui.notifications.warn("Drop an item, an Items folder, an item compendium or a roll table.");
+    if (!plan) return ui.notifications.warn(t("LOOTCRATES.Manager.DropWhat"));
     if (data.type !== "Item") return this.#previewAdd(poolId, plan);
     if (!plan.entries.length) {
       if (plan.skipped.duplicates) {
         if (pool.entries.some(e => e.uuid === data.uuid)) return this.#pinDrop(poolId, [data.uuid], { duplicate: true });
-        return ui.notifications.info(`${plan.label} is already in ${pool.name}.`);
+        return ui.notifications.info(t("LOOTCRATES.Manager.AlreadyIn", { name: plan.label, pool: pool.name }));
       }
       const type = Object.keys(plan.skipped.notLoot)[0];
-      return ui.notifications.warn(`${plan.label} is a ${SKIPPED_NAMES[type]?.[0] ?? type}, not loot. A pool takes weapons, equipment, consumables, tools, loot and containers.`);
+      return ui.notifications.warn(t("LOOTCRATES.Manager.NotLootType", { name: plan.label, type: SKIPPED_NOUN[type] ?? type }));
     }
     if (await addEntries(poolId, plan.entries)) this.#pinDrop(poolId, plan.entries.map(e => e.uuid));
   }
@@ -1367,18 +1378,18 @@ export class CrateManager extends ApplicationV2 {
     event.preventDefault();
     let data;
     try { data = dragData(event); } catch { return; }
-    if (data?.type !== "Item" || !data.uuid) return ui.notifications.warn("Drop an item to relink this entry.");
+    if (data?.type !== "Item" || !data.uuid) return ui.notifications.warn(t("LOOTCRATES.Manager.DropToRelink"));
     return this.#relink(poolId, uuid, data.uuid);
   }
 
   async #relink(poolId, uuid, newUuid) {
     let item = null;
     try { item = await fromUuid(newUuid); } catch { /* reported below */ }
-    if (item?.documentName !== "Item") return ui.notifications.warn(`No item has the UUID ${newUuid}.`);
-    if (!isLootType(item.type)) return ui.notifications.warn(`${item.name} is not loot. A pool takes weapons, equipment, consumables, tools, loot and containers.`);
+    if (item?.documentName !== "Item") return ui.notifications.warn(t("LOOTCRATES.Manager.NoSuchUuid", { uuid: newUuid }));
+    if (!isLootType(item.type)) return ui.notifications.warn(t("LOOTCRATES.Manager.NotLoot", { name: item.name }));
     const { name, img, rarity, sourceRarity } = entryFromItem(item);
     const done = await patchEntry(poolId, uuid, { uuid: item.uuid, name, img, rarity, sourceRarity });
-    if (!done) ui.notifications.info(`${item.name} is already in ${getPools()[poolId]?.name ?? "that pool"}; remove the missing entry instead.`);
+    if (!done) ui.notifications.info(t("LOOTCRATES.Manager.RelinkDuplicate", { name: item.name, pool: getPools()[poolId]?.name ?? t("LOOTCRATES.Manager.ThatPool") }));
     this.#repaint(poolId, { uuid: done ? item.uuid : uuid });
   }
 
@@ -1396,7 +1407,7 @@ export class CrateManager extends ApplicationV2 {
     // One status line for the whole tab: the source check, then what a
     // search, a chip or Show more did.
     return `
-      <div class="lc-toolbar"><button type="button" data-action="addPool"><i class="fas fa-plus"></i> New pool</button><span class="lc-pool__hint lc-manager__status" role="status">${this.checking ? "Checking each item against its source…" : ""}</span></div>
+      <div class="lc-toolbar"><button type="button" data-action="addPool"><i class="fas fa-plus"></i> ${t("LOOTCRATES.Pools.NewPool")}</button><span class="lc-pool__hint lc-manager__status" role="status">${this.checking ? t("LOOTCRATES.Manager.Checking") : ""}</span></div>
       ${pools.length ? pools.map(p => {
         const rows = this.#rowsOf(p);
         const view = this.#viewOf(p);
@@ -1497,7 +1508,7 @@ function focusKey(el) {
 
 const SEARCH_DELAY_MS = 150;
 
-const htmlNode = html => { const t = document.createElement("template"); t.innerHTML = html.trim(); return t.content.firstElementChild; };
+const htmlNode = html => { const target = document.createElement("template"); target.innerHTML = html.trim(); return target.content.firstElementChild; };
 
 // One card of the deck editor (deck.js draftDeck reads these names): the
 // row's data-kind decides which of the gold and text fields show. Its
@@ -1507,13 +1518,13 @@ function cardRow(c, n) {
   const name = key => CARD_FIELDS[key](n);
   return `<div class="lc-card-row" data-card="${id}" data-kind="${esc(c.kind)}">
       <input type="hidden" name="cards" value="${id}">
-      <input class="lc-card-row__label" name="c.${id}.label" value="${esc(c.label)}" placeholder="Card name" aria-label="${name("label")}">
+      <input class="lc-card-row__label" name="c.${id}.label" value="${esc(c.label)}" placeholder="${t("LOOTCRATES.Manager.CardNamePlaceholder")}" aria-label="${name("label")}">
       <select class="lc-card-row__kind" name="c.${id}.kind" aria-label="${name("kind")}">${CARD_KINDS.map(k => `<option value="${k}"${k === c.kind ? " selected" : ""}>${esc(CARD_KIND_HINT[k])}</option>`).join("")}</select>
-      <input class="lc-card-row__gp" name="c.${id}.gp" type="number" min="0" step="1" value="${esc(c.gp ?? 0)}" aria-label="${name("gp")}" placeholder="gp">
+      <input class="lc-card-row__gp" name="c.${id}.gp" type="number" min="0" step="1" value="${esc(c.gp ?? 0)}" aria-label="${name("gp")}" placeholder="${t("LOOTCRATES.Manager.GpPlaceholder")}">
       <input class="lc-card-row__weight" name="c.${id}.weight" type="number" min="0" step="1" value="${esc(c.weight ?? 1)}" aria-label="${name("weight")}">
       <label class="lc-card-row__once"><input type="checkbox" name="c.${id}.once"${c.once ? " checked" : ""} aria-label="${name("once")}"></label>
-      <button type="button" class="lc-card-row__remove" aria-label="Remove ${esc(c.label || "this card")}" data-tooltip="Remove"><i class="fas fa-xmark" inert></i></button>
-      <input class="lc-card-row__text" name="c.${id}.text" value="${esc(c.text ?? "")}" placeholder="What happens (posted to chat for you to play out)" aria-label="${name("text")}">
+      <button type="button" class="lc-card-row__remove" aria-label="${t("LOOTCRATES.Pools.RemoveLabel", { name: esc(c.label || t("LOOTCRATES.Manager.ThisCard")) })}" data-tooltip="${t("LOOTCRATES.Pools.Remove")}"><i class="fas fa-xmark" inert></i></button>
+      <input class="lc-card-row__text" name="c.${id}.text" value="${esc(c.text ?? "")}" placeholder="${t("LOOTCRATES.Manager.EffectPlaceholder")}" aria-label="${name("text")}">
     </div>`;
 }
 
@@ -1540,10 +1551,10 @@ function auctionLotChoices(box) {
 function lotOptionsHTML(choices, picked = "") {
   const all = [...choices.entries()];
   const group = (label, list, attr = "") => (list.length ? `<optgroup label="${esc(label)}"${attr}>${list.map(([k, l]) => `<option value="${esc(k)}"${k === picked ? " selected" : ""}>${esc(l.type === "crate" ? l.name : `${l.name}${l.rarity && l.rarity !== "none" ? `, ${RARITY_LABEL[l.rarity] ?? l.rarity}` : ""}${l.pool ? ` (${l.pool})` : ""}`)}</option>`).join("")}</optgroup>` : "");
-  return `<option value=""${picked ? "" : " selected"}>Pick a lot</option>`
-    + group("Sealed crates", all.filter(([, l]) => l.type === "crate"))
-    + group("Items in your pools", all.filter(([, l]) => l.type === "item" && !l.dropped))
-    + group("Dropped here", all.filter(([, l]) => l.dropped), " data-dropped");
+  return `<option value=""${picked ? "" : " selected"}>${t("LOOTCRATES.Auction.PickLot")}</option>`
+    + group(t("LOOTCRATES.Auction.SealedCrates"), all.filter(([, l]) => l.type === "crate"))
+    + group(t("LOOTCRATES.Auction.PoolItems"), all.filter(([, l]) => l.type === "item" && !l.dropped))
+    + group(t("LOOTCRATES.Auction.DroppedHere"), all.filter(([, l]) => l.dropped), " data-dropped");
 }
 
 // One pocket of the wheel editor (roulette.js draftRoulette reads these
@@ -1554,9 +1565,9 @@ function pocketRow(p, colours) {
   return `<div class="lc-pocket-row lc-rarity-${esc(p.rarity)}" data-pocket="${id}">
       <input type="hidden" name="pockets" value="${id}">
       <span class="lc-pocket-row__n">${esc(p.n)}</span>
-      <select class="lc-pocket-row__colour" name="p.${id}.colour" aria-label="Colour of pocket ${esc(p.n)}">${[0, 1].map(c => `<option value="${c}"${c === p.colour ? " selected" : ""}>${esc(colours[c])}</option>`).join("")}</select>
-      <select class="lc-pocket-row__rarity" name="p.${id}.rarity" aria-label="Rarity of pocket ${esc(p.n)}">${RARITIES.map(r => `<option value="${r}"${r === p.rarity ? " selected" : ""}>${RARITY_LABEL[r]}</option>`).join("")}</select>
-      <button type="button" class="lc-pocket-row__remove" aria-label="Remove pocket ${esc(p.n)}" data-tooltip="Remove"><i class="fas fa-xmark" inert></i></button>
+      <select class="lc-pocket-row__colour" name="p.${id}.colour" aria-label="${t("LOOTCRATES.Manager.PocketColour", { n: esc(p.n) })}">${[0, 1].map(c => `<option value="${c}"${c === p.colour ? " selected" : ""}>${esc(colours[c])}</option>`).join("")}</select>
+      <select class="lc-pocket-row__rarity" name="p.${id}.rarity" aria-label="${t("LOOTCRATES.Manager.PocketRarity", { n: esc(p.n) })}">${RARITIES.map(r => `<option value="${r}"${r === p.rarity ? " selected" : ""}>${RARITY_LABEL[r]}</option>`).join("")}</select>
+      <button type="button" class="lc-pocket-row__remove" aria-label="${t("LOOTCRATES.Manager.RemovePocket", { n: esc(p.n) })}" data-tooltip="${t("LOOTCRATES.Pools.Remove")}"><i class="fas fa-xmark" inert></i></button>
     </div>`;
 }
 
@@ -1589,7 +1600,7 @@ const autofocus = (field, { isNew = false, focus = null } = {}) => (isNew && (fo
 */
 function priceFieldHTML(label, box, opts) {
   const why = `lc-price-why-${esc(box.id)}`;
-  return `<label class="lc-form__price">${label} <input name="price" type="text" data-price-field value="${esc(formatPrice(box.price))}" placeholder="50 gp, 5 sp or 12 gp 5 sp" autocomplete="off" spellcheck="false" aria-describedby="${why}"${autofocus("price", opts)}></label>
+  return `<label class="lc-form__price">${label} <input name="price" type="text" data-price-field value="${esc(formatPrice(box.price))}" placeholder="${t("LOOTCRATES.Manager.PricePlaceholder")}" autocomplete="off" spellcheck="false" aria-describedby="${why}"${autofocus("price", opts)}></label>
       <p class="lc-form__hint lc-form__hint--warn" id="${why}" data-price-why aria-live="polite"></p>`;
 }
 function wirePrice(form) {
@@ -1610,11 +1621,11 @@ function wirePrice(form) {
 }
 
 // The wheel's lowest bet can't go over its highest (the Boxes row's price).
-const wheelOverMax = box => `The lowest bet at ${box.name} can't be over its highest, ${formatPrice(maxStakeOf(box))}.`;
+const wheelOverMax = box => t("LOOTCRATES.Manager.WheelOverMax", { name: box.name, price: formatPrice(maxStakeOf(box)) });
 
 // The default button: "Add to shelf" (or "Add" while the shop is closed)
 // puts a new game where players buy; an edit's reads Save.
-const saveLabel = isNew => (isNew ? addLabel(isShopOpen()) : "Save");
+const saveLabel = isNew => (isNew ? addLabel(isShopOpen()) : t("LOOTCRATES.Common.Save"));
 
 // A new game's default button follows its "On the shelf" box: "Add to
 // shelf" while ticked (and the shop open), "Add" once unticked, so the
@@ -1656,7 +1667,7 @@ function wireRestock(form, box) {
 
 // `onForm(form)` runs once, with the dialog's <form>, when it is first on
 // screen; `okLabel` is the default button's words (Save unless said).
-async function promptForm(title, fieldsHtml, { onForm, position, okLabel = "Save" } = {}) {
+async function promptForm(title, fieldsHtml, { onForm, position, okLabel = t("LOOTCRATES.Common.Save") } = {}) {
   const result = await DialogV2.wait({
     window: { title },
     classes: ["loot-crates", "lc-dialog"],
@@ -1666,7 +1677,7 @@ async function promptForm(title, fieldsHtml, { onForm, position, okLabel = "Save
     content: `<div class="lc-form">${fieldsHtml}</div>`,
     buttons: [
       { action: "ok", label: okLabel, default: true, callback: (_e, button) => readForm(button.form ?? button.closest("dialog")?.querySelector("form")) },
-      { action: "cancel", label: "Cancel", callback: () => null },
+      { action: "cancel", label: t("LOOTCRATES.Common.Cancel"), callback: () => null },
     ],
     rejectClose: false,
     render: onForm ? (_e, dialog) => {
@@ -1706,7 +1717,7 @@ function liveOdds(form, box, poolIds, previewOf = cratePreview, draftOf = draftB
     if (!announce) announce = quietAnnouncer(text => { if (status) status.textContent = text; }, { last: preview.summary });
     else announce(preview.summary);
     for (const el of form.querySelectorAll("[data-held]")) {
-      el.textContent = draft.pools.length && !preview.held.has(el.dataset.held) ? "none in these pools" : "";
+      el.textContent = draft.pools.length && !preview.held.has(el.dataset.held) ? t("LOOTCRATES.Manager.NoneInPools") : "";
     }
     // Drawing by the table's odds, the rarity weights do nothing: they go
     // (still in the form, so Save keeps them for a switch back).
@@ -1804,7 +1815,7 @@ export async function addStarterCrates() {
 */
 export function makeCrateMenuEntry() {
   return directoryMenuEntry({
-    label: "Make a crate",
+    label: t("LOOTCRATES.Manager.MakeCrate"),
     icon: '<i class="fa-solid fa-box-open"></i>',
     visible: () => !!game.user?.isGM,
     run: id => {

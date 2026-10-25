@@ -24,6 +24,7 @@ import "./auction.js";
 import { settle, canAfford, formatPrice } from "./currency.js";
 import { limitState, limitRefusal } from "./limits.js";
 import { onShelf, shelfRefusal } from "./shelf.js";
+import { t } from "./i18n.js";
 
 export { PullError } from "./kinds.js";
 export { sourceRaritiesOf };
@@ -96,29 +97,29 @@ export const PRICE_SKEW_MS = 5000;
   boundary (else null).
 */
 function guardPlay({ box, actor, state = {}, expectedPrice, log = [], today = null, bet }) {
-  if (!box) throw new PullError("That box no longer exists.");
+  if (!box) throw new PullError(t("LOOTCRATES.Error.BoxGone"));
   if (!onShelf(box)) throw new PullError(shelfRefusal(box));
-  if (!actor) throw new PullError("No character to buy with.");
-  if (box.rules?.stock != null && box.rules.stock <= 0) throw new PullError(`${box.name} is sold out.`);
+  if (!actor) throw new PullError(t("LOOTCRATES.Error.NoActor"));
+  if (box.rules?.stock != null && box.rules.stock <= 0) throw new PullError(t("LOOTCRATES.Error.SoldOut", { name: box.name }));
   const kind = kindFor(box);
   const limit = limitState(box, { log, actorId: actor.id, today });
   if (limit?.reached) throw new PullError(limitRefusal(box, limit, actor.name));
-  const priceAt = t => Number(kind.priceOf?.({ game: box, actor, state, log, today, now: t, bet }) ?? box.price);
+  const priceAt = at => Number(kind.priceOf?.({ game: box, actor, state, log, today, now: at, bet }) ?? box.price);
   let now = Date.now();
   let price = priceAt(now);
   let priceNote = null;
   if (expectedPrice != null && Number(expectedPrice) !== price) {
     const pressed = Number(expectedPrice);
-    const near = kind.priceOf ? [now - PRICE_SKEW_MS, now + PRICE_SKEW_MS].find(t => priceAt(t) === pressed) : undefined;
-    if (near == null) throw new PullError(`${box.name} now costs ${formatPrice(price)} (you pressed ${formatPrice(expectedPrice)}). Nothing was charged.`);
-    priceNote = `Charged ${formatPrice(pressed)}, the price you pressed for ${box.name}; by the GM's clock it was ${formatPrice(price)} just then.`;
+    const near = kind.priceOf ? [now - PRICE_SKEW_MS, now + PRICE_SKEW_MS].find(at => priceAt(at) === pressed) : undefined;
+    if (near == null) throw new PullError(t("LOOTCRATES.Error.PriceChanged", { name: box.name, price: formatPrice(price), pressed: formatPrice(expectedPrice) }));
+    priceNote = t("LOOTCRATES.Error.PriceNote", { pressed: formatPrice(pressed), name: box.name, price: formatPrice(price) });
     now = near;
     price = pressed;
   }
   // A copy: the live currency object is what actor.update rewrites, and the
   // grant-failure branch below needs the purse as it was before the charge.
   const purse = { ...(actor.system?.currency ?? {}) };
-  if (!canAfford(purse, price)) throw new PullError(`${actor.name} can't afford ${box.name}.`);
+  if (!canAfford(purse, price)) throw new PullError(t("LOOTCRATES.Error.CantAfford", { actor: actor.name, name: box.name }));
   return { kind, price, purse, now, priceNote };
 }
 
@@ -126,12 +127,12 @@ export async function performPull({ box, pools, actor, state = {}, rng = rollRng
   const { kind, price, purse, now, priceNote } = guardPlay({ box, actor, state, expectedPrice, log, today });
   // A table game is played in rounds (table.js): its roll settles every
   // stake at once, so it is staked, never pulled.
-  if (kind.table) throw new PullError(`${box.name} is played at the table: stake while a round is open.`);
+  if (kind.table) throw new PullError(t("LOOTCRATES.Error.TableGame", { name: box.name }));
 
   const { result = null, grant: data = null, payoutCp: payout, state: nextState, pools: rolledFrom, ...own } = await kind.roll({ game: box, pools, actor, state, rng, resolveSource, onMissing, log, today, now, price });
   const payoutCp = Math.round(Number(payout) || 0);
   const nextPurse = settle(purse, payoutCp - Math.round(price * 100));
-  if (!nextPurse) throw new PullError(`${actor.name} can't afford ${box.name}.`);
+  if (!nextPurse) throw new PullError(t("LOOTCRATES.Error.CantAfford", { actor: actor.name, name: box.name }));
 
   let created = null;
   if (grant) {
@@ -147,9 +148,9 @@ export async function performPull({ box, pools, actor, state = {}, rng = rollRng
           await actor.update({ "system.currency": purse });
         } catch (restoreErr) {
           console.error(`loot-crates | could not return ${price} gp to ${actor.name}; the GM must refund by hand`, restoreErr);
-          throw new PullError("The item couldn't be added and the coins couldn't be returned. Tell the GM.");
+          throw new PullError(t("LOOTCRATES.Error.GrantAndRestoreFailed"));
         }
-        throw new PullError("The item couldn't be added; your coins were returned.");
+        throw new PullError(t("LOOTCRATES.Error.GrantFailed"));
       }
     }
   }
@@ -187,12 +188,12 @@ export async function performPull({ box, pools, actor, state = {}, rng = rollRng
 */
 export async function performStake({ box, actor, round, bet = null, stakes = [], expectedPrice, log = [], today = null }) {
   const { kind, price, purse } = guardPlay({ box, actor, expectedPrice, log, today, bet });
-  if (!kind.table) throw new PullError(`${box.name} isn't played at the table.`);
-  if (!(price > 0)) throw new PullError(`A stake at ${box.name} has to be more than nothing.`);
+  if (!kind.table) throw new PullError(t("LOOTCRATES.Error.NotTable", { name: box.name }));
+  if (!(price > 0)) throw new PullError(t("LOOTCRATES.Error.StakeNothing", { name: box.name }));
   const checked = kind.stake?.({ game: box, actor, bet, round, stakes, log, price }) ?? {};
   const { outbid = [], closesIn = null, ...stake } = checked;
   const nextPurse = settle(purse, -Math.round(price * 100));
-  if (!nextPurse) throw new PullError(`${actor.name} can't afford ${box.name}.`);
+  if (!nextPurse) throw new PullError(t("LOOTCRATES.Error.CantAfford", { actor: actor.name, name: box.name }));
   await actor.update({ "system.currency": nextPurse });
   return { purse: nextPurse, before: purse, price, stake: Object.keys(stake).length ? stake : { bet }, outbid, closesIn, kind: kind.id };
 }

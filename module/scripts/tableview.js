@@ -25,12 +25,13 @@
 import { formatPrice } from "./currency.js";
 import { isOpenStake, stakeReason, roundState, ROUND_WORDS } from "./round.js";
 import { onShelf, shelfBetsClosed } from "./shelf.js";
+import { t, words } from "./i18n.js";
 
 // "Orla Vane bets 5 gp on Red", for the status line and the list; a kind
 // with its own sentence (the Auction's "Orla Vane bids 55 gp") says it.
-export function stakeSentence(row, verb = "bets", view = null) {
+export function stakeSentence(row, verb = t("LOOTCRATES.Shelf.Bets"), view = null) {
   if (typeof view?.sentence === "function") return view.sentence(row);
-  return `${row.actorName} ${verb} ${formatPrice(row.price)} on ${row.name ?? row.stake?.label ?? "the table"}`;
+  return t("LOOTCRATES.Table.Stake", { actor: row.actorName, verb, price: formatPrice(row.price), on: row.name ?? row.stake?.label ?? t("LOOTCRATES.Table.TheTable") });
 }
 
 // The head's count: the kind's own from every stake of the round, the
@@ -43,7 +44,7 @@ export function countFor(view, stakes = [], history = null) {
 // The bet button's words: the kind's (the Auction's "Bid 55 gp", the next
 // legal bid), else "Place a bet".
 export function betLabelFor(view, game, { stakes = [], values = {} } = {}) {
-  return typeof view?.betLabel === "function" ? view.betLabel(game, { stakes, values }) : "Place a bet";
+  return typeof view?.betLabel === "function" ? view.betLabel(game, { stakes, values }) : t("LOOTCRATES.Table.PlaceBet");
 }
 
 /*
@@ -55,7 +56,7 @@ export function betLabelFor(view, game, { stakes = [], values = {} } = {}) {
   focus) with the sentence in the form's status line, and both back once
   the game is on the shelf again.
 */
-export const betClosedText = (game, view = null) => (game && !onShelf(game) ? shelfBetsClosed(game, view?.verb ?? "bets") : "");
+export const betClosedText = (game, view = null) => (game && !onShelf(game) ? shelfBetsClosed(game, view?.verb ?? t("LOOTCRATES.Shelf.Bets")) : "");
 
 export function gateBet(form, game, view = null) {
   const btn = form?.querySelector?.(".lc-table__bet");
@@ -78,10 +79,10 @@ export function gateBet(form, game, view = null) {
 // "3 bets from 2 characters", "1 bet", "No bets yet".
 export function countText(stakes = []) {
   const live = stakes.filter(r => isOpenStake(r) || r.status === "settled");
-  if (!live.length) return "No bets yet";
+  if (!live.length) return t("LOOTCRATES.Table.NoBets");
   const who = new Set(live.map(r => r.actorId)).size;
-  const bets = `${live.length} bet${live.length === 1 ? "" : "s"}`;
-  return who > 1 ? `${bets} from ${who} characters` : bets;
+  const bets = t(live.length === 1 ? "LOOTCRATES.Table.BetsOne" : "LOOTCRATES.Table.BetsMany", { count: live.length });
+  return who > 1 ? t("LOOTCRATES.Table.BetsFrom", { bets, who }) : bets;
 }
 
 /*
@@ -113,14 +114,14 @@ export function phaseOf(round, { reveal = null, landed = false, now = Date.now()
 // own words, tableView.words), or while the stage plays, that. `onReload`:
 // the spin failed and couldn't be undone (table.js undoResolve), so the
 // stakes come back on the GM's next load, not now.
-export const VOID_WORDS = {
-  now: "The round was called off; every stake came back",
-  onReload: "The spin failed and the round was called off; every stake comes back when the GM reloads",
-};
+export const VOID_WORDS = words({
+  now: "LOOTCRATES.Table.VoidNow",
+  onReload: "LOOTCRATES.Table.VoidOnReload",
+});
 export function stateText(round, phase, { now = Date.now(), kind = null, onReload = false } = {}) {
   const words = kind?.tableView?.words ?? {};
   if (phase === "spinning") return roundState(round, { held: true, words });
-  if (phase === "landed") return { key: "landed", text: "Settled" };
+  if (phase === "landed") return { key: "landed", text: t("LOOTCRATES.Table.Settled") };
   if (phase === "void") return { key: "void", text: onReload ? VOID_WORDS.onReload : words.void ?? VOID_WORDS.now };
   if (phase === "waiting") return { key: "closed", text: words.waiting ?? ROUND_WORDS.waiting };
   return roundState(round, { now, words });
@@ -141,7 +142,7 @@ export function tableBodyHTML({ kind, game, round, stakes = [], history = null, 
   const actors = viewer.actors ?? [];
   const canBet = phase === "betting" && actors.length > 0;
   const who = actors.length > 1
-    ? `<label class="lc-table__field"><span class="lc-label">Character</span><select name="actorId" class="lc-table__actor">${actors.map(a => `<option value="${esc(a.id)}"${a.id === (values.actorId ?? actors[0].id) ? " selected" : ""}>${esc(a.name)}</option>`).join("")}</select></label>`
+    ? `<label class="lc-table__field"><span class="lc-label">${t("LOOTCRATES.Shop.Character")}</span><select name="actorId" class="lc-table__actor">${actors.map(a => `<option value="${esc(a.id)}"${a.id === (values.actorId ?? actors[0].id) ? " selected" : ""}>${esc(a.name)}</option>`).join("")}</select></label>`
     : actors.length ? `<input type="hidden" name="actorId" value="${esc(actors[0].id)}">` : "";
   const closed = betClosedText(game, view);
   const form = canBet ? `
@@ -152,9 +153,9 @@ export function tableBodyHTML({ kind, game, round, stakes = [], history = null, 
         <span class="lc-table__why" role="status">${esc(closed)}</span>
       </form>` : "";
   const gmLive = viewer.isGM && (phase === "betting" || phase === "waiting");
-  const spin = gmLive ? `<button type="button" class="lc-table__spin" data-action="spin">${esc(view.spinLabel ?? "Spin")}</button>` : "";
+  const spin = gmLive ? `<button type="button" class="lc-table__spin" data-action="spin">${esc(view.spinLabel ?? t("LOOTCRATES.Table.Spin"))}</button>` : "";
   const cancel = gmLive && view.cancelLabel ? `<button type="button" class="lc-table__cancel" data-action="cancelRound">${esc(view.cancelLabel)}</button>` : "";
-  const closeLabel = phase === "spinning" ? "Skip" : "Close";
+  const closeLabel = phase === "spinning" ? t("LOOTCRATES.Reveal.Skip") : t("LOOTCRATES.Common.Close");
   return `
       <div class="lc-table__head lc-reveal__head">
         <strong class="lc-reveal__crate">${esc(game?.name ?? "")}</strong>
@@ -166,7 +167,7 @@ export function tableBodyHTML({ kind, game, round, stakes = [], history = null, 
         <div class="lc-reveal__result lc-table__result" aria-live="polite"></div>
       </div>
       <p class="lc-table__live lc-sr-only" role="status"></p>
-      <ul class="lc-table__list lc-sr-only" aria-label="${esc(view.words?.list ?? "Bets on the table")}">${stakes.filter(r => isOpenStake(r) || r.status === "settled").map(r => `<li>${esc(stakeSentence(r, view.verb, view))}</li>`).join("")}</ul>
+      <ul class="lc-table__list lc-sr-only" aria-label="${esc(view.words?.list ?? t("LOOTCRATES.Table.ListLabel"))}">${stakes.filter(r => isOpenStake(r) || r.status === "settled").map(r => `<li>${esc(stakeSentence(r, view.verb, view))}</li>`).join("")}</ul>
       ${form}
       <div class="lc-reveal__actions">
         ${spin}${cancel}

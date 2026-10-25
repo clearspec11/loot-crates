@@ -18,6 +18,7 @@
 
   No Foundry globals.
 */
+import { t } from "./i18n.js";
 
 export const onShelf = game => game?.rules?.shelved !== false;
 
@@ -34,21 +35,21 @@ export const shelfFor = (games = [], { isGM = false } = {}) => (isGM ? [...games
 // The Boxes toolbar's count: "4 of 6 on the shelf", "" with no games.
 export function shelfCountText(games = []) {
   if (!games.length) return "";
-  return `${games.filter(onShelf).length} of ${games.length} on the shelf`;
+  return t("LOOTCRATES.Shelf.Count", { on: games.filter(onShelf).length, all: games.length });
 }
 
 // The GM's shop card for a game off the shelf: why its Buy is off.
-export const OFF_SHELF_REASON = "Off the shelf: players can't see it";
+export const offShelfReason = () => t("LOOTCRATES.Shelf.OffReason");
 
 // The GM's refusal of a pull or stake on a game off the shelf.
-export const shelfRefusal = game => `${game?.name || "That game"} is no longer on the shelf. Nothing was charged.`;
+export const shelfRefusal = game => t("LOOTCRATES.Shelf.Refusal", { name: game?.name || t("LOOTCRATES.Common.ThatGame") });
 
 // A table window's bet button while its game is off the shelf: the GM
 // would refuse the stake (pull.js guardPlay), so it is not offered.
-export const shelfBetsClosed = (game, verb = "bets") => `${game?.name || "This game"} is off the shelf: no ${verb} until the GM puts it back.`;
+export const shelfBetsClosed = (game, verb = t("LOOTCRATES.Shelf.Bets")) => t("LOOTCRATES.Shelf.BetsClosed", { name: game?.name || t("LOOTCRATES.Shelf.ThisGame"), verb });
 
 // A table game off the shelf opens no round.
-export const shelfRoundRefusal = game => `${game?.name || "That game"} is off the shelf. Put it on the shelf to open a round.`;
+export const shelfRoundRefusal = game => t("LOOTCRATES.Shelf.RoundRefusal", { name: game?.name || t("LOOTCRATES.Common.ThatGame") });
 
 /*
   The editor's "On the shelf" checkbox: ticked for a New (its default
@@ -57,7 +58,7 @@ export const shelfRoundRefusal = game => `${game?.name || "That game"} is off th
 */
 export function shelfFieldHTML(game, { isNew = false, copy = false } = {}) {
   const on = isNew && !copy ? true : onShelf(game);
-  return `<label class="lc-row lc-form__shelf"><input type="checkbox" name="onShelf"${on ? " checked" : ""}> On the shelf, where players can see and buy it</label>`;
+  return `<label class="lc-row lc-form__shelf"><input type="checkbox" name="onShelf"${on ? " checked" : ""}> ${t("LOOTCRATES.Shelf.Field")}</label>`;
 }
 
 /*
@@ -68,15 +69,16 @@ export function shelfFieldHTML(game, { isNew = false, copy = false } = {}) {
   Its action and data-box keep focus on it across the redraw (manager.js
   focusKey).
 */
-export const SHELF_TOGGLE_LABEL = "On the shelf";
+export const shelfToggleLabel = () => t("LOOTCRATES.Shelf.Toggle");
 export function shelfToggleHTML(game, esc = s => String(s ?? "")) {
   const on = onShelf(game);
-  const tip = on ? "Players can see and buy it. Click to take it off the shelf." : "Players can't see it. Click to put it on the shelf.";
-  return `<button type="button" class="lc-shelf-toggle lc-switch" data-action="toggleShelf" data-box="${esc(game.id)}" data-on="${on}" aria-pressed="${on}" aria-label="${SHELF_TOGGLE_LABEL}: ${esc(game.name)}" title="${tip}">${SHELF_TOGGLE_LABEL}</button>`;
+  const tip = on ? t("LOOTCRATES.Shelf.TipOn") : t("LOOTCRATES.Shelf.TipOff");
+  const label = shelfToggleLabel();
+  return `<button type="button" class="lc-shelf-toggle lc-switch" data-action="toggleShelf" data-box="${esc(game.id)}" data-on="${on}" aria-pressed="${on}" aria-label="${label}: ${esc(game.name)}" title="${tip}">${label}</button>`;
 }
 
 // The Boxes tab's status line once the toggle wrote.
 export function shelfNotice(game) {
-  const name = game?.name || "The game";
-  return onShelf(game) ? `${name} is on the shelf; players can see it.` : `${name} is off the shelf; players can't see it.`;
+  const name = game?.name || t("LOOTCRATES.Shelf.TheGame");
+  return t(onShelf(game) ? "LOOTCRATES.Shelf.NoticeOn" : "LOOTCRATES.Shelf.NoticeOff", { name });
 }
