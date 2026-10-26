@@ -9,20 +9,20 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createDocument } from "./minidom.js";
 
-vi.mock("../module/scripts/reveal.js", () => ({ showReveal: vi.fn(async () => ({ landed: Promise.resolve() })), heldState: () => null, boxHeld: () => false, onHold: () => () => {}, onRelease: () => () => {} }));
-vi.mock("../module/scripts/sound.js", () => ({ playTick: vi.fn(), playSlow: vi.fn(), playReveal: vi.fn(), playPlop: vi.fn(), playPlink: vi.fn(), playCoinBack: vi.fn() }));
+vi.mock("../module/scripts/foundry/reveal.js", () => ({ showReveal: vi.fn(async () => ({ landed: Promise.resolve() })), heldState: () => null, boxHeld: () => false, onHold: () => () => {}, onRelease: () => () => {} }));
+vi.mock("../module/scripts/foundry/sound.js", () => ({ playTick: vi.fn(), playSlow: vi.fn(), playReveal: vi.fn(), playPlop: vi.fn(), playPlink: vi.fn(), playCoinBack: vi.fn() }));
 
-const { WELL, WELL_DEFAULTS, WELL_TIMING, wellOdds, throwsToday, capOf, stillLine, noClockNote, collapseMisses, throwsText, mountWell, wellRulesText, stakeCoins, stakeGp, draftWell, wellPreview, wellPreviewHTML, wellSummary, wellOddsHTML } = await import("../module/scripts/well.js");
-const { dayKeyOf } = await import("../module/scripts/clock.js");
-const { getKind } = await import("../module/scripts/kinds.js");
-const { performPull, PullError } = await import("../module/scripts/pull.js");
-const { registerSocket } = await import("../module/scripts/socket.js");
-const { registerSettings, appendLog, getLog, getActorState, todayKey } = await import("../module/scripts/store.js");
-const { refundPull, describeRefund } = await import("../module/scripts/refund.js");
-const { postPullCard, postRefundCard } = await import("../module/scripts/chat.js");
-const { showReveal } = await import("../module/scripts/reveal.js");
-const sound = await import("../module/scripts/sound.js");
-const { toCopper, isWholeCoins } = await import("../module/scripts/currency.js");
+const { WELL, WELL_DEFAULTS, WELL_TIMING, wellOdds, throwsToday, capOf, stillLine, noClockNote, collapseMisses, throwsText, mountWell, wellRulesText, stakeCoins, stakeGp, draftWell, wellPreview, wellPreviewHTML, wellSummary, wellOddsHTML } = await import("../module/scripts/games/well.js");
+const { dayKeyOf } = await import("../module/scripts/core/clock.js");
+const { getKind } = await import("../module/scripts/games/kinds.js");
+const { performPull, PullError } = await import("../module/scripts/foundry/pull.js");
+const { registerSocket } = await import("../module/scripts/foundry/socket.js");
+const { registerSettings, appendLog, getLog, getActorState, todayKey } = await import("../module/scripts/foundry/store.js");
+const { refundPull, describeRefund } = await import("../module/scripts/foundry/refund.js");
+const { postPullCard, postRefundCard } = await import("../module/scripts/foundry/chat.js");
+const { showReveal } = await import("../module/scripts/foundry/reveal.js");
+const sound = await import("../module/scripts/foundry/sound.js");
+const { toCopper, isWholeCoins } = await import("../module/scripts/core/currency.js");
 
 const tick = () => new Promise(r => setTimeout(r, 0));
 

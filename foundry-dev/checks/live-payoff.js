@@ -11,8 +11,8 @@
 // differ), closes the first mid-spin, and confirms its chat card still posts
 // (the same showReveal -> landed -> postPullCard chain socket.js runs).
 //
-//   FOUNDRY_URL=http://192.168.0.57:30000 MODULE_BASE=http://192.168.0.190:8766/ \
-//     NODE_PATH=$(npm root -g) node foundry-dev/headless/run.cjs foundry-dev/checks/live-payoff.js [--shot out.png]
+//   FOUNDRY_URL=http://<foundry>:30000 MODULE_BASE=http://<this machine>:8766/ \
+//     NODE_PATH=$(npm root -g) node foundry-dev/run.cjs foundry-dev/checks/live-payoff.js [--shot out.png]
 //
 // Never deletes anything. Writes the module's own settings (one pool, one
 // box, one log row); each run adds one item to the test actor and posts
@@ -22,10 +22,10 @@ if (!document.querySelector("link[data-loot-crates]")) {
   link.dataset.lootCrates = "1";
   document.head.appendChild(link);
 }
-const store = await import(MODULE_BASE + "scripts/store.js");
-const { registerSocket, requestPull } = await import(MODULE_BASE + "scripts/socket.js");
-const { showReveal } = await import(MODULE_BASE + "scripts/reveal.js");
-const { postPullCard } = await import(MODULE_BASE + "scripts/chat.js");
+const store = await import(MODULE_BASE + "scripts/foundry/store.js");
+const { registerSocket, requestPull } = await import(MODULE_BASE + "scripts/foundry/socket.js");
+const { showReveal } = await import(MODULE_BASE + "scripts/foundry/reveal.js");
+const { postPullCard } = await import(MODULE_BASE + "scripts/foundry/chat.js");
 try { store.registerSettings(); } catch (e) { if (!/already registered/i.test(String(e))) throw e; }
 store.registerIndexFields();
 try { registerSocket(); } catch { /* registered on an earlier run of the same page */ }

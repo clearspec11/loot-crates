@@ -6,8 +6,8 @@
 */
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { compareVersions, parseVersion, welcomeView, welcomeState, stateAfterClose, newsFor, welcomeHTML, WELCOME_HEADING, QUIET_LABEL } from "../module/scripts/welcome.js";
-import { LATEST } from "../module/scripts/changelog.js";
+import { compareVersions, parseVersion, welcomeView, welcomeState, stateAfterClose, newsFor, welcomeHTML, WELCOME_HEADING, QUIET_LABEL } from "../module/scripts/views/welcome.js";
+import { LATEST } from "../module/scripts/core/changelog.js";
 
 const read = p => readFileSync(new URL(`../${p}`, import.meta.url), "utf8");
 const manifest = JSON.parse(read("module/module.json"));

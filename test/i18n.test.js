@@ -7,15 +7,16 @@
   English table, then the key itself.
 */
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { readFileSync, readdirSync, existsSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
+import { scriptFiles, scriptSource } from "./scripts.js";
 import path from "node:path";
 import { parse } from "acorn";
 import en from "../module/lang/en.json";
-import { t, fill, setStrings, setLocalizer, loadStrings, onStrings, words, listAnd, stringKeys } from "../module/scripts/i18n.js";
+import { t, fill, setStrings, setLocalizer, loadStrings, onStrings, words, listAnd, stringKeys } from "../module/scripts/core/i18n.js";
 
 const root = path.resolve(import.meta.dirname, "..");
 const dir = path.join(root, "module/scripts");
-const scripts = readdirSync(dir).filter(f => f.endsWith(".js")).map(f => ({ file: f, src: readFileSync(path.join(dir, f), "utf8") }));
+const scripts = scriptFiles().map(({ file, src }) => ({ file, src }));
 
 // en.json flattened to its full keys.
 const flat = (obj, prefix = "", out = {}) => {
@@ -136,7 +137,7 @@ describe("lang/en.json", () => {
 
 describe("i18n.js", () => {
   it("is pure: no Foundry globals", () => {
-    const src = readFileSync(path.join(dir, "i18n.js"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+    const src = scriptSource("i18n.js").replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
     expect(src).not.toMatch(/\b(game|Hooks|ui|foundry|fromUuid)\b/);
   });
 

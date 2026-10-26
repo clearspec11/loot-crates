@@ -16,14 +16,14 @@
 // flags, _stats.compendiumSource and the newest log row's sourceRarity, and
 // that the pool editor shows the "granted item carries" hint.
 //
-//   FOUNDRY_URL=http://192.168.0.57:30000 MODULE_BASE=http://192.168.0.190:8766/ \
-//     NODE_PATH=$(npm root -g) node foundry-dev/headless/run.cjs foundry-dev/checks/live-edit-entry.js --shot edit.png
+//   FOUNDRY_URL=http://<foundry>:30000 MODULE_BASE=http://<this machine>:8766/ \
+//     NODE_PATH=$(npm root -g) node foundry-dev/run.cjs foundry-dev/checks/live-edit-entry.js --shot edit.png
 //
 // Deletes nothing; writes the module's own settings (one pool, two boxes, one
 // log row), adds one item to the test actor and posts one chat card.
-const store = await import(MODULE_BASE + "scripts/store.js");
-const { registerSocket } = await import(MODULE_BASE + "scripts/socket.js");
-const { oddsTable, shopOdds, sourceStatus, draw, seededRng } = await import(MODULE_BASE + "scripts/odds.js");
+const store = await import(MODULE_BASE + "scripts/foundry/store.js");
+const { registerSocket } = await import(MODULE_BASE + "scripts/foundry/socket.js");
+const { oddsTable, shopOdds, sourceStatus, draw, seededRng } = await import(MODULE_BASE + "scripts/core/odds.js");
 
 try { store.registerSettings(); } catch (e) { if (!/already registered/i.test(String(e))) throw e; }
 store.registerIndexFields();
@@ -45,7 +45,7 @@ const oddsBefore = odds();
 
 const wait = ms => new Promise(r => setTimeout(r, ms));
 const until = async (fn, ms = 8000) => { for (let t = 0; t < ms && !fn(); t += 100) await wait(100); return fn(); };
-const { openManager } = await import(MODULE_BASE + "scripts/manager.js");
+const { openManager } = await import(MODULE_BASE + "scripts/foundry/manager.js");
 const app = openManager();
 app.tab = "pools"; app.render({ force: true });
 const poolEl = () => app.element?.querySelector(`[data-drop-pool="${pool.id}"]`);
@@ -108,7 +108,7 @@ const rarityHint = poolEl().querySelector(`#${CSS.escape(`lc-rarity-hint-${pool.
 const describedBy = poolEl().querySelector(`select[data-uuid="${CSS.escape(target.uuid)}"]`)?.getAttribute("aria-describedby");
 
 // One live pull on a box that can only drop the overridden entry.
-const { requestPull } = await import(MODULE_BASE + "scripts/socket.js");
+const { requestPull } = await import(MODULE_BASE + "scripts/foundry/socket.js");
 const FOLDER = "Loot Crates Test";
 let folder = game.folders.find(f => f.type === "Actor" && f.name === FOLDER);
 folder ??= await Folder.create({ name: FOLDER, type: "Actor" });

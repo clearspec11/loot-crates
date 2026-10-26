@@ -119,34 +119,34 @@
   the manager to the manager.
 */
 import { POOLS, BOX, BOXES, TABLE_POOL, TABLE_CRATE, TABLE_PLAN, WELL, DICE, DICE_FACES, DECK, ROULETTE, AUCTION, AUCTION_CRATE, auctionRound, auctionBids, rouletteRound, wheelStakes, deckDraws, wellThrows, limitBuys, sampleLog, MANAGER_POOLS, MANAGER_SOURCES, MANAGER_BOXES, STARTER_INDEX } from "./sample.js";
-import { welcomeHTML, newsFor, WELCOME_TITLE } from "../module/scripts/welcome.js";
-import { LATEST } from "../module/scripts/changelog.js";
-import { STARTER_POOLS, pickEntries, buildStarter, starterNotice, starterCallHTML } from "../module/scripts/starter.js";
-import { limitsFieldset, restockLine, stockField } from "../module/scripts/limits.js";
-import { poolsFieldset, pityRow, syncShares, oddsModeFieldset, tableNoteHTML, nothingRow } from "../module/scripts/editorfields.js";
-import { getKind, kindOf } from "../module/scripts/kinds.js";
-import { mountWell } from "../module/scripts/well.js";
-import { mountDice, resolve, rollData, parseFormula } from "../module/scripts/dicegame.js";
-import { mountDeck, TONE_OF, CARD_KIND_LABEL, priceAt, deckPlan, deckRiseFieldsHTML } from "../module/scripts/deck.js";
-import { resolve as resolveBets, pocketsOf, coloursOf, betName } from "../module/scripts/roulette.js";
-import { tableBodyHTML } from "../module/scripts/tableview.js";
-import { lotOf } from "../module/scripts/auction.js";
-import { poolRows, sortRows, defaultView, poolSummary, poolBody, pinRecent, dropNotice, poolUsers, dropPreviewHTML } from "../module/scripts/poolview.js";
-import { boxesTabHTML } from "../module/scripts/boxestable.js";
-import { managerNavHTML, shopControls, shopEmptyHTML } from "../module/scripts/route.js";
-import { logTableHTML } from "../module/scripts/logtable.js";
-import { addedNotice } from "../module/scripts/newgame.js";
-import { onShelf, shelfFor, shelfFieldHTML, shelfRules, shelfNotice } from "../module/scripts/shelf.js";
-import { draw, seededRng } from "../module/scripts/odds.js";
-import { buildStrip, NOTHING_CARD } from "../module/scripts/strip.js";
-import { mountSpin } from "../module/scripts/spin.js";
-import { charge, formatPrice, formatGold } from "../module/scripts/currency.js";
-import { resultHTML, missHTML, oddsWithNothing, replaySnapshot, replayReveal, replayTitle, revealActionsHTML } from "../module/scripts/revealcard.js";
-import { RARITY_LABEL, RARITIES, DEFAULT_WEIGHTS } from "../module/scripts/config.js";
-import { actorPicker, boxCard, oddsRibbon, shopHTML, shopNotice, patchShop, draftBox, boxPreview, boxPreviewHTML } from "../module/scripts/boxcard.js";
-import { shopOdds } from "../module/scripts/odds.js";
-import { loadStrings } from "../module/scripts/i18n.js";
-import { Linger, lingerMs } from "../module/scripts/linger.js";
+import { welcomeHTML, newsFor, WELCOME_TITLE } from "../module/scripts/views/welcome.js";
+import { LATEST } from "../module/scripts/core/changelog.js";
+import { STARTER_POOLS, pickEntries, buildStarter, starterNotice, starterCallHTML } from "../module/scripts/views/starter.js";
+import { limitsFieldset, restockLine, stockField } from "../module/scripts/core/limits.js";
+import { poolsFieldset, pityRow, syncShares, oddsModeFieldset, tableNoteHTML, nothingRow } from "../module/scripts/views/editorfields.js";
+import { getKind, kindOf } from "../module/scripts/games/kinds.js";
+import { mountWell } from "../module/scripts/games/well.js";
+import { mountDice, resolve, rollData, parseFormula } from "../module/scripts/games/dicegame.js";
+import { mountDeck, TONE_OF, CARD_KIND_LABEL, priceAt, deckPlan, deckRiseFieldsHTML } from "../module/scripts/games/deck.js";
+import { resolve as resolveBets, pocketsOf, coloursOf, betName } from "../module/scripts/games/roulette.js";
+import { tableBodyHTML } from "../module/scripts/views/tableview.js";
+import { lotOf } from "../module/scripts/games/auction.js";
+import { poolRows, sortRows, defaultView, poolSummary, poolBody, pinRecent, dropNotice, poolUsers, dropPreviewHTML } from "../module/scripts/views/poolview.js";
+import { boxesTabHTML } from "../module/scripts/views/boxestable.js";
+import { managerNavHTML, shopControls, shopEmptyHTML } from "../module/scripts/views/route.js";
+import { logTableHTML } from "../module/scripts/views/logtable.js";
+import { addedNotice } from "../module/scripts/views/newgame.js";
+import { onShelf, shelfFor, shelfFieldHTML, shelfRules, shelfNotice } from "../module/scripts/core/shelf.js";
+import { draw, seededRng } from "../module/scripts/core/odds.js";
+import { buildStrip, NOTHING_CARD } from "../module/scripts/core/strip.js";
+import { mountSpin } from "../module/scripts/views/spin.js";
+import { charge, formatPrice, formatGold } from "../module/scripts/core/currency.js";
+import { resultHTML, missHTML, oddsWithNothing, replaySnapshot, replayReveal, replayTitle, revealActionsHTML } from "../module/scripts/views/revealcard.js";
+import { RARITY_LABEL, RARITIES, DEFAULT_WEIGHTS } from "../module/scripts/core/config.js";
+import { actorPicker, boxCard, oddsRibbon, shopHTML, shopNotice, patchShop, draftBox, boxPreview, boxPreviewHTML } from "../module/scripts/views/boxcard.js";
+import { shopOdds } from "../module/scripts/core/odds.js";
+import { loadStrings } from "../module/scripts/core/i18n.js";
+import { Linger, lingerMs } from "../module/scripts/core/linger.js";
 
 // The module's words (module/lang/en.json), in before anything is drawn,
 // as main.js loads them in a world.

@@ -11,8 +11,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { AsyncLocalStorage } from "node:async_hooks";
 import en from "../module/lang/en.json";
 
-vi.mock("../module/scripts/reveal.js", () => ({ showReveal: vi.fn(async () => ({ landed: Promise.resolve() })), showRound: vi.fn(() => ({ landed: Promise.resolve(), instant: true })), boxHeld: vi.fn(() => false) }));
-vi.mock("../module/scripts/chat.js", () => ({ postPullCard: vi.fn(async () => null) }));
+vi.mock("../module/scripts/foundry/reveal.js", () => ({ showReveal: vi.fn(async () => ({ landed: Promise.resolve() })), showRound: vi.fn(() => ({ landed: Promise.resolve(), instant: true })), boxHeld: vi.fn(() => false) }));
+vi.mock("../module/scripts/foundry/chat.js", () => ({ postPullCard: vi.fn(async () => null) }));
 
 const tick = () => new Promise(r => setTimeout(r, 0));
 
@@ -23,13 +23,13 @@ const as = (game, fn) => client.run(game, fn);
 // One copy of the module per client, as each browser loads its own.
 async function loadClient() {
   vi.resetModules();
-  const { setStrings } = await import("../module/scripts/i18n.js");
+  const { setStrings } = await import("../module/scripts/core/i18n.js");
   setStrings(en);
-  await import("../module/scripts/auction.js");
+  await import("../module/scripts/games/auction.js");
   return {
-    store: await import("../module/scripts/store.js"),
-    socket: await import("../module/scripts/socket.js"),
-    table: await import("../module/scripts/table.js"),
+    store: await import("../module/scripts/foundry/store.js"),
+    socket: await import("../module/scripts/foundry/socket.js"),
+    table: await import("../module/scripts/foundry/table.js"),
   };
 }
 

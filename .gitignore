@@ -8,3 +8,4 @@ screenshots/
 # ignore regenerated review captures and live-mode state.
 .impeccable/review/
 .impeccable/live/
+.env

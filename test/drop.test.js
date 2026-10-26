@@ -6,7 +6,7 @@
   result weights become entry weights while its text results are skipped.
 */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { entriesFromDrop, entriesFromCompendium, packHasLoot, addEntries, registerSettings } from "../module/scripts/store.js";
+import { entriesFromDrop, entriesFromCompendium, packHasLoot, addEntries, registerSettings } from "../module/scripts/foundry/store.js";
 
 const item = (id, name, type, rarity = "", extra = {}) => ({
   id, uuid: `Item.${id}`, documentName: "Item", name, type, img: `icons/${id}.webp`, system: { rarity }, ...extra,

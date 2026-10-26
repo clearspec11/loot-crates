@@ -6,14 +6,14 @@
 */
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { createDocument } from "./minidom.js";
-import { entryIdOf, directoryMenuEntry } from "../module/scripts/route.js";
-import { dayModeOf, byRest } from "../module/scripts/clock.js";
-import { rawRarityOf, normalizeRarity } from "../module/scripts/odds.js";
-import { STARTER_POOLS, STARTER_PACKS, starterPackPlan, takesRow, entryOfRow } from "../module/scripts/starter.js";
-import { settle, isWholeCoins } from "../module/scripts/currency.js";
+import { entryIdOf, directoryMenuEntry } from "../module/scripts/views/route.js";
+import { dayModeOf, byRest } from "../module/scripts/core/clock.js";
+import { rawRarityOf, normalizeRarity } from "../module/scripts/core/odds.js";
+import { STARTER_POOLS, STARTER_PACKS, starterPackPlan, takesRow, entryOfRow } from "../module/scripts/views/starter.js";
+import { settle, isWholeCoins } from "../module/scripts/core/currency.js";
 
-const { registerSettings, registerIndexFields, dayMode, RARITY_FIELDS } = await import("../module/scripts/store.js");
-const { starterPlan } = await import("../module/scripts/starterbuild.js");
+const { registerSettings, registerIndexFields, dayMode, RARITY_FIELDS } = await import("../module/scripts/foundry/store.js");
+const { starterPlan } = await import("../module/scripts/foundry/starterbuild.js");
 
 afterEach(() => vi.unstubAllGlobals());
 

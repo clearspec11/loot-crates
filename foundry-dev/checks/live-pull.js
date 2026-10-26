@@ -3,13 +3,13 @@
 // test actor with 500 gp in the "Loot Crates Test" folder, performs the pull
 // as the GM, and reports the purse before and after plus the granted item.
 //
-//   FOUNDRY_URL=http://192.168.0.57:30000 MODULE_BASE=http://192.168.0.190:8766/ \
-//     NODE_PATH=$(npm root -g) node foundry-dev/headless/run.cjs foundry-dev/checks/live-pull.js
+//   FOUNDRY_URL=http://<foundry>:30000 MODULE_BASE=http://<this machine>:8766/ \
+//     NODE_PATH=$(npm root -g) node foundry-dev/run.cjs foundry-dev/checks/live-pull.js
 //
 // Never deletes anything. Each run adds one item to the test actor.
-const { performPull } = await import(MODULE_BASE + "scripts/pull.js");
-const { entriesFromCompendium } = await import(MODULE_BASE + "scripts/store.js");
-const { seededRng } = await import(MODULE_BASE + "scripts/odds.js");
+const { performPull } = await import(MODULE_BASE + "scripts/foundry/pull.js");
+const { entriesFromCompendium } = await import(MODULE_BASE + "scripts/foundry/store.js");
+const { seededRng } = await import(MODULE_BASE + "scripts/core/odds.js");
 
 const FOLDER = "Loot Crates Test";
 let folder = game.folders.find(f => f.type === "Actor" && f.name === FOLDER);

@@ -18,13 +18,13 @@
 // goes in is announced once: the status line, and no info toast (toasts
 // raised while the manager drops are recorded and reported).
 //
-//   FOUNDRY_URL=http://192.168.0.57:30000 MODULE_BASE=http://192.168.0.190:8766/ \
-//     NODE_PATH=$(npm root -g) node foundry-dev/headless/run.cjs foundry-dev/checks/live-drop.js --shot drop.png
+//   FOUNDRY_URL=http://<foundry>:30000 MODULE_BASE=http://<this machine>:8766/ \
+//     NODE_PATH=$(npm root -g) node foundry-dev/run.cjs foundry-dev/checks/live-drop.js --shot drop.png
 //
 // Never deletes anything. Writes the module's own settings (two pools, the
 // big one emptied again at the end) and,
 // on the first run only, one Item folder with two items.
-const store = await import(MODULE_BASE + "scripts/store.js");
+const store = await import(MODULE_BASE + "scripts/foundry/store.js");
 try { store.registerSettings(); } catch (e) { if (!/already registered/i.test(String(e))) throw e; }
 store.registerIndexFields();
 
@@ -73,7 +73,7 @@ if (!document.querySelector("link[data-loot-crates]")) {
 const pick = compendium.entries.slice(0, 121);
 const [newcomer, ...seed] = [pick[120], ...pick.slice(0, 120)];
 await store.savePool({ id: "live-drop-big", name: "Live drop big pool", entries: seed, pools: [] });
-const { openManager } = await import(MODULE_BASE + "scripts/manager.js");
+const { openManager } = await import(MODULE_BASE + "scripts/foundry/manager.js");
 // Every info toast from here on, to show the drops that went in raised none.
 const infoToasts = [];
 const realInfo = ui.notifications.info;

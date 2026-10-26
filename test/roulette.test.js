@@ -9,13 +9,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createDocument } from "./minidom.js";
 
-vi.mock("../module/scripts/sound.js", () => ({ playTick: vi.fn(), playSlow: vi.fn(), playReveal: vi.fn(), playPlop: vi.fn(), playPlink: vi.fn(), playCoinBack: vi.fn(), playBane: vi.fn(), playDrop: vi.fn() }));
+vi.mock("../module/scripts/foundry/sound.js", () => ({ playTick: vi.fn(), playSlow: vi.fn(), playReveal: vi.fn(), playPlop: vi.fn(), playPlink: vi.fn(), playCoinBack: vi.fn(), playBane: vi.fn(), playDrop: vi.fn() }));
 
-const R = await import("../module/scripts/roulette.js");
+const R = await import("../module/scripts/games/roulette.js");
 const { ROULETTE, ROULETTE_DEFAULTS, BET_TYPES, pocketsOf, coloursOf, optionsOf, betOdds, resolve, betWins, normalizeBet, betName, stakeCheck, readBet, pickOptions, betFields, verdictText, netByActor, netText, netLines, wheelPose, pocketUnder, mountWheel, railHTML, roundState, clockText, drawOfRarity, draftRoulette, rouletteRulesText, roulettePreview, betLines, wheelSVG } = R;
-const { tableBodyHTML, phaseOf, stateText, countText, stakeSentence, countdownText, betClosedText, gateBet } = await import("../module/scripts/tableview.js");
-const { PullError } = await import("../module/scripts/kinds.js");
-const { seededRng } = await import("../module/scripts/odds.js");
+const { tableBodyHTML, phaseOf, stateText, countText, stakeSentence, countdownText, betClosedText, gateBet } = await import("../module/scripts/views/tableview.js");
+const { PullError } = await import("../module/scripts/games/kinds.js");
+const { seededRng } = await import("../module/scripts/core/odds.js");
 
 const GAME = { id: "wheel", kind: "roulette", name: "Live wheel", price: 5, pools: [{ id: "p", share: 1 }], weights: {}, roulette: { colours: ["Red", "Black"], pockets: ROULETTE_DEFAULTS.pockets, payouts: { colour: 2, parity: 2, number: 12, rarity: 3 }, itemOnRarity: true, maxStake: 50, maxBets: 3, windowSec: 45 } };
 const POOLS = { p: { id: "p", name: "P", pools: [], entries: [{ uuid: "Item.rare1", name: "Rare Wand", img: "w.webp", rarity: "rare", weight: 1 }, { uuid: "Item.common1", name: "Dull Rope", img: "r.webp", rarity: "common", weight: 1 }] } };

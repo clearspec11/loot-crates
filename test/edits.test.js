@@ -5,7 +5,7 @@
   writing that copy back would undo them.
 */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { registerSettings, getPools, getBoxes, savePool, saveBox, markMissing, enqueueWrite, updatePool, updateBox, removePool } from "../module/scripts/store.js";
+import { registerSettings, getPools, getBoxes, savePool, saveBox, markMissing, enqueueWrite, updatePool, updateBox, removePool } from "../module/scripts/foundry/store.js";
 
 let settings;
 beforeEach(() => {

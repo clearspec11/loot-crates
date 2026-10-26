@@ -5,9 +5,9 @@
   the buyer's gold, and it stays small enough to live in a message's flags.
 */
 import { describe, it, expect } from "vitest";
-import { replaySnapshot, replayReveal, replayTitle, replayWindowId, resultHTML, revealActionsHTML } from "../module/scripts/revealcard.js";
-import { buildStrip, STRIP_LENGTH } from "../module/scripts/strip.js";
-import { draw, seededRng, shopOdds } from "../module/scripts/odds.js";
+import { replaySnapshot, replayReveal, replayTitle, replayWindowId, resultHTML, revealActionsHTML } from "../module/scripts/views/revealcard.js";
+import { buildStrip, STRIP_LENGTH } from "../module/scripts/core/strip.js";
+import { draw, seededRng, shopOdds } from "../module/scripts/core/odds.js";
 import { POOLS, BOX } from "../harness/sample.js";
 
 // A pull as socket.js broadcasts it, with a world's long names and art paths.

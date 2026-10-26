@@ -9,24 +9,24 @@
   exercised in a world, not by the Vitest suite; the pure parts (odds.js,
   currency.js, strip.js, spin.js) are.
 */
-import { MODULE_ID, SETTINGS } from "./config.js";
-import { registerSettings, setStoreListener, registerIndexFields, getPools, getBoxes, getLog, getRounds, savePool, saveBox, entriesFromCompendium, entryFromItem, sweepAllPools } from "./store.js";
-import { registerSocket, requestPull, requestStake, isActiveGM, restCompleted, settleOwedRests } from "./socket.js";
-import { registerKind, getKind, kindOf } from "./kinds.js";
-import { openShop, refreshShop, registerShopHooks } from "./shop.js";
-import { addDirectoryButtons } from "./route.js";
-import { openManager, refreshManager, CrateManager, makeCrateFromTable, makeCrateMenuEntry, addStarterCrates } from "./manager.js";
-import { storeRedraw } from "./redraw.js";
-import { performPull } from "./pull.js";
-import { showReveal, showReplay, sealChatCard, watchAgain, preSealItem, setTableWindow } from "./reveal.js";
-import { openRound, closeRound, resolveRound, cancelRound, recoverRounds, refundOrphanRounds, onTable, watchTables, watchStale } from "./table.js";
+import { MODULE_ID, SETTINGS } from "./core/config.js";
+import { registerSettings, setStoreListener, registerIndexFields, getPools, getBoxes, getLog, getRounds, savePool, saveBox, entriesFromCompendium, entryFromItem, sweepAllPools } from "./foundry/store.js";
+import { registerSocket, requestPull, requestStake, isActiveGM, restCompleted, settleOwedRests } from "./foundry/socket.js";
+import { registerKind, getKind, kindOf } from "./games/kinds.js";
+import { openShop, refreshShop, registerShopHooks } from "./foundry/shop.js";
+import { addDirectoryButtons } from "./views/route.js";
+import { openManager, refreshManager, CrateManager, makeCrateFromTable, makeCrateMenuEntry, addStarterCrates } from "./foundry/manager.js";
+import { storeRedraw } from "./core/redraw.js";
+import { performPull } from "./foundry/pull.js";
+import { showReveal, showReplay, sealChatCard, watchAgain, preSealItem, setTableWindow } from "./foundry/reveal.js";
+import { openRound, closeRound, resolveRound, cancelRound, recoverRounds, refundOrphanRounds, onTable, watchTables, watchStale } from "./foundry/table.js";
 // The shared table window registers itself with the round's messages and
 // the core's hold when imported.
-import { openTable, openTableFor, refreshTables } from "./tablewindow.js";
-import { draw, oddsTable, seededRng } from "./odds.js";
-import { registerWelcome, welcomeAtLoad, openWelcome } from "./welcomewindow.js";
-import { buildStrip } from "./strip.js";
-import { t, setLocalizer, loadStrings } from "./i18n.js";
+import { openTable, openTableFor, refreshTables } from "./foundry/tablewindow.js";
+import { draw, oddsTable, seededRng } from "./core/odds.js";
+import { registerWelcome, welcomeAtLoad, openWelcome } from "./foundry/welcomewindow.js";
+import { buildStrip } from "./core/strip.js";
+import { t, setLocalizer, loadStrings } from "./core/i18n.js";
 
 // The module's words (i18n.js): this module's own lang/en.json, fetched as
 // the script loads, for a copy whose keys Foundry doesn't know (the

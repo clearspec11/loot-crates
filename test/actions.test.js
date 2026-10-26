@@ -5,12 +5,10 @@
   switched. No script may use those names, as an action key or in markup.
 */
 import { describe, it, expect } from "vitest";
-import { readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { scriptFiles } from "./scripts.js";
 
 const RESERVED = ["close", "tab", "toggleControls"];
-const DIR = new URL("../module/scripts/", import.meta.url).pathname;
-const scripts = readdirSync(DIR).filter(f => f.endsWith(".js")).map(f => [f, readFileSync(join(DIR, f), "utf8")]);
+const scripts = scriptFiles().map(s => [s.file, s.src]);
 
 // Keys of every `actions: { ... }` object (the handlers' DEFAULT_OPTIONS).
 function actionKeys(src) {

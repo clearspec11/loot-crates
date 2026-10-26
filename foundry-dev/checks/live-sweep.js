@@ -14,14 +14,14 @@
 // shows it "No rarity set". Finally the "Live UI pool" is swept and its
 // older entries are reported gaining sourceRarity.
 //
-//   FOUNDRY_URL=http://192.168.0.57:30000 MODULE_BASE=http://192.168.0.190:8766/ \
-//     NODE_PATH=$(npm root -g) node foundry-dev/headless/run.cjs foundry-dev/checks/live-sweep.js [--shot out.png]
+//   FOUNDRY_URL=http://<foundry>:30000 MODULE_BASE=http://<this machine>:8766/ \
+//     NODE_PATH=$(npm root -g) node foundry-dev/run.cjs foundry-dev/checks/live-sweep.js [--shot out.png]
 //
 // Never deletes anything. Writes the module's own settings (two pools, the
 // big one emptied again at the end, and the Live UI pool's learned
 // sourceRarity) and creates one world Item once.
-const store = await import(MODULE_BASE + "scripts/store.js");
-const odds = await import(MODULE_BASE + "scripts/odds.js");
+const store = await import(MODULE_BASE + "scripts/foundry/store.js");
+const odds = await import(MODULE_BASE + "scripts/core/odds.js");
 const { normalizeRarity, rarityUnset } = odds;
 // The same read as odds.js rawRarityOf, so the check also runs against a
 // build that predates it (for a before/after timing).
@@ -99,7 +99,7 @@ if (!document.querySelector("link[data-loot-crates]")) {
   document.head.appendChild(link);
 }
 const until = async (fn, ms = 15000) => { for (let t = 0; t < ms && !fn(); t += 100) await wait(100); return fn(); };
-const { openManager } = await import(MODULE_BASE + "scripts/manager.js");
+const { openManager } = await import(MODULE_BASE + "scripts/foundry/manager.js");
 const app = openManager();
 app.tab = "pools"; app.render({ force: true });
 const worldPoolEl = () => app.element?.querySelector(`[data-drop-pool="${WORLD_POOL}"]`);

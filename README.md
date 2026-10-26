@@ -125,15 +125,12 @@ Players press **Crates** at the top of the Items sidebar. The shop shows every g
 
 ## For developers
 
-How the module works, the game core and where each script sits are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). The design tokens and rules are in [docs/DESIGN.md](docs/DESIGN.md), and the steps to publish a release are in [docs/RELEASE.md](docs/RELEASE.md).
+Start with [docs/DEVELOPING.md](docs/DEVELOPING.md): setup, the harness, tests, screenshots, live checks and where the code lives. How the module works is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), the design tokens and rules in [docs/DESIGN.md](docs/DESIGN.md), and releasing in [docs/RELEASE.md](docs/RELEASE.md).
 
 ```
 npm install
-npm run lint          # eslint, 0 errors
-npm run test:run      # vitest
-npm run build         # checks module.json, parses every script, packs dist/module.zip
-NODE_PATH=$(npm root -g) npm run smoke   # harness screenshots at 1440 and 390 wide, dark and light
-npm run harness       # serve the harness at http://localhost:5281/harness/
+npm run test:run      # the unit tests
+npm run harness       # look at any window without Foundry: http://localhost:5281/harness/
 ```
 
 Other modules can add a game of their own with `game.modules.get("loot-crates").api.registerKind`.

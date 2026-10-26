@@ -6,7 +6,7 @@
   still reads a table.
 */
 import { describe, it, expect } from "vitest";
-import { boxesTableHTML, boxesTabHTML, kindTag, cell, tableHTML, BOXES_COLUMNS, NEW_BUTTONS, UNNAMED_COLUMN } from "../module/scripts/boxestable.js";
+import { boxesTableHTML, boxesTabHTML, kindTag, cell, tableHTML, BOXES_COLUMNS, NEW_BUTTONS, UNNAMED_COLUMN } from "../module/scripts/views/boxestable.js";
 import { BOXES, POOLS, deckDraws, rouletteRound } from "../harness/sample.js";
 
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);

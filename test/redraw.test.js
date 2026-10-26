@@ -6,12 +6,12 @@
 */
 import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from "vitest";
 
-vi.mock("../module/scripts/shop.js", () => ({ refreshShop: vi.fn() }));
-vi.mock("../module/scripts/chat.js", () => ({ postRefundCard: vi.fn() }));
+vi.mock("../module/scripts/foundry/shop.js", () => ({ refreshShop: vi.fn() }));
+vi.mock("../module/scripts/foundry/chat.js", () => ({ postRefundCard: vi.fn() }));
 
-const { registerSettings, setStoreListener, WORLD_KEYS } = await import("../module/scripts/store.js");
-const { storeRedraw, REDRAW_DELAY_MS } = await import("../module/scripts/redraw.js");
-const { SETTINGS } = await import("../module/scripts/config.js");
+const { registerSettings, setStoreListener, WORLD_KEYS } = await import("../module/scripts/foundry/store.js");
+const { storeRedraw, REDRAW_DELAY_MS } = await import("../module/scripts/core/redraw.js");
+const { SETTINGS } = await import("../module/scripts/core/config.js");
 
 // The welcome's record (welcomewindow.js registers it) redraws no window.
 const ALL = Object.values(SETTINGS).filter(k => k !== SETTINGS.SOUND && k !== SETTINGS.WELCOME && k !== SETTINGS.LINGER);
@@ -126,7 +126,7 @@ describe("the manager", () => {
       render() { renders++; this.rendered = true; return this; }
     }
     vi.stubGlobal("foundry", { utils: { escapeHTML: s => String(s), deepClone: v => structuredClone(v) }, applications: { api: { ApplicationV2, DialogV2: class {} } } });
-    ({ managerShows, refreshManager, openManager, CrateManager } = await import("../module/scripts/manager.js"));
+    ({ managerShows, refreshManager, openManager, CrateManager } = await import("../module/scripts/foundry/manager.js"));
   });
   afterAll(() => vi.unstubAllGlobals());
 
@@ -186,7 +186,7 @@ describe("the manager", () => {
     const app = openManager();
     app.rendered = true;
     app.tab = "boxes";
-    const { changeCount } = await import("../module/scripts/redraw.js");
+    const { changeCount } = await import("../module/scripts/core/redraw.js");
     // The real _renderHTML notes the count before it reads anything.
     vi.stubGlobal("document", { createElement: () => { throw new Error("stop here"); } });
     const before = changeCount();

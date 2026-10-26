@@ -7,14 +7,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createDocument } from "./minidom.js";
 
-vi.mock("../module/scripts/sound.js", () => ({ playTick: vi.fn(), playSlow: vi.fn(), playReveal: vi.fn() }));
-vi.mock("../module/scripts/store.js", () => ({ getBoxes: () => ({}), getPools: () => ({}), getLog: () => [], getRounds: () => ({}), todayKey: () => null, isShopOpen: () => true, getActorState: () => ({}) }));
-vi.mock("../module/scripts/socket.js", () => ({ requestPull: vi.fn(async () => ({})) }));
+vi.mock("../module/scripts/foundry/sound.js", () => ({ playTick: vi.fn(), playSlow: vi.fn(), playReveal: vi.fn() }));
+vi.mock("../module/scripts/foundry/store.js", () => ({ getBoxes: () => ({}), getPools: () => ({}), getLog: () => [], getRounds: () => ({}), todayKey: () => null, isShopOpen: () => true, getActorState: () => ({}) }));
+vi.mock("../module/scripts/foundry/socket.js", () => ({ requestPull: vi.fn(async () => ({})) }));
 
 class FakeApp {}
 vi.stubGlobal("foundry", { applications: { api: { ApplicationV2: FakeApp }, instances: new Map() }, utils: { escapeHTML: s => String(s) } });
 
-const { showRound, setTableWindow, sealChatCard, onRelease, onHold, boxHeld, heldState, _resetHolds } = await import("../module/scripts/reveal.js");
+const { showRound, setTableWindow, sealChatCard, onRelease, onHold, boxHeld, heldState, _resetHolds } = await import("../module/scripts/foundry/reveal.js");
 
 let doc;
 let reduced = false;

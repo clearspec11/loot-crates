@@ -7,18 +7,18 @@
 */
 import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from "vitest";
 
-vi.mock("../module/scripts/reveal.js", () => ({ showReveal: vi.fn(async () => ({ landed: Promise.resolve() })), showRound: vi.fn(() => ({ landed: Promise.resolve(), instant: true })), boxHeld: vi.fn(() => false) }));
-vi.mock("../module/scripts/chat.js", () => ({ postPullCard: vi.fn(async () => null) }));
+vi.mock("../module/scripts/foundry/reveal.js", () => ({ showReveal: vi.fn(async () => ({ landed: Promise.resolve() })), showRound: vi.fn(() => ({ landed: Promise.resolve(), instant: true })), boxHeld: vi.fn(() => false) }));
+vi.mock("../module/scripts/foundry/chat.js", () => ({ postPullCard: vi.fn(async () => null) }));
 
-const { registerSocket, requestStake } = await import("../module/scripts/socket.js");
-const { registerSettings, getLog, getRounds, enqueueWrite } = await import("../module/scripts/store.js");
-const { openRound, closeRound, resolveRound, recoverRounds, refundOrphanRounds, onTable, watchStale, stopStaleWatch, watchTables, stopWatching, STALE_SLACK_MS } = await import("../module/scripts/table.js");
-const { refundPull, describeRefund } = await import("../module/scripts/refund.js");
-const { performPull, PullError } = await import("../module/scripts/pull.js");
-const { registerKind, kindIds, _resetKinds } = await import("../module/scripts/kinds.js");
-const { rowStatus, stakesOf, staleStakes, staleAt, nextStaleAt, groupRounds, roundLine, stakeNote, orphanRounds, heldBy, ROUND_WINDOW_MS, ROUND_GRACE_MS } = await import("../module/scripts/round.js");
-const { showRound, boxHeld } = await import("../module/scripts/reveal.js");
-const { toCopper } = await import("../module/scripts/currency.js");
+const { registerSocket, requestStake } = await import("../module/scripts/foundry/socket.js");
+const { registerSettings, getLog, getRounds, enqueueWrite } = await import("../module/scripts/foundry/store.js");
+const { openRound, closeRound, resolveRound, recoverRounds, refundOrphanRounds, onTable, watchStale, stopStaleWatch, watchTables, stopWatching, STALE_SLACK_MS } = await import("../module/scripts/foundry/table.js");
+const { refundPull, describeRefund } = await import("../module/scripts/foundry/refund.js");
+const { performPull, PullError } = await import("../module/scripts/foundry/pull.js");
+const { registerKind, kindIds, _resetKinds } = await import("../module/scripts/games/kinds.js");
+const { rowStatus, stakesOf, staleStakes, staleAt, nextStaleAt, groupRounds, roundLine, stakeNote, orphanRounds, heldBy, ROUND_WINDOW_MS, ROUND_GRACE_MS } = await import("../module/scripts/core/round.js");
+const { showRound, boxHeld } = await import("../module/scripts/foundry/reveal.js");
+const { toCopper } = await import("../module/scripts/core/currency.js");
 
 const tick = () => new Promise(r => setTimeout(r, 0));
 const BUILT_IN = kindIds();

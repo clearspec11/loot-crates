@@ -4,8 +4,8 @@
 // actually drop, and every disabled Buy points (aria-describedby) at a reason
 // shown as visible text. --shot for a screenshot.
 //
-//   FOUNDRY_URL=http://192.168.0.57:30000 MODULE_BASE=http://192.168.0.190:8766/ \
-//     NODE_PATH=$(npm root -g) node foundry-dev/headless/run.cjs foundry-dev/checks/live-shop.js --shot /tmp/shop.png
+//   FOUNDRY_URL=http://<foundry>:30000 MODULE_BASE=http://<this machine>:8766/ \
+//     NODE_PATH=$(npm root -g) node foundry-dev/run.cjs foundry-dev/checks/live-shop.js --shot /tmp/shop.png
 //
 // Writes nothing: no purchase, no actor, no settings beyond registering the
 // module's own. Needs "Crate Tester" in the Actor folder "Loot Crates Test"
@@ -15,10 +15,10 @@ if (!document.querySelector("link[data-loot-crates]")) {
   link.dataset.lootCrates = "1";
   document.head.appendChild(link);
 }
-const store = await import(MODULE_BASE + "scripts/store.js");
-const { registerSocket } = await import(MODULE_BASE + "scripts/socket.js");
-const { openShop } = await import(MODULE_BASE + "scripts/shop.js");
-const { shopOdds } = await import(MODULE_BASE + "scripts/odds.js");
+const store = await import(MODULE_BASE + "scripts/foundry/store.js");
+const { registerSocket } = await import(MODULE_BASE + "scripts/foundry/socket.js");
+const { openShop } = await import(MODULE_BASE + "scripts/foundry/shop.js");
+const { shopOdds } = await import(MODULE_BASE + "scripts/core/odds.js");
 try { store.registerSettings(); } catch (e) { if (!/already registered/i.test(String(e))) throw e; }
 store.registerIndexFields();
 try { registerSocket(); } catch { /* registered on an earlier run of the same page */ }

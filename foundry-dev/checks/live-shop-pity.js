@@ -23,8 +23,8 @@
 // alone (branch "owns-every-high"); either branch passes on the module.
 // It also checks the reveal's odds were the shop's.
 //
-//   FOUNDRY_URL=http://192.168.0.57:30000 MODULE_BASE=http://192.168.0.190:8766/ \
-//     NODE_PATH=$(npm root -g) node foundry-dev/headless/run.cjs foundry-dev/checks/live-shop-pity.js --shot /tmp/pity.png
+//   FOUNDRY_URL=http://<foundry>:30000 MODULE_BASE=http://<this machine>:8766/ \
+//     NODE_PATH=$(npm root -g) node foundry-dev/run.cjs foundry-dev/checks/live-shop-pity.js --shot /tmp/pity.png
 //
 // Writes only the module's own settings (the test pool and box, Crate
 // Tester's state for that box, the log row) and the one purchase on Crate
@@ -37,16 +37,16 @@ if (!document.querySelector("link[data-loot-crates]")) {
 }
 globalThis.canvas?.app?.ticker?.stop();
 game.socket.off("module.loot-crates");
-const store = await import(MODULE_BASE + "scripts/store.js");
+const store = await import(MODULE_BASE + "scripts/foundry/store.js");
 try { store.registerSettings(); } catch { /* the installed module registered them */ }
 try { store.registerIndexFields(); } catch { /* already in CONFIG */ }
-const socket = await import(MODULE_BASE + "scripts/socket.js");
+const socket = await import(MODULE_BASE + "scripts/foundry/socket.js");
 socket.registerSocket();
-const { storeRedraw } = await import(MODULE_BASE + "scripts/redraw.js");
-const { openShop, refreshShop } = await import(MODULE_BASE + "scripts/shop.js");
-const { refreshManager } = await import(MODULE_BASE + "scripts/manager.js");
-const { shopOdds, flattenPool, rarityRank } = await import(MODULE_BASE + "scripts/odds.js");
-const { RARITY_SHORT, RARITY_LABEL } = await import(MODULE_BASE + "scripts/config.js");
+const { storeRedraw } = await import(MODULE_BASE + "scripts/core/redraw.js");
+const { openShop, refreshShop } = await import(MODULE_BASE + "scripts/foundry/shop.js");
+const { refreshManager } = await import(MODULE_BASE + "scripts/foundry/manager.js");
+const { shopOdds, flattenPool, rarityRank } = await import(MODULE_BASE + "scripts/core/odds.js");
+const { RARITY_SHORT, RARITY_LABEL } = await import(MODULE_BASE + "scripts/core/config.js");
 const redraw = storeRedraw({ refreshShop, refreshManager });
 store.setStoreListener(redraw);
 for (const key of store.WORLD_KEYS) {

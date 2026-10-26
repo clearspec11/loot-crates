@@ -4,8 +4,8 @@
   and the buyer gets a PullError that says so.
 */
 import { describe, it, expect, afterEach } from "vitest";
-import { performPull, PullError } from "../module/scripts/pull.js";
-import { toCopper } from "../module/scripts/currency.js";
+import { performPull, PullError } from "../module/scripts/foundry/pull.js";
+import { toCopper } from "../module/scripts/core/currency.js";
 
 const tick = () => new Promise(r => setTimeout(r, 0));
 const POOLS = { pool: { id: "pool", name: "Pool", pools: [], entries: ["a", "b", "c"].map(u => ({ uuid: u, name: u, img: "", rarity: "common", weight: 1 })) } };

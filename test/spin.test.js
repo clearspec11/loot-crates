@@ -2,7 +2,7 @@
    a viewport with a fixed width, and a requestAnimationFrame driven by hand,
    so the test can read which cards pass under the marker. */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mountSpin, nearMissOvershoot, spinDistance, brakeAt, settleAt, SPIN_ACCEL, SPIN_CRUISE, SPIN_SPLIT, CARD_WIDTH, CARD_GAP, DEFAULT_DURATION } from "../module/scripts/spin.js";
+import { mountSpin, nearMissOvershoot, spinDistance, brakeAt, settleAt, SPIN_ACCEL, SPIN_CRUISE, SPIN_SPLIT, CARD_WIDTH, CARD_GAP, DEFAULT_DURATION } from "../module/scripts/views/spin.js";
 
 const fakeElement = () => ({
   className: "", textContent: "", innerHTML: "", clientWidth: 0, dataset: {}, children: [],

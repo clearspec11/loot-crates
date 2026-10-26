@@ -6,10 +6,10 @@
 */
 import { describe, it, expect, afterEach } from "vitest";
 
-const { dayKeyOf, dayKeyFor, dayModeOf, byRest, restDayNote, dayOf, keyOfDay, nextDay, laterDay, dayAfterRest } = await import("../module/scripts/clock.js");
-const { registerSettings, todayKey, dayMode, countRest, restDayOf, restInto, restedIntoOf, dayAt } = await import("../module/scripts/store.js");
-const { noClockNote } = await import("../module/scripts/well.js");
-const { limitsFieldset } = await import("../module/scripts/limits.js");
+const { dayKeyOf, dayKeyFor, dayModeOf, byRest, restDayNote, dayOf, keyOfDay, nextDay, laterDay, dayAfterRest } = await import("../module/scripts/core/clock.js");
+const { registerSettings, todayKey, dayMode, countRest, restDayOf, restInto, restedIntoOf, dayAt } = await import("../module/scripts/foundry/store.js");
+const { noClockNote } = await import("../module/scripts/games/well.js");
+const { limitsFieldset } = await import("../module/scripts/core/limits.js");
 
 const tick = () => new Promise(r => setTimeout(r, 0));
 const TIME = { components: { year: 1492, day: 207 }, worldTime: 1 };

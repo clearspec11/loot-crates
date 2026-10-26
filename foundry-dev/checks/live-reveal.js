@@ -7,8 +7,8 @@
 // (the window is sized after the first frame, which is the case that used to
 // land the wrong card under the marker).
 //
-//   FOUNDRY_URL=http://192.168.0.57:30000 MODULE_BASE=http://192.168.0.190:8766/ \
-//     NODE_PATH=$(npm root -g) node foundry-dev/headless/run.cjs foundry-dev/checks/live-reveal.js --shot /tmp/reveal.png
+//   FOUNDRY_URL=http://<foundry>:30000 MODULE_BASE=http://<this machine>:8766/ \
+//     NODE_PATH=$(npm root -g) node foundry-dev/run.cjs foundry-dev/checks/live-reveal.js --shot /tmp/reveal.png
 //
 // Writes nothing to the world: no actor, no purchase, no settings beyond
 // registering the module's own.
@@ -18,10 +18,10 @@ if (!document.querySelector("link[data-loot-crates]")) {
   link.dataset.lootCrates = "1";
   document.head.appendChild(link);
 }
-const store = await import(MODULE_BASE + "scripts/store.js");
-const { draw, seededRng } = await import(MODULE_BASE + "scripts/odds.js");
-const { buildStrip } = await import(MODULE_BASE + "scripts/strip.js");
-const { showReveal } = await import(MODULE_BASE + "scripts/reveal.js");
+const store = await import(MODULE_BASE + "scripts/foundry/store.js");
+const { draw, seededRng } = await import(MODULE_BASE + "scripts/core/odds.js");
+const { buildStrip } = await import(MODULE_BASE + "scripts/core/strip.js");
+const { showReveal } = await import(MODULE_BASE + "scripts/foundry/reveal.js");
 try { store.registerSettings(); } catch (e) { if (!/already registered/i.test(String(e))) throw e; }
 store.registerIndexFields();
 

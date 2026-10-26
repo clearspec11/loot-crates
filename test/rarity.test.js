@@ -7,11 +7,11 @@
   refetches the whole pack. Every read here must share one list.
 */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { rawRarityOf, normalizeRarity, rarityUnset } from "../module/scripts/odds.js";
+import { rawRarityOf, normalizeRarity, rarityUnset } from "../module/scripts/core/odds.js";
 import {
   registerSettings, registerIndexFields, RARITY_FIELDS, INDEX_FIELDS,
   checkSources, entriesFromCompendium, entryFromItem, refreshMissing,
-} from "../module/scripts/store.js";
+} from "../module/scripts/foundry/store.js";
 
 describe("rawRarityOf", () => {
   it("reads a legacy string, '' included", () => {

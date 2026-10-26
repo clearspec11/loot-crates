@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { draw, nextState, undoPull, resetsPity, oddsTable, shopOdds, chanceLabel, wholePercents, flattenPool, normalizeRarity, seededRng, weightedPick, markEntriesMissing, sourceStatus, withSources } from "../module/scripts/odds.js";
+import { draw, nextState, undoPull, resetsPity, oddsTable, shopOdds, chanceLabel, wholePercents, flattenPool, normalizeRarity, seededRng, weightedPick, markEntriesMissing, sourceStatus, withSources } from "../module/scripts/core/odds.js";
 import { POOLS, BOX, BOXES } from "../harness/sample.js";
 
 const tally = (n, fn) => {

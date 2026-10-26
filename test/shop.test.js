@@ -6,7 +6,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { createDocument } from "./minidom.js";
 import { POOLS, BOXES } from "../harness/sample.js";
-import { flattenPool } from "../module/scripts/odds.js";
+import { flattenPool } from "../module/scripts/core/odds.js";
 
 const boxes = Object.fromEntries(BOXES.map(b => [b.id, b]));
 let shopOpen = true;
@@ -16,9 +16,9 @@ let states = {};
 let logReads = 0;
 // The pull log as the world holds it (a deck's streak is read from it).
 let pullLog = [];
-vi.mock("../module/scripts/store.js", () => ({ getBoxes: () => boxes, getPools: () => POOLS, getLog: () => { logReads++; return pullLog; }, getRounds: () => ({}), todayKey: () => null, isShopOpen: () => shopOpen, getActorState: (a, b) => states[`${a}.${b}`] ?? {} }));
+vi.mock("../module/scripts/foundry/store.js", () => ({ getBoxes: () => boxes, getPools: () => POOLS, getLog: () => { logReads++; return pullLog; }, getRounds: () => ({}), todayKey: () => null, isShopOpen: () => shopOpen, getActorState: (a, b) => states[`${a}.${b}`] ?? {} }));
 const requestPull = vi.fn(async () => ({}));
-vi.mock("../module/scripts/socket.js", () => ({ requestPull: (...args) => requestPull(...args) }));
+vi.mock("../module/scripts/foundry/socket.js", () => ({ requestPull: (...args) => requestPull(...args) }));
 
 // ApplicationV2 stand-in: counts renders and, when a document is stubbed,
 // puts each rendered body in `content` through _replaceHTML, as ApplicationV2
@@ -49,7 +49,7 @@ vi.stubGlobal("foundry", { applications: { api: { ApplicationV2: FakeApp } }, ut
 vi.stubGlobal("ui", { notifications: { warn: vi.fn() } });
 vi.stubGlobal("game", { user: { id: "u", character: actor }, actors, users: { get activeGM() { return activeGM; } } });
 
-const { CrateShop, openShop, registerShopHooks } = await import("../module/scripts/shop.js");
+const { CrateShop, openShop, registerShopHooks } = await import("../module/scripts/foundry/shop.js");
 const buy = (app, box, price) => CrateShop.DEFAULT_OPTIONS.actions.buy.call(app, {}, { dataset: price === undefined ? { box } : { box, price } });
 
 beforeEach(() => {

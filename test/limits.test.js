@@ -7,13 +7,13 @@
   stockMax and perCharacter behave as they always have.
 */
 import { describe, it, expect, afterEach } from "vitest";
-import { performPull, PullError } from "../module/scripts/pull.js";
-import { boxCard, cardShell } from "../module/scripts/boxcard.js";
-import { getKind } from "../module/scripts/kinds.js";
+import { performPull, PullError } from "../module/scripts/foundry/pull.js";
+import { boxCard, cardShell } from "../module/scripts/views/boxcard.js";
+import { getKind } from "../module/scripts/games/kinds.js";
 import {
   stockOf, stockText, restocked, restockLine, stockAfterRefund, stockFromForm, stockField, perCharacterOf, perCharacterFromForm,
   boughtBy, limitState, limitLine, limitReason, limitRefusal, withLimit, perCharacterText, limitsText, limitsFieldset,
-} from "../module/scripts/limits.js";
+} from "../module/scripts/core/limits.js";
 import { POOLS as SHOP_POOLS, BOXES } from "../harness/sample.js";
 
 const tick = () => new Promise(r => setTimeout(r, 0));

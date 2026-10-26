@@ -1,12 +1,12 @@
 /*
-  The dev channel (scripts/lib/channel.mjs): dev versions count up and stay
+  The dev channel (tools/lib/channel.mjs): dev versions count up and stay
   newer than the release they build on, the way Foundry compares them, and
   a dev manifest points its updates at the dev release, never at latest.
 */
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { DEV_MANIFEST, nextDevVersion, devManifest } from "../scripts/lib/channel.mjs";
+import { DEV_MANIFEST, nextDevVersion, devManifest } from "../tools/lib/channel.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
 const manifest = JSON.parse(readFileSync(path.join(root, "module/module.json"), "utf8"));

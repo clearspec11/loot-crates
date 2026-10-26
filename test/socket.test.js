@@ -9,18 +9,18 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // needs ChatMessage, so both are mocked rather than stubbed.
 // showReveal resolves to the window, whose `landed` settles when the spin
 // ends; tests swap it for a window that never lands when that matters.
-vi.mock("../module/scripts/reveal.js", () => ({ showReveal: vi.fn(async () => ({ landed: Promise.resolve() })) }));
-vi.mock("../module/scripts/chat.js", () => ({ postPullCard: vi.fn(async () => null) }));
+vi.mock("../module/scripts/foundry/reveal.js", () => ({ showReveal: vi.fn(async () => ({ landed: Promise.resolve() })) }));
+vi.mock("../module/scripts/foundry/chat.js", () => ({ postPullCard: vi.fn(async () => null) }));
 
-const { registerSocket, requestPull, restCompleted, owedRests, settleOwedRests, _resetOwedSent, OWED_RESEND_MS, GM_TIMEOUT_MS, WAIT_NOTICE_MS, TIMED_OUT, SLOW_PULL_MS, _resetSlowWarning } = await import("../module/scripts/socket.js");
-const { registerSettings, setStoreListener, appendLog, sweepAllPools, enqueueWrite, updateBox, INDEX_FIELDS, todayKey } = await import("../module/scripts/store.js");
-const { storeRedraw, REDRAW_DELAY_MS } = await import("../module/scripts/redraw.js");
-const { refundPull } = await import("../module/scripts/refund.js");
-const { PullError } = await import("../module/scripts/pull.js");
-const { seededRng, oddsTable } = await import("../module/scripts/odds.js");
-const { restocked } = await import("../module/scripts/limits.js");
-const { showReveal } = await import("../module/scripts/reveal.js");
-const { postPullCard } = await import("../module/scripts/chat.js");
+const { registerSocket, requestPull, restCompleted, owedRests, settleOwedRests, _resetOwedSent, OWED_RESEND_MS, GM_TIMEOUT_MS, WAIT_NOTICE_MS, TIMED_OUT, SLOW_PULL_MS, _resetSlowWarning } = await import("../module/scripts/foundry/socket.js");
+const { registerSettings, setStoreListener, appendLog, sweepAllPools, enqueueWrite, updateBox, INDEX_FIELDS, todayKey } = await import("../module/scripts/foundry/store.js");
+const { storeRedraw, REDRAW_DELAY_MS } = await import("../module/scripts/core/redraw.js");
+const { refundPull } = await import("../module/scripts/foundry/refund.js");
+const { PullError } = await import("../module/scripts/foundry/pull.js");
+const { seededRng, oddsTable } = await import("../module/scripts/core/odds.js");
+const { restocked } = await import("../module/scripts/core/limits.js");
+const { showReveal } = await import("../module/scripts/foundry/reveal.js");
+const { postPullCard } = await import("../module/scripts/foundry/chat.js");
 
 const tick = () => new Promise(r => setTimeout(r, 0));
 
@@ -1047,7 +1047,7 @@ describe("a day that ends at a long rest, with dnd5e's calendar off", () => {
   const revealed = world => world.emitted.filter(m => m.type === "reveal").map(m => m.requestId);
 
   beforeEach(async () => {
-    await import("../module/scripts/well.js");
+    await import("../module/scripts/games/well.js");
     globalThis.CONFIG = { Dice: { randomUniform: () => 0.5 } };
   });
   afterEach(() => { delete globalThis.CONFIG; });
@@ -1144,7 +1144,7 @@ describe("a day with dnd5e's calendar on", () => {
   const thrown = world => world.emitted.filter(m => m.type === "reveal").map(m => m.requestId);
 
   beforeEach(async () => {
-    await import("../module/scripts/well.js");
+    await import("../module/scripts/games/well.js");
     globalThis.CONFIG = { Dice: { randomUniform: () => 0.5 } };
   });
   afterEach(() => { delete globalThis.CONFIG; });

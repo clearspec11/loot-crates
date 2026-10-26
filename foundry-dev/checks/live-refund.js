@@ -8,18 +8,18 @@
 // link to the deleted Actor.* copy, a link to the compendium source, the
 // "Refunded <time>" line, and that the second refund left it alone.
 //
-//   FOUNDRY_URL=http://192.168.0.57:30000 MODULE_BASE=http://192.168.0.190:8766/ \
-//     NODE_PATH=$(npm root -g) node foundry-dev/headless/run.cjs foundry-dev/checks/live-refund.js
+//   FOUNDRY_URL=http://<foundry>:30000 MODULE_BASE=http://<this machine>:8766/ \
+//     NODE_PATH=$(npm root -g) node foundry-dev/run.cjs foundry-dev/checks/live-refund.js
 //
 // Deletes only the item this run granted (by its loot-crates flag). Writes the
 // module's own settings (one box, one log row) and posts two chat cards (the
 // pull's and the refund's); it deletes no message.
-const { performPull } = await import(MODULE_BASE + "scripts/pull.js");
-const store = await import(MODULE_BASE + "scripts/store.js");
-const { refundPull, describeRefund } = await import(MODULE_BASE + "scripts/refund.js");
-const { toCopper, isWholeCoins } = await import(MODULE_BASE + "scripts/currency.js");
-const { seededRng } = await import(MODULE_BASE + "scripts/odds.js");
-const { postPullCard, postRefundCard } = await import(MODULE_BASE + "scripts/chat.js");
+const { performPull } = await import(MODULE_BASE + "scripts/foundry/pull.js");
+const store = await import(MODULE_BASE + "scripts/foundry/store.js");
+const { refundPull, describeRefund } = await import(MODULE_BASE + "scripts/foundry/refund.js");
+const { toCopper, isWholeCoins } = await import(MODULE_BASE + "scripts/core/currency.js");
+const { seededRng } = await import(MODULE_BASE + "scripts/core/odds.js");
+const { postPullCard, postRefundCard } = await import(MODULE_BASE + "scripts/foundry/chat.js");
 
 try { store.registerSettings(); } catch (e) { if (!/already registered/i.test(String(e))) throw e; }
 store.registerIndexFields();

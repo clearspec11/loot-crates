@@ -4,7 +4,7 @@ import { defineConfig, globalIgnores } from "eslint/config";
 
 // Foundry supplies these globals inside a world. The module is not bundled;
 // its scripts are plain ES modules loaded by Foundry, and the pure ones
-// (odds.js, currency.js, strip.js) are also run by Vitest and the harness.
+// (module/scripts/core, games and views) are also run by Vitest and the harness.
 const FOUNDRY_GLOBALS = {
   game: "readonly",
   Hooks: "readonly",
@@ -23,9 +23,10 @@ const FOUNDRY_GLOBALS = {
 };
 
 export default defineConfig([
-  // foundry-dev/checks/*.js are async function bodies run by headless/run.cjs (top-level return), not modules.
+  // foundry-dev/checks/*.js are async function bodies run by foundry-dev/run.cjs (top-level return), not modules;
+  // the .cjs checks beside them are ordinary Node scripts and are linted.
   // .council/ is the improvement council's local files (git-excluded), including a workflow script.
-  globalIgnores(["dist", "node_modules", "screenshots", ".claude", ".council", "foundry-dev/checks"]),
+  globalIgnores(["dist", "node_modules", "screenshots", ".claude", ".council", "foundry-dev/checks/*.js"]),
   {
     files: ["**/*.{js,mjs,cjs}"],
     extends: [js.configs.recommended],
@@ -38,16 +39,19 @@ export default defineConfig([
       "no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
     },
   },
+  // Only main.js and foundry/ may reach Foundry. core/, games/ and views/
+  // are pure (CLAUDE.md, "Pure first"): Vitest and the harness run them, so
+  // a Foundry global there is a lint error, not a habit to remember.
   {
-    files: ["module/**/*.js", "foundry-dev/**/*.js"],
+    files: ["module/scripts/main.js", "module/scripts/foundry/**/*.js", "foundry-dev/**/*.js"],
     languageOptions: { globals: { ...globals.browser, ...FOUNDRY_GLOBALS } },
   },
   {
-    files: ["scripts/**/*.mjs", "foundry-dev/**/*.cjs"],
+    files: ["tools/**/*.mjs", "foundry-dev/**/*.cjs"],
     languageOptions: { sourceType: "script", globals: globals.node },
   },
   {
-    files: ["scripts/**/*.mjs"],
+    files: ["tools/**/*.mjs"],
     languageOptions: { sourceType: "module" },
   },
   {

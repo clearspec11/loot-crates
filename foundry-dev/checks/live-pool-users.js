@@ -19,8 +19,8 @@
 // line node and text node). The box is put back as it was. Never deletes
 // anything.
 //
-//   FOUNDRY_URL=http://192.168.0.57:30000 MODULE_BASE=http://192.168.0.190:8766/ \
-//     NODE_PATH=$(npm root -g) node foundry-dev/headless/run.cjs foundry-dev/checks/live-pool-users.js [--shot users.png]
+//   FOUNDRY_URL=http://<foundry>:30000 MODULE_BASE=http://<this machine>:8766/ \
+//     NODE_PATH=$(npm root -g) node foundry-dev/run.cjs foundry-dev/checks/live-pool-users.js [--shot users.png]
 if (!document.querySelector("link[data-loot-crates]")) {
   const link = Object.assign(document.createElement("link"), { rel: "stylesheet", href: MODULE_BASE + "styles/module.css" });
   link.dataset.lootCrates = "1";
@@ -29,14 +29,14 @@ if (!document.querySelector("link[data-loot-crates]")) {
 // The software-rendered canvas holds this VM's main thread (and every timer)
 // for most of a second at a time; the manager doesn't need it.
 globalThis.canvas?.app?.ticker?.stop();
-const store = await import(MODULE_BASE + "scripts/store.js");
+const store = await import(MODULE_BASE + "scripts/foundry/store.js");
 try { store.registerSettings(); } catch (e) { if (!/already registered/i.test(String(e))) throw e; }
 store.registerIndexFields();
 // The branch's redraw, as main.js wires it: the installed module registered
 // the settings, so its onChange calls its own listener, not this one.
-const { storeRedraw } = await import(MODULE_BASE + "scripts/redraw.js");
-const { refreshShop } = await import(MODULE_BASE + "scripts/shop.js");
-const { openManager, refreshManager } = await import(MODULE_BASE + "scripts/manager.js");
+const { storeRedraw } = await import(MODULE_BASE + "scripts/core/redraw.js");
+const { refreshShop } = await import(MODULE_BASE + "scripts/foundry/shop.js");
+const { openManager, refreshManager } = await import(MODULE_BASE + "scripts/foundry/manager.js");
 const redraw = storeRedraw({ refreshShop, refreshManager });
 store.setStoreListener(redraw);
 for (const key of store.WORLD_KEYS) {

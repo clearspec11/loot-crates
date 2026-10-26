@@ -5,9 +5,9 @@
   source check never mistakes an override for drift.
 */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { draw, oddsTable, shopOdds, flattenPool, sourceStatus, seededRng, effectiveRarity, rarityUnset, entryWeight, curateEntries } from "../module/scripts/odds.js";
-import { buildStrip, fillerSource } from "../module/scripts/strip.js";
-import { entryFromItem, registerSettings, savePool, getPools, updatePool, enqueueWrite, markMissing } from "../module/scripts/store.js";
+import { draw, oddsTable, shopOdds, flattenPool, sourceStatus, seededRng, effectiveRarity, rarityUnset, entryWeight, curateEntries } from "../module/scripts/core/odds.js";
+import { buildStrip, fillerSource } from "../module/scripts/core/strip.js";
+import { entryFromItem, registerSettings, savePool, getPools, updatePool, enqueueWrite, markMissing } from "../module/scripts/foundry/store.js";
 
 const entry = (uuid, rarity, extra = {}) => ({ uuid, name: uuid, img: "", rarity, sourceRarity: rarity, weight: 1, ...extra });
 const BOX = { id: "b", pools: [{ id: "p", share: 1 }], weights: { common: 60, uncommon: 30, rare: 9, legendary: 1 } };

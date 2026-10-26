@@ -10,12 +10,12 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { createDocument } from "./minidom.js";
 import { POOLS, BOXES } from "../harness/sample.js";
 
-vi.mock("../module/scripts/sound.js", () => ({ playTick: vi.fn(), playSlow: vi.fn(), playReveal: vi.fn() }));
+vi.mock("../module/scripts/foundry/sound.js", () => ({ playTick: vi.fn(), playSlow: vi.fn(), playReveal: vi.fn() }));
 const boxes = Object.fromEntries(BOXES.map(b => [b.id, b]));
 // The world setting, as the GM's write leaves it.
 let states = {};
-vi.mock("../module/scripts/store.js", () => ({ getBoxes: () => boxes, getPools: () => POOLS, getLog: () => [], getRounds: () => ({}), todayKey: () => null, isShopOpen: () => true, getActorState: (a, b) => states[`${a}.${b}`] ?? {} }));
-vi.mock("../module/scripts/socket.js", () => ({ requestPull: vi.fn(async () => ({})) }));
+vi.mock("../module/scripts/foundry/store.js", () => ({ getBoxes: () => boxes, getPools: () => POOLS, getLog: () => [], getRounds: () => ({}), todayKey: () => null, isShopOpen: () => true, getActorState: (a, b) => states[`${a}.${b}`] ?? {} }));
+vi.mock("../module/scripts/foundry/socket.js", () => ({ requestPull: vi.fn(async () => ({})) }));
 
 const fakeElement = () => ({
   className: "", textContent: "", innerHTML: "", clientWidth: 600, dataset: {}, children: [], hidden: false,
@@ -84,9 +84,9 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const { showReveal, showReplay, heldState, isSealedItem, sealedItemIds, sealCSS, preSealItem, onRelease, PRESEAL_MS, CrateReveal, _resetHolds } = await import("../module/scripts/reveal.js");
-const { replaySnapshot } = await import("../module/scripts/revealcard.js");
-const { openShop, CrateShop } = await import("../module/scripts/shop.js");
+const { showReveal, showReplay, heldState, isSealedItem, sealedItemIds, sealCSS, preSealItem, onRelease, PRESEAL_MS, CrateReveal, _resetHolds } = await import("../module/scripts/foundry/reveal.js");
+const { replaySnapshot } = await import("../module/scripts/views/revealcard.js");
+const { openShop, CrateShop } = await import("../module/scripts/foundry/shop.js");
 
 const strip = { landIndex: 30, cards: Array.from({ length: 36 }, (_, i) => ({ uuid: `c${i}`, name: `Card ${i}`, img: "", rarity: "common", result: i === 30 })) };
 const pull = (extra = {}) => ({
@@ -237,7 +237,7 @@ describe("the shop while its crate spins here", () => {
   // already spent the pity on the spin. So that crate can't be bought until
   // its spin lands here (the Buy says why), and the action checks it too.
   it("won't sell a crate again at its held odds while its spin plays", async () => {
-    const { requestPull } = await import("../module/scripts/socket.js");
+    const { requestPull } = await import("../module/scripts/foundry/socket.js");
     requestPull.mockClear();
     boxes.crown = { ...boxes.adventurer, id: "crown", rules: { pity: { after: 3, minRarity: "rare" } } };
     try {

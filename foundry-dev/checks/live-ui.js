@@ -3,8 +3,8 @@
 // Hooks have already fired by the time this runs, so the registrations
 // main.js does at init/ready are called here by hand.
 //
-//   FOUNDRY_URL=... MODULE_BASE=http://192.168.0.190:8766/ NODE_PATH=$(npm root -g) \
-//     node foundry-dev/headless/run.cjs foundry-dev/checks/live-ui.js --shot /tmp/manager.png
+//   FOUNDRY_URL=... MODULE_BASE=http://<this machine>:8766/ NODE_PATH=$(npm root -g) \
+//     node foundry-dev/run.cjs foundry-dev/checks/live-ui.js --shot /tmp/manager.png
 //
 // Edit WHICH below to "shop" to open the player's shop instead.
 const WHICH = "manager";
@@ -14,10 +14,10 @@ if (!document.querySelector("link[data-loot-crates]")) {
   link.dataset.lootCrates = "1";
   document.head.appendChild(link);
 }
-const store = await import(MODULE_BASE + "scripts/store.js");
-const { registerSocket } = await import(MODULE_BASE + "scripts/socket.js");
-const { openManager } = await import(MODULE_BASE + "scripts/manager.js");
-const { openShop } = await import(MODULE_BASE + "scripts/shop.js");
+const store = await import(MODULE_BASE + "scripts/foundry/store.js");
+const { registerSocket } = await import(MODULE_BASE + "scripts/foundry/socket.js");
+const { openManager } = await import(MODULE_BASE + "scripts/foundry/manager.js");
+const { openShop } = await import(MODULE_BASE + "scripts/foundry/shop.js");
 
 try { store.registerSettings(); } catch (e) { if (!/already registered/i.test(String(e))) throw e; }
 store.registerIndexFields();

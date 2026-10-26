@@ -25,7 +25,7 @@ Only CI is in GitHub Actions. Publishing dev builds from Actions is in the backl
 ## The release commit
 
 1. In [CHANGELOG.md](../CHANGELOG.md), move the **Unreleased** bullets under a new `## X.Y.Z` heading with a one-line summary, and leave `- Nothing yet.` under Unreleased (`test/release.test.js` wants a bullet in every entry).
-2. The GM's "What's new" note: put the summary in `module/lang/en.json` under `LOOTCRATES.News.Title` and three to five of the new entry's bullets, word for word, as `LOOTCRATES.News.Line1` and on. List those keys and the version in `module/scripts/changelog.js`. `test/welcome.test.js` checks they match the changelog and `module.json`. The note is plain text inside Foundry: no backticks or markup, and no word of four or more capitals (a bullet naming the README stays in the changelog only).
+2. The GM's "What's new" note: put the summary in `module/lang/en.json` under `LOOTCRATES.News.Title` and three to five of the new entry's bullets, word for word, as `LOOTCRATES.News.Line1` and on. List those keys and the version in `module/scripts/core/changelog.js`. `test/welcome.test.js` checks they match the changelog and `module.json`. The note is plain text inside Foundry: no backticks or markup, and no word of four or more capitals (a bullet naming the README stays in the changelog only).
 3. Bump `version` in `module/module.json`, `package.json` and `package-lock.json`. If the release changes the Foundry or dnd5e versions it supports, or starts using a new hook or API, update [COMPATIBILITY.md](COMPATIBILITY.md) and the README's table in the same commit (`test/release.test.js` checks them against the manifest).
 4. `npm run lint && npm run test:run && npm run build` all green, and `NODE_PATH=$(npm root -g) npm run smoke` for any UI change.
 
@@ -68,7 +68,7 @@ The test world (cc-dev) is installed from the dev manifest, so it gets dev build
 
 ## What the zip ships
 
-`npm run build` packs `module/` into `dist/module.zip` and refuses to pack anything but `module.json`, `scripts/*.js`, `styles/*.css` and `lang/*.json` (the rule is `scripts/package-files.mjs`; `test/release.test.js` checks the working tree against it). Screenshots in `docs/images/` are for the README and the package listing only and never ship.
+`npm run build` packs `module/` into `dist/module.zip` and refuses to pack anything but `module.json`, `scripts/*.js`, `styles/*.css` and `lang/*.json` (the rule is `tools/package-files.mjs`; `test/release.test.js` checks the working tree against it). Screenshots in `docs/images/` are for the README and the package listing only and never ship.
 
 Audited on 2026-10-24 at 0.14.0 plus this round's work: 47 files, 276 KB.
 

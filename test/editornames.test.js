@@ -11,12 +11,12 @@
 */
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from "vitest";
 import { createDocument } from "./minidom.js";
-import { poolPicks, poolsFieldset, syncShares, pityRow, stakeRow, betRangeRow, dragonRow, field as fieldHTML, CARD_FIELDS } from "../module/scripts/editorfields.js";
-import { limitsFieldset } from "../module/scripts/limits.js";
+import { poolPicks, poolsFieldset, syncShares, pityRow, stakeRow, betRangeRow, dragonRow, field as fieldHTML, CARD_FIELDS } from "../module/scripts/views/editorfields.js";
+import { limitsFieldset } from "../module/scripts/core/limits.js";
 
-vi.mock("../module/scripts/shop.js", () => ({ refreshShop: vi.fn() }));
-vi.mock("../module/scripts/chat.js", () => ({ postRefundCard: vi.fn() }));
-vi.mock("../module/scripts/store.js", async importOriginal => {
+vi.mock("../module/scripts/foundry/shop.js", () => ({ refreshShop: vi.fn() }));
+vi.mock("../module/scripts/foundry/chat.js", () => ({ postRefundCard: vi.fn() }));
+vi.mock("../module/scripts/foundry/store.js", async importOriginal => {
   const orig = await importOriginal();
   return {
     ...orig,
@@ -90,9 +90,9 @@ beforeAll(async () => {
     get: (_m, key) => settings.get(key),
     set: async (_m, key, v) => { sets++; await new Promise(r => setTimeout(r, 1)); settings.set(key, structuredClone(v)); },
   } });
-  store = await import("../module/scripts/store.js");
-  newgame = await import("../module/scripts/newgame.js");
-  ({ CrateManager } = await import("../module/scripts/manager.js"));
+  store = await import("../module/scripts/foundry/store.js");
+  newgame = await import("../module/scripts/views/newgame.js");
+  ({ CrateManager } = await import("../module/scripts/foundry/manager.js"));
 });
 afterAll(() => vi.unstubAllGlobals());
 

@@ -12,9 +12,9 @@
 */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
-vi.mock("../module/scripts/sound.js", () => ({ playTick: vi.fn(), playSlow: vi.fn(), playReveal: vi.fn() }));
-vi.mock("../module/scripts/socket.js", () => ({ requestPull: vi.fn() }));
-vi.mock("../module/scripts/store.js", () => ({ getBoxes: vi.fn(() => ({})), getPools: vi.fn(() => ({})), getLog: vi.fn(() => []), getRounds: vi.fn(() => ({})), todayKey: vi.fn(() => null), isShopOpen: vi.fn(() => true) }));
+vi.mock("../module/scripts/foundry/sound.js", () => ({ playTick: vi.fn(), playSlow: vi.fn(), playReveal: vi.fn() }));
+vi.mock("../module/scripts/foundry/socket.js", () => ({ requestPull: vi.fn() }));
+vi.mock("../module/scripts/foundry/store.js", () => ({ getBoxes: vi.fn(() => ({})), getPools: vi.fn(() => ({})), getLog: vi.fn(() => []), getRounds: vi.fn(() => ({})), todayKey: vi.fn(() => null), isShopOpen: vi.fn(() => true) }));
 
 const fakeElement = () => {
   const el = {
@@ -52,10 +52,10 @@ class FakeApp {
 }
 
 vi.stubGlobal("foundry", { applications: { api: { ApplicationV2: FakeApp }, instances: new Map() }, utils: { escapeHTML: s => s } });
-const { showReveal, CrateReveal, _resetHolds } = await import("../module/scripts/reveal.js");
-const { registerKind, _resetKinds } = await import("../module/scripts/kinds.js");
-const { requestPull } = await import("../module/scripts/socket.js");
-const store = await import("../module/scripts/store.js");
+const { showReveal, CrateReveal, _resetHolds } = await import("../module/scripts/foundry/reveal.js");
+const { registerKind, _resetKinds } = await import("../module/scripts/games/kinds.js");
+const { requestPull } = await import("../module/scripts/foundry/socket.js");
+const store = await import("../module/scripts/foundry/store.js");
 
 // A deck-like kind: lands at once; its offer is whatever the test sets.
 let offer;

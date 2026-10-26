@@ -5,8 +5,8 @@
 // action name "tab", which ApplicationV2 keeps for itself: a press threw "You
 // must pass both the tab and tab group identifier" and the tab never changed.
 //
-//   FOUNDRY_URL=http://192.168.0.57:30000 MODULE_BASE=http://192.168.0.190:8766/ \
-//     NODE_PATH=$(npm root -g) node foundry-dev/headless/run.cjs foundry-dev/checks/live-tabs.js
+//   FOUNDRY_URL=http://<foundry>:30000 MODULE_BASE=http://<this machine>:8766/ \
+//     NODE_PATH=$(npm root -g) node foundry-dev/run.cjs foundry-dev/checks/live-tabs.js
 //
 // Point MODULE_BASE at the installed copy (<FOUNDRY_URL>/modules/loot-crates/)
 // to run the same presses against the released code. Reads only; writes nothing.
@@ -15,8 +15,8 @@ if (!document.querySelector("link[data-loot-crates]")) {
   link.dataset.lootCrates = "1";
   document.head.appendChild(link);
 }
-const store = await import(MODULE_BASE + "scripts/store.js");
-const { openManager } = await import(MODULE_BASE + "scripts/manager.js");
+const store = await import(MODULE_BASE + "scripts/foundry/store.js");
+const { openManager } = await import(MODULE_BASE + "scripts/foundry/manager.js");
 try { store.registerSettings(); } catch (e) { if (!/already registered/i.test(String(e))) throw e; }
 store.registerIndexFields();
 const wait = ms => new Promise(r => setTimeout(r, ms));

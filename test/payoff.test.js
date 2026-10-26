@@ -5,11 +5,11 @@
   buyer), and the chat card links the granted item the Foundry way.
 */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { mountSpin, CARD_WIDTH, CARD_GAP, DEFAULT_DURATION } from "../module/scripts/spin.js";
-import { cascadeOffset, canSeePurse, resultHTML, CASCADE_STEP, freeSlot } from "../module/scripts/revealcard.js";
-import { formatGold } from "../module/scripts/currency.js";
-import { buildStrip } from "../module/scripts/strip.js";
-import { draw, seededRng } from "../module/scripts/odds.js";
+import { mountSpin, CARD_WIDTH, CARD_GAP, DEFAULT_DURATION } from "../module/scripts/views/spin.js";
+import { cascadeOffset, canSeePurse, resultHTML, CASCADE_STEP, freeSlot } from "../module/scripts/views/revealcard.js";
+import { formatGold } from "../module/scripts/core/currency.js";
+import { buildStrip } from "../module/scripts/core/strip.js";
+import { draw, seededRng } from "../module/scripts/core/odds.js";
 import { POOLS, BOX } from "../harness/sample.js";
 
 // Just enough DOM for mountSpin: elements that record classes, attributes,
@@ -172,13 +172,13 @@ describe("the chat card", () => {
   });
 
   it("links the granted item as a Foundry content link", async () => {
-    const { postPullCard } = await import("../module/scripts/chat.js");
+    const { postPullCard } = await import("../module/scripts/foundry/chat.js");
     await postPullCard(reveal("i1"));
     expect(created.content).toMatch(/<a class="content-link"[^>]* data-uuid="Actor\.a1\.Item\.i1"[^>]*>.*Flame Tongue<\/a>/);
   });
 
   it("writes the log row's id into the card's flags, so a refund can find it", async () => {
-    const { postPullCard } = await import("../module/scripts/chat.js");
+    const { postPullCard } = await import("../module/scripts/foundry/chat.js");
     globalThis.foundry.utils.deepClone = v => structuredClone(v);
     globalThis.game.settings = { get: () => [{ id: "row1", at: 1 }] };
     await postPullCard({ ...reveal("i1"), logId: "row1" });
@@ -187,7 +187,7 @@ describe("the chat card", () => {
   });
 
   it("posts the card already refunded when the refund beat the spin", async () => {
-    const { postPullCard } = await import("../module/scripts/chat.js");
+    const { postPullCard } = await import("../module/scripts/foundry/chat.js");
     globalThis.foundry.utils.deepClone = v => structuredClone(v);
     globalThis.game.settings = { get: () => [{ id: "row1", at: 1, refunded: 2, name: "Flame Tongue", uuid: "Compendium.dnd5e.items.Item.src" }] };
     await postPullCard({ ...reveal("i1"), logId: "row1" });
@@ -196,7 +196,7 @@ describe("the chat card", () => {
   });
 
   it("stores a display-only replay snapshot, with no purse or granted item", async () => {
-    const { postPullCard } = await import("../module/scripts/chat.js");
+    const { postPullCard } = await import("../module/scripts/foundry/chat.js");
     const strip = { landIndex: 1, nearMiss: false, cards: [{ uuid: "c0", name: "Rope", img: "r.webp", rarity: "common" }, { uuid: "Compendium.dnd5e.items.Item.src", name: "Flame Tongue", img: "f.webp", rarity: "rare", result: true }] };
     await postPullCard({ ...reveal("i1"), strip, purse: { gp: 420 }, odds: [{ rarity: "rare", chance: 1, label: "100%" }] });
     const { replay } = created.flags["loot-crates"];
@@ -207,7 +207,7 @@ describe("the chat card", () => {
   });
 
   it("falls back to the pool's source when nothing was granted", async () => {
-    const { postPullCard } = await import("../module/scripts/chat.js");
+    const { postPullCard } = await import("../module/scripts/foundry/chat.js");
     await postPullCard(reveal(null));
     expect(created.content).toContain('class="content-link"');
     expect(created.content).toContain('data-uuid="Compendium.dnd5e.items.Item.src"');

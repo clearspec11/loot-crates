@@ -4,7 +4,7 @@
   show, 50 rows at a time, and markup that draws no more than a page.
 */
 import { describe, it, expect } from "vitest";
-import { PAGE_ROWS, OPEN_UP_TO, defaultView, poolRows, sortRows, filterRows, pageRows, nextRows, chipList, matchesChip, poolCount, poolBody, poolSummary, entryParts, entryRow, pinRecent, dropNotice, poolUsers, emptiedBy, withoutPool, withoutEntry, deleteImpact, removeImpact, deletePoolText, removeEntryText, usersLine, nameList } from "../module/scripts/poolview.js";
+import { PAGE_ROWS, OPEN_UP_TO, defaultView, poolRows, sortRows, filterRows, pageRows, nextRows, chipList, matchesChip, poolCount, poolBody, poolSummary, entryParts, entryRow, pinRecent, dropNotice, poolUsers, emptiedBy, withoutPool, withoutEntry, deleteImpact, removeImpact, deletePoolText, removeEntryText, usersLine, nameList } from "../module/scripts/views/poolview.js";
 
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const entry = (uuid, name, rarity, extra = {}) => ({ uuid, name, img: "", rarity, sourceRarity: rarity, weight: 1, ...extra });

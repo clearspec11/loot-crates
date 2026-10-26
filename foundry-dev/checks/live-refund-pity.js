@@ -9,8 +9,8 @@
 // write. It also reports the dialog's text (the pity / "can drop again"
 // sentence), the purse and that the granted item is gone.
 //
-//   FOUNDRY_URL=http://192.168.0.57:30000 MODULE_BASE=http://192.168.0.190:8766/ \
-//     NODE_PATH=$(npm root -g) node foundry-dev/headless/run.cjs foundry-dev/checks/live-refund-pity.js
+//   FOUNDRY_URL=http://<foundry>:30000 MODULE_BASE=http://<this machine>:8766/ \
+//     NODE_PATH=$(npm root -g) node foundry-dev/run.cjs foundry-dev/checks/live-refund-pity.js
 //
 // Sets no state: it buys from whatever Crate Tester's state for the box is
 // (after live-shop-pity.js, pity due, so the pull is the guaranteed rarity
@@ -27,17 +27,17 @@ if (!document.querySelector("link[data-loot-crates]")) {
 }
 globalThis.canvas?.app?.ticker?.stop();
 game.socket.off("module.loot-crates");
-const store = await import(MODULE_BASE + "scripts/store.js");
+const store = await import(MODULE_BASE + "scripts/foundry/store.js");
 try { store.registerSettings(); } catch { /* the installed module registered them */ }
 try { store.registerIndexFields(); } catch { /* already in CONFIG */ }
-const socket = await import(MODULE_BASE + "scripts/socket.js");
+const socket = await import(MODULE_BASE + "scripts/foundry/socket.js");
 socket.registerSocket();
-const { storeRedraw } = await import(MODULE_BASE + "scripts/redraw.js");
-const { openShop, refreshShop } = await import(MODULE_BASE + "scripts/shop.js");
-const { openManager, refreshManager } = await import(MODULE_BASE + "scripts/manager.js");
-const { shopOdds } = await import(MODULE_BASE + "scripts/odds.js");
-const { RARITY_SHORT } = await import(MODULE_BASE + "scripts/config.js");
-const { toCopper } = await import(MODULE_BASE + "scripts/currency.js");
+const { storeRedraw } = await import(MODULE_BASE + "scripts/core/redraw.js");
+const { openShop, refreshShop } = await import(MODULE_BASE + "scripts/foundry/shop.js");
+const { openManager, refreshManager } = await import(MODULE_BASE + "scripts/foundry/manager.js");
+const { shopOdds } = await import(MODULE_BASE + "scripts/core/odds.js");
+const { RARITY_SHORT } = await import(MODULE_BASE + "scripts/core/config.js");
+const { toCopper } = await import(MODULE_BASE + "scripts/core/currency.js");
 const redraw = storeRedraw({ refreshShop, refreshManager });
 store.setStoreListener(redraw);
 for (const key of store.WORLD_KEYS) {

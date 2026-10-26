@@ -13,9 +13,9 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from "vitest";
 import { createDocument } from "./minidom.js";
 
-vi.mock("../module/scripts/shop.js", () => ({ refreshShop: vi.fn() }));
-vi.mock("../module/scripts/chat.js", () => ({ postRefundCard: vi.fn() }));
-vi.mock("../module/scripts/store.js", async importOriginal => {
+vi.mock("../module/scripts/foundry/shop.js", () => ({ refreshShop: vi.fn() }));
+vi.mock("../module/scripts/foundry/chat.js", () => ({ postRefundCard: vi.fn() }));
+vi.mock("../module/scripts/foundry/store.js", async importOriginal => {
   const orig = await importOriginal();
   return {
     ...orig,
@@ -97,9 +97,9 @@ beforeAll(async () => {
     get: (_m, key) => settings.get(key),
     set: async (_m, key, v) => { sets++; await new Promise(r => setTimeout(r, 1)); settings.set(key, structuredClone(v)); },
   } });
-  store = await import("../module/scripts/store.js");
-  newgame = await import("../module/scripts/newgame.js");
-  ({ CrateManager } = await import("../module/scripts/manager.js"));
+  store = await import("../module/scripts/foundry/store.js");
+  newgame = await import("../module/scripts/views/newgame.js");
+  ({ CrateManager } = await import("../module/scripts/foundry/manager.js"));
 });
 afterAll(() => vi.unstubAllGlobals());
 
@@ -375,7 +375,7 @@ describe("Copy", () => {
     const copy = Object.values(store.getBoxes()).find(b => b.id !== "k1");
     expect(copy).toMatchObject({ kind: "deck", name: "Thornwick Deck (copy)", price: 10, deck: { step: 1.5, cards } });
     expect(copy.deck.shuffledAt).toBeGreaterThanOrEqual(before);
-    const { drawnIds } = await import("../module/scripts/deck.js");
+    const { drawnIds } = await import("../module/scripts/games/deck.js");
     expect(drawnIds(store.getBoxes().k1, store.getLog())).toEqual(new Set(["a"]));
     expect(drawnIds(copy, store.getLog())).toEqual(new Set());
     expect(store.getBoxes().k1.deck.shuffledAt).toBe(1000);
