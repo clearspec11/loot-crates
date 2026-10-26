@@ -7,8 +7,9 @@
   lost: the chat card's Watch again plays the result again.
 
   Never while someone is using the window: the countdown pauses while the
-  pointer is over it, while the keyboard is at work in it (a key pressed
-  there, or focus moved into it by the user), while it replays, and while
+  pointer is over it, while the keyboard is at work in it (a key that acts
+  or moves there pressed in it, or focus moved into it by the user; any
+  other key, a Foundry hotkey, doesn't count), while it replays, and while
   the page is hidden (a player in another tab comes back to the result,
   not to a window that went while nobody looked), and resumes with the
   time it had left once all of those have stopped. Focus
@@ -24,7 +25,9 @@
   beside it, which stops the countdown for good and takes the line away.
   The line sits in the row of buttons under the vault, so nothing above it
   moves. The number isn't a live region: read every second it would drown
-  the table, and the countdown isn't news. Off draws nothing at all.
+  the table, and the countdown isn't news. Keep open is described by it
+  (aria-describedby), so a screen reader landing on the button hears
+  "Keep open, Closes in 12 s". Off draws nothing at all.
 
   Pure: no Foundry globals. The countdown takes its clock and timers
   (tests pass fake ones); the line is built with the window's own document.
@@ -50,11 +53,13 @@ export function lingerText({ seconds, paused }) {
   return paused ? t("LOOTCRATES.Linger.Paused", { seconds }) : t("LOOTCRATES.Linger.ClosesIn", { seconds });
 }
 
-// The line as markup (the harness draws it the way the window does).
-export function lingerHTML(view, esc = s => String(s ?? "")) {
-  return `<div class="lc-linger"><span class="lc-linger__text">${esc(lingerText(view))}</span>`
-    + `<button type="button" class="lc-linger__keep">${esc(t("LOOTCRATES.Linger.Keep"))}</button></div>`;
-}
+// The keys that act or move within a window: pressed there, someone is
+// using it. Any other key (a Foundry hotkey, typing meant for elsewhere)
+// leaves the countdown running. Shift+Tab is Tab with Shift.
+export const USE_KEYS = new Set(["Tab", "Enter", " ", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End", "Escape"]);
+
+// Each line's text gets its own id, for its Keep open's aria-describedby.
+let lineIds = 0;
 
 /*
   The countdown. start(ms) begins it (again, from the full time, when it
@@ -191,7 +196,7 @@ export class Linger {
     this.#watched = el;
     el.addEventListener("pointerenter", () => this.pause("pointer"));
     el.addEventListener("pointerleave", () => this.resume("pointer"));
-    el.addEventListener("keydown", () => this.pause("keyboard"));
+    el.addEventListener("keydown", event => { if (USE_KEYS.has(event?.key)) this.pause("keyboard"); });
     el.addEventListener("focusin", event => {
       if (this.#quiet || !keyboardFocus(event.target)) return;
       this.pause("keyboard");
@@ -249,10 +254,12 @@ export class Linger {
     line.className = "lc-linger";
     const text = doc.createElement("span");
     text.className = "lc-linger__text";
+    text.id = `lc-linger-${++lineIds}`;
     const keep = doc.createElement("button");
     keep.type = "button";
     keep.className = "lc-linger__keep";
     keep.textContent = t("LOOTCRATES.Linger.Keep");
+    keep.setAttribute("aria-describedby", text.id);
     keep.addEventListener?.("click", event => {
       event?.preventDefault?.();
       const had = doc.activeElement === keep;

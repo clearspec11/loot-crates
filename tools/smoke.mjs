@@ -752,6 +752,8 @@ async function lingerProblems({ off, paused }) {
   if (!want.test(text)) out.push(`the line reads "${text}"`);
   const keep = line.querySelector("button.lc-linger__keep");
   if (keep?.textContent !== "Keep open" || keep.type !== "button") out.push("no Keep open button");
+  const described = keep && document.getElementById(keep.getAttribute("aria-describedby") ?? "");
+  if (!described || described !== line.querySelector(".lc-linger__text")) out.push("Keep open isn't described by the countdown");
   if (line.closest("[aria-live], [role=status], [role=timer], [role=alert]")) out.push("the ticking line is in a live region");
   for (const el of [line, line.querySelector(".lc-linger__text"), keep]) if (el && parseFloat(getComputedStyle(el).fontSize) < 11) out.push(`"${el.textContent}" is under 11px`);
   if (window.__linger.shift) out.push(`the vault moved ${window.__linger.shift}px when the line came in`);

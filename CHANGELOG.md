@@ -6,7 +6,8 @@ The newest numbered entry's version is the one in `module/module.json`, and its 
 
 ## Unreleased
 
-- Nothing yet.
+- A key that does nothing in a finished game window, such as a Foundry shortcut pressed after buying with the mouse, no longer stops its countdown. The countdown still waits while you move or act in the window from the keyboard (Tab, Shift+Tab, Enter, Space, the arrow keys, Home, End or Escape), and while your pointer is over it.
+- With two GMs online, an auction's house bidder now bids once a turn. When a second GM joined mid-auction, the first GM's Foundry could still place a house bid it had queued on top of the second GM's, so the table heard the house bid twice and one GM's Pull log write could replace the other's. Now the GM who is no longer running the game stops before it writes anything.
 
 ## 1.2.0
 

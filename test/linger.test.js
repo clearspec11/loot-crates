@@ -3,12 +3,13 @@
   setting's value as a delay, the countdown (start, the seconds the line
   shows, pause and resume with the time left, reasons that nest, Keep
   open, a restart, Off), and the line wired to a window in a minimal DOM:
-  the pointer and the keyboard hold it, focus the window moves itself
-  doesn't, a hidden page holds it, Keep open takes the line away.
+  the pointer and the keys that act in the window hold it (a hotkey
+  doesn't), focus the window moves itself doesn't, a hidden page holds it,
+  Keep open is described by the countdown and takes the line away.
 */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createDocument } from "./minidom.js";
-import { LINGER_SECONDS, LINGER_DEFAULT, lingerMs, lingerText, lingerHTML, createCountdown, Linger } from "../module/scripts/core/linger.js";
+import { LINGER_SECONDS, LINGER_DEFAULT, lingerMs, lingerText, createCountdown, Linger } from "../module/scripts/core/linger.js";
 
 // A clock and timers the test moves by hand.
 function fakeTime() {
@@ -50,10 +51,6 @@ describe("the setting", () => {
   it("says when the window closes, or that it is paused, in the module's words", () => {
     expect(lingerText({ seconds: 12, paused: false })).toBe("Closes in 12 s");
     expect(lingerText({ seconds: 12, paused: true })).toBe("Paused, 12 s left");
-    const html = lingerHTML({ seconds: 30, paused: false });
-    expect(html).toContain("Closes in 30 s");
-    expect(html).toContain(">Keep open</button>");
-    expect(html).not.toMatch(/aria-live|role=/);
   });
 });
 
@@ -217,6 +214,56 @@ describe("the line on a window", () => {
     time.advance(9000);
     expect(expired).toHaveBeenCalledTimes(1);
     expect(win.querySelector(".lc-linger")).toBeNull();
+  });
+
+  it("Keep open is described by the countdown it stops, which stays out of any live region", () => {
+    linger.start(12000);
+    const line = win.querySelector(".lc-linger");
+    const span = line.querySelector(".lc-linger__text");
+    const keep = line.querySelector(".lc-linger__keep");
+    expect(span.id).toMatch(/^lc-linger-\d+$/);
+    expect(keep.getAttribute("aria-describedby")).toBe(span.id);
+    expect(doc.getElementById(keep.getAttribute("aria-describedby"))).toBe(span);
+    // What a screen reader says on the button: its name, then its description.
+    expect(`${keep.textContent}, ${doc.getElementById(keep.getAttribute("aria-describedby")).textContent}`).toBe("Keep open, Closes in 12 s");
+    for (const el of [line, span, keep]) {
+      expect(el.getAttribute("aria-live")).toBeNull();
+      expect(el.getAttribute("role")).toBeNull();
+    }
+    // Another window's line has its own id; a redraw's line points at its own text.
+    const other = new Linger({ timers: { now: time.now, setTimer: time.setTimer, clearTimer: time.clearTimer } });
+    const win2 = doc.createElement("section");
+    win2.innerHTML = `<div class="lc-reveal__actions"></div>`;
+    doc.body.append(win2);
+    other.mount(win2.querySelector(".lc-reveal__actions"));
+    other.start(12000);
+    const span2 = win2.querySelector(".lc-linger__text");
+    expect(span2.id).not.toBe(span.id);
+    expect(win2.querySelector(".lc-linger__keep").getAttribute("aria-describedby")).toBe(span2.id);
+  });
+
+  it("holds for the keys that act or move in the window, and not for any other key", () => {
+    linger.start(10000);
+    for (const key of ["a", "m", "1", "F1", "Shift", "Control", "Delete", "PageDown", undefined]) {
+      win.dispatchEvent({ type: "keydown", key });
+      expect(linger.view.paused, `key ${key}`).toBe(false);
+    }
+    time.advance(3000);
+    expect(text()).toBe("Closes in 7 s");
+    for (const [key, shiftKey] of [["Tab", false], ["Tab", true], ["Enter"], [" "], ["ArrowUp"], ["ArrowDown"], ["ArrowLeft"], ["ArrowRight"], ["Home"], ["End"], ["Escape"]]) {
+      win.dispatchEvent({ type: "keydown", key, shiftKey: !!shiftKey });
+      expect(linger.view.paused, `key ${key}${shiftKey ? " with Shift" : ""}`).toBe(true);
+      linger.resume("keyboard");
+      expect(linger.view.paused).toBe(false);
+    }
+  });
+
+  it("a hotkey pressed after a mouse Buy, with focus quietly on Close, lets the window close", () => {
+    linger.focus(close);
+    linger.start(10000);
+    win.dispatchEvent({ type: "keydown", key: "m", target: close });
+    time.advance(10000);
+    expect(expired).toHaveBeenCalledTimes(1);
   });
 
   it("Off draws nothing at all", () => {

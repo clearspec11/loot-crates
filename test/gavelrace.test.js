@@ -5,7 +5,8 @@
   queue is each client's own. Two GM clients here, each with its own copy
   of the module (its own queue and watch) and its own view of who the
   active GM is, share one world: its settings, its characters and its
-  socket. However the two interleave, an auction's gavel settles once.
+  socket. However the two interleave, an auction's gavel settles once, and
+  its house bidder bids once a turn (table.js tableTick).
 */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -217,5 +218,62 @@ describe("two GMs and one gavel", () => {
     expect(as(world.game0, () => second.table.watchTables())).toBe(true);
     await settleAll();
     expectOneSettle();
+  });
+});
+
+describe("two GMs and the house bidder", () => {
+  // One house bidder who always bids, on a round still taking bids whose
+  // last turn for the house was long enough ago that the next is due.
+  beforeEach(() => as(world.game1, async () => {
+    await world.game1.settings.set("loot-crates", "boxes", { lot: { ...AUCTION, auction: { ...AUCTION.auction, house: { count: 1, budget: 100, chance: 100 } } } });
+    await first.store.saveRound({ ...first.store.getRounds()[round.id], opensAt: Date.now() - 60000, closesAt: Date.now() + 20000 });
+  }));
+
+  const houseRows = () => rowsOf().filter(r => r.house);
+  const houseStaked = () => world.emitted.filter(m => m.type === "staked" && m.house);
+
+  it("bids once when the first GM's turn for the house runs after it handed over, while the second GM's bid is on its way", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    // The first GM's queue is busy (a stake being written), so its watch's
+    // turn for the house waits behind it.
+    const busy = makeGate();
+    as(world.game1, () => first.store.enqueueWrite(() => busy.opened));
+    expect(as(world.game1, () => first.table.watchTables())).toBe(true);
+    // The second GM joins with a lower id: the active GM on both clients.
+    world.game1.users.activeGM = GM0;
+    world.game0.users.activeGM = GM0;
+    expect(as(world.game1, () => first.table.watchTables())).toBe(false);
+    // The second GM's watch gives the house its turn: it bids, and its
+    // write is on its way to the world.
+    expect(as(world.game0, () => second.table.watchTables())).toBe(true);
+    // The first GM's queue frees before that write lands: its queued turn
+    // runs on a client that is no longer the active GM, and writes nothing.
+    busy.open();
+    await settleAll();
+    expect(houseStaked()).toHaveLength(1);
+    expect(houseStaked()[0]).toMatchObject({ actorName: "House bidder 1", stake: { amount: 15, house: 1 } });
+    const rows = rowsOf();
+    expect(houseRows()).toHaveLength(1);
+    expect(houseRows()[0]).toMatchObject({ status: "open", stake: { amount: 15 } });
+    // The price stepped once: Ana's 10 gp outbid by 15, and her stake back once.
+    expect(rows.filter(r => !r.house)).toEqual([expect.objectContaining({ actorId: "a1", status: "refunded", refundReason: "outbid" })]);
+    expect(gp(world.actors.get("a1"))).toBe(100);
+    // A handover is quiet on the first GM's screen and console.
+    expect(error).not.toHaveBeenCalled();
+    expect(globalThis.ui.notifications.warn).not.toHaveBeenCalled();
+  });
+
+  it("bids once when the second GM's turn comes after the first GM's bid landed", async () => {
+    expect(as(world.game1, () => first.table.watchTables())).toBe(true);
+    await settleAll();
+    world.game1.users.activeGM = GM0;
+    world.game0.users.activeGM = GM0;
+    expect(as(world.game1, () => first.table.watchTables())).toBe(false);
+    expect(as(world.game0, () => second.table.watchTables())).toBe(true);
+    await settleAll();
+    // The house never bids against itself, so the second turn passes.
+    expect(houseStaked()).toHaveLength(1);
+    expect(houseRows()).toHaveLength(1);
+    expect(gp(world.actors.get("a1"))).toBe(100);
   });
 });
