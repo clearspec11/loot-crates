@@ -28,8 +28,9 @@
   A Buy that looked live but did nothing says why in the shop's notice (the
   header's one live region): the character was re-picked under it, the GM
   raised the price past the purse, or the crate became unbuyable a moment
-  before the redraw showed it. That line stays while it still holds and
-  clears on the next Buy that goes out.
+  before the redraw showed it. A Buy the GM refused because its price had
+  changed is said there too, in the same sentence, not as a toast. That
+  line stays while it still holds and clears on the next Buy that goes out.
 */
 import { getBoxes, getPools, getLog, getRounds, getActorState, isShopOpen, todayKey } from "./store.js";
 import { formatGold } from "../core/currency.js";
@@ -224,7 +225,8 @@ export class CrateShop extends ApplicationV2 {
     try {
       await requestPull({ boxId, actorId, price }, { onWait });
     } catch (err) {
-      ui.notifications.warn(err.message);
+      if (err?.stalePrice != null) this.#staleRefusal(boxId, price, err);
+      else ui.notifications.warn(err.message);
     } finally {
       this.busy = false;
       this.busyBox = null;
@@ -256,7 +258,7 @@ export class CrateShop extends ApplicationV2 {
     // A limit reached since the card was drawn is said in the GM's own
     // words (limits.js limitRefusal), whichever side caught it.
     const limit = box && !ctx.held(boxId) ? limitState(box, ctx) : null;
-    const text = limit?.reached ? limitRefusal(box, limit, ctx.actorName) : refusalLine({ box, reason: box ? reasonNow(box) : "", shown, price, purse: ctx.purse, actorName: ctx.actorName });
+    const text = limit?.reached ? limitRefusal(box, limit, ctx.actorName) : refusalLine({ box, reason: box ? reasonNow(box) : "", shown, price, purse: ctx.purse });
     const holds = () => {
       const now = forSale()[boxId];
       if (!box) return !now;
@@ -264,6 +266,27 @@ export class CrateShop extends ApplicationV2 {
     };
     this.said = text ? { text, actorId: this.actorId, holds } : null;
     this.render();
+  }
+
+  /*
+    The GM refused this Buy's price (pull.js expectedPrice): the GM changed it
+    since the card was drawn, or a deck's streak ran out. Said in the notice,
+    as #refuse says a price it caught here, so a stale price reads the same
+    in the same place whether or not the purse still covers the new one.
+    The line holds while the game costs what the GM said, and while this
+    client hasn't heard the change yet (it still costs what was pressed);
+    once it has moved on from the GM's price, the line goes.
+  */
+  #staleRefusal(boxId, pressed, err) {
+    let heard = false;
+    const holds = () => {
+      const now = forSale()[boxId];
+      if (!now) return false;
+      const price = priceNow(now, this.#ctx());
+      if (price === err.stalePrice) return (heard = true);
+      return !heard && price === pressed;
+    };
+    this.said = { text: err.message, actorId: this.actorId, holds };
   }
 
   // The notice: a shop-wide reason or a slow GM first, else why the last Buy

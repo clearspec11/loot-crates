@@ -54,6 +54,7 @@
 // live purchase does. Needs "Crate Tester" in "Loot Crates Test".
 /* global game, foundry, Hooks, ui -- used inside page.evaluate, which runs in the Foundry page */
 const { chromium } = require("playwright");
+const { keepWindowsOpen } = require("./lib/linger.cjs");
 const FOUNDRY = process.env.FOUNDRY_URL || "http://localhost:30000";
 const MODULE_BASE = process.env.MODULE_BASE || "http://localhost:8766/";
 const PLAYER = process.env.PLAYER || "Player2";
@@ -325,12 +326,16 @@ const freshRows = (gm, before) => gm.evaluate(async ({ base, before }) => {
   const browser = await chromium.launch();
   const out = { player: PLAYER, wheel: WHEEL, gm: null, hideGm: HIDE_GM };
   let gm = null, before = null;
+  const linger = keepWindowsOpen();
   try {
     const pl = await join(browser, PLAYER);
     if (!pl) throw new Error(`${PLAYER} is not free to join`);
     gm = await join(browser, "Gamemaster");
     if (!gm) throw new Error("the Gamemaster seat is taken; this check needs the headless Gamemaster");
     out.gm = "headless Gamemaster running the branch";
+    // This check reads its windows after they land: they stay open for the run (lib/linger.cjs).
+    await linger.hold(pl.page, PLAYER);
+    await linger.hold(gm.page, "Gamemaster");
     before = await seed(gm.page, 0);
     out.before = { purseCp: before.purseCp, items: before.items, rows: before.logIds.length, messages: before.messages, leftover: before.leftover };
     if (HIDE_GM) out.gmHidden = await hideTab(gm.page);
@@ -558,6 +563,7 @@ const freshRows = (gm, before) => gm.evaluate(async ({ base, before }) => {
     out.ok = false;
   } finally {
     try { out.restored = await restore(gm?.page, before); } catch (err) { out.restored = { error: String(err) }; }
+    out.closeFinished = await linger.restore();
     console.log(JSON.stringify(out, null, 1));
     if (!out.ok) process.exitCode = 1;
     await browser.close();

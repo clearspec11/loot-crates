@@ -102,7 +102,6 @@
       "WaitingGM": "Waiting for the GM: their client hasn't rolled yet.",
       "WaitingHidden": "Waiting for the GM: their Foundry tab is in the background, which slows it down.",
       "GoneFromShelf": "That crate is no longer on the shelf.",
-      "Raised": "{name} now costs {price}, more than {who} has.",
       "CouldNotOpen": "Couldn't open {name}: {reason}.",
       "CharacterChanged": "Your character changed to {name}; check the crate and press Buy again.",
       "Character": "Character",

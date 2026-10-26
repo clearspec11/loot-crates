@@ -111,7 +111,7 @@ function guardPlay({ box, actor, state = {}, expectedPrice, log = [], today = nu
   if (expectedPrice != null && Number(expectedPrice) !== price) {
     const pressed = Number(expectedPrice);
     const near = kind.priceOf ? [now - PRICE_SKEW_MS, now + PRICE_SKEW_MS].find(at => priceAt(at) === pressed) : undefined;
-    if (near == null) throw new PullError(t("LOOTCRATES.Error.PriceChanged", { name: box.name, price: formatPrice(price), pressed: formatPrice(expectedPrice) }));
+    if (near == null) throw new PullError(t("LOOTCRATES.Error.PriceChanged", { name: box.name, price: formatPrice(price), pressed: formatPrice(expectedPrice) }), { stalePrice: price });
     priceNote = t("LOOTCRATES.Error.PriceNote", { pressed: formatPrice(pressed), name: box.name, price: formatPrice(price) });
     now = near;
     price = pressed;

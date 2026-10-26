@@ -14,12 +14,14 @@
 // player's page on its WebSocket, so the shop still shows the old price, as
 // it does for a pull already in flight when the GM saves (or a redraw that
 // was missed, or a reconnect). The player clicks that stale Buy: the GM must
-// refuse it with the warning toast ("... now costs N gp (you pressed M gp).
-// Nothing was charged.") and the purse, items and Pull log stay as they were.
-// The held broadcast is then let through, the shop redraws to the new price,
-// and the player clicks again: charged exactly the new price, with a log row
-// at that price. The GM then puts the old price back the same way (always,
-// even when the check fails).
+// refuse it, the shop's notice line must say so ("... now costs N gp (you
+// pressed M gp). Nothing was charged.", the sentence the shop uses for a
+// stale price it catches itself) with no toast, and the purse, items and
+// Pull log stay as they were. The held broadcast is then let through, the
+// shop redraws to the new price with the line still up, and the player
+// clicks again: the line goes, and the character is charged exactly the new
+// price, with a log row at that price. The GM then puts the old price back
+// the same way (always, even when the check fails).
 //
 // One real purchase per run (the second click); never deletes anything.
 /* global game, foundry, ui -- used inside page.evaluate, which runs in the Foundry page */
@@ -134,6 +136,7 @@ async function setPrice(gm, boxId, price) {
       return {
         boxId: card?.dataset.box ?? null, label: buy?.textContent.replace(/\s+/g, " ").trim() ?? null, dataPrice: buy?.dataset.price ?? null,
         off: buy?.getAttribute("aria-disabled") === "true",
+        notice: shop?.element.querySelector(".lc-shop__notice")?.textContent.trim() ?? null,
         purseCp: toCopper(actor.system.currency), purse: JSON.stringify(actor.system.currency),
         // Granted items only: dnd5e adds a spell for an item's cast activity
         // (flags.dnd5e.cachedFor), so a Circlet of Blasting adds two.
@@ -173,17 +176,17 @@ async function setPrice(gm, boxId, price) {
     // 2. The player presses the Buy that still says the old price.
     await buy.click();
     const want = `${BOX} now costs ${newPrice} gp (you pressed ${oldPrice} gp). Nothing was charged.`;
-    await pl.page.waitForFunction(w => globalThis.__lcToasts.some(t => t.msg === w), want, { timeout: 15000 }).catch(() => {});
+    await pl.page.waitForFunction(w => document.querySelector("#loot-crates-shop .lc-shop__notice")?.textContent.trim() === w, want, { timeout: 15000 }).catch(() => {});
     await pl.page.waitForTimeout(800);
     const refused = await facts();
     const toasts = await pl.page.evaluate(() => globalThis.__lcToasts.splice(0));
     const toastShown = await pl.page.evaluate(w => [...document.querySelectorAll("#notifications .notification")].some(n => n.textContent.includes(w)), want);
     out.stale = {
       before: { label: before.label, dataPrice: before.dataPrice }, atClick: { label: stale.label, dataPrice: stale.dataPrice },
-      toasts, toastShown,
+      notice: refused.notice, toasts, toastShown,
       unchanged: { purse: refused.purse === before.purse, items: refused.items === before.items, log: refused.newestRow?.id === before.newestRow?.id, noReveal: refused.reveals === before.reveals },
     };
-    out.stale.ok = out.held > 0 && stale.label === `${BOX}: Open for ${oldPrice} gp` && toasts.some(t => t.kind === "warn" && t.msg === want) && toastShown
+    out.stale.ok = out.held > 0 && stale.label === `${BOX}: Open for ${oldPrice} gp` && refused.notice === want && !toasts.some(t => t.msg === want) && !toastShown
       && Object.values(out.stale.unchanged).every(Boolean);
 
     // 3. The broadcast arrives; the shop redraws to the new price.
@@ -192,7 +195,7 @@ async function setPrice(gm, boxId, price) {
     for (const send of hold.frames.splice(0)) send();
     await pl.page.waitForFunction(([id, p]) => document.querySelector(`.lc-shop .lc-box__buy[data-box="${id}"]`)?.dataset.price === String(p), [boxId, newPrice], { timeout: 5000 }).catch(() => {});
     const redrawn = await facts();
-    out.redraw = { label: redrawn.label, dataPrice: redrawn.dataPrice, ms: Date.now() - releasedAt, off: redrawn.off };
+    out.redraw = { label: redrawn.label, dataPrice: redrawn.dataPrice, ms: Date.now() - releasedAt, off: redrawn.off, notice: redrawn.notice };
 
     // 4. Pressed again: charged exactly the new price.
     await buy.click();
@@ -203,10 +206,10 @@ async function setPrice(gm, boxId, price) {
       paidCp: before.purseCp - charged.purseCp, wantCp: Math.round(newPrice * 100),
       items: charged.items - before.items, newRow: charged.newestRow?.id !== before.newestRow?.id,
       rowPrice: charged.newestRow?.price ?? null, rowItem: charged.newestRow?.name ?? null,
-      toasts: await pl.page.evaluate(() => globalThis.__lcToasts.splice(0)),
+      toasts: await pl.page.evaluate(() => globalThis.__lcToasts.splice(0)), notice: charged.notice,
     };
-    out.charged.ok = out.charged.paidCp === out.charged.wantCp && out.charged.items === 1 && out.charged.newRow && out.charged.rowPrice === newPrice && !out.charged.toasts.some(t => t.kind !== "info");
-    out.redraw.ok = redrawn.label === `${BOX}: Open for ${newPrice} gp` && !redrawn.off;
+    out.charged.ok = out.charged.paidCp === out.charged.wantCp && out.charged.items === 1 && out.charged.newRow && out.charged.rowPrice === newPrice && !out.charged.toasts.some(t => t.kind !== "info") && charged.notice === "";
+    out.redraw.ok = redrawn.label === `${BOX}: Open for ${newPrice} gp` && !redrawn.off && redrawn.notice === want;
     if (shot) await pl.page.screenshot({ path: shot });
     await pl.page.evaluate(() => { for (const a of [...foundry.applications.instances.values()]) if (a.element?.classList.contains("lc-reveal")) a.close(); });
     out.gmConsole = gm.logs.filter(l => !l.includes("timings"));

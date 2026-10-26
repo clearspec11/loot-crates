@@ -151,7 +151,16 @@ describe("a player's requestPull", () => {
     await deliver({ type: "error", requestId: emitted[0].requestId, userId: "p1", message: "Test Crate is sold out." });
     await expect(promise).rejects.toThrow(PullError);
     await expect(promise).rejects.toThrow("Test Crate is sold out.");
+    await expect(promise).rejects.not.toHaveProperty("stalePrice");
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("carries a stale price's refusal with the price now, for the shop's notice", async () => {
+    const { emitted, deliver } = makeWorld({ user: PLAYER });
+    const promise = requestPull({ boxId: "box", actorId: "actor1", price: 10 });
+    await deliver({ type: "error", requestId: emitted[0].requestId, userId: "p1", message: "Test Crate now costs 200 gp (you pressed 10 gp). Nothing was charged.", stalePrice: 200 });
+    await expect(promise).rejects.toThrow(PullError);
+    await expect(promise).rejects.toMatchObject({ message: "Test Crate now costs 200 gp (you pressed 10 gp). Nothing was charged.", stalePrice: 200 });
   });
 
   it("times out when the GM never answers, and a late reveal is harmless", async () => {
@@ -325,7 +334,7 @@ describe("the GM client", () => {
     const edit = updateBox("box", b => ({ ...b, price: 200 }));
     await deliver({ type: "pull", requestId: "r1", boxId: "box", actorId: "actor1", userId: "p1", price: 10 });
     await edit;
-    expect(emitted).toEqual([{ type: "error", requestId: "r1", userId: "p1", message: "Test Crate now costs 200 gp (you pressed 10 gp). Nothing was charged." }]);
+    expect(emitted).toEqual([{ type: "error", requestId: "r1", userId: "p1", message: "Test Crate now costs 200 gp (you pressed 10 gp). Nothing was charged.", stalePrice: 200 }]);
     expect(actor.system.currency.gp).toBe(500);
     expect(actor.updates).toBe(0);
     expect(actor.items).toHaveLength(0);
@@ -383,6 +392,7 @@ describe("the GM client", () => {
     await edit;
     await expect(mine).rejects.toThrow(PullError);
     await expect(mine).rejects.toThrow("Test Crate now costs 200 gp (you pressed 10 gp). Nothing was charged.");
+    await expect(mine).rejects.toMatchObject({ stalePrice: 200 });
     expect(actor.system.currency.gp).toBe(500);
     expect(emitted).toEqual([]);
   });

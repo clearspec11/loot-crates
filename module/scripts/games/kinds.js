@@ -171,7 +171,15 @@ import { t } from "../core/i18n.js";
 
 // The error a player is shown, as one plain sentence. Here so a kind can
 // throw it without importing the core (pull.js re-exports it).
-export class PullError extends Error {}
+// `stalePrice` marks the refusal of a Buy pressed at a price the game no
+// longer has (pull.js): the price it has now, which the shop's notice holds
+// the sentence against (shop.js) rather than toasting it.
+export class PullError extends Error {
+  constructor(message, { stalePrice = null } = {}) {
+    super(message);
+    if (stalePrice != null) this.stalePrice = stalePrice;
+  }
+}
 
 export const DEFAULT_KIND = "crate";
 

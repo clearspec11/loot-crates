@@ -50,6 +50,7 @@ vi.stubGlobal("ui", { notifications: { warn: vi.fn() } });
 vi.stubGlobal("game", { user: { id: "u", character: actor }, actors, users: { get activeGM() { return activeGM; } } });
 
 const { CrateShop, openShop, registerShopHooks } = await import("../module/scripts/foundry/shop.js");
+const { PullError } = await import("../module/scripts/games/kinds.js");
 const buy = (app, box, price) => CrateShop.DEFAULT_OPTIONS.actions.buy.call(app, {}, { dataset: price === undefined ? { box } : { box, price } });
 
 beforeEach(() => {
@@ -428,7 +429,7 @@ describe("the shop mid-purchase, and a Buy that does nothing", () => {
     expect(notice(app)).toBe("");
   });
 
-  it("says a price raised past the purse, with both the crate and the character, sends nothing, and clears it on the next Buy", async () => {
+  it("says a price raised past the purse in the GM's stale-price sentence, sends nothing, and clears it on the next Buy", async () => {
     const was = boxes.common.price;
     const app = new CrateShop();
     await draw(app);
@@ -438,9 +439,9 @@ describe("the shop mid-purchase, and a Buy that does nothing", () => {
       await press(app, "common", "25");
       await app.last;
       expect(requestPull).not.toHaveBeenCalled();
-      expect(notice(app)).toBe("Pauper's Box now costs 500 gp, more than Tam has.");
+      expect(notice(app)).toBe("Pauper's Box now costs 500 gp (you pressed 25 gp). Nothing was charged.");
       await draw(app);
-      expect(notice(app)).toBe("Pauper's Box now costs 500 gp, more than Tam has.");
+      expect(notice(app)).toBe("Pauper's Box now costs 500 gp (you pressed 25 gp). Nothing was charged.");
       // Back within reach: the next Buy goes out and the line goes.
       boxes.common.price = 30;
       await press(app, "common", "30");
@@ -465,14 +466,64 @@ describe("the shop mid-purchase, and a Buy that does nothing", () => {
       await press(app, "deck", "300");
       await app.last;
       expect(requestPull).not.toHaveBeenCalled();
-      expect(notice(app)).toBe("The Thornwick Deck now costs 450 gp, more than Tam has.");
+      expect(notice(app)).toBe("The Thornwick Deck now costs 450 gp (you pressed 300 gp). Nothing was charged.");
       await draw(app);
-      expect(notice(app)).toBe("The Thornwick Deck now costs 450 gp, more than Tam has.");
+      expect(notice(app)).toBe("The Thornwick Deck now costs 450 gp (you pressed 300 gp). Nothing was charged.");
       // The newer draw refunded: back to 300 gp, and the line goes on the redraw.
       pullLog = draws(1);
       await draw(app);
       expect(notice(app)).toBe("");
     } finally { boxes.deck.price = was; pullLog = []; }
+  });
+
+  /*
+    A price the GM changed before this client heard reaches the GM, who
+    refuses it (pull.js expectedPrice). That refusal is said in the notice
+    too, in the same sentence as one caught here (above), whether or not the
+    purse covers the new price; no toast. It holds until this client has
+    heard the new price and the game has moved on from it.
+  */
+  it.each([
+    ["the purse still covers it", 30],
+    ["it is past the purse", 500],
+  ])("says the GM's refusal of a stale price in the notice when %s, with no toast", async (_, now) => {
+    const was = boxes.common.price;
+    const warn = globalThis.ui.notifications.warn;
+    warn.mockClear();
+    const text = `Pauper's Box now costs ${now} gp (you pressed 25 gp). Nothing was charged.`;
+    requestPull.mockImplementation(async () => { throw new PullError(text, { stalePrice: now }); });
+    const app = new CrateShop();
+    await draw(app);
+    try {
+      await press(app, "common", "25");
+      await app.last;
+      expect(requestPull).toHaveBeenCalledTimes(1);
+      expect(warn).not.toHaveBeenCalled();
+      // This client hasn't heard the new price yet: the line holds.
+      expect(notice(app)).toBe(text);
+      expect(app.content.querySelector(".lc-shop__notice").dataset.tone).toBe("warn");
+      // It hears it: the card redraws at the GM's price, and the line stays.
+      boxes.common.price = now;
+      await draw(app);
+      expect(app.content.querySelector('.lc-box__buy[data-box="common"]').dataset.price).toBe(String(now));
+      expect(notice(app)).toBe(text);
+      // The price moves on again (back to 25 gp): the line goes.
+      boxes.common.price = was;
+      await draw(app);
+      expect(notice(app)).toBe("");
+    } finally { boxes.common.price = was; }
+  });
+
+  it("still toasts a GM's refusal for any other reason", async () => {
+    const warn = globalThis.ui.notifications.warn;
+    warn.mockClear();
+    requestPull.mockImplementation(async () => { throw new PullError("Pauper's Box is sold out."); });
+    const app = new CrateShop();
+    await draw(app);
+    await press(app, "common", "25");
+    await app.last;
+    expect(warn).toHaveBeenCalledWith("Pauper's Box is sold out.");
+    expect(notice(app)).toBe("");
   });
 
   it("drops the line on a redraw where it no longer holds", async () => {

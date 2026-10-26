@@ -6,6 +6,8 @@ The newest numbered entry's version is the one in `module/module.json`, and its 
 
 ## Unreleased
 
+- The manager's Pools tab now follows pool edits made elsewhere, such as another GM's new pool, rename or item added, or the starter crates added from the Boxes tab on another screen. Before, the tab kept its old rows until you switched tabs. The pools you have open or closed, a search you typed, the rows you have shown and the field you are in stay as they were, and your own edits still update in place.
+- A Buy pressed just as the GM changed its price is now explained the same way every time, in the shop's notice line: "Pauper's Box now costs 30 gp (you pressed 25 gp). Nothing was charged." Before, this came as a pop-up when the character could still pay the new price, and as a different sentence in the notice line when they couldn't. The line stays until the price moves again or you press Buy.
 - A key that does nothing in a finished game window, such as a Foundry shortcut pressed after buying with the mouse, no longer stops its countdown. The countdown still waits while you move or act in the window from the keyboard (Tab, Shift+Tab, Enter, Space, the arrow keys, Home, End or Escape), and while your pointer is over it.
 - With two GMs online, an auction's house bidder now bids once a turn. When a second GM joined mid-auction, the first GM's Foundry could still place a house bid it had queued on top of the second GM's, so the table heard the house bid twice and one GM's Pull log write could replace the other's. Now the GM who is no longer running the game stops before it writes anything.
 
