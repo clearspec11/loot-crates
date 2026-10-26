@@ -157,6 +157,26 @@ describe("the Pools tab and another client's pool edits", () => {
     } finally { vi.useRealTimers(); }
   });
 
+  it("keeps where the GM had scrolled to when another client's edit redraws the tab", async () => {
+    vi.useFakeTimers();
+    try {
+      const app = await poolsTab();
+      const tab = () => app.element.querySelector(".lc-tab");
+      tab().scrollTop = 1500;
+      remote(() => { pools.spare.name = "Odds and ends"; });
+      await batch();
+      expect(renders).toBe(1);
+      expect(tab().scrollTop).toBe(1500);
+      // A tab switch starts at the top.
+      press(app, "switchTab", { dataset: { tab: "boxes" } });
+      await batch();
+      expect(tab().getAttribute("aria-labelledby")).toBe("lc-manager-tab-boxes");
+      expect(tab().scrollTop ?? 0).toBe(0);
+      press(app, "switchTab", { dataset: { tab: "pools" } });
+      await batch();
+    } finally { vi.useRealTimers(); }
+  });
+
   it("keeps a weight being typed, and focus on it, when another client's edit redraws the tab", async () => {
     vi.useFakeTimers();
     try {

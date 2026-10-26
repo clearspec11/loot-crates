@@ -1497,7 +1497,13 @@ export class CrateManager extends ApplicationV2 {
     // A price or a weight being typed into (not yet saved: no change yet)
     // when another write redraws the tab keeps what was typed.
     const typing = typed && active.value !== active.defaultValue ? active.value : null;
+    // The same tab drawn again (another client's edit, a pull's row) keeps
+    // where the GM had scrolled to; a focused control still scrolls into
+    // view below. A tab switch starts at the top.
+    const was = content.querySelector(".lc-tab");
+    const scrollTop = was?.getAttribute("aria-labelledby") === `lc-manager-tab-${this.tab}` ? was.scrollTop : 0;
     content.replaceChildren(result);
+    if (scrollTop > 0) { const tab = result.querySelector(".lc-tab"); if (tab) tab.scrollTop = scrollTop; }
     // The Pools tab read the boxes before awaiting the source check, and a
     // box saved elsewhere in that wait was patched into the page this one
     // replaces (refreshManager), so bring the "In X, Y" lines up to date.
