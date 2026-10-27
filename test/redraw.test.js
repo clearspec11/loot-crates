@@ -130,7 +130,7 @@ describe("the manager", () => {
   });
   afterAll(() => vi.unstubAllGlobals());
 
-  it("shows the log only on the Pull log tab, and never redraws the pools tab for a pools change", () => {
+  it("shows the log only on the Pull log tab, and a pools change on the Pools and Boxes tabs", () => {
     expect(managerShows("log", SETTINGS.LOG)).toBe(true);
     expect(managerShows("pools", SETTINGS.LOG)).toBe(false);
     expect(managerShows("boxes", SETTINGS.LOG)).toBe(false);
@@ -143,7 +143,9 @@ describe("the manager", () => {
     expect(managerShows("boxes", SETTINGS.ROUNDS, { w: { kind: "roulette" } })).toBe(true);
     expect(managerShows("log", SETTINGS.ROUNDS)).toBe(true);
     expect(managerShows("pools", SETTINGS.ROUNDS, { w: { kind: "roulette" } })).toBe(false);
-    expect(managerShows("pools", SETTINGS.POOLS)).toBe(false);
+    // Another client's pool edit; the tab's own are left out (poolsredraw.test.js).
+    expect(managerShows("pools", SETTINGS.POOLS)).toBe(true);
+    expect(managerShows("log", SETTINGS.POOLS)).toBe(false);
     expect(managerShows("boxes", SETTINGS.POOLS)).toBe(true);
     expect(managerShows("boxes", SETTINGS.BOXES)).toBe(true);
     expect(managerShows("log", SETTINGS.BOXES)).toBe(false);
@@ -159,7 +161,7 @@ describe("the manager", () => {
     const app = openManager();
     renders = 0;
     app.tab = "pools";
-    refreshManager([SETTINGS.LOG, SETTINGS.POOLS, SETTINGS.STATE]);
+    refreshManager([SETTINGS.LOG, SETTINGS.STATE]);
     expect(renders).toBe(0);
     app.tab = "log";
     refreshManager([SETTINGS.LOG, SETTINGS.STATE, SETTINGS.BOXES]);

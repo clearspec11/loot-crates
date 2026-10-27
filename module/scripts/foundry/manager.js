@@ -36,6 +36,8 @@
   (#view) and survive a re-render; a search, a chip, Show more, Update,
   Remove, Relink and the bulk rarity redraw only that pool and keep focus
   near where it was. One status line in the toolbar speaks for them all.
+  A pool another client creates, renames or edits redraws the open tab
+  (refreshManager); this window's own edits, drawn in place, don't.
 
   A drop says where it went: the new rows are pinned at the top of their
   pool (opened, and its chip and search cleared if they would hide one),
@@ -178,6 +180,35 @@ export class CrateManager extends ApplicationV2 {
     return v;
   }
   #rowsOf(pool) { return sortRows(poolRows(pool, e => this.#srcOf(e)), this.#viewOf(pool).recent); }
+
+  /*
+    Each pool as this tab last drew it, so a pools change another client
+    made (a second GM's edit, starter crates added elsewhere) redraws the tab
+    while this window's own edits, already drawn in place, don't
+    (refreshManager). `head` is the record without its entries, drawn only by
+    a full render (the summary's name); `body` is its entries, drawn again
+    by #fillBody, or one row at a time by #onCurate.
+  */
+  #drawn = new Map();
+  #drewPool(pool) { this.#drawn.set(pool.id, { head: headKey(pool), body: bodyKey(pool) }); }
+  #drewBody(pool) {
+    const d = pool && this.#drawn.get(pool.id);
+    if (d) d.body = bodyKey(pool);
+  }
+  #bodyDrawn(poolId) {
+    const d = this.#drawn.get(poolId);
+    const pool = getPools()[poolId];
+    return !!d && !!pool && d.body === bodyKey(pool);
+  }
+  // Whether the Pools tab shows every stored pool as it is now.
+  showsPools(pools = getPools()) {
+    const ids = Object.keys(pools ?? {});
+    if (ids.length !== this.#drawn.size) return false;
+    return ids.every(id => {
+      const d = this.#drawn.get(id);
+      return !!d && d.head === headKey(pools[id]) && d.body === bodyKey(pools[id]);
+    });
+  }
   #poolEl(poolId) { return this.element?.querySelector(`.lc-pool[data-drop-pool="${CSS.escape(poolId)}"]`) ?? null; }
   #announce(text) {
     const el = this.element?.querySelector(".lc-manager__status");
@@ -259,6 +290,7 @@ export class CrateManager extends ApplicationV2 {
   }
 
   #fillBody(el, pool) {
+    this.#drewBody(pool);
     const rows = this.#rowsOf(pool);
     el.querySelector(".lc-pool__count").innerHTML = poolCount(pool, rows);
     const details = el.querySelector(".lc-pool__details");
@@ -447,11 +479,17 @@ export class CrateManager extends ApplicationV2 {
       change.rarityOverride = RARITIES.includes(el.value) ? el.value : null;
     }
     if (el.dataset.sourceRarity != null) change.sourceRarity = el.dataset.sourceRarity;
+    // The pool is drawn as stored once this row is, unless something else
+    // changed meanwhile (another client's edit, a render that replaced the
+    // row): then the batch that follows redraws the tab (refreshManager).
+    const before = changeCount();
+    const synced = this.#bodyDrawn(poolId);
     const saved = await updatePool(poolId, fresh => ({ ...fresh, entries: curateEntries(fresh.entries, [uuid], change) }));
     const entry = saved?.entries?.find(x => x.uuid === uuid);
     const row = el.closest(".lc-entry");
     const poolEl = el.closest(".lc-pool");
     if (!entry || !row || !poolEl) { this.render(); return; }
+    if (synced && el.isConnected !== false && changeCount() - before <= 1) this.#drewBody(getPools()[poolId]);
     // The row stays where it is even if it no longer matches the chip, so
     // focus stays on it; the census and chips catch up.
     const src = this.#srcOf(entry);
@@ -1396,6 +1434,8 @@ export class CrateManager extends ApplicationV2 {
   async _pools() {
     const stored = getPools();
     const pools = Object.values(stored);
+    this.#drawn.clear();
+    for (const p of pools) this.#drewPool(p);
     const boxes = getBoxes();
     const sources = await this.#checkedSources(pools.flatMap(p => p.entries ?? []));
     // The editor just looked: if a flag the shop reads is stale, sweep now.
@@ -1452,11 +1492,18 @@ export class CrateManager extends ApplicationV2 {
   _replaceHTML(result, content) {
     const active = content.contains(document.activeElement) ? document.activeElement : null;
     const key = active ? focusKey(active) : null;
-    const caret = active?.matches?.('input[type="search"]') || active?.matches?.("input[data-box-price]") ? [active.selectionStart, active.selectionEnd] : null;
-    // A price being typed into (not yet saved: no change yet) when another
-    // write redraws the tab keeps what was typed.
-    const typing = active?.matches?.("input[data-box-price]") && active.value !== active.defaultValue ? active.value : null;
+    const typed = active?.matches?.("input[data-box-price]") || active?.matches?.('input[data-curate="weight"]');
+    const caret = active?.matches?.('input[type="search"]') || typed ? [active.selectionStart, active.selectionEnd] : null;
+    // A price or a weight being typed into (not yet saved: no change yet)
+    // when another write redraws the tab keeps what was typed.
+    const typing = typed && active.value !== active.defaultValue ? active.value : null;
+    // The same tab drawn again (another client's edit, a pull's row) keeps
+    // where the GM had scrolled to; a focused control still scrolls into
+    // view below. A tab switch starts at the top.
+    const was = content.querySelector(".lc-tab");
+    const scrollTop = was?.getAttribute("aria-labelledby") === `lc-manager-tab-${this.tab}` ? was.scrollTop : 0;
     content.replaceChildren(result);
+    if (scrollTop > 0) { const tab = result.querySelector(".lc-tab"); if (tab) tab.scrollTop = scrollTop; }
     // The Pools tab read the boxes before awaiting the source check, and a
     // box saved elsewhere in that wait was patched into the page this one
     // replaces (refreshManager), so bring the "In X, Y" lines up to date.
@@ -1748,11 +1795,14 @@ function heldRarities(draft, pools) {
 /*
   Whether the manager's open tab shows a changed world setting, so a pull, a
   late cancel or another GM's edit redraws it (redraw.js). The shop toggle is
-  in the nav, so every tab shows it. The pools tab redraws itself after its
-  own edits (#repaint), and a full render of up to 50 rows per pool on every
-  sweep flag would undo its paging, so a pools change redraws only the Boxes
-  tab, whose odds read the pools. On the Pools tab a boxes or pools change
-  patches only the pools' "In X, Y" lines, and only those that differ
+  in the nav, so every tab shows it. A pools change shows on the Boxes tab,
+  whose odds read the pools, and on the Pools tab, where refreshManager
+  leaves out a change the tab already drew in place (its own edits:
+  CrateManager.showsPools), so another client's pool, rename or entry edit
+  is drawn there and then. A full render keeps each pool's open state,
+  search, chip and rows shown (#view), focus and a typed search, price or
+  weight (_replaceHTML). On the Pools tab a boxes change patches only the
+  pools' "In X, Y" lines, and only those that differ
   (CrateManager.patchUsers). The pity state shows nowhere here (each
   buyer's shop shows their own). The log shows on the Boxes tab too while
   a deck is on it: a deck's row reads its cards drawn and its odds from the
@@ -1766,9 +1816,14 @@ export function managerShows(tab, key, boxes = {}) {
   const has = kind => Object.values(boxes ?? {}).some(b => kindOf(b) === kind);
   if (key === SETTINGS.LOG) return tab === "log" || (tab === "boxes" && has("deck"));
   if (key === SETTINGS.ROUNDS) return tab === "log" || (tab === "boxes" && (has("roulette") || has("auction")));
-  if (key === SETTINGS.BOXES || key === SETTINGS.POOLS) return tab === "boxes";
+  if (key === SETTINGS.POOLS) return tab === "boxes" || tab === "pools";
+  if (key === SETTINGS.BOXES) return tab === "boxes";
   return false;
 }
+
+// A pool as the Pools tab draws it, in two parts (CrateManager.showsPools).
+const headKey = pool => JSON.stringify({ ...pool, entries: undefined });
+const bodyKey = pool => JSON.stringify(pool?.entries ?? []);
 
 // What a pool's users line reads: the boxes' pool lists, and pools nested in pools.
 const USERS_KEYS = [SETTINGS.BOXES, SETTINGS.POOLS];
@@ -1782,7 +1837,9 @@ export function refreshManager(keys, upTo = Infinity) {
   if (manager.seen >= upTo) return;
   const list = typeof keys === "string" ? [keys] : [...keys];
   const boxes = manager.tab === "boxes" && (list.includes(SETTINGS.LOG) || list.includes(SETTINGS.ROUNDS)) ? getBoxes() : {};
-  if (list.some(k => managerShows(manager.tab, k, boxes))) manager.render();
+  // The Pools tab draws its own edits in place: a pools change it already shows isn't drawn again.
+  const drawn = manager.tab === "pools" && list.includes(SETTINGS.POOLS) && manager.showsPools();
+  if (list.some(k => managerShows(manager.tab, k, boxes) && !(drawn && k === SETTINGS.POOLS))) manager.render();
   else if (manager.tab === "pools" && list.some(k => USERS_KEYS.includes(k))) manager.patchUsers();
 }
 

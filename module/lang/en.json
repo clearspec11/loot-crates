@@ -102,7 +102,6 @@
       "WaitingGM": "Waiting for the GM: their client hasn't rolled yet.",
       "WaitingHidden": "Waiting for the GM: their Foundry tab is in the background, which slows it down.",
       "GoneFromShelf": "That crate is no longer on the shelf.",
-      "Raised": "{name} now costs {price}, more than {who} has.",
       "CouldNotOpen": "Couldn't open {name}: {reason}.",
       "CharacterChanged": "Your character changed to {name}; check the crate and press Buy again.",
       "Character": "Character",
@@ -488,10 +487,11 @@
       "CalendarOff": "dnd5e's calendar is off: a day ends at each character's long rest."
     },
     "News": {
-      "Title": "Game windows that tidy themselves",
-      "Line1": "Finished game windows now close by themselves, so they no longer pile up on every screen. Once a crate, the Wishing Well, Dragon's Teeth or the Deck has shown its result, or a Roulette or Auction round has been settled or called off, the window closes after 30 seconds. A small line says \"Closes in 30 s\" with Keep open beside it. The countdown waits while the pointer is over the window or someone is using it from the keyboard. Each player picks the delay under Close finished game windows in Game Settings: never, 10 seconds, 30 seconds or a minute. Watch again on the chat card still plays any result again. The shop, the manager and dialogs never close by themselves.",
-      "Line2": "With two GMs online, an auction's gavel now settles once. A second GM who joined while the first GM's Foundry was bringing the gavel down could settle it a second time and hand the lot out twice. Now the GM who is no longer running the game stops before it writes anything, and a GM whose sale lands on a round already settled leaves it alone.",
-      "Line3": "A missing name, such as a deleted character's, now reads as \"Someone\" in the refund's chat card, the Roulette's results, the Auction's bids, board and shop card, and a table stake's line. Before 1.1.1 it read \"undefined\", and in 1.1.1 it left a gap (\"'s Goblin Crate was refunded\")."
+      "Title": "Small fixes for busy tables",
+      "Line1": "The manager's Pools tab now follows pool edits made elsewhere, such as another GM's new pool, rename or item added, or the starter crates added from the Boxes tab on another screen. Before, the tab kept its old rows until you switched tabs. The pools you have open or closed, a search you typed, the rows you have shown, the field you are in and where you had scrolled to stay as they were, and your own edits still update in place.",
+      "Line2": "A Buy pressed just as the GM changed its price is now explained the same way every time, in the shop's notice line: \"Pauper's Box now costs 30 gp (you pressed 25 gp). Nothing was charged.\" Before, this came as a pop-up when the character could still pay the new price, and as a different sentence in the notice line when they couldn't. The line stays until the price moves again or you press Buy.",
+      "Line3": "A key that does nothing in a finished game window, such as a Foundry shortcut pressed after buying with the mouse, no longer stops its countdown. The countdown still waits while you move or act in the window from the keyboard (Tab, Shift+Tab, Enter, Space, the arrow keys, Home, End or Escape), and while your pointer is over it.",
+      "Line4": "With two GMs online, an auction's house bidder now bids once a turn. When a second GM joined mid-auction, the first GM's Foundry could still place a house bid it had queued on top of the second GM's, so the table heard the house bid twice and one GM's Pull log write could replace the other's. Now the GM who is no longer running the game stops before it writes anything."
     },
     "Welcome": {
       "Title": "Loot Crates",

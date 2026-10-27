@@ -198,7 +198,7 @@ export function registerSocket() {
       return showReveal(msg);
     }
     if (msg.type === "error" && msg.userId === game.user.id) {
-      settle(msg.requestId, p => p.reject(new PullError(msg.message)));
+      settle(msg.requestId, p => p.reject(new PullError(msg.message, { stalePrice: msg.stalePrice })));
     }
   });
 }
@@ -592,11 +592,13 @@ function guardBuyer(msg) {
 }
 
 // A play that failed: the buyer is told in a plain sentence (a PullError's
-// own, or that the game jammed), and the GM's own play throws it back.
+// own, or that the game jammed), and the GM's own play throws it back. A
+// stale price's refusal carries the price now, so the buyer's shop says it
+// in its notice as it says one it caught itself.
 function failPlay(msg, box, err, reply) {
   const message = err instanceof PullError ? err.message : t("LOOTCRATES.Error.JammedGM", { noun: nounText(getKind(kindOf(box))?.noun ?? "crate") });
   if (!(err instanceof PullError)) console.error(`loot-crates | ${msg.type} failed`, err);
-  reply({ type: "error", userId: msg.userId, message });
+  reply({ type: "error", userId: msg.userId, message, ...(err?.stalePrice != null ? { stalePrice: err.stalePrice } : {}) });
   if (msg.userId === game.user.id) throw err instanceof PullError ? err : new PullError(message);
 }
 

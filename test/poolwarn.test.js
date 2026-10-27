@@ -208,11 +208,14 @@ describe("a pool's header after the boxes change elsewhere", () => {
     patch.mockRestore();
   });
 
-  it("follows a pool nested into another pool a box draws from", async () => {
+  // A pool nested elsewhere is another client's pools change: the tab is
+  // drawn again (poolsredraw.test.js), and the render patches the lines.
+  it("redraws for a pool nested into another pool a box draws from", async () => {
     const { app } = await openShown();
     pools.hoard.pools.push("spare");
     refreshManager([SETTINGS.POOLS]);
-    expect(app.render).not.toHaveBeenCalled();
+    expect(app.render).toHaveBeenCalledOnce();
+    expect(app.patchUsers()).toBe(1);
     expect(line(app, "spare").textContent).toBe("In Adventurer's Crate, Dragon Chest");
   });
 

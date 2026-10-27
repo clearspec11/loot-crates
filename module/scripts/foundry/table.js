@@ -439,10 +439,19 @@ export async function refundOrphanRounds() {
   character and no coins, the stakes it displaces refunded and the round's
   clock moved in the same task, then heard by everyone as a "staked".
   Returns the broadcast, or null when the kind passed.
+
+  The turn waits in this client's queue, and a GM who joins with a lower id
+  becomes the active one meanwhile; their watch gives the house its own
+  turn, whose bid may not have reached this client yet. So the queued task
+  asks again before it reads or writes anything: a client that is no
+  longer the active GM writes nothing (NotActiveGM). A bid the house
+  already placed is seen in the log the task reads (the house never bids
+  against itself). One turn, one house bid.
 */
 export function tableTick(roundId, { rng = rollRng() } = {}) {
   gmOnly();
   return enqueueWrite(async () => {
+    gmOnly();
     let round = getRounds()[roundId];
     const box = round ? getBoxes()[round.boxId] : null;
     const kind = box ? getKind(round.kind) : null;
@@ -531,7 +540,11 @@ function watchTick() {
       lastTick.set(round.id, now);
       busy.add(round.id);
       tableTick(round.id)
-        .catch(err => console.error("loot-crates | the table's turn failed", err))
+        .catch(err => {
+          // Handed over while the turn waited: the new active GM's watch has it.
+          if (game.users?.activeGM?.id !== game.user.id) return;
+          console.error("loot-crates | the table's turn failed", err);
+        })
         .finally(() => busy.delete(round.id));
     }
   }

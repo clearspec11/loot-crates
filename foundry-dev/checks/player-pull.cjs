@@ -93,6 +93,7 @@
 // received, strip landed; plus the GM's `loot-crates |` console lines.
 /* global game, foundry, Hooks, ui -- used inside page.evaluate, which runs in the Foundry page */
 const { chromium } = require("playwright");
+const { keepWindowsOpen } = require("./lib/linger.cjs");
 const FOUNDRY = process.env.FOUNDRY_URL || "http://localhost:30000";
 const MODULE_BASE = process.env.MODULE_BASE || "http://localhost:8766/";
 const PLAYER = process.env.PLAYER || "Player2";
@@ -373,6 +374,7 @@ async function gmWatchCheck(page) {
 (async () => {
   const browser = await chromium.launch();
   const out = { gm: null, player: PLAYER, box: BOX, canvas: CANVAS ? "running (software)" : "paused" };
+  const linger = keepWindowsOpen();
   try {
     // The player first, so the GM's page load (and its load-time sweep) is
     // as fresh as it can be when the first crate is bought.
@@ -380,6 +382,10 @@ async function gmWatchCheck(page) {
     if (!pl) throw new Error(`${PLAYER} is not free to join`);
     const gm = await join(browser, "Gamemaster", { readySweep: true });
     out.gm = gm ? "headless Gamemaster running the branch" : "a person's Gamemaster client running the installed module";
+    // The reveal is read after it lands (Watch again, gmWatch): finished
+    // windows stay open for the run on the pages this check drives (lib/linger.cjs).
+    await linger.hold(pl.page, PLAYER);
+    if (gm) await linger.hold(gm.page, "Gamemaster");
     if (HIDE_GM) {
       if (!gm) throw new Error("HIDE_GM needs the headless Gamemaster");
       out.gmHidden = await gm.page.evaluate(() => {
@@ -397,7 +403,6 @@ async function gmWatchCheck(page) {
     if (CLOSE_SHOP) {
       if (!gm) throw new Error("CLOSE_SHOP needs the headless Gamemaster");
       out.closeShop = await closeShopCheck(pl.page, gm.page);
-      console.log(JSON.stringify(out, null, 1));
       if (!out.closeShop.ok) process.exitCode = 1;
       return;
     }
@@ -603,12 +608,12 @@ async function gmWatchCheck(page) {
     out.gmTimings = (gm?.logs ?? []).filter(l => l.includes("timings"));
     out.gmConsole = (gm?.logs ?? []).filter(l => !l.includes("timings"));
     out.playerLog = pl.logs;
-    console.log(JSON.stringify(out, null, 1));
   } catch (err) {
     out.error = String(err?.stack || err);
-    console.log(JSON.stringify(out, null, 1));
     process.exitCode = 1;
   } finally {
+    try { out.closeFinished = await linger.restore(); } catch (err) { out.closeFinished = { error: String(err) }; process.exitCode = 1; }
+    console.log(JSON.stringify(out, null, 1));
     await browser.close();
   }
 })();

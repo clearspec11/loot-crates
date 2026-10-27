@@ -328,15 +328,17 @@ describe("pickActor", () => {
 
 describe("refusalLine", () => {
   const common = byId("common");
-  it("names a price raised past the purse, with the crate and the character", () => {
-    expect(refusalLine({ box: { ...common, price: 500 }, shown: "25", purse, actorName: "Tam", reason: "Needs 79 gp 2 sp 7 cp more" })).toBe("Pauper's Box now costs 500 gp, more than Tam has.");
-    expect(refusalLine({ box: { ...common, price: 500 }, shown: "25", purse })).toBe("Pauper's Box now costs 500 gp, more than this character has.");
+  // The GM's own sentence for a stale price (pull.js), so a price changed
+  // under the Buy reads the same whichever side caught it.
+  it("names a price raised past the purse, and the one pressed, as the GM refuses a stale price", () => {
+    expect(refusalLine({ box: { ...common, price: 500 }, shown: "25", purse, reason: "Needs 79 gp 2 sp 7 cp more" })).toBe("Pauper's Box now costs 500 gp (you pressed 25 gp). Nothing was charged.");
+    expect(refusalLine({ box: { ...common, price: 500 }, shown: "25", purse })).toBe("Pauper's Box now costs 500 gp (you pressed 25 gp). Nothing was charged.");
   });
   it("names the price a play costs now, the kind's (a deck's risen draw), not the record's base", () => {
     const deck = { id: "deck", kind: "deck", name: "The Deck", price: 10 };
     // Pressed at 15 gp (2nd in a row); another draw since makes it 22 gp 5 sp, past a 20 gp purse.
-    expect(refusalLine({ box: deck, price: 22.5, shown: "15", purse: { gp: 20 }, actorName: "Tam", reason: "Needs 2 gp 5 sp more" })).toBe("The Deck now costs 22 gp 5 sp, more than Tam has.");
-    expect(refusalLine({ box: deck, price: 15, shown: "15", purse: { gp: 5 }, actorName: "Tam", reason: "Needs 10 gp more" })).toBe("Couldn't open The Deck: needs 10 gp more.");
+    expect(refusalLine({ box: deck, price: 22.5, shown: "15", purse: { gp: 20 }, reason: "Needs 2 gp 5 sp more" })).toBe("The Deck now costs 22 gp 5 sp (you pressed 15 gp). Nothing was charged.");
+    expect(refusalLine({ box: deck, price: 15, shown: "15", purse: { gp: 5 }, reason: "Needs 10 gp more" })).toBe("Couldn't open The Deck: needs 10 gp more.");
   });
   it("gives the crate's own reason otherwise, and nothing when there is none", () => {
     expect(refusalLine({ box: common, shown: "25", purse: { gp: 1 }, reason: "Needs 24 gp more" })).toBe("Couldn't open Pauper's Box: needs 24 gp more.");

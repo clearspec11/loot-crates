@@ -143,7 +143,7 @@ describe("i18n.js", () => {
 
   it("fills {name} placeholders from the data, once, and leaves one the data hasn't got", () => {
     expect(t("LOOTCRATES.Card.OpenFor", { price: "25 gp" })).toBe("Open for 25 gp");
-    expect(t("LOOTCRATES.Shop.Raised", { name: "The {who} Crate", price: "5 gp", who: "Tam" })).toBe("The {who} Crate now costs 5 gp, more than Tam has.");
+    expect(t("LOOTCRATES.Error.PriceChanged", { name: "The {pressed} Crate", price: "5 gp", pressed: "3 gp" })).toBe("The {pressed} Crate now costs 5 gp (you pressed 3 gp). Nothing was charged.");
     expect(fill("{a} and {b}", { a: 1 })).toBe("1 and {b}");
     expect(fill("{n} items", { n: 0 })).toBe("0 items");
   });

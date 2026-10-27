@@ -56,6 +56,7 @@
 // Crates Test" (live-pull.js makes it).
 /* global game, foundry, Hooks, ui -- used inside page.evaluate, which runs in the Foundry page */
 const { chromium } = require("playwright");
+const { keepWindowsOpen } = require("./lib/linger.cjs");
 const FOUNDRY = process.env.FOUNDRY_URL || "http://localhost:30000";
 const MODULE_BASE = process.env.MODULE_BASE || "http://localhost:8766/";
 const PLAYER = process.env.PLAYER || "Player2";
@@ -240,6 +241,7 @@ async function refundFromLog(gm, { rowId, press }) {
   const browser = await chromium.launch();
   const out = { player: PLAYER, game: GAME, gm: null, hideGm: HIDE_GM, manual: MANUAL, short: SHORT };
   let gm = null, before = null;
+  const linger = keepWindowsOpen();
   const state = {};
   try {
     const seats = await freeSeats(browser);
@@ -249,8 +251,12 @@ async function refundFromLog(gm, { rowId, press }) {
     gm = await join(browser, "Gamemaster");
     if (!gm) throw new Error("the Gamemaster seat is taken; this check needs the headless Gamemaster");
     out.gm = "headless Gamemaster running the branch";
+    // This check reads its windows after they land: they stay open for the run (lib/linger.cjs).
+    await linger.hold(pl.page, PLAYER);
+    await linger.hold(gm.page, "Gamemaster");
     const watcher = watcherName ? await join(browser, watcherName) : null;
     out.watcher = watcher ? `${watcherName}, tab hidden` : "none (no free seat)";
+    if (watcher) await linger.hold(watcher.page, watcherName);
     before = await seed(gm.page);
     out.before = { purseCp: before.purseCp, rows: before.logIds.length, messages: before.messages, items: before.items, manualSet: before.manualSet ? before.manualSet.d6 : null };
     if (HIDE_GM) out.gmHidden = await hide(gm.page);
@@ -472,6 +478,7 @@ async function refundFromLog(gm, { rowId, press }) {
     out.ok = false;
   } finally {
     try { out.restored = await restore(gm?.page, before, state); } catch (err) { out.restored = { error: String(err) }; }
+    out.closeFinished = await linger.restore();
     console.log(JSON.stringify(out, null, 1));
     if (!out.ok) process.exitCode = 1;
     await browser.close();

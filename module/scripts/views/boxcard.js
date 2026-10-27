@@ -254,15 +254,16 @@ export function shopNotice(ctx = {}) {
   price on the pressed Buy (its data-price), `price` what a play costs this
   character now: the kind's (a deck's risen draw, kinds.js priceOf), the
   one the GM checks, else the record's. A price that changed to one past
-  this character's purse is named with the new figure, since the card the
-  player pressed still says the old one. A shop-wide reason is the
-  notice's own, so the caller leaves those out.
+  this character's purse is named with the new figure and the pressed one,
+  in the sentence the GM refuses a stale price with (pull.js, the shop's
+  #staleRefusal), so a changed price reads the same whether or not the
+  purse still covers it; the card says what is short. A shop-wide reason
+  is the notice's own, so the caller leaves those out.
 */
-export function refusalLine({ box, reason = "", shown, price = box?.price, purse = {}, actorName = "" }) {
+export function refusalLine({ box, reason = "", shown, price = box?.price, purse = {} }) {
   if (!box) return t("LOOTCRATES.Shop.GoneFromShelf");
-  const who = actorName || t("LOOTCRATES.Common.ThisCharacter");
   const raised = shown != null && shown !== "" && Number(shown) !== Number(price);
-  if (raised && !canAfford(purse, price)) return t("LOOTCRATES.Shop.Raised", { name: box.name, price: formatPrice(price), who });
+  if (raised && !canAfford(purse, price)) return t("LOOTCRATES.Error.PriceChanged", { name: box.name, price: formatPrice(price), pressed: formatPrice(Number(shown)) });
   if (!reason) return "";
   return t("LOOTCRATES.Shop.CouldNotOpen", { name: box.name, reason: `${reason[0].toLowerCase()}${reason.slice(1)}` });
 }
