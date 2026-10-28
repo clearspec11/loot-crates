@@ -6,8 +6,18 @@ The newest numbered entry's version is the one in `module/module.json`, and its 
 
 ## Unreleased
 
-- New game: scratch tickets. You print a roll of tickets with a fixed prize list (coins, an item at a rarity from the ticket's pools, a bonus spot, and duds), and each ticket bought comes off the roll, so the shop shows the tickets and prizes left and the odds of what is left, and a sold-out roll says so until you press **Print a new roll**. Two layouts, lucky numbers and match 3; the editor reads out the roll's odds as you type. A refund puts the ticket back. The buyer scratches the ticket by hand: the pointer becomes a gold coin over the foil, its edge scrapes a band that widens with speed, foil shavings curl off, a panel gives once it is 60% scratched and the rest crumbles away with a tick, and the scratch rasps louder and higher the faster you rub. Everyone else watches the same coin scratch the card by itself, panel by panel, and **Watch again** on the chat card replays it. Keyboard: the arrow keys move between panels, Space or Enter scratches one, R or **Reveal all** opens the whole card. With reduced motion on, the table's card opens at once and nothing flies off.
+- Nothing yet.
+
+## 1.3.0
+
+Scratch tickets.
+
+- New game: scratch tickets. You print a roll of tickets with a fixed prize list (coins, an item at a rarity from the ticket's pools, a bonus spot, and duds). Each ticket bought comes off the roll, so the shop shows the tickets and prizes left and the odds of what is left, and a sold-out roll says so until you press Print a new roll. A refund puts the ticket back.
+- Two layouts: lucky numbers (match any of yours to a lucky number to win the prize under it, and wins add up) and match 3 (three of the same symbol wins that symbol's prize). The editor reads out the roll's odds as you type.
+- The buyer scratches by hand: the pointer becomes a gold coin over the foil, its edge scrapes a band that widens with speed, foil shavings curl off, and a panel gives once it is 60% scratched. The scratch rasps louder and higher the faster you rub. Everyone else watches the same coin scratch the card by itself, panel by panel, and Watch again on the chat card replays it.
+- Keyboard: the arrow keys move between panels, Space or Enter scratches one, R or Reveal all opens the whole card. With reduced motion on, the table's card opens at once and nothing flies off.
 - Add starter crates now adds two scratch tickets as well, off the shelf like the rest: the Market scratchie (1 gp, match 3, a roll of 50, its top prize an uncommon potion or scroll) and the Fortune ticket (10 gp, lucky numbers with a 25 gp bonus spot, a roll of 100, its top prize a rare trinket).
+- Known limit: the pull log keeps its newest 500 rows, and a roll counts its sold tickets from the log. In a world whose log passes 500 rows while a roll is still on sale, the roll's oldest sold tickets drop out of the count and their prizes come back on sale. Keep rolls to a size you will sell through within a few sessions until this is fixed. The deck's once cards have the same limit.
 
 ## 1.2.1
 

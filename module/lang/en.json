@@ -493,11 +493,12 @@
       "CalendarOff": "dnd5e's calendar is off: a day ends at each character's long rest."
     },
     "News": {
-      "Title": "Small fixes for busy tables",
-      "Line1": "The manager's Pools tab now follows pool edits made elsewhere, such as another GM's new pool, rename or item added, or the starter crates added from the Boxes tab on another screen. Before, the tab kept its old rows until you switched tabs. The pools you have open or closed, a search you typed, the rows you have shown, the field you are in and where you had scrolled to stay as they were, and your own edits still update in place.",
-      "Line2": "A Buy pressed just as the GM changed its price is now explained the same way every time, in the shop's notice line: \"Pauper's Box now costs 30 gp (you pressed 25 gp). Nothing was charged.\" Before, this came as a pop-up when the character could still pay the new price, and as a different sentence in the notice line when they couldn't. The line stays until the price moves again or you press Buy.",
-      "Line3": "A key that does nothing in a finished game window, such as a Foundry shortcut pressed after buying with the mouse, no longer stops its countdown. The countdown still waits while you move or act in the window from the keyboard (Tab, Shift+Tab, Enter, Space, the arrow keys, Home, End or Escape), and while your pointer is over it.",
-      "Line4": "With two GMs online, an auction's house bidder now bids once a turn. When a second GM joined mid-auction, the first GM's Foundry could still place a house bid it had queued on top of the second GM's, so the table heard the house bid twice and one GM's Pull log write could replace the other's. Now the GM who is no longer running the game stops before it writes anything."
+      "Title": "Scratch tickets",
+      "Line1": "New game: scratch tickets. You print a roll of tickets with a fixed prize list (coins, an item at a rarity from the ticket's pools, a bonus spot, and duds). Each ticket bought comes off the roll, so the shop shows the tickets and prizes left and the odds of what is left, and a sold-out roll says so until you press Print a new roll. A refund puts the ticket back.",
+      "Line2": "Two layouts: lucky numbers (match any of yours to a lucky number to win the prize under it, and wins add up) and match 3 (three of the same symbol wins that symbol's prize). The editor reads out the roll's odds as you type.",
+      "Line3": "The buyer scratches by hand: the pointer becomes a gold coin over the foil, its edge scrapes a band that widens with speed, foil shavings curl off, and a panel gives once it is 60% scratched. The scratch rasps louder and higher the faster you rub. Everyone else watches the same coin scratch the card by itself, panel by panel, and Watch again on the chat card replays it.",
+      "Line4": "Keyboard: the arrow keys move between panels, Space or Enter scratches one, R or Reveal all opens the whole card. With reduced motion on, the table's card opens at once and nothing flies off.",
+      "Line5": "Add starter crates now adds two scratch tickets as well, off the shelf like the rest: the Market scratchie (1 gp, match 3, a roll of 50, its top prize an uncommon potion or scroll) and the Fortune ticket (10 gp, lucky numbers with a 25 gp bonus spot, a roll of 100, its top prize a rare trinket)."
     },
     "Welcome": {
       "Title": "Loot Crates",
