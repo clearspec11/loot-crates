@@ -18,8 +18,8 @@
 //      the bonus spot and presses Add to shelf. One record: a roll of 3,
 //      one 1 gp prize; the readout said "1 in 3 tickets wins ...".
 //   2. The player's open shop shows its card, "3 of 3 tickets left"; the
-//      player presses its Buy three times (each pull's reveal lands and is
-//      closed). The card then reads "Roll 1 is sold out" with "Sold out"
+//      player presses its Buy three times (each ticket opened with its
+//      Reveal all, the window closed). The card then reads "Roll 1 is sold out" with "Sold out"
 //      under an off Buy; 3 gp were charged and 1 gp paid back.
 //   3. A fourth press of the Buy sends nothing (its reason is on the
 //      card); a fourth pull sent through the public request path, as a
@@ -192,8 +192,13 @@ const untilCard = async (pl, boxId, pred, ms = 5000) => {
     for (let i = 0; i < 3; i++) {
       const before = await untilCard(pl.page, boxId, c => !c.off, 5000);
       await pl.page.locator(`#loot-crates-shop .lc-box__buy[data-box="${boxId}"]`).click();
-      const after = await untilCard(pl.page, boxId, c => c.rows === before.rows + 1 && c.stock === STOCKS[i], 15000);
+      // The ticket is the buyer's to scratch (live-scratch rubs it by hand);
+      // here the real Reveal all opens it. The shop holds the roll's counts
+      // from before the draw until the card is open, so the stock is read
+      // once the window has landed.
+      await pl.page.locator(".application.lc-reveal .lc-scratch__all").last().click({ timeout: 15000 });
       await pl.page.waitForSelector(".application.lc-reveal .lc-scratch--landed", { timeout: 15000 }).catch(() => {});
+      const after = await untilCard(pl.page, boxId, c => c.rows === before.rows + 1 && c.stock === STOCKS[i], 15000);
       const reveal = await pl.page.evaluate(() => {
         const rv = [...document.querySelectorAll(".application.lc-reveal")].pop();
         return { panels: rv?.querySelectorAll(".lc-scratch__panel").length ?? 0, result: rv?.querySelector(".lc-reveal__result")?.innerText.replace(/\s+/g, " ").trim() ?? null };
