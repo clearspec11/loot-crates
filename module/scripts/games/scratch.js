@@ -666,10 +666,18 @@ function head(reveal, { esc }) {
 }
 
 // "Won 25 gp across 2 panels" / "Won 25 gp": what the card paid in coins.
+// A win is counted once: on lucky numbers each matching panel is one (a
+// split prize is two), on a match 3 card the three panels of a symbol are
+// one match, so three gems read "Won 5 gp", never "across 3 panels".
 const coinsLine = reveal => {
-  const n = cardWins(reveal.card).winners.length;
+  const card = reveal.card;
+  const winners = cardWins(card).winners;
   const price = formatPrice((reveal.payoutCp ?? 0) / 100);
-  return n > 1 ? t("LOOTCRATES.Scratch.WonAcross", { price, count: n }) : t("LOOTCRATES.Scratch.Won", { price });
+  if (card?.layout === "match3") {
+    const matches = new Set(winners.map(i => card.panels[i]?.symbol)).size;
+    return matches > 1 ? t("LOOTCRATES.Scratch.WonMatches", { price, count: matches }) : t("LOOTCRATES.Scratch.Won", { price });
+  }
+  return winners.length > 1 ? t("LOOTCRATES.Scratch.WonAcross", { price, count: winners.length }) : t("LOOTCRATES.Scratch.Won", { price });
 };
 const leftAfter = reveal => (reveal.ticket ? ticketsLeftText(Math.max(0, reveal.ticket.size - reveal.ticket.no), reveal.ticket.size) : "");
 

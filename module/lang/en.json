@@ -1167,6 +1167,7 @@
       "DudNotice": "{name}: a dud.",
       "Won": "Won {price}",
       "WonAcross": "Won {price} across {count} panels",
+      "WonMatches": "Won {price} from {count} matches",
       "IntoPurse": "{price} into {name}'s purse",
       "GotCoins": "won {price}",
       "GotItem": "won {name}",

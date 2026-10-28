@@ -432,6 +432,16 @@ describe("the words", () => {
     const coins = reveal({ card, outcome: "coins", payoutCp: 2500, result: { name: "25 gp", outcome: "coins" } });
     expect(k.result(coins, { esc, canSee: true })).toContain("25 gp into Tam's purse");
     expect(k.result(coins, { esc, canSee: false })).toContain("56 of 100 tickets left");
+    // On a match 3 card the three panels of a symbol are one win, so the
+    // line never says "across 3 panels"; two symbols matched are two matches.
+    const key = [{ symbol: "crown", prize: { gp: 5 } }, { symbol: "gem", prize: { gp: 1 } }];
+    const three = { layout: "match3", cols: 3, rows: 2, key, panels: ["crown", "gem", "crown", "horn", "crown", "gem"].map(symbol => ({ symbol })) };
+    const six = { layout: "match3", cols: 3, rows: 2, key, panels: ["crown", "gem", "crown", "gem", "crown", "gem"].map(symbol => ({ symbol })) };
+    expect(k.result(reveal({ card: three, outcome: "coins", payoutCp: 500, result: { name: "5 gp", outcome: "coins" } }), { esc })).toContain(`<div class="lc-reveal__quiet">Won 5 gp</div>`);
+    expect(k.result(reveal({ card: six, outcome: "coins", payoutCp: 600, result: { name: "6 gp", outcome: "coins" } }), { esc })).toContain(`<div class="lc-reveal__quiet">Won 6 gp from 2 matches</div>`);
+    const split = layCard(GAME, { kind: "gp", gp: 10 }, seededRng(2));
+    const n = cardWins(split).winners.length;
+    expect(k.result(reveal({ card: split, outcome: "coins", payoutCp: 1000, result: { name: "10 gp", outcome: "coins" } }), { esc })).toContain(n > 1 ? `Won 10 gp across ${n} panels` : `<div class="lc-reveal__quiet">Won 10 gp</div>`);
     expect(k.result(reveal({ card: layCard(GAME, { kind: "dud" }, seededRng(4)), outcome: "nothing", result: null }), { esc })).toContain("A dud. Nothing this time.");
     const html = ticketHTML({ ...coins, box: { name: "Fortune Ticket" } }, { esc });
     expect(html).toContain("Roll 1, ticket 44 of 100");
