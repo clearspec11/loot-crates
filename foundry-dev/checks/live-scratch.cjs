@@ -4,9 +4,17 @@
 // itself, and Watch again replays it.
 //
 //   FOUNDRY_URL=http://<host>:30000 MODULE_BASE=http://<this machine>:8766/ \
-//     NODE_PATH=$(npm root -g) node foundry-dev/checks/live-scratch.cjs [--shot out.png]
+//     NODE_PATH=$(npm root -g) node foundry-dev/checks/live-scratch.cjs [--shot out.png] [--before out.png]
 //
-// Env: PLAYER (default Player2, must own Crate Tester).
+// --shot saves the player's screen once the card has landed; --before
+// saves it with the ticket just opened, every panel under its painted
+// foil (the stamp and the lattice), before the first stroke.
+//
+// Env: PLAYER (default Player2, must own Crate Tester); VIEWPORT (the
+// player's screen, default 1440x900; 1366x768 and 1024x640 are laptops).
+// The ticket is taller than a laptop's window: the check reads that Reveal
+// all, the result line and Skip are inside the window and on screen, the
+// topmost thing at their centre (the ticket scrolls in its own box).
 //
 // Two headless clients, the Gamemaster and the player, each running the
 // branch's socket, redraw, shop and chat-card hooks (the installed
@@ -42,11 +50,13 @@ const FOUNDRY = process.env.FOUNDRY_URL || "http://localhost:30000";
 const MODULE_BASE = process.env.MODULE_BASE || "http://localhost:8766/";
 const PLAYER = process.env.PLAYER || "Player2";
 const shot = process.argv.includes("--shot") ? process.argv[process.argv.indexOf("--shot") + 1] : null;
+const beforeShot = process.argv.includes("--before") ? process.argv[process.argv.indexOf("--before") + 1] : null;
 const STAMP = Date.now().toString(36);
 const NAME = `Live scratch ${STAMP}`;
 
 async function join(browser, user) {
-  const page = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
+  const [vw, vh] = user === PLAYER && /^\d+x\d+$/.test(process.env.VIEWPORT ?? "") ? process.env.VIEWPORT.split("x").map(Number) : [1440, 900];
+  const page = await (await browser.newContext({ viewport: { width: vw, height: vh } })).newPage();
   const logs = [];
   page.on("console", m => { const t = m.text(); if (t.includes("loot-crates") || m.type() === "error") logs.push(t); });
   page.on("pageerror", e => logs.push("pageerror: " + e.message));
@@ -204,9 +214,22 @@ const readChat = (page, logIds) => page.evaluate(ids => {
       covered: [...rv.querySelectorAll("[data-panel]")].every(p => /covered/.test(p.getAttribute("aria-label") ?? "") && !p.classList.contains("lc-scratch__panel--win")),
       head: rv.querySelector(".lc-reveal__head")?.innerText.replace(/\s+/g, " ").trim() ?? null,
     }));
+    // Reveal all, the result line and Skip inside the window and on screen, nothing over them.
+    out.fits = await reveal.evaluate(rv => {
+      const frame = rv.getBoundingClientRect();
+      const at = sel => {
+        const el = rv.querySelector(sel);
+        if (!el) return "absent";
+        const r = el.getBoundingClientRect();
+        const hit = document.elementFromPoint(r.left + r.width / 2, r.top + Math.min(r.height / 2, 12));
+        return r.top >= frame.top && r.bottom <= Math.min(frame.bottom, innerHeight) + 0.5 && !!hit && (hit === el || el.contains(hit)) ? "ok" : `out (${Math.round(r.top)} to ${Math.round(r.bottom)}, window ${Math.round(frame.top)} to ${Math.round(frame.bottom)}, screen ${innerHeight})`;
+      };
+      return { screen: `${innerWidth}x${innerHeight}`, revealAll: at(".lc-scratch__all"), result: at(".lc-reveal__result"), skip: at(".lc-reveal__close") };
+    });
     const logIds = await gm.page.evaluate(async ({ base, boxId }) => (await import(base + "scripts/foundry/store.js")).getLog().filter(r => r.boxId === boxId).map(r => r.id), { base: MODULE_BASE, boxId });
     await pl.page.waitForFunction(ids => game.messages.contents.some(m => ids.includes(m.flags?.["loot-crates"]?.logId)), logIds, { timeout: 10000 }).catch(() => {});
     out.chatWhileCovered = await readChat(pl.page, logIds);
+    if (beforeShot) { await pl.page.waitForTimeout(400); await pl.page.screenshot({ path: beforeShot }); }
 
     // 2. Scratch every panel with the mouse: down, strokes, up.
     out.strokes = [];
@@ -283,6 +306,7 @@ const readChat = (page, logIds) => page.evaluate(ids => {
 
     const strokes = out.strokes;
     out.checks = {
+      fits: out.fits.revealAll === "ok" && out.fits.result === "ok" && out.fits.skip === "ok",
       buyersCard: out.opened.buyer && out.opened.panels === 13 && out.opened.revealAll === "Reveal all" && out.opened.covered && out.opened.head === `Crate Tester scratches ${NAME} 1 gp`,
       revealSoon: out.revealMs <= 5000,
       sealedWhileCovered: out.chatWhileCovered.shown && out.chatWhileCovered.sealed && out.chatWhileCovered.name == null,

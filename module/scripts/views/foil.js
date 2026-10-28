@@ -35,6 +35,10 @@
   - Reduced motion: no shavings, no crumble, no pop. A spectator's card
     opens at once; the buyer still scratches, and a panel just opens at 60%.
   - The result never depends on any of this: the card arrived decided.
+  - The foil itself is the mockup's: silver with faint rainbow bands, a
+    diamond lattice and a gold-ringed stamp with SCRATCH on it (the one
+    word on the ticket set in capitals by hand: it is a stamp), painted
+    on each panel's canvas from the tokens in module.css.
 
     const foil = mountFoil(ticketEl, { cols, buyer, reducedMotion, duration, sounds, onOpen, onLand });
     await foil.play();           // the buyer's input goes live, or the sweep starts
@@ -56,17 +60,22 @@ export const FOIL = Object.freeze({
   spectatorMs: 5000,   // and the whole card at most
   shavingsCap: 160,
   touchLift: 26,
+  lattice: 8,          // the foil's diamond lattice, css px between threads
+  stamp: 0.34,         // the stamp's radius as a share of the panel's short side
 });
 
 // The band's width for a stroke `len` css px long: 0.85x crawling, 1.35x fast.
 export const bandWidth = len => FOIL.band * (0.85 + Math.min(0.5, Math.max(0, len) / 40));
 
-// The foil's colours, read from the ticket's tokens (module.css) when there is a style to read.
-const FOIL_FALLBACK = { hi: "#d9d7cf", lo: "#a9a79f", ink: "#6b6a63", curlHi: "#c9c7bf", curlLo: "#8f8d85" };
+// The foil's colours, read from the ticket's tokens (module.css) when
+// there is a style to read: the holographic bands (a comma list), the
+// stamp's ring and ink, the curls' two tones (the foil's hi and ink).
+const FOIL_FALLBACK = { bands: ["#dcdad2", "#e9d3e4", "#cfe3ee", "#dfe9d2", "#eadfbf", "#d0cfc8", "#e6e4dc"], ring: "#b8923a", stamp: "#6e5a2a", curlHi: "#c9c7bf", curlLo: "#8f8d85" };
 function foilColours(el) {
   const css = typeof getComputedStyle === "function" ? (() => { try { return getComputedStyle(el); } catch { return null; } })() : null;
   const read = (name, fallback) => css?.getPropertyValue?.(name)?.trim() || fallback;
-  return { hi: read("--lc-foil-hi", FOIL_FALLBACK.hi), lo: read("--lc-foil-lo", FOIL_FALLBACK.lo), ink: read("--lc-foil-ink", FOIL_FALLBACK.ink), curlHi: read("--lc-foil-hi", FOIL_FALLBACK.curlHi), curlLo: read("--lc-foil-ink", FOIL_FALLBACK.curlLo) };
+  const bands = read("--lc-foil-bands", "").split(",").map(c => c.trim()).filter(Boolean);
+  return { bands: bands.length >= 2 ? bands : FOIL_FALLBACK.bands, ring: read("--lc-foil-ring", FOIL_FALLBACK.ring), stamp: read("--lc-foil-stamp", FOIL_FALLBACK.stamp), curlHi: read("--lc-foil-hi", FOIL_FALLBACK.curlHi), curlLo: read("--lc-foil-ink", FOIL_FALLBACK.curlLo) };
 }
 
 const rectOf = el => el?.getBoundingClientRect?.() ?? { left: 0, top: 0, width: 0, height: 0 };
@@ -106,10 +115,12 @@ export function mountFoil(ticket, { cols = 4, buyer = false, reducedMotion, dura
 
   /* ---------- Drawing ---------- */
 
-  // A panel's foil: the gradient, a fine diagonal hatch and the word, then
-  // every later stroke erases. Drawn once its size is known; a panel that
-  // changes size later stretches its canvas (the samples are shares, so the
-  // 60% stays true).
+  // A panel's foil, as the mockup's size() paints it: silver with faint
+  // rainbow bands, a diamond lattice (white one way and back, a darker
+  // thread offset beside it), and the gold-ringed stamp with the word in
+  // the middle; then every later stroke erases. Drawn once its size is
+  // known; a panel that changes size later stretches its canvas (the
+  // samples are shares, so the 60% stays true).
   function paint(p) {
     if (p.ctx || p.open) return !!p.ctx;
     const r = rectOf(p.el);
@@ -121,17 +132,30 @@ export function mountFoil(ticket, { cols = 4, buyer = false, reducedMotion, dura
     if (!ctx) { p.ctx = { stub: true }; return true; }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const g = ctx.createLinearGradient(0, 0, p.w, p.h);
-    g.addColorStop(0, colours.hi); g.addColorStop(0.5, colours.lo); g.addColorStop(1, colours.hi);
+    colours.bands.forEach((c, i) => g.addColorStop(i / (colours.bands.length - 1), c));
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, p.w, p.h);
-    ctx.strokeStyle = "rgba(255, 255, 255, .35)";
     ctx.lineWidth = 1;
-    for (let x = -p.h; x < p.w; x += 7) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x + p.h, p.h); ctx.stroke(); }
-    ctx.fillStyle = colours.ink;
-    ctx.font = `700 ${Math.max(11, Math.round(p.w / 6))}px "Roboto Condensed", Roboto, sans-serif`;
+    ctx.strokeStyle = "rgba(255, 255, 255, .45)";
+    for (let x = -p.h; x < p.w; x += FOIL.lattice) {
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x + p.h, p.h); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x + p.h, 0); ctx.lineTo(x, p.h); ctx.stroke();
+    }
+    ctx.strokeStyle = "rgba(90, 80, 60, .18)";
+    for (let x = -p.h; x < p.w; x += FOIL.lattice) { ctx.beginPath(); ctx.moveTo(x + 4, 0); ctx.lineTo(x + p.h + 4, p.h); ctx.stroke(); }
+    const rr = Math.min(p.w, p.h) * FOIL.stamp;
+    ctx.beginPath();
+    ctx.arc(p.w / 2, p.h / 2, rr, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(255, 255, 255, .35)";
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = colours.ring;
+    ctx.stroke();
+    ctx.fillStyle = colours.stamp;
+    ctx.font = `700 ${Math.max(11, Math.round(rr * 0.42))}px "Roboto Condensed", Roboto, sans-serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(t("LOOTCRATES.Scratch.FoilWord"), p.w / 2, p.h / 2);
+    ctx.fillText(t("LOOTCRATES.Scratch.FoilWord").toLocaleUpperCase(), p.w / 2, p.h / 2);
     ctx.globalCompositeOperation = "destination-out";
     ctx.fillStyle = "#000";
     ctx.strokeStyle = "#000";
@@ -429,6 +453,19 @@ export function mountFoil(ticket, { cols = 4, buyer = false, reducedMotion, dura
     focusAt = Math.max(0, Math.min(panels.length - 1, i));
     panels.forEach((p, k) => p.el.setAttribute("tabindex", k === focusAt ? "0" : "-1"));
     panels[focusAt]?.el.focus?.({ preventScroll: true });
+    showPanel(panels[focusAt]?.el);
+  }
+  // On a short screen the ticket scrolls in its stage under Reveal all's
+  // pinned shelf: bring the focused panel into the stage's view, clear of
+  // the shelf. Only the stage moves (never the window or the page, which
+  // focus's own scroll would shift).
+  function showPanel(el) {
+    const box = el?.closest?.(".lc-scratch__stage");
+    if (!box || box.scrollHeight <= box.clientHeight) return;
+    const r = rectOf(el), b = rectOf(box);
+    const shelf = box.querySelector(".lc-scratch__tools")?.offsetHeight ?? 0;
+    if (r.top < b.top) box.scrollTop -= b.top - r.top + 8;
+    else if (r.bottom > b.bottom - shelf) box.scrollTop += r.bottom - (b.bottom - shelf) + 8;
   }
   function onKey(e) {
     if (landed || e.altKey || e.ctrlKey || e.metaKey) return;
