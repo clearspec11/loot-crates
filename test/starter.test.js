@@ -282,8 +282,6 @@ describe("the games", () => {
     const [scratchie, fortune] = set.games.filter(g => kindOf(g) === "scratch");
     expect([scratchie.name, scratchie.price, layoutOf(scratchie), gridOf(scratchie), bonusOf(scratchie).on]).toEqual(["Market scratchie", 1, "match3", { cols: 3, rows: 2 }, false]);
     expect([fortune.name, fortune.price, layoutOf(fortune), gridOf(fortune), bonusOf(fortune)]).toEqual(["Fortune ticket", 10, "lucky", { cols: 4, rows: 3 }, { on: true, gp: 25 }]);
-    // Printed in the mockup's colours: the scratchie Fey market, the Fortune ticket Dragon's hoard.
-    expect([scratchie.theme, fortune.theme]).toEqual(["fey", "hoard"]);
     const tiers = g => prizesOf(g).map(p => [p.count, p.kind === "item" ? p.rarity : p.kind === "bonus" ? "bonus" : p.gp]);
     expect(tiers(scratchie)).toEqual([[1, "uncommon"], [4, 5], [10, 1]]);
     expect(tiers(fortune)).toEqual([[1, "rare"], [2, 100], [5, 25], [12, 10], [20, 5], [3, "bonus"]]);

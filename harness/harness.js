@@ -109,8 +109,6 @@
   ticket) clear the first five panels and part of the sixth; sweep: the
   table's view mid auto-scratch (?duration is the whole sweep, 8 s by
   default). These play with motion on; ?duration=0 lands the card at once.
-  ?ticket=hoard | fey | arcane | mint prints the ticket in that theme (the
-  Fortune Ticket is Dragon's hoard, the Market Scratchie Fey market).
   ?odds=weight (editor: the crate editor on that table's draft, the odds
   choice on the table's odds, the copy note, "Count text results as
   nothing" and the named chances)
@@ -151,7 +149,7 @@ import { mountDeck, TONE_OF, CARD_KIND_LABEL, priceAt, deckPlan, deckRiseFieldsH
 import { resolve as resolveBets, pocketsOf, coloursOf, betName } from "../module/scripts/games/roulette.js";
 import { tableBodyHTML } from "../module/scripts/views/tableview.js";
 import { lotOf } from "../module/scripts/games/auction.js";
-import { scratchFieldsHTML, wireScratchEditor, draftScratch, scratchPreview, scratchPreviewHTML, rollState, layCard, mountScratch, THEMES } from "../module/scripts/games/scratch.js";
+import { scratchFieldsHTML, wireScratchEditor, draftScratch, scratchPreview, scratchPreviewHTML, rollState, layCard, mountScratch } from "../module/scripts/games/scratch.js";
 import { poolRows, sortRows, defaultView, poolSummary, poolBody, pinRecent, dropNotice, poolUsers, dropPreviewHTML } from "../module/scripts/views/poolview.js";
 import { boxesTabHTML } from "../module/scripts/views/boxestable.js";
 import { managerNavHTML, shopControls, shopEmptyHTML } from "../module/scripts/views/route.js";
@@ -216,7 +214,7 @@ document.getElementById("title").textContent = appTitle;
 const CRATE_ICON = `<svg class="lc-box__icon" viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M3 8.5 12 4l9 4.5v8L12 21l-9-4.5z"/><path d="M3 8.5 12 13l9-4.5M12 13v8"/></svg>`;
 
 const nav = document.getElementById("nav");
-for (const [label, query] of [["shop", "state=shop"], ["spin", "state=spin"], ["landed", "state=landed"], ["landed, buyer", "state=landed&buyer=1"], ["missed", "state=landed&buyer=1&watched=0"], ["replay", "state=replay"], ["well", "state=well&buyer=1"], ["well, coin", "state=well&outcome=coin&buyer=1"], ["well, item", "state=well&outcome=item&buyer=1"], ["dice", "state=dice&buyer=1"], ["dice, lost", "state=dice&outcome=lose&buyer=1"], ["dice, prize", "state=dice&outcome=prize&buyer=1"], ["deck", "state=deck&buyer=1"], ["deck, item", "state=deck&outcome=item&buyer=1"], ["deck, bane", "state=deck&outcome=loss&buyer=1"], ["deck, effect", "state=deck&outcome=effect&buyer=1"], ["table", "state=table"], ["table, GM", "state=table&phase=waiting&gm=1"], ["wheel", "state=table&phase=spinning"], ["wheel, landed", "state=table&phase=landed&duration=0"], ["manager", "state=manager"], ["empty manager", "state=manager&empty=1"], ["boxes", "state=manager&tab=boxes&added=1"], ["starter", "state=manager&tab=boxes&starter=1"], ["pull log", "state=manager&tab=log"], ["box editor", "state=editor"], ["table crate", "state=shop&table=1"], ["table editor", "state=editor&odds=weight"], ["table drop", "state=preview"], ["nothing", "state=landed&nothing=1&buyer=1"], ["auction", "state=auction&phase=open"], ["auction, bids", "state=auction&phase=bid"], ["auction, GM", "state=auction&phase=bid&gm=1"], ["auction, hammer", "state=auction&phase=hammer&duration=0"], ["auction, crate", "state=auction&phase=hammer&lot=crate"], ["auction card", "state=shop&auction=1"], ["scratch card", "state=shop&scratch=1"], ["sold out", "state=shop&scratch=soldout"], ["scratch editor", "state=editor&scratch=1"], ["scratch", "state=scratch&buyer=1&phase=covered"], ["scratch, half", "state=scratch&buyer=1&phase=half"], ["scratch, watched", "state=scratch&phase=sweep"], ["scratch, match 3", "state=scratch&layout=match3&buyer=1"], ["scratch, fey", "state=scratch&outcome=coins&buyer=1&duration=0&ticket=fey"], ["welcome", "state=welcome"], ["welcome, new world", "state=welcome&empty=1"], ["what's new", "state=welcome&view=news"]]) {
+for (const [label, query] of [["shop", "state=shop"], ["spin", "state=spin"], ["landed", "state=landed"], ["landed, buyer", "state=landed&buyer=1"], ["missed", "state=landed&buyer=1&watched=0"], ["replay", "state=replay"], ["well", "state=well&buyer=1"], ["well, coin", "state=well&outcome=coin&buyer=1"], ["well, item", "state=well&outcome=item&buyer=1"], ["dice", "state=dice&buyer=1"], ["dice, lost", "state=dice&outcome=lose&buyer=1"], ["dice, prize", "state=dice&outcome=prize&buyer=1"], ["deck", "state=deck&buyer=1"], ["deck, item", "state=deck&outcome=item&buyer=1"], ["deck, bane", "state=deck&outcome=loss&buyer=1"], ["deck, effect", "state=deck&outcome=effect&buyer=1"], ["table", "state=table"], ["table, GM", "state=table&phase=waiting&gm=1"], ["wheel", "state=table&phase=spinning"], ["wheel, landed", "state=table&phase=landed&duration=0"], ["manager", "state=manager"], ["empty manager", "state=manager&empty=1"], ["boxes", "state=manager&tab=boxes&added=1"], ["starter", "state=manager&tab=boxes&starter=1"], ["pull log", "state=manager&tab=log"], ["box editor", "state=editor"], ["table crate", "state=shop&table=1"], ["table editor", "state=editor&odds=weight"], ["table drop", "state=preview"], ["nothing", "state=landed&nothing=1&buyer=1"], ["auction", "state=auction&phase=open"], ["auction, bids", "state=auction&phase=bid"], ["auction, GM", "state=auction&phase=bid&gm=1"], ["auction, hammer", "state=auction&phase=hammer&duration=0"], ["auction, crate", "state=auction&phase=hammer&lot=crate"], ["auction card", "state=shop&auction=1"], ["scratch card", "state=shop&scratch=1"], ["sold out", "state=shop&scratch=soldout"], ["scratch editor", "state=editor&scratch=1"], ["scratch", "state=scratch&buyer=1&phase=covered"], ["scratch, half", "state=scratch&buyer=1&phase=half"], ["scratch, watched", "state=scratch&phase=sweep"], ["scratch, match 3", "state=scratch&layout=match3&buyer=1"], ["welcome", "state=welcome"], ["welcome, new world", "state=welcome&empty=1"], ["what's new", "state=welcome&view=news"]]) {
   const a = document.createElement("a");
   a.href = `?${query}&seed=${seed}&theme=${theme}`;
   a.textContent = label;
@@ -683,15 +681,13 @@ async function renderDeck() {
 async function renderScratch() {
   const outcome = ["coins", "nothing", "item", "bonus"].includes(q.get("outcome")) ? q.get("outcome") : "coins";
   const phase = ["covered", "half", "sweep"].includes(q.get("phase")) ? q.get("phase") : null;
-  const printed = q.get("layout") === "match3" ? SCRATCH_MATCH3 : SCRATCH;
-  // ?ticket=fey prints the same ticket in another of the four themes.
-  const game = THEMES.includes(q.get("ticket")) ? { ...printed, theme: q.get("ticket") } : printed;
+  const game = q.get("layout") === "match3" ? SCRATCH_MATCH3 : SCRATCH;
   const kind = getKind("scratch").reveal;
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   const rng = seededRng(seed);
   const rarity = game.roll.prizes.find(p => p.item)?.item.rarity ?? "rare";
   const drawn = outcome === "item" ? draw({ box: { ...game, weights: Object.fromEntries(RARITIES.map(r => [r, r === rarity ? 1 : 0])), rules: {} }, pools: POOLS, rng, state: {} }) : null;
-  const gp = printed === SCRATCH ? 25 : 5;
+  const gp = game === SCRATCH ? 25 : 5;
   const win = outcome === "coins" ? { kind: "gp", gp } : outcome === "bonus" ? { kind: "bonus" } : drawn ? { kind: "item", rarity: drawn.rarity, name: drawn.entry.name, img: drawn.entry.img } : { kind: "dud" };
   const payoutCp = outcome === "coins" ? gp * 100 : outcome === "bonus" ? game.bonus.gp * 100 : 0;
   const reveal = {

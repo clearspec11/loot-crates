@@ -160,37 +160,26 @@ export function playBane() {
 }
 
 /*
-  The scratch ticket's sounds (scratch.js), the approved mockup's after
-  Leigh softened them (research-scratchies.md 5a); never the first
-  version's 900 to 3300 Hz band, .16 gain and 1.4 kHz square tick, which
-  pierced. The rasp: a deep brown noise (white noise through a one-pole
-  lowpass, b = .9 b + .1 white, made once per context and looped) through
-  a bandpass (Q .5) whose centre follows the coin's speed, 450 Hz at a
-  crawl and 45 Hz more per css px of movement up to 1350 Hz, then a
-  lowpass at 1.9 kHz that keeps the hiss out; its level from .025 to .09
-  (.006 per px) with a 15 ms attack, held 60 ms, then a 50 ms release, so
-  a fast stroke neither crackles nor rises much and a coin held still goes
-  quiet. playScratch starts one voice on pointerdown (or the spectators'
-  sweep) and returns { rasp(speed), stop() }; stop fades it in about
-  30 ms and ends the source. With no channel, a voice that does nothing.
-  The tick as a panel gives: one soft triangle note at 880 Hz.
+  The scratch ticket's sounds (scratch.js), as the approved mockup has them.
+  The rasp: a brown-ish noise (white noise through a one-pole lowpass, made
+  once per context and looped) through a bandpass whose centre and level
+  follow the coin's speed, from 900 Hz and .04 at a crawl to 3300 Hz and .16
+  at a fast stroke. Each movement sets the level and lets it fall to nothing
+  over 140 ms, so a coin held still goes quiet. playScratch starts one voice
+  on pointerdown (or the spectators' sweep) and returns { rasp(speed),
+  stop() }; stop fades it in about 30 ms and ends the source. With no
+  channel, a voice that does nothing. The tick as a panel gives: one short
+  square note at 1400 Hz, above the strip's ticks.
 */
-export const SCRATCH_HZ = [450, 1350];
-export const SCRATCH_HZ_PER_PX = 45;
-export const SCRATCH_Q = 0.5;
-export const SCRATCH_LOWPASS_HZ = 1900;
-export const SCRATCH_GAIN = [0.025, 0.09];
-export const SCRATCH_GAIN_PER_PX = 0.006;
-export const SCRATCH_ATTACK_S = 0.015;
-export const SCRATCH_HOLD_S = 0.06;
-export const SCRATCH_RELEASE_S = 0.05;
-export const FOIL_TICK_HZ = 880;
-export const FOIL_TICK_GAIN = 0.035;
+export const SCRATCH_HZ = [900, 3300];
+export const SCRATCH_GAIN = [0.04, 0.16];
+export const FOIL_TICK_HZ = 1400;
+const RASP_FALL_S = 0.14;
 
 // The rasp's centre and level at a speed (css px the coin moved since the last event).
 export function scratchLevel(speed = 0) {
   const s = Math.max(0, Number(speed) || 0);
-  return { hz: SCRATCH_HZ[0] + Math.min(SCRATCH_HZ[1] - SCRATCH_HZ[0], s * SCRATCH_HZ_PER_PX), gain: Math.min(SCRATCH_GAIN[1], SCRATCH_GAIN[0] + s * SCRATCH_GAIN_PER_PX) };
+  return { hz: SCRATCH_HZ[0] + Math.min(SCRATCH_HZ[1] - SCRATCH_HZ[0], s * 120), gain: Math.min(SCRATCH_GAIN[1], SCRATCH_GAIN[0] + s * 0.012) };
 }
 
 const noiseBuffers = new WeakMap();
@@ -200,7 +189,7 @@ function brownNoise(ctx) {
   buf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
   const d = buf.getChannelData(0);
   let b = 0;
-  for (let i = 0; i < d.length; i++) { b = b * 0.9 + (Math.random() * 2 - 1) * 0.1; d[i] = b * 3.2; }
+  for (let i = 0; i < d.length; i++) { b = b * 0.6 + (Math.random() * 2 - 1) * 0.4; d[i] = b * 1.6; }
   noiseBuffers.set(ctx, buf);
   return buf;
 }
@@ -218,13 +207,10 @@ export function playScratch(speed = 0) {
     filt = ctx.createBiquadFilter();
     filt.type = "bandpass";
     filt.frequency.setValueAtTime(SCRATCH_HZ[0], ctx.currentTime);
-    if (filt.Q) filt.Q.value = SCRATCH_Q;
-    const lp = ctx.createBiquadFilter();
-    lp.type = "lowpass";
-    lp.frequency.setValueAtTime(SCRATCH_LOWPASS_HZ, ctx.currentTime);
+    if (filt.Q) filt.Q.value = 0.9;
     g = ctx.createGain();
     g.gain.setValueAtTime(0, ctx.currentTime);
-    src.connect(filt).connect(lp).connect(g).connect(ctx.gainNode);
+    src.connect(filt).connect(g).connect(ctx.gainNode);
     src.start();
   } catch (err) {
     console.error("loot-crates | could not start the scratch rasp", err);
@@ -236,10 +222,10 @@ export function playScratch(speed = 0) {
       if (stopped) return;
       const t = ctx.currentTime;
       const { hz, gain } = scratchLevel(v);
-      filt.frequency.setTargetAtTime(hz, t, 0.03);
+      filt.frequency.setTargetAtTime(hz, t, 0.02);
       g.gain.cancelScheduledValues(t);
-      g.gain.setTargetAtTime(gain, t, SCRATCH_ATTACK_S);
-      g.gain.setTargetAtTime(0, t + SCRATCH_HOLD_S, SCRATCH_RELEASE_S);
+      g.gain.setValueAtTime(gain, t);
+      g.gain.linearRampToValueAtTime(0, t + RASP_FALL_S);
     },
     stop() {
       if (stopped) return;
@@ -261,5 +247,5 @@ export function playScratch(speed = 0) {
 export function playFoilTick() {
   const ctx = channel();
   if (!ctx) return;
-  blip(ctx, FOIL_TICK_HZ, 0.06, { type: "triangle", gain: FOIL_TICK_GAIN });
+  blip(ctx, FOIL_TICK_HZ, 0.06, { type: "square", gain: 0.04 });
 }

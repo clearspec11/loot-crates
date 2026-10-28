@@ -70,7 +70,7 @@ export const NEW_DEFAULTS = {
   },
   scratch: () => {
     const d = SCRATCH_DEFAULTS;
-    return { kind: "scratch", name: t("LOOTCRATES.Boxes.NewScratch"), price: d.price, pools: [], weights: weights(), layout: d.layout, grid: { ...GRID_DEFAULTS[d.layout] }, bonus: { on: true, gp: d.bonusGp }, theme: d.theme, roll: { id: 1, size: d.size, prizes: d.prizes.map(p => structuredClone(p)) }, rules: {} };
+    return { kind: "scratch", name: t("LOOTCRATES.Boxes.NewScratch"), price: d.price, pools: [], weights: weights(), layout: d.layout, grid: { ...GRID_DEFAULTS[d.layout] }, bonus: { on: true, gp: d.bonusGp }, roll: { id: 1, size: d.size, prizes: d.prizes.map(p => structuredClone(p)) }, rules: {} };
   },
 };
 
