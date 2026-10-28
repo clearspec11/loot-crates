@@ -1096,6 +1096,7 @@ export class CrateManager extends ApplicationV2 {
       layout: draft.layout,
       grid: draft.grid,
       bonus: draft.bonus,
+      theme: draft.theme,
       // The roll as it is now (Print a new roll may have moved it on while
       // the dialog was open), with the GM's size and prizes.
       roll: { ...(fresh.roll ?? {}), size: draft.roll.size, prizes: draft.roll.prizes },

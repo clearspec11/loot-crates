@@ -57,10 +57,29 @@
   --lc-gold-deep: #8a6a22;
   --lc-win: #2f6b2a;
   --lc-win-bg: #e4f0dc;
-  /* The foil the coin takes off (foil.js paints it from these): a silver
-     gradient from hi to lo with a fine hatch and the word in foil ink.
-     The coin is a gold piece: its face from coin-hi to coin-lo, a bright
-     rim inside a deep one. */
+  /* The ticket's print (scratch.js THEMES, set by data-theme on the
+     ticket): a deep colour for the band, the caption strips, the numbers
+     and the prize pills, a metal for the ribbon, the edge, the corners
+     and the EXTRA box, the metal's deep shade for rules and the panels'
+     edges, and the light ink on the deep colour. Dragon's hoard (crimson
+     and gold) is the default; the other three override the four below. */
+  --lc-ticket-deep: #6e1a2b;
+  --lc-ticket-metal: #d4ad4f;
+  --lc-ticket-metal-deep: #8a6a22;
+  --lc-ticket-ink: #fbf1d6;
+  /* The name on the band: gold chrome, a vertical gradient clipped to
+     the letters; the emblems' dark outline. */
+  --lc-chrome: linear-gradient(180deg, #fff3c4 0%, #f3d77a 35%, #b8872a 52%, #f6e29c 62%, #9c7322 100%);
+  --lc-emblem-ink: #4a3410;
+  /* The foil the coin takes off (foil.js paints it from these): silver
+     with faint rainbow bands (a comma list, the gradient's stops in
+     order), a diamond lattice, and the gold-ringed stamp with the word in
+     stamp ink; the flat foil before it is painted runs hi to lo, and the
+     shavings are curls in hi and ink. The coin is a gold piece: its face
+     from coin-hi to coin-lo, a bright rim inside a deep one. */
+  --lc-foil-bands: #dcdad2, #e9d3e4, #cfe3ee, #dfe9d2, #eadfbf, #d0cfc8, #e6e4dc;
+  --lc-foil-ring: #b8923a;
+  --lc-foil-stamp: #6e5a2a;
   --lc-foil-hi: #d9d7cf;
   --lc-foil-lo: #a9a79f;
   --lc-foil-ink: #6b6a63;
@@ -1366,58 +1385,162 @@
 .loot-crates .lc-scratch__count { font-family: var(--lc-label); font-weight: 700; color: var(--lc-ink-mute); text-align: right; }
 .loot-crates .lc-scratch__tier--gone .lc-scratch__tier-name { color: var(--lc-ink-mute); }
 
-/* The ticket, open in the vault (the scratch draws its foil over this):
-   paper with a dashed gold rule, the title band, the lucky numbers as
-   balls, the grid of panels, the bonus spot and the roll line. An item
-   prize keeps the paper's ink and carries its rarity as the panel's
-   underline; a winning panel is lit green. */
+/* The ticket, open in the vault (the scratch draws its foil over this),
+   as the approved mockup prints it: paper with a faint dot grain in a
+   3px edge of the theme's deep colour with a metal hairline inside,
+   560px at most and centred, so a big window never stretches it; gold
+   L-brackets with a diamond at the corners; the band, the ribbon, the
+   caption strips, the lucky numbers as coins, the near-square panels,
+   the EXTRA box and the foot. A printed object: the same in both Foundry
+   themes. The ticket is its own container, so its type follows its own
+   width (cqi), not the window's. */
 .loot-crates .lc-scratch { display: flex; justify-content: center; }
 .loot-crates .lc-scratch__ticket {
-  position: relative; box-sizing: border-box; width: 100%; max-width: 620px; padding: 14px;
-  background: var(--lc-paper); color: var(--lc-paper-ink); border: 1px solid var(--lc-gold-deep); border-radius: 6px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, .35); text-align: left; font-family: var(--lc-body); font-size: 13px;
+  position: relative; box-sizing: border-box; width: 100%; max-width: 560px; padding: 16px 16px 12px; container-type: inline-size;
+  background: radial-gradient(circle at 1px 1px, rgba(60, 40, 10, .07) 1px, transparent 1.6px) 0 0 / 9px 9px, var(--lc-paper);
+  color: var(--lc-paper-ink); border: 3px solid var(--lc-ticket-deep); border-radius: 8px;
+  box-shadow: 0 3px 14px rgba(0, 0, 0, .35); text-align: left; font-family: var(--lc-body); font-size: 13px;
 }
-.loot-crates .lc-scratch__ticket::before { content: ""; position: absolute; inset: 4px; border: 1px dashed var(--lc-gold); border-radius: 4px; pointer-events: none; }
-.loot-crates .lc-scratch__band { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; border-bottom: 2px solid var(--lc-gold-deep); padding-bottom: 6px; margin-bottom: 8px; }
-.loot-crates .lc-scratch__title { font-family: var(--lc-slab); font-weight: 800; font-size: 22px; line-height: 1.1; color: var(--lc-gold-deep); overflow-wrap: anywhere; }
-.loot-crates .lc-scratch__top { font-family: var(--lc-label); font-size: 12px; font-weight: 700; text-align: right; }
-.loot-crates .lc-scratch__cap { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 2px 8px; margin: 8px 0 6px; font-family: var(--lc-label); font-size: 12px; font-weight: 700; letter-spacing: .02em; color: var(--lc-gold-deep); }
-.loot-crates .lc-scratch__lucky { display: flex; flex-wrap: wrap; gap: 8px; }
+.loot-crates .lc-scratch__ticket::before { content: ""; position: absolute; inset: 3px; border: 1px solid var(--lc-ticket-metal); border-radius: 5px; pointer-events: none; }
+/* The four themes: two tokens each, read by everything on the ticket. */
+.loot-crates .lc-scratch[data-theme="fey"], .loot-crates .lc-scratch__ticket[data-theme="fey"] { --lc-ticket-deep: #1f5a3a; --lc-ticket-metal: #c9d2c0; --lc-ticket-metal-deep: #5e7a56; }
+.loot-crates .lc-scratch[data-theme="arcane"], .loot-crates .lc-scratch__ticket[data-theme="arcane"] { --lc-ticket-deep: #3b1f5e; --lc-ticket-metal: #d4ad4f; --lc-ticket-metal-deep: #8a6a22; }
+.loot-crates .lc-scratch[data-theme="mint"], .loot-crates .lc-scratch__ticket[data-theme="mint"] { --lc-ticket-deep: #1b2f5e; --lc-ticket-metal: #e3ce9e; --lc-ticket-metal-deep: #8a6a22; }
+/* The corners: metal L-brackets with a diamond on the elbow. */
+.loot-crates .lc-scratch__corner { position: absolute; z-index: 2; width: 22px; height: 22px; border: 0 solid var(--lc-ticket-metal); pointer-events: none; }
+.loot-crates .lc-scratch__corner::after { content: ""; position: absolute; width: 7px; height: 7px; background: var(--lc-ticket-metal); transform: rotate(45deg); }
+.loot-crates .lc-scratch__corner--tl { top: 6px; left: 6px; border-top-width: 2px; border-left-width: 2px; }
+.loot-crates .lc-scratch__corner--tl::after { top: -4px; left: -4px; }
+.loot-crates .lc-scratch__corner--tr { top: 6px; right: 6px; border-top-width: 2px; border-right-width: 2px; }
+.loot-crates .lc-scratch__corner--tr::after { top: -4px; right: -4px; }
+.loot-crates .lc-scratch__corner--bl { bottom: 6px; left: 6px; border-bottom-width: 2px; border-left-width: 2px; }
+.loot-crates .lc-scratch__corner--bl::after { bottom: -4px; left: -4px; }
+.loot-crates .lc-scratch__corner--br { bottom: 6px; right: 6px; border-bottom-width: 2px; border-right-width: 2px; }
+.loot-crates .lc-scratch__corner--br::after { bottom: -4px; right: -4px; }
+/* The band: the theme's deep colour, dark at both edges, with a slow
+   holographic sheen sweeping across (5.5 s, none under reduced motion);
+   the name in gold chrome between the emblems. The name is the one place
+   the ticket sets in capitals: it is the print's own lettering, not a
+   kicker. */
+.loot-crates .lc-scratch__band {
+  position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 10px 12px; margin: 0 0 8px; border-radius: 6px; overflow: hidden;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--lc-ticket-deep) 80%, #000) 0%, var(--lc-ticket-deep) 55%, color-mix(in srgb, var(--lc-ticket-deep) 70%, #000) 100%);
+  border: 1px solid var(--lc-ticket-metal-deep);
+}
+.loot-crates .lc-scratch__band::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(115deg, transparent 30%, rgba(255, 220, 160, .18) 42%, rgba(200, 230, 255, .22) 50%, rgba(255, 200, 230, .18) 58%, transparent 70%);
+  background-size: 240% 100%; animation: lc-scratch-sheen 5.5s ease-in-out infinite;
+}
+@keyframes lc-scratch-sheen { 0%, 25% { background-position: 120% 0; } 70%, 100% { background-position: -120% 0; } }
+.loot-crates .lc-scratch__title {
+  min-width: 0; font-family: var(--lc-slab); font-weight: 800; font-size: clamp(20px, 6.4cqi, 36px); line-height: 1; letter-spacing: .02em; text-align: center; text-transform: uppercase; overflow-wrap: break-word;
+  background: var(--lc-chrome); -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 1px 0 #3a2508) drop-shadow(0 2px 0 #2a1a05) drop-shadow(0 3px 3px rgba(0, 0, 0, .55));
+}
+.loot-crates .lc-scratch__emblem { width: 44px; height: 44px; display: grid; place-items: center; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .6)); }
+.loot-crates .lc-scratch__emblem svg { display: block; width: 40px; height: 40px; }
+/* The inline SVG's parts: the d20 and the flask in coin gold with the
+   emblem's dark outline, the flask's draught in the theme's deep colour;
+   the gem and the empty spot's ring in the ticket's gold. */
+.loot-crates .lc-scratch__gold { fill: var(--lc-coin); stroke: var(--lc-emblem-ink); }
+.loot-crates .lc-scratch__gold--lite { fill: var(--lc-coin-rim); }
+.loot-crates .lc-scratch__line { fill: none; stroke: var(--lc-emblem-ink); }
+.loot-crates .lc-scratch__emblem-text { fill: var(--lc-paper-ink); font-family: var(--lc-slab); }
+.loot-crates .lc-scratch__draught { fill: var(--lc-ticket-deep); stroke: var(--lc-emblem-ink); }
+.loot-crates .lc-scratch__gem { fill: var(--lc-gold); stroke: var(--lc-gold-deep); }
+.loot-crates .lc-scratch__gold-line { fill: none; stroke: var(--lc-gold-deep); }
+/* The ribbon under the band, chevron-ended like the reference tickets'
+   banners: the top prize in the display face, the roll's prizes beside it. */
+.loot-crates .lc-scratch__ribbon {
+  position: relative; display: flex; flex-wrap: wrap; justify-content: center; align-items: baseline; gap: 2px 14px; margin: 0 10px 10px; padding: 6px 26px; text-align: center;
+  background: linear-gradient(180deg, var(--lc-ticket-metal) 0%, var(--lc-ticket-metal-deep) 100%); color: var(--lc-paper-ink);
+  font-family: var(--lc-label); font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  clip-path: polygon(12px 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 12px 100%, 0 50%);
+}
+.loot-crates .lc-scratch__ribbon strong { font-family: var(--lc-slab); font-size: 15px; letter-spacing: 0; text-transform: none; }
+/* The caption strips: the theme's deep colour, light label text. */
+.loot-crates .lc-scratch__cap {
+  display: flex; justify-content: space-between; flex-wrap: wrap; gap: 2px 8px; margin: 8px 0 6px; padding: 3px 10px; border-radius: 3px;
+  background: var(--lc-ticket-deep); color: var(--lc-ticket-ink); font-family: var(--lc-label); font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+}
+/* The lucky numbers as gold coins: the scratching coin's face and rims. */
+.loot-crates .lc-scratch__lucky { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; padding: 2px 0 4px; }
 .loot-crates .lc-scratch__ball {
-  display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; border: 2px solid var(--lc-gold-deep); background: var(--lc-paper-deep);
-  font-family: var(--lc-slab); font-weight: 800; font-size: 17px;
+  display: grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; font-family: var(--lc-slab); font-weight: 800; font-size: 19px; color: var(--lc-paper-ink);
+  background: radial-gradient(circle at 35% 30%, var(--lc-coin-hi) 0%, var(--lc-coin) 45%, var(--lc-coin-lo) 100%);
+  box-shadow: inset 0 0 0 2px var(--lc-coin-rim), inset 0 0 0 4px var(--lc-coin-rim-deep), 0 2px 3px rgba(0, 0, 0, .35);
 }
-.loot-crates .lc-scratch__grid { display: grid; grid-template-columns: repeat(var(--lc-cols, 4), minmax(0, 1fr)); gap: 8px; }
+/* The grid: a panel is nearly square and capped at 118px, centred in its
+   cell, so a big window never stretches it into an empty field; the
+   number centred in the deep colour over a faint eight-point star, the
+   prize as a pill below. An item prize's pill is edged in its rarity and
+   the panel underlined in it (the rarity ladder is edges and diamonds). */
+.loot-crates .lc-scratch__grid { display: grid; grid-template-columns: repeat(var(--lc-cols, 4), minmax(0, 1fr)); gap: 8px; justify-content: center; }
 .loot-crates .lc-scratch__panel {
-  position: relative; min-width: 0; aspect-ratio: 1 / 1.12; overflow: hidden; display: grid; grid-template-rows: 1fr auto; place-items: center; text-align: center;
-  border-radius: 4px; background: var(--lc-paper-deep); border: 1px solid var(--lc-gold-deep);
+  position: relative; box-sizing: border-box; width: 100%; max-width: 118px; justify-self: center; min-width: 0; aspect-ratio: 1 / 1.04; overflow: hidden;
+  display: grid; grid-template-rows: 1fr auto; place-items: center; text-align: center;
+  border-radius: 6px; background: var(--lc-paper-deep); border: 1.5px solid var(--lc-ticket-metal-deep); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .5);
+}
+.loot-crates .lc-scratch__panel::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .06;
+  background: url('data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"%3E%3Cpath d="M20 2 L25 15 L38 20 L25 25 L20 38 L15 25 L2 20 L15 15 Z" fill="%23000"/%3E%3C/svg%3E') center 38% / 46% no-repeat;
 }
 .loot-crates .lc-scratch__panel[class*="lc-rarity-"] { border-bottom: 3px solid var(--lc-rarity); }
-.loot-crates .lc-scratch__num { align-self: end; font-family: var(--lc-slab); font-weight: 800; font-size: clamp(18px, 5vw, 26px); line-height: 1; }
-.loot-crates .lc-scratch__prize { padding: 3px 4px 5px; font-family: var(--lc-label); font-size: 11px; font-weight: 700; line-height: 1.1; overflow-wrap: anywhere; }
+.loot-crates .lc-scratch__num { position: relative; align-self: center; font-family: var(--lc-slab); font-weight: 800; font-size: clamp(20px, 5.4cqi, 30px); line-height: 1; color: var(--lc-ticket-deep); }
+.loot-crates .lc-scratch__prize {
+  position: relative; box-sizing: border-box; max-width: calc(100% - 12px); margin: 0 6px 6px; padding: 2px 8px; border-radius: 10px;
+  background: var(--lc-ticket-deep); color: var(--lc-ticket-ink); font-family: var(--lc-label); font-size: 11px; font-weight: 700; line-height: 1.2;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.loot-crates .lc-scratch__prize--item { box-shadow: 0 0 0 2px var(--lc-rarity); }
 .loot-crates .lc-scratch__panel--win { background: var(--lc-win-bg); border-color: var(--lc-win); box-shadow: inset 0 0 0 2px var(--lc-win); }
 .loot-crates .lc-scratch__panel--win .lc-scratch__num { color: var(--lc-win); }
-.loot-crates .lc-scratch__ticket[data-layout="match3"] .lc-scratch__panel { aspect-ratio: 1.3 / 1; grid-template-rows: 1fr; }
-.loot-crates .lc-scratch__sym { font-family: var(--lc-label); font-size: 13px; font-weight: 700; }
+.loot-crates .lc-scratch__ticket[data-layout="match3"] .lc-scratch__panel { grid-template-rows: 1fr; }
+.loot-crates .lc-scratch__sym { position: relative; font-family: var(--lc-slab); font-size: 15px; font-weight: 800; color: var(--lc-ticket-deep); }
 .loot-crates .lc-scratch__panel--win .lc-scratch__sym { color: var(--lc-win); }
-.loot-crates .lc-scratch__key { list-style: none; display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 0 0 8px; padding: 0; font-size: 12px; }
+.loot-crates .lc-scratch__key { list-style: none; display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 14px; margin: 0; padding: 2px 0 4px; font-size: 12px; font-weight: 500; }
 .loot-crates .lc-scratch__key-row { display: inline-flex; align-items: center; gap: 5px; }
 .loot-crates .lc-scratch__key-row::before { content: ""; width: 6px; height: 6px; flex: none; background: var(--lc-rarity); transform: rotate(45deg); box-shadow: 0 0 0 1px rgba(0, 0, 0, .3); }
-.loot-crates .lc-scratch__bonus { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: center; margin-top: 10px; }
-.loot-crates .lc-scratch__bonus p { margin: 0; font-size: 12px; }
-.loot-crates .lc-scratch__spot { width: 64px; aspect-ratio: 1; grid-template-rows: 1fr; }
-.loot-crates .lc-scratch__mark { width: 26px; height: 26px; border-radius: 50%; border: 2px dashed var(--lc-gold-deep); box-sizing: border-box; }
-.loot-crates .lc-scratch__mark--gem { border: 0; border-radius: 0; background: var(--lc-gold); clip-path: polygon(20% 35%, 35% 12%, 65% 12%, 80% 35%, 50% 90%); }
-.loot-crates .lc-scratch__foot { margin-top: 10px; font-family: var(--lc-label); font-size: 11px; font-weight: 700; color: var(--lc-gold-deep); }
-@media (max-width: 480px) {
-  .loot-crates .lc-scratch__ticket { padding: 10px; }
-  .loot-crates .lc-scratch__grid { gap: 5px; }
+.loot-crates .lc-scratch__key-row .lc-scratch__sym { font-size: 13px; }
+/* The bonus spot, framed like the reference tickets' EXTRA boxes: a metal
+   edge, "Extra 25 gp" in the display face and the one line of how. */
+.loot-crates .lc-scratch__bonus {
+  display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px; align-items: center; margin-top: 12px; padding: 8px 10px; border: 2px solid var(--lc-ticket-metal); border-radius: 6px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .45), rgba(255, 255, 255, 0));
 }
-/* On a screen under about 1080 px tall the lucky numbers' panels go
-   wider than tall, so the whole ticket, Reveal all and the result fit the
-   window without a scroll (a buyer must see every panel to scratch it). */
-@media (max-height: 1080px) and (min-width: 481px) {
-  .loot-crates .lc-scratch__ticket[data-layout="lucky"] .lc-scratch__panel:not(.lc-scratch__spot) { aspect-ratio: 1.4 / 1; }
+.loot-crates .lc-scratch__bonus p { margin: 2px 0 0; font-size: 12px; color: var(--lc-paper-ink); }
+.loot-crates .lc-scratch__extra { font-family: var(--lc-slab); font-weight: 800; font-size: 18px; line-height: 1.1; color: var(--lc-ticket-deep); text-transform: uppercase; letter-spacing: .02em; }
+.loot-crates .lc-scratch__spot { width: 72px; max-width: none; aspect-ratio: 1; grid-template-rows: 1fr; }
+.loot-crates .lc-scratch__spot::before { display: none; }
+.loot-crates .lc-scratch__mark { position: relative; display: block; width: 38px; height: 38px; }
+.loot-crates .lc-scratch__mark svg { display: block; width: 100%; height: 100%; }
+/* The foot: a metal rule over the roll line, the tagline in the display
+   face and the guarantee. */
+.loot-crates .lc-scratch__foot {
+  display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 4px 10px; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--lc-ticket-metal-deep);
+  font-family: var(--lc-label); font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--lc-ticket-metal-deep);
+}
+.loot-crates .lc-scratch__foot:empty { display: none; }
+.loot-crates .lc-scratch__tag { font-family: var(--lc-slab); font-size: 12px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--lc-ticket-deep); }
+@media (max-width: 480px) {
+  .loot-crates .lc-scratch__ticket { padding: 10px 10px 8px; }
+  .loot-crates .lc-scratch__grid { gap: 5px; }
+  .loot-crates .lc-scratch__band { gap: 6px; padding: 8px; }
+  .loot-crates .lc-scratch__emblem { width: 32px; height: 32px; }
+  .loot-crates .lc-scratch__emblem svg { width: 30px; height: 30px; }
+  .loot-crates .lc-scratch__ribbon { margin: 0 4px 8px; padding: 5px 18px; }
+  .loot-crates .lc-scratch__ball { width: 40px; height: 40px; font-size: 16px; }
+  .loot-crates .lc-scratch__bonus { gap: 8px; padding: 6px 8px; }
+  .loot-crates .lc-scratch__spot { width: 60px; }
+}
+/* On a screen under about 960px tall the ticket prints smaller (480px,
+   the panels capped at 98px) so the whole ticket, Reveal all and the
+   result still fit the window (a buyer must see every panel to scratch
+   it); the panels keep their shape. */
+@media (max-height: 960px) and (min-width: 481px) {
+  .loot-crates .lc-scratch__ticket { max-width: 480px; }
+  .loot-crates .lc-scratch__panel { max-width: 98px; }
 }
 
 /* The scratch (foil.js): a foil canvas over each panel, one shavings
@@ -1453,7 +1576,7 @@
 .loot-crates .lc-scratch__coin::after { content: ""; position: absolute; inset: 9px; border-radius: 50%; border: 1.5px dashed color-mix(in srgb, var(--lc-coin-lo) 80%, transparent); }
 .loot-crates .lc-scratch__coin--on { opacity: 1; }
 .loot-crates .lc-scratch__coin--down { box-shadow: inset 0 0 0 2px var(--lc-coin-rim), inset 0 0 0 4px var(--lc-coin-rim-deep), 0 1px 1px rgba(0, 0, 0, .5); }
-.loot-crates .lc-scratch__tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; width: 100%; max-width: 620px; }
+.loot-crates .lc-scratch__tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; width: 100%; max-width: 560px; }
 .loot-crates .lc-scratch__all { flex: none; min-height: 32px; padding: 0 12px; }
 .loot-crates .lc-scratch__help { flex: 1 1 240px; margin: 0; font-size: 12px; line-height: 1.4; color: var(--lc-vault-soft); text-align: left; }
 
@@ -1496,4 +1619,5 @@
   .loot-crates .lc-gavel__bar, .loot-crates .lc-gavel__head { will-change: auto; }
   .loot-crates .lc-scratch__panel--pop .lc-scratch__num, .loot-crates .lc-scratch__panel--pop .lc-scratch__sym, .loot-crates .lc-scratch__panel--pop .lc-scratch__mark { animation: none; }
   .loot-crates .lc-scratch__coin { transition: none; }
+  .loot-crates .lc-scratch__band::before { animation: none; }
 }
