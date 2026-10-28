@@ -716,7 +716,10 @@ export function cleanCard(card) {
   const lim = GRID_LIMITS[card.layout];
   const cols = int(card.cols, lim.cols[0], lim.cols[1]), rows = int(card.rows, lim.rows[0], lim.rows[1]);
   if (!cols || !rows || !Array.isArray(card.panels) || card.panels.length !== cols * rows) return null;
-  const print = { theme: THEMES.includes(card.theme) ? card.theme : "hoard", prizes: cleanPrizes(card.prizes) };
+  // A card from before the print carries no prizes: left null, so the
+  // ticket falls back on its key for the top prize rather than printing
+  // an empty ribbon.
+  const print = { theme: THEMES.includes(card.theme) ? card.theme : "hoard", prizes: card.prizes ? cleanPrizes(card.prizes) : null };
   if (card.layout === "match3") {
     if (!Array.isArray(card.key) || card.key.length > MAX_PRIZES) return null;
     const key = card.key.map(k => (SYMBOLS.includes(k?.symbol) ? { symbol: k.symbol, prize: cleanPrize(k.prize) } : null));
@@ -731,7 +734,7 @@ export function cleanCard(card) {
   return { layout: "lucky", cols, rows, lucky: [...card.lucky], panels, bonus, ...print };
 }
 
-// The ribbon's facts as rollPrizes makes them, or the empty print.
+// The ribbon's facts as rollPrizes makes them, each checked, a doubtful one emptied.
 const gpOf = v => (Number.isFinite(v) && v >= 0 ? v : 0);
 const cleanPrizes = p => ({
   top: p?.top?.item ? (RARITIES.includes(p.top.item) ? { item: p.top.item } : null) : Number.isFinite(p?.top?.gp) && p.top.gp >= 0 ? { gp: p.top.gp } : null,

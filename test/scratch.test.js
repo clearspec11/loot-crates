@@ -615,6 +615,9 @@ describe("the print", () => {
     expect(cleanCard({ ...card, theme: "neon", prizes: { top: { item: "mythic" }, gp: -4, items: "x", floor: "y" } })).toMatchObject({ theme: "hoard", prizes: { top: null, gp: 0, items: 0, floor: null } });
     expect(cleanCard({ ...card, prizes: { top: { gp: 50 }, gp: 54.5, items: 2.7, floor: 2 } }).prizes).toEqual({ top: { gp: 50 }, gp: 54.5, items: 2, floor: 2 });
     const { theme: _theme, prizes: _prizes, ...old } = card;
-    expect(cleanCard(old)).toMatchObject({ theme: "hoard", prizes: { top: null, gp: 0, items: 0, floor: null } });
+    expect(cleanCard(old)).toMatchObject({ theme: "hoard", prizes: null });
+    // An old match 3 snapshot replayed (Watch again cleans it) still names its top prize from its key.
+    const { prizes: _m3p, theme: _m3t, ...oldM3 } = layCard(MATCH3, { kind: "gp", gp: 5 }, seededRng(2));
+    expect(ticketHTML({ card: cleanCard(oldM3), box: { name: "Market Scratchie" } }, { esc })).toContain('<div class="lc-scratch__ribbon"><span>Top prize</span><strong>Uncommon item</strong></div>');
   });
 });
