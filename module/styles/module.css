@@ -1429,6 +1429,10 @@
    overshoot). Reveal all and the one line of help sit under the ticket,
    for the buyer alone, until the card lands. */
 .loot-crates .lc-scratch__stage { display: grid; justify-items: center; gap: 10px; width: 100%; min-width: 0; }
+/* Once the card is open the vault takes the wash the other games take at
+   their landing: the rarity's for an item, the deck's gold for coins. */
+.loot-crates .lc-vault:has(.lc-scratch--landed[data-outcome="item"])::after { opacity: calc(.12 + var(--lc-rank, 0) * .12); }
+.loot-crates .lc-vault:has(.lc-scratch--landed[data-outcome="coins"])::after { background: radial-gradient(60% 90% at 50% 38%, color-mix(in srgb, var(--lc-gold-rim) 55%, transparent), transparent 70%); opacity: .14; }
 .loot-crates .lc-scratch__ticket--covered { user-select: none; -webkit-user-select: none; }
 .loot-crates .lc-scratch__foil { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; border-radius: inherit; }
 .loot-crates .lc-scratch__foil:not(.lc-scratch__foil--painted) { background: linear-gradient(135deg, var(--lc-foil-hi), var(--lc-foil-lo) 50%, var(--lc-foil-hi)); }
