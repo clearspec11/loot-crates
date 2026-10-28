@@ -1893,6 +1893,16 @@ function scratchRevealProblems(mode) {
     if (!shown(all) || all.textContent.trim() !== "Reveal all") out.push("no Reveal all under the buyer's card");
     if (!/R reveals the whole card/.test(tools?.querySelector(".lc-scratch__help")?.textContent ?? "")) out.push("no keyboard help under the buyer's card");
   }
+  // The window is capped at the screen and clips what runs past it (the
+  // harness frame as Foundry's): the ticket scrolls in its stage, so Reveal
+  // all, the result line and Skip or Close stay inside the frame.
+  const frame = ticket.closest(".window-content")?.getBoundingClientRect();
+  if (frame) for (const [sel, what] of [[".lc-scratch__all", "Reveal all"], [".lc-reveal__result", "the result line"], [".lc-reveal__close", "Skip or Close"]]) {
+    const el = document.querySelector(sel);
+    if (!shown(el)) continue;
+    const r = el.getBoundingClientRect();
+    if (r.top < frame.top - 0.5 || r.bottom > frame.bottom + 0.5) out.push(`${what} runs out of the window (${Math.round(r.top)} to ${Math.round(r.bottom)}, the window ${Math.round(frame.top)} to ${Math.round(frame.bottom)})`);
+  }
   if (mode === "half") {
     if (open.length !== 5 || open.some(p => Number(p.dataset.panel) > 4)) out.push(`${open.length} panels open after five scratched (${open.map(p => p.dataset.panel).join(", ")})`);
     for (const p of open) if (shown(p.querySelector(".lc-scratch__foil"))) out.push(`open panel ${p.dataset.panel} keeps its foil`);
