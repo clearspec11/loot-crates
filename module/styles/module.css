@@ -1540,10 +1540,10 @@
   .loot-crates .lc-scratch__spot { width: 60px; }
 }
 /* On a screen under about 960px tall the ticket prints smaller (480px,
-   the panels capped at 98px) so the whole ticket, Reveal all and the
-   result still fit the window (a buyer must see every panel to scratch
-   it); the panels keep their shape. */
+   the panels capped at 98px), so less of it scrolls; the panels keep
+   their shape. */
 @media (max-height: 960px) and (min-width: 481px) {
+  .loot-crates .lc-scratch { --lc-ticket-w: 480px; }
   .loot-crates .lc-scratch__ticket { max-width: 480px; }
   .loot-crates .lc-scratch__panel { max-width: 98px; }
 }
@@ -1557,6 +1557,24 @@
    overshoot). Reveal all and the one line of help sit under the ticket,
    for the buyer alone, until the card lands. */
 .loot-crates .lc-scratch__stage { display: grid; justify-items: center; gap: 10px; width: 100%; min-width: 0; }
+/* Foundry caps a window at the screen (100vh less one and a half hotbars)
+   and clips what runs past it, and the printed ticket is taller than that
+   on a laptop (about 1,000px of window with Reveal all; 690px is all a
+   1366x768 screen gives). So the reveal's column shrinks to the window and
+   the ticket scrolls in its own box, Reveal all pinned under it: Reveal
+   all, the result line and Close stay in view at any height, and a screen
+   tall enough sees no scroll. */
+.loot-crates .lc-reveal__body:has(> .lc-vault > .lc-scratch) { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+.loot-crates .lc-reveal__body:has(> .lc-vault > .lc-scratch) > * { flex: none; }
+.loot-crates .lc-reveal__body > .lc-vault:has(> .lc-scratch) { display: flex; flex-direction: column; flex: 0 1 auto; min-height: 0; }
+.loot-crates .lc-vault > .lc-scratch { flex: 0 1 auto; min-height: 0; flex-direction: column; }
+.loot-crates .lc-scratch > .lc-scratch__stage { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+/* Reveal all's shelf runs the vault's width, its words lined up with the
+   ticket, and fades in at the top so the ticket reads as going on under it. */
+.loot-crates .lc-scratch__stage > .lc-scratch__tools {
+  position: sticky; bottom: 0; z-index: 4; box-sizing: border-box; max-width: none; padding: 12px max(0px, (100% - var(--lc-ticket-w, 560px)) / 2) 4px;
+  background: linear-gradient(180deg, transparent, var(--lc-vault) 8px);
+}
 /* Once the card is open the vault takes the wash the other games take at
    their landing: the rarity's for an item, the deck's gold for coins. */
 .loot-crates .lc-vault:has(.lc-scratch--landed[data-outcome="item"])::after { opacity: calc(.12 + var(--lc-rank, 0) * .12); }

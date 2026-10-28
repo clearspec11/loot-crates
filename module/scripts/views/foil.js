@@ -453,6 +453,19 @@ export function mountFoil(ticket, { cols = 4, buyer = false, reducedMotion, dura
     focusAt = Math.max(0, Math.min(panels.length - 1, i));
     panels.forEach((p, k) => p.el.setAttribute("tabindex", k === focusAt ? "0" : "-1"));
     panels[focusAt]?.el.focus?.({ preventScroll: true });
+    showPanel(panels[focusAt]?.el);
+  }
+  // On a short screen the ticket scrolls in its stage under Reveal all's
+  // pinned shelf: bring the focused panel into the stage's view, clear of
+  // the shelf. Only the stage moves (never the window or the page, which
+  // focus's own scroll would shift).
+  function showPanel(el) {
+    const box = el?.closest?.(".lc-scratch__stage");
+    if (!box || box.scrollHeight <= box.clientHeight) return;
+    const r = rectOf(el), b = rectOf(box);
+    const shelf = box.querySelector(".lc-scratch__tools")?.offsetHeight ?? 0;
+    if (r.top < b.top) box.scrollTop -= b.top - r.top + 8;
+    else if (r.bottom > b.bottom - shelf) box.scrollTop += r.bottom - (b.bottom - shelf) + 8;
   }
   function onKey(e) {
     if (landed || e.altKey || e.ctrlKey || e.metaKey) return;
