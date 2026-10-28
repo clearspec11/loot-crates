@@ -508,6 +508,9 @@ describe("the words", () => {
     expect(scratchRulesText(GAME, log)).toBe("Lucky numbers 4 × 3, bonus 25 gp, Roll 1: 99 of 100 tickets left");
     expect(scratchRulesText(MATCH3, [])).toBe("Match 3 3 × 2, Roll 1: 50 of 50 tickets left");
     expect(scratchOddsHTML(GAME, log)).toContain(`<span class="lc-odd lc-rarity-coin">100 gp 1/2</span>`);
+    // An item or bonus prize's pill wraps inside itself, so the table never widens past where its rows stack.
+    expect(scratchOddsHTML(GAME, log)).toContain(`<span class="lc-odd lc-odd--wrap lc-rarity-rare">Rare item 1/1</span>`);
+    expect(scratchOddsHTML(GAME, log)).toContain(`<span class="lc-odd lc-odd--wrap lc-rarity-coin">Bonus, 25 gp 3/3</span>`);
     const html = boxesTableHTML({ boxes: [GAME], pools: POOLS, log, esc });
     expect(html).toContain(`data-action="printRoll" data-box="fortune" aria-label="Print a new roll of Fortune Ticket">Print a new roll</button>`);
     expect(html).toContain(`<span class="lc-kind">Scratch</span>`);

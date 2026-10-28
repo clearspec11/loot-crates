@@ -40,7 +40,7 @@ The first time you load the world, a welcome window says where everything is. It
 
 ## Starter crates
 
-In a world with no games yet, the welcome window and the empty Pools and Boxes tabs offer **Add starter crates**. One press fills four pools from the dnd5e system's own compendiums (Potions and scrolls, Wondrous trinkets, Arms and armour, Dragon's hoard) and adds one game of every kind on them: three crates at 50, 250 and 1,000 gp, a Wishing Well, Dragon's Teeth, a Deck of Many Things, a roulette wheel and an auction. Everything arrives **off the shelf**, so players see nothing until you put each game out from its row. They are ordinary games: edit, copy or delete them like any other.
+In a world with no games yet, the welcome window and the empty Pools and Boxes tabs offer **Add starter crates**. One press fills four pools from the dnd5e system's own compendiums (Potions and scrolls, Wondrous trinkets, Arms and armour, Dragon's hoard) and adds one game of every kind on them: three crates at 50, 250 and 1,000 gp, a Wishing Well, Dragon's Teeth, a Deck of Many Things, a roulette wheel, an auction, and two scratch tickets: the Market scratchie (1 gp, match 3, a roll of 50) and the Fortune ticket (10 gp, lucky numbers with a bonus spot, a roll of 100). Everything arrives **off the shelf**, so players see nothing until you put each game out from its row. They are ordinary games: edit, copy or delete them like any other.
 
 ![The welcome window, with Add starter crates, Open the manager and Read the guide](docs/images/welcome.webp)
 

@@ -242,8 +242,10 @@
 
 /* An auction's lot in the Boxes table (auction.js auctionLotHTML) is a name,
    not a chance: a long one ("A sealed Dragon's hoard chest") wraps inside
-   its pill rather than widening the table past where its rows stack. */
-.loot-crates .lc-odd--lot { white-space: normal; line-height: 1.3; padding-block: 1px; text-align: left; }
+   its pill rather than widening the table past where its rows stack. A
+   scratch ticket's item or bonus prize ("Uncommon item 1/1", scratch.js
+   scratchOddsHTML) wraps the same way. */
+.loot-crates .lc-odd--lot, .loot-crates .lc-odd--wrap { white-space: normal; line-height: 1.3; padding-block: 1px; text-align: left; }
 
 /* A table crate's named chances (boxcard.js chanceLinesHTML): one line per
    item, its rarity as the pills' diamond, the chance in tabular figures at

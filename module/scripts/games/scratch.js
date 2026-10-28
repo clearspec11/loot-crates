@@ -814,11 +814,14 @@ export function scratchRulesText(game, log = []) {
   ].filter(Boolean).join(", ");
 }
 
-// The Boxes table's odds cell: each prize left as a pill, "25 gp 3/5".
+// The Boxes table's odds cell: each prize left as a pill, "25 gp 3/5". An
+// item or bonus prize's pill ("Very rare item 1/1", "Bonus, 25 gp 3/3")
+// wraps inside itself, as an auction's lot does, so it never widens the
+// table past where its rows stack.
 export function scratchOddsHTML(game, log = []) {
   const st = rollState(game, log);
   if (!st.prizes.length) return "";
-  return `<div class="lc-box__odds">${st.prizes.map(p => `<span class="lc-odd lc-rarity-${prizeSwatch(p)}">${prizeText(p)} ${p.left}/${p.count}</span>`).join("")}</div>`;
+  return `<div class="lc-box__odds">${st.prizes.map(p => `<span class="lc-odd${p.kind === "gp" ? "" : " lc-odd--wrap"} lc-rarity-${prizeSwatch(p)}">${prizeText(p)} ${p.left}/${p.count}</span>`).join("")}</div>`;
 }
 
 // The roll that Print a new roll starts: the next id, the same prize list.

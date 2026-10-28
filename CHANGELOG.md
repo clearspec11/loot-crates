@@ -7,6 +7,7 @@ The newest numbered entry's version is the one in `module/module.json`, and its 
 ## Unreleased
 
 - New game: scratch tickets. You print a roll of tickets with a fixed prize list (coins, an item at a rarity from the ticket's pools, a bonus spot, and duds), and each ticket bought comes off the roll, so the shop shows the tickets and prizes left and the odds of what is left, and a sold-out roll says so until you press **Print a new roll**. Two layouts, lucky numbers and match 3; the editor reads out the roll's odds as you type. A refund puts the ticket back. The buyer scratches the ticket by hand: the pointer becomes a gold coin over the foil, its edge scrapes a band that widens with speed, foil shavings curl off, a panel gives once it is 60% scratched and the rest crumbles away with a tick, and the scratch rasps louder and higher the faster you rub. Everyone else watches the same coin scratch the card by itself, panel by panel, and **Watch again** on the chat card replays it. Keyboard: the arrow keys move between panels, Space or Enter scratches one, R or **Reveal all** opens the whole card. With reduced motion on, the table's card opens at once and nothing flies off.
+- Add starter crates now adds two scratch tickets as well, off the shelf like the rest: the Market scratchie (1 gp, match 3, a roll of 50, its top prize an uncommon potion or scroll) and the Fortune ticket (10 gp, lucky numbers with a 25 gp bonus spot, a roll of 100, its top prize a rare trinket).
 
 ## 1.2.1
 

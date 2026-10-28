@@ -176,8 +176,8 @@ const STATES = [
   // A new world (starter.js): the empty Pools tab and the empty Boxes tab,
   // each saying what the tab holds and offering "Add starter crates" as
   // the window's one gold button; then the Boxes tab as that button leaves
-  // it: eight games, one of every kind, every one off the shelf (dimmed,
-  // "On the shelf" unpressed, "0 of 8 on the shelf"), the first game's Edit focused,
+  // it: ten games, every kind (three crates, two scratch tickets), every one off the shelf (dimmed,
+  // "On the shelf" unpressed, "0 of 10 on the shelf"), the first game's Edit focused,
   // the status line naming what came in, the button kept on the toolbar.
   // Scratch tickets (scratch.js): the Fortune Ticket leads the shelf, 43
   // of its 100 tickets sold: "57 of 100 tickets left", a row per prize with
@@ -663,22 +663,22 @@ function welcomeProblems({ view, empty }) {
 function starterBoxesProblems() {
   const out = [];
   const rows = [...document.querySelectorAll(".lc-table tbody tr")];
-  if (rows.length !== 8) out.push(`expected 8 starter games, got ${rows.length}`);
+  if (rows.length !== 10) out.push(`expected 10 starter games, got ${rows.length}`);
   const tags = [...document.querySelectorAll(".lc-table .lc-kind:not(.lc-kind--off)")].map(t => t.textContent);
-  if (tags.join("|") !== "Crate|Crate|Crate|Well|Dice|Deck|Wheel|Auction") out.push(`kind tags read ${tags.join(", ")}`);
+  if (tags.join("|") !== "Crate|Crate|Crate|Well|Dice|Deck|Wheel|Auction|Scratch|Scratch") out.push(`kind tags read ${tags.join(", ")}`);
   if (rows.some(r => !r.classList.contains("lc-row--off") || r.querySelector('[data-action="toggleShelf"]')?.getAttribute("aria-pressed") !== "false")) out.push("a starter game is on the shelf");
   const count = document.querySelector(".lc-toolbar--boxes .lc-shelf-count")?.textContent;
-  if (count !== "0 of 8 on the shelf") out.push(`the toolbar count reads "${count}"`);
+  if (count !== "0 of 10 on the shelf") out.push(`the toolbar count reads "${count}"`);
   const starter = document.querySelectorAll('.lc-toolbar--boxes [data-action="starterCrates"]');
   if (starter.length !== 1 || starter[0].textContent.trim() !== "Add starter crates") out.push("the toolbar has no Add starter crates");
   const news = [...document.querySelectorAll('.lc-toolbar--boxes [data-action^="add"]')].map(b => b.textContent.trim());
   if (news.join("|") !== "New box|New well|New dice game|New deck|New wheel|New auction|New scratch ticket") out.push(`the New buttons read ${news.join(", ")}`);
   const status = document.querySelector(".lc-manager__status")?.textContent ?? "";
-  if (status !== "Added 4 starter pools and 8 starter games, all off the shelf. Players can't see them yet: look each one over, then press On the shelf on its row.") out.push(`status line says "${status}"`);
+  if (status !== "Added 4 starter pools and 10 starter games, all off the shelf. Players can't see them yet: look each one over, then press On the shelf on its row.") out.push(`status line says "${status}"`);
   const first = rows[0]?.querySelector('[data-action="editBox"]');
   if (document.activeElement !== first) out.push("focus is not on the first starter game's Edit");
   const pools = rows.map(r => r.querySelector('td[data-label="Pools"]')?.textContent.trim());
-  if (pools.slice(0, 6).some(p => !p || /none|missing/.test(p))) out.push(`a starter game draws from no pool: ${pools.join(" / ")}`);
+  if ([...pools.slice(0, 6), ...pools.slice(8)].some(p => !p || /none|missing/.test(p))) out.push(`a starter game draws from no pool: ${pools.join(" / ")}`);
   if (!/A sealed Dragon's hoard chest/.test(rows[7]?.textContent ?? "")) out.push("the auction's lot isn't the sealed hoard chest");
   if (document.querySelectorAll('[role="status"]').length !== 1) out.push("expected one role=status");
   return out;
