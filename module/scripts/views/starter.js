@@ -10,7 +10,8 @@
   from them (STARTER_GAMES): three crates at rising prices, a Wishing Well,
   Dragon's Teeth, a Deck of Many Things with the five placeholder cards a
   New deck has (nothing of a published deck's text), a roulette wheel on
-  the default pockets and an auction whose lot is the sealed hoard chest.
+  the default pockets, an auction whose lot is the sealed hoard chest, and
+  two scratch tickets, one of each layout.
 
   Every game is added off the shelf (shelf.js), so nothing reaches a
   player until the GM has looked it over and put it out from its row. The
@@ -154,6 +155,15 @@ const weights = (w = {}) => Object.fromEntries(RARITIES.map(r => [r, w[r] ?? 0])
     Tavern roulette      the default twelve pockets, 5 gp to 50 gp a bet
     Hoard chest auction  the sealed hoard chest, bids from 300 gp by 25 gp,
                          one house bidder up to 600 gp
+    Market scratchie     1 gp, match 3 on a 3 x 2 card, a roll of 50: one
+                         uncommon potion or scroll, four 5 gp, ten 1 gp,
+                         35 duds
+    Fortune ticket       10 gp, lucky numbers on a 4 x 3 card with a 25 gp
+                         bonus spot, a roll of 100: one rare trinket, two
+                         100 gp, five 25 gp, twelve 10 gp, twenty 5 gp,
+                         three bonus tickets, 57 duds
+  A scratch ticket's `scratch` is its layout, grid, bonus spot and roll,
+  set over its New's; an item prize names a rarity its one pool holds.
 */
 export const STARTER_GAMES = [
   { key: "cache", kind: "crate", name: "Adventurer's cache", price: 50, pools: [["potions", 2], ["arms", 1]], weights: { common: 55, uncommon: 40, rare: 5 } },
@@ -164,6 +174,14 @@ export const STARTER_GAMES = [
   { key: "deck", kind: "deck", name: "Deck of Many Things", pools: [["trinkets", 1]], weights: { uncommon: 60, rare: 35, veryRare: 5 } },
   { key: "wheel", kind: "roulette", name: "Tavern roulette" },
   { key: "auction", kind: "auction", name: "Hoard chest auction", price: 300, lot: "chest", auction: { increment: 25, reserve: 0, gavelSec: 20, house: { count: 1, budget: 600, chance: 25 } } },
+  {
+    key: "scratchie", kind: "scratch", name: "Market scratchie", price: 1, pools: [["potions", 1]],
+    scratch: { layout: "match3", grid: { cols: 3, rows: 2 }, bonus: { on: false, gp: 25 }, roll: { id: 1, size: 50, prizes: [{ count: 1, item: { rarity: "uncommon" } }, { count: 4, gp: 5 }, { count: 10, gp: 1 }] } },
+  },
+  {
+    key: "fortune", kind: "scratch", name: "Fortune ticket", price: 10, pools: [["trinkets", 1]],
+    scratch: { layout: "lucky", grid: { cols: 4, rows: 3 }, bonus: { on: true, gp: 25 }, roll: { id: 1, size: 100, prizes: [{ count: 1, item: { rarity: "rare" } }, { count: 2, gp: 100 }, { count: 5, gp: 25 }, { count: 12, gp: 10 }, { count: 20, gp: 5 }, { count: 3, bonus: true }] } },
+  },
 ];
 
 export const STARTER_POOL_NAMES = STARTER_POOLS.map(p => p.name);
@@ -221,6 +239,7 @@ export function buildStarter({ entries = {}, reuse = {}, id = () => Math.random(
       weights: g.weights ? weights(g.weights) : draft.weights,
       rules: shelfRules({ ...draft.rules, ...(g.rules ?? {}) }, false),
     };
+    if (g.scratch) Object.assign(game, structuredClone(g.scratch));
     if (g.auction) game.auction = { ...draft.auction, ...structuredClone(g.auction), lot: g.lot && byKey[g.lot] ? lotFromCrate(byKey[g.lot]) : null };
     byKey[g.key] = game;
     games.push(game);
@@ -236,7 +255,7 @@ const count = (n, one, many) => t(n === 1 ? one : many, { count: n });
   players can't see it yet, and how to put a game out; then anything left
   out (a missing pack, a pool the compendiums had nothing for). The games
   are named by the rows right under it, each dimmed and tagged off the
-  shelf, so the line counts them rather than listing eight names.
+  shelf, so the line counts them rather than listing ten names.
 */
 export function starterNotice({ pools = [], games = [], reused = 0, notes = [], empty = [] } = {}) {
   const out = [];

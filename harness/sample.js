@@ -199,6 +199,34 @@ export function auctionBids(now = Date.now(), { tamLast = false, boxId = AUCTION
   })).reverse();
 }
 
+// Scratch tickets (scratch.js): the Fortune Ticket, the approved mockup's,
+// 5 gp, lucky numbers on a 4 x 3 grid with a 25 gp bonus spot, roll 1 of
+// 100 drawing its Rare from the core pool; and the Market Scratchie, 1 gp,
+// match 3 on a 3 x 2 grid, a roll of 20.
+export const SCRATCH = {
+  id: "fortune", kind: "scratch", name: "Fortune Ticket", price: 5, pools: [{ id: "core", share: 1 }], weights: {},
+  layout: "lucky", grid: { cols: 4, rows: 3 }, bonus: { on: true, gp: 25 },
+  roll: { id: 1, size: 100, prizes: [{ count: 1, item: { rarity: "rare" } }, { count: 2, gp: 100 }, { count: 5, gp: 25 }, { count: 12, gp: 10 }, { count: 20, gp: 5 }, { count: 3, bonus: true }] },
+  rules: {},
+};
+export const SCRATCH_MATCH3 = {
+  id: "market", kind: "scratch", name: "Market Scratchie", price: 1, pools: [{ id: "core", share: 1 }], weights: {},
+  layout: "match3", grid: { cols: 3, rows: 2 }, bonus: { on: false, gp: 0 },
+  roll: { id: 2, size: 20, prizes: [{ count: 1, item: { rarity: "uncommon" } }, { count: 4, gp: 5 }, { count: 5, gp: 1 }] },
+  rules: {},
+};
+// The tickets sold from each, newest first: 43 of the Fortune Ticket's
+// (both 100 gp prizes gone), and every one of the Market Scratchie's roll 2.
+const sold = (game, tiers, actors = ["tam", "orla", "bo"]) => tiers.map((tier, i) => ({
+  id: `${game.id}${i}`, kind: "scratch", boxId: game.id, boxName: game.name, actorId: actors[i % actors.length], actorName: actors[i % actors.length],
+  rollId: game.roll.id, tier, at: Date.UTC(2026, 9, 28, 9, 0, i), price: game.price, payoutCp: 0, name: tier,
+}));
+const repeat = (pairs) => pairs.flatMap(([tier, n]) => Array(n).fill(tier));
+export const scratchTickets = () => [
+  ...sold(SCRATCH, repeat([["gp.100", 2], ["gp.25", 1], ["gp.10", 4], ["gp.5", 6], ["bonus", 1], ["dud", 29]])),
+  ...sold(SCRATCH_MATCH3, repeat([["item.uncommon", 1], ["gp.5", 4], ["gp.1", 5], ["dud", 10]])),
+];
+
 // The Pull log's sample (logtable.js), newest first:// The Pull log's sample (logtable.js), newest first: Orla's Royal Vault
 // pull refunded a moment later; Tam's pity pull whose rarity the GM set
 // over the source's; Bo's Pauper's Box sale called off after the charge; a

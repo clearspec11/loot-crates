@@ -14,7 +14,8 @@
                 row and the held shop odds until this client's reveal lands
   The kind supplies what differs, through the contract below. The crate
   (crate.js) is the first kind and the Wishing Well (well.js) the second;
-  the module API's registerKind lets another module add one.
+  scratch tickets (scratch.js) count a printed roll from the log. The
+  module API's registerKind lets another module add one.
 
   Contract (every field but roll is optional; the crate shows each):
     id            the value stored on the record as `kind`
@@ -65,7 +66,10 @@
     reveal        the window: { title, head(reveal, { esc }) -> html (the
                   line over the vault; the crate's "Tam opens Crate 150 gp"
                   when absent), play(host, reveal, { sound, pageHidden,
-                  onLand }) -> { play, skip, skipped, reducedMotion },
+                  replay, buyer, onLand }) -> { play, skip, skipped,
+                  reducedMotion } (`replay`: Watch again in this window;
+                  `buyer`: this client bought it and this is its first
+                  play, for a game played by hand, the scratch ticket),
                   result(reveal, { esc, canSee }) -> html, sting(reveal),
                   notice(reveal) -> a quiet word shown to the buyer alone
                   as the result lands (or null), again(reveal, ctx) -> the
@@ -75,9 +79,12 @@
                   or null for none; ctx: { game (the record as it stands),
                   log, pools, purse, now, open, gmOnline }. The core shows it to the buyer alone, sends
                   the play as a pull at that price and closes the window
-                  once the next one has opened. replayable }. play mounts
-                  the animation and calls onLand once when the result is
-                  under the marker.
+                  once the next one has opened. replayable,
+                  snapshot(reveal) -> what the chat card keeps so Watch
+                  again can play it there (display only; without one, the
+                  crate's strip), fromSnapshot(snapshot) -> the reveal it
+                  replays, or null }. play mounts the animation and calls
+                  onLand once when the result is under the marker.
     chat          { card(reveal, { esc, itemLink }) -> html, or null for no
                   chat card; conditional: true when only some outcomes post
                   one (the dice's win), so the seal (reveal.js) hides the
@@ -210,7 +217,7 @@ export const kindIds = () => [...kinds.keys()];
 
 // A kind's noun (its `noun`: "crate", "wheel") in the module's words, for
 // a sentence about it ("The wheel jammed."); one the module doesn't know is said as is.
-const NOUN_KEYS = { crate: "LOOTCRATES.Kind.NounCrate", well: "LOOTCRATES.Kind.NounWell", dice: "LOOTCRATES.Kind.NounDice", deck: "LOOTCRATES.Kind.NounDeck", wheel: "LOOTCRATES.Kind.NounWheel", auction: "LOOTCRATES.Kind.NounAuction" };
+const NOUN_KEYS = { crate: "LOOTCRATES.Kind.NounCrate", well: "LOOTCRATES.Kind.NounWell", dice: "LOOTCRATES.Kind.NounDice", deck: "LOOTCRATES.Kind.NounDeck", wheel: "LOOTCRATES.Kind.NounWheel", auction: "LOOTCRATES.Kind.NounAuction", scratch: "LOOTCRATES.Kind.NounScratch" };
 export const nounText = noun => (NOUN_KEYS[noun] ? t(NOUN_KEYS[noun]) : String(noun ?? ""));
 
 // The kind of a record, or a PullError naming the game when this client

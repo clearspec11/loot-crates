@@ -38,7 +38,7 @@ import { actorPicker, boxCard, buyReason, changedCharacterLine, crateReason, ref
 import { shopOdds } from "../core/odds.js";
 import { limitState, limitRefusal, withLimit } from "../core/limits.js";
 import { requestPull } from "./socket.js";
-import { heldState, boxHeld, onHold, onRelease } from "./reveal.js";
+import { heldState, heldBefore, boxHeld, onHold, onRelease } from "./reveal.js";
 import { getKind, kindOf } from "../games/kinds.js";
 import { onShelf, shelfFor, offShelfReason } from "../core/shelf.js";
 import { shopControls, shopEmptyHTML } from "../views/route.js";
@@ -49,13 +49,14 @@ const openTableFor = boxId => import("./tablewindow.js").then(m => m.openTableFo
 // A GM's "Manage crates" (route.js): the manager, loaded when pressed, as
 // the manager loads this file for its "View shop".
 const openManagerWindow = () => import("./manager.js").then(m => m.openManager());
-// The crate, the well, the dice, the deck and the wheel register themselves when imported, so every record is found.
+// Every kind registers itself when imported, so every record is found.
 import "../games/crate.js";
 import "../games/well.js";
 import "../games/dicegame.js";
 import "../games/deck.js";
 import "../games/roulette.js";
 import "../games/auction.js";
+import "../games/scratch.js";
 import { t } from "../core/i18n.js";
 
 const { ApplicationV2 } = foundry.applications.api;
@@ -341,6 +342,8 @@ export class CrateShop extends ApplicationV2 {
       // This character's pull still spinning here, or a table game's round
       // still playing here (it has no buyer: the whole table watches it).
       held: boxId => !!(actor && heldState(actor.id, boxId)) || boxHeld(boxId),
+      // Anyone's pull of it still playing here (a scratch roll's counts).
+      heldBefore: boxId => heldBefore(boxId),
       busy: this.busy, busyBox: this.busyBox, waiting: this.waiting, art: `<i class="fas fa-box-open"></i>`, esc,
     };
   }

@@ -176,9 +176,40 @@ const STATES = [
   // A new world (starter.js): the empty Pools tab and the empty Boxes tab,
   // each saying what the tab holds and offering "Add starter crates" as
   // the window's one gold button; then the Boxes tab as that button leaves
-  // it: eight games, one of every kind, every one off the shelf (dimmed,
-  // "On the shelf" unpressed, "0 of 8 on the shelf"), the first game's Edit focused,
+  // it: ten games, every kind (three crates, two scratch tickets), every one off the shelf (dimmed,
+  // "On the shelf" unpressed, "0 of 10 on the shelf"), the first game's Edit focused,
   // the status line naming what came in, the button kept on the toolbar.
+  // Scratch tickets (scratch.js): the Fortune Ticket leads the shelf, 43
+  // of its 100 tickets sold: "57 of 100 tickets left", a row per prize with
+  // what is left of it (both 100 gp struck through), the odds of what is
+  // left and the guarantee, "Buy a ticket for 5 gp" on. Then the Market
+  // Scratchie's roll 2 sold out: "Roll 2 is sold out", Sold out under an
+  // off Buy, no odds. Its editor: the layout and grid, the bonus spot, the
+  // roll with its note (43 sold), the prize rows and the live readout.
+  // The Boxes tab with its row: the prizes left as pills, the roll in the
+  // rules, Print a new roll on a line of its own over the icons.
+  ["shop-scratch", "state=shop&scratch=1"],
+  ["shop-scratch-soldout", "state=shop&scratch=soldout"],
+  ["editor-scratch", "state=editor&scratch=1"],
+  ["manager-boxes-scratch", "state=manager&tab=boxes&scratch=1"],
+  // The scratch itself (scratch.js mountScratch, the foil in foil.js), as
+  // the approved mockup has it, played with motion on: the buyer's card
+  // untouched (foil on every panel and the bonus spot, no win showing
+  // through, each panel "covered" to a screen reader, the coin over the
+  // second panel with the pointer hidden, Reveal all and the help under
+  // it); scratched with real pointer strokes (five panels open, the sixth
+  // part-scraped under 60% and still shut); the card open as a coin win,
+  // a dud, the item and a match 3 win (winners lit, the result, Close
+  // focused, no foil, coin or tools left); and the table's view mid
+  // auto-scratch (the coin scraping by itself, some panels open, no
+  // Reveal all, the pointer its own).
+  ["scratch-unscratched", "state=scratch&buyer=1&phase=covered"],
+  ["scratch-half", "state=scratch&buyer=1&phase=half"],
+  ["scratch-won", "state=scratch&outcome=coins&buyer=1&duration=0"],
+  ["scratch-dud", "state=scratch&outcome=nothing&buyer=1&duration=0"],
+  ["scratch-item", "state=scratch&outcome=item&buyer=1&duration=0"],
+  ["scratch-match3-won", "state=scratch&layout=match3&outcome=coins&buyer=1&duration=0"],
+  ["scratch-spectator", "state=scratch&phase=sweep&duration=8000"],
   ["manager-empty", "state=manager&empty=1"],
   ["manager-boxes-empty", "state=manager&tab=boxes&empty=1"],
   ["manager-boxes-starter", "state=manager&tab=boxes&starter=1"],
@@ -425,7 +456,7 @@ function navProblems() {
 function priceProblems() {
   const out = [];
   const pane = document.querySelector(".lc-tab")?.getBoundingClientRect();
-  const NAME = { Crate: "Price of", Deck: "First draw at", Wheel: "Lowest bet at", Well: "Stake at", Dice: "Stake at", Auction: "Opening bid at" };
+  const NAME = { Crate: "Price of", Deck: "First draw at", Wheel: "Lowest bet at", Well: "Stake at", Dice: "Stake at", Auction: "Opening bid at", Scratch: "Ticket price at" };
   const rows = [...document.querySelectorAll(".lc-table--boxes tbody tr")];
   if (!rows.length) return ["no Boxes rows"];
   for (const r of rows) {
@@ -503,7 +534,7 @@ function boxesProblems(narrow) {
   const toolbar = document.querySelector(".lc-toolbar--boxes");
   if (!toolbar) return [...out, "no Boxes toolbar"];
   const news = [...toolbar.querySelectorAll('[data-action^="add"]')].map(b => b.textContent.trim());
-  if (news.join("|") !== "New box|New well|New dice game|New deck|New wheel|New auction") out.push(`the New buttons read ${news.join(", ")}`);
+  if (news.join("|") !== "New box|New well|New dice game|New deck|New wheel|New auction|New scratch ticket") out.push(`the New buttons read ${news.join(", ")}`);
   if (toolbar.scrollWidth > toolbar.clientWidth + 1 || toolbar.getBoundingClientRect().right > app.right + 1) out.push("the Boxes toolbar overflows the window");
   if (document.querySelectorAll('[role="status"]').length !== 1) out.push("expected one role=status");
   const status = document.querySelector(".lc-manager__status");
@@ -632,22 +663,22 @@ function welcomeProblems({ view, empty }) {
 function starterBoxesProblems() {
   const out = [];
   const rows = [...document.querySelectorAll(".lc-table tbody tr")];
-  if (rows.length !== 8) out.push(`expected 8 starter games, got ${rows.length}`);
+  if (rows.length !== 10) out.push(`expected 10 starter games, got ${rows.length}`);
   const tags = [...document.querySelectorAll(".lc-table .lc-kind:not(.lc-kind--off)")].map(t => t.textContent);
-  if (tags.join("|") !== "Crate|Crate|Crate|Well|Dice|Deck|Wheel|Auction") out.push(`kind tags read ${tags.join(", ")}`);
+  if (tags.join("|") !== "Crate|Crate|Crate|Well|Dice|Deck|Wheel|Auction|Scratch|Scratch") out.push(`kind tags read ${tags.join(", ")}`);
   if (rows.some(r => !r.classList.contains("lc-row--off") || r.querySelector('[data-action="toggleShelf"]')?.getAttribute("aria-pressed") !== "false")) out.push("a starter game is on the shelf");
   const count = document.querySelector(".lc-toolbar--boxes .lc-shelf-count")?.textContent;
-  if (count !== "0 of 8 on the shelf") out.push(`the toolbar count reads "${count}"`);
+  if (count !== "0 of 10 on the shelf") out.push(`the toolbar count reads "${count}"`);
   const starter = document.querySelectorAll('.lc-toolbar--boxes [data-action="starterCrates"]');
   if (starter.length !== 1 || starter[0].textContent.trim() !== "Add starter crates") out.push("the toolbar has no Add starter crates");
   const news = [...document.querySelectorAll('.lc-toolbar--boxes [data-action^="add"]')].map(b => b.textContent.trim());
-  if (news.join("|") !== "New box|New well|New dice game|New deck|New wheel|New auction") out.push(`the New buttons read ${news.join(", ")}`);
+  if (news.join("|") !== "New box|New well|New dice game|New deck|New wheel|New auction|New scratch ticket") out.push(`the New buttons read ${news.join(", ")}`);
   const status = document.querySelector(".lc-manager__status")?.textContent ?? "";
-  if (status !== "Added 4 starter pools and 8 starter games, all off the shelf. Players can't see them yet: look each one over, then press On the shelf on its row.") out.push(`status line says "${status}"`);
+  if (status !== "Added 4 starter pools and 10 starter games, all off the shelf. Players can't see them yet: look each one over, then press On the shelf on its row.") out.push(`status line says "${status}"`);
   const first = rows[0]?.querySelector('[data-action="editBox"]');
   if (document.activeElement !== first) out.push("focus is not on the first starter game's Edit");
   const pools = rows.map(r => r.querySelector('td[data-label="Pools"]')?.textContent.trim());
-  if (pools.slice(0, 6).some(p => !p || /none|missing/.test(p))) out.push(`a starter game draws from no pool: ${pools.join(" / ")}`);
+  if ([...pools.slice(0, 6), ...pools.slice(8)].some(p => !p || /none|missing/.test(p))) out.push(`a starter game draws from no pool: ${pools.join(" / ")}`);
   if (!/A sealed Dragon's hoard chest/.test(rows[7]?.textContent ?? "")) out.push("the auction's lot isn't the sealed hoard chest");
   if (document.querySelectorAll('[role="status"]').length !== 1) out.push("expected one role=status");
   return out;
@@ -1445,6 +1476,100 @@ function auctionCardProblems(on) {
 // The stock and the limit per character on the shop's cards (limits.js):
 // the Royal Vault reads "3 of 10 left"; the Pauper's Box says Tam can buy
 // one more, or once reached, says so as its reason with the Buy off.
+// The scratch ticket's card in the shop (scratch.js): the tickets left,
+// a row per prize with what is left (a prize gone struck through), the
+// odds of what is left with the guarantee and an on Buy; sold out, the
+// roll said sold out, Sold out under an off Buy and no odds. Nothing in
+// the card under the 11px floor, nothing past its edge.
+function scratchCardProblems(mode) {
+  const out = [];
+  const card = document.querySelector('.lc-box[data-box="fortune"], .lc-box[data-box="market"]');
+  if (!mode) return card ? ["a scratch card in a shop without one"] : [];
+  if (!card) return ["no scratch card in the shop"];
+  const text = card.innerText.replace(/\s+/g, " ");
+  const buy = card.querySelector(".lc-box__buy");
+  const rows = [...card.querySelectorAll(".lc-scratch__tier")];
+  if (mode === "left") {
+    for (const bit of ["57 of 100 tickets left", "Rare item", "1 of 1", "0 of 2", "14 of 20", "1 in 2 tickets wins, the top prize (Rare item) 1 in 57, all prizes 5 gp or more"]) if (!text.includes(bit)) out.push(`the scratch card doesn't say "${bit}"`);
+    if (rows.length !== 6) out.push(`expected 6 prize rows, got ${rows.length}`);
+    const gone = card.querySelectorAll(".lc-scratch__tier--gone s");
+    if (gone.length !== 1 || gone[0].textContent !== "100 gp") out.push("the 100 gp prize isn't struck through");
+    if (buy?.getAttribute("aria-disabled") === "true" || !/Buy a ticket for 5 gp$/.test(buy?.textContent.trim() ?? "")) out.push(`the scratch Buy reads "${buy?.textContent.trim()}"`);
+    const bar = card.querySelector(".lc-scratch__tier:not(.lc-scratch__tier--gone) .lc-scratch__bar");
+    if (!bar || bar.getBoundingClientRect().width < 16) out.push("a prize's bar is too narrow to read");
+  } else {
+    if (!text.includes("Roll 2 is sold out")) out.push("the sold-out card doesn't say its roll is sold out");
+    if (buy?.getAttribute("aria-disabled") !== "true") out.push("the sold-out Buy is on");
+    const why = card.querySelector(".lc-box__why");
+    if (why?.textContent !== "Sold out") out.push(`the sold-out reason reads "${why?.textContent}"`);
+    if (/tickets wins/.test(text)) out.push("a sold-out card still gives odds");
+    if (card.querySelectorAll(".lc-scratch__tier--gone").length !== rows.length) out.push("a sold-out roll's prize isn't struck through");
+  }
+  const cr = card.getBoundingClientRect();
+  for (const el of card.querySelectorAll(".lc-scratch__prizes *")) {
+    const r = el.getBoundingClientRect();
+    if (r.width && (r.right > cr.right + 1 || r.left < cr.left - 1)) { out.push(`the prize list overflows the card: ${el.className}`); break; }
+  }
+  const small = [...card.querySelectorAll("*")].filter(el => [...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim()) && parseFloat(getComputedStyle(el).fontSize) < 11);
+  if (small.length) out.push(`${small.length} texts under 11px in the scratch card, e.g. "${small[0].textContent.trim().slice(0, 30)}"`);
+  return out;
+}
+
+// The scratch ticket's editor (scratch.js scratchFieldsHTML): the two
+// layouts as radios with a sentence each, the grid, the bonus spot, the
+// roll's size and its live-roll note, six prize rows each naming its
+// fields by number, the readout. Add prize adds a seventh with its count
+// focused and the readout follows; its remove takes it again.
+async function scratchEditorProblems() {
+  const out = [];
+  const form = document.querySelector(".lc-form");
+  const radios = [...form.querySelectorAll('input[name="layout"]')];
+  if (radios.map(r => r.value).join("|") !== "lucky|match3" || !radios[0].checked) out.push("the layout radios are wrong");
+  for (const r of radios) if (!document.getElementById(r.getAttribute("aria-describedby"))?.textContent.trim()) out.push(`the ${r.value} layout has no sentence`);
+  if (form.querySelector('input[name="cols"]')?.value !== "4" || form.querySelector('input[name="rows"]')?.value !== "3") out.push("the grid isn't 4 x 3");
+  if (form.querySelector(".lc-scratch-form__bonus")?.hidden) out.push("the bonus spot is hidden for lucky numbers");
+  if (!/Roll 1 has sold 43 so far/.test(form.textContent)) out.push("the live roll's note is missing");
+  const rows = () => [...form.querySelectorAll(".lc-prize-row")];
+  if (rows().length !== 6) out.push(`expected 6 prize rows, got ${rows().length}`);
+  const labels = rows().map(r => r.querySelector(".lc-prize-row__count").getAttribute("aria-label"));
+  if (labels.join("|") !== [1, 2, 3, 4, 5, 6].map(n => `Tickets that win prize ${n}`).join("|")) out.push(`the counts are named ${labels.join(", ")}`);
+  if (rows().filter(r => getComputedStyle(r.querySelector(".lc-prize-row__gp")).visibility === "visible").length !== 4) out.push("the gold field shows on a row that isn't coins");
+  const readout = () => form.querySelector(".lc-scratch-form__readout")?.textContent;
+  if (readout() !== "1 in 2.3 tickets wins, the top prize (Rare item) 1 in 100, all prizes 5 gp or more") out.push(`the readout reads "${readout()}"`);
+  form.querySelector(".lc-prizes__add").click();
+  const added = rows()[6];
+  if (!added || document.activeElement !== added.querySelector(".lc-prize-row__count")) out.push("Add prize didn't add a row with its count focused");
+  else {
+    added.querySelector(".lc-prize-row__gp").value = "1";
+    added.querySelector(".lc-prize-row__count").value = "10";
+    added.querySelector(".lc-prize-row__count").dispatchEvent(new Event("input", { bubbles: true }));
+    if (readout() !== "1 in 1.9 tickets wins, the top prize (Rare item) 1 in 100") out.push(`after Add prize the readout reads "${readout()}"`);
+    added.querySelector(".lc-prize-row__remove").click();
+    if (rows().length !== 6 || readout() !== "1 in 2.3 tickets wins, the top prize (Rare item) 1 in 100, all prizes 5 gp or more") out.push("removing the added row didn't put the readout back");
+  }
+  const small = [...form.querySelectorAll("*")].filter(el => [...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim()) && parseFloat(getComputedStyle(el).fontSize) < 11);
+  if (small.length) out.push(`${small.length} texts under 11px, e.g. "${small[0].textContent.trim().slice(0, 30)}"`);
+  const fr = form.getBoundingClientRect();
+  const over = [...form.querySelectorAll("input, select, button")].filter(el => { const r = el.getBoundingClientRect(); return r.width && (r.right > fr.right + 1 || r.left < fr.left - 1); });
+  if (over.length) out.push(`${over.length} controls past the form's edge, e.g. ${over[0].name || over[0].className}`);
+  return out;
+}
+
+// The Boxes tab with the Fortune Ticket's row: tagged Scratch, its prizes
+// left as pills, its roll in the rules, Print a new roll named for it.
+function scratchBoxesProblems() {
+  const out = [];
+  const row = [...document.querySelectorAll(".lc-table--boxes tbody tr")].find(r => /Fortune Ticket/.test(r.querySelector(".lc-table__name")?.textContent ?? ""));
+  if (!row) return ["no Fortune Ticket row"];
+  if (row.querySelector(".lc-kind")?.textContent !== "Scratch") out.push("the scratch row isn't tagged Scratch");
+  const pills = [...row.querySelectorAll(".lc-odd")].map(p => p.textContent.trim());
+  if (pills.join("|") !== "Rare item 1/1|100 gp 0/2|25 gp 4/5|10 gp 8/12|5 gp 14/20|Bonus, 25 gp 2/3") out.push(`the scratch row's pills read ${pills.join(", ")}`);
+  if (!/Lucky numbers 4 × 3, bonus 25 gp, Roll 1: 57 of 100 tickets left/.test(row.querySelector('td[data-label="Rules"]')?.textContent ?? "")) out.push(`the scratch row's rules read "${row.querySelector('td[data-label="Rules"]')?.textContent}"`);
+  const print = row.querySelector('[data-action="printRoll"]');
+  if (print?.textContent.trim() !== "Print a new roll" || print.getAttribute("aria-label") !== "Print a new roll of Fortune Ticket") out.push("the scratch row has no Print a new roll");
+  return out;
+}
+
 async function limitCardProblems({ reached, off, shelved = false }) {
   const out = [];
   const card = id => document.querySelector(`.lc-box[data-box="${id}"]`);
@@ -1605,6 +1730,89 @@ function dropPreviewProblems() {
     const next = rows[i + 1]?.getBoundingClientRect();
     if (next && next.top < r.bottom - 0.5) { out.push("preview rows overlap"); break; }
   }
+  return out;
+}
+
+// A scratch ticket's reveal (scratch.js, foil.js). `mode`: covered | half
+// (the buyer's, scratching) | won | dud | item | match3 (landed) |
+// spectator (mid auto-scratch). The foil's pixels are read back, so a
+// panel counts as scraped only where the coin really took the foil off.
+function scratchRevealProblems(mode) {
+  const out = [];
+  const shown = el => !!el && !el.hidden && el.getBoundingClientRect().height > 0;
+  const ticket = document.querySelector(".lc-scratch__ticket");
+  if (!ticket) return ["no scratch ticket"];
+  const panels = [...ticket.querySelectorAll("[data-panel]")];
+  const open = panels.filter(p => p.classList.contains("lc-scratch__panel--open"));
+  const coin = ticket.querySelector(".lc-scratch__coin");
+  const coinOn = !!coin && coin.classList.contains("lc-scratch__coin--on") && getComputedStyle(coin).opacity !== "0";
+  const tools = document.querySelector(".lc-scratch__tools");
+  // The share of a panel's foil scraped off, from its canvas's alpha on a coarse grid.
+  const scraped = p => {
+    const c = p.querySelector(".lc-scratch__foil");
+    if (!c?.width) return null;
+    const d = c.getContext("2d").getImageData(0, 0, c.width, c.height).data;
+    let clear = 0, n = 0;
+    for (let y = 2; y < c.height; y += 6) for (let x = 2; x < c.width; x += 6) { n++; if (d[(y * c.width + x) * 4 + 3] < 40) clear++; }
+    return clear / n;
+  };
+  if (mode === "covered" || mode === "half" || mode === "spectator") {
+    if (!ticket.classList.contains("lc-scratch__ticket--covered")) out.push("the ticket isn't covered while it is being scratched");
+    if (document.body.dataset.landed) out.push("the card landed before every panel was open");
+    for (const p of panels) {
+      const isOpen = p.classList.contains("lc-scratch__panel--open");
+      const foil = p.querySelector(".lc-scratch__foil");
+      if (!isOpen && !(foil?.classList.contains("lc-scratch__foil--painted") && foil.getBoundingClientRect().width > 0)) out.push(`panel ${p.dataset.panel} has no painted foil`);
+      if (!isOpen && (p.classList.contains("lc-scratch__panel--win") || [...p.classList].some(c => c.startsWith("lc-rarity-")))) out.push(`panel ${p.dataset.panel} shows its win through the foil`);
+      if (!isOpen && !/covered/.test(p.getAttribute("aria-label") ?? "")) out.push(`covered panel ${p.dataset.panel} reads "${p.getAttribute("aria-label")}"`);
+      if (isOpen && /covered/.test(p.getAttribute("aria-label") ?? "")) out.push(`open panel ${p.dataset.panel} still reads covered`);
+    }
+    if (!coinOn) out.push("no coin on the foil");
+  }
+  if (mode === "covered") {
+    if (open.length) out.push(`${open.length} panels open on an untouched card`);
+    const foil = panels[1]?.querySelector(".lc-scratch__foil");
+    if (foil && getComputedStyle(foil).cursor !== "none") out.push("the pointer isn't hidden over the buyer's foil");
+    if (foil && getComputedStyle(foil).touchAction !== "none") out.push("the buyer's foil takes scroll gestures");
+    if (scraped(panels[0]) !== 0) out.push("the untouched foil isn't whole");
+    const r = panels[1].getBoundingClientRect(), c = coin.getBoundingClientRect();
+    if (Math.abs(c.left + c.width / 2 - (r.left + r.width * 0.55)) > 3 || Math.abs(c.top + c.height / 2 - (r.top + r.height * 0.4)) > 3) out.push("the coin isn't where the pointer is");
+    if (!document.querySelector(".lc-scratch__ticket[data-buyer]") || !panels.some(p => p.getAttribute("tabindex") === "0")) out.push("the buyer's panels aren't a keyboard group");
+  }
+  if (mode === "covered" || mode === "half") {
+    const all = tools?.querySelector(".lc-scratch__all");
+    if (!shown(all) || all.textContent.trim() !== "Reveal all") out.push("no Reveal all under the buyer's card");
+    if (!/R reveals the whole card/.test(tools?.querySelector(".lc-scratch__help")?.textContent ?? "")) out.push("no keyboard help under the buyer's card");
+  }
+  if (mode === "half") {
+    if (open.length !== 5 || open.some(p => Number(p.dataset.panel) > 4)) out.push(`${open.length} panels open after five scratched (${open.map(p => p.dataset.panel).join(", ")})`);
+    for (const p of open) if (shown(p.querySelector(".lc-scratch__foil"))) out.push(`open panel ${p.dataset.panel} keeps its foil`);
+    const part = scraped(panels[5]);
+    if (part == null || part < 0.08 || part >= 0.6) out.push(`the part-scraped panel is ${part == null ? "unpainted" : `${Math.round(part * 100)}% scraped`}`);
+    if (panels[5].classList.contains("lc-scratch__panel--open")) out.push("a panel under 60% opened");
+  }
+  if (mode === "spectator") {
+    if (open.length < 2 || open.length >= panels.length) out.push(`${open.length} of ${panels.length} panels open mid auto-scratch`);
+    if (tools) out.push("the table's view has the buyer's tools");
+    if (ticket.dataset.buyer) out.push("the table's card takes the pointer");
+  }
+  if (["won", "dud", "item", "match3"].includes(mode)) {
+    if (!document.body.dataset.landed) out.push("the card never landed");
+    if (open.length !== panels.length) out.push(`${open.length} of ${panels.length} panels open once landed`);
+    if (ticket.classList.contains("lc-scratch__ticket--covered") || !ticket.classList.contains("lc-scratch__ticket--open")) out.push("the landed ticket is still covered");
+    if (panels.some(p => shown(p.querySelector(".lc-scratch__foil")))) out.push("foil left on a landed card");
+    if (coinOn) out.push("the coin is still up once landed");
+    if (tools) out.push("Reveal all is still there once landed");
+    if (document.activeElement !== document.querySelector(".lc-reveal__close")) out.push("focus didn't move to Close on landing");
+    const lit = panels.filter(p => p.classList.contains("lc-scratch__panel--win"));
+    const text = document.querySelector(".lc-reveal__result")?.innerText.trim() ?? "";
+    if (mode === "won" && (!lit.length || !/^Won 25 gp/.test(text))) out.push(`a coin win lit ${lit.length} panels and reads "${text}"`);
+    if (mode === "dud" && (lit.length || !/^A dud/.test(text))) out.push(`a dud lit ${lit.length} panels and reads "${text}"`);
+    if (mode === "item" && (lit.length !== 1 || ![...lit[0].classList].some(c => c.startsWith("lc-rarity-")) || !shown(document.querySelector(".lc-reveal__open")))) out.push("the item's panel isn't lit with its rarity, or no Open item");
+    if (mode === "match3" && (lit.length !== 3 || new Set(lit.map(p => p.querySelector("[data-symbol]")?.dataset.symbol)).size !== 1)) out.push(`a match 3 win lit ${lit.length} panels`);
+  }
+  const small = [...document.querySelectorAll(".lc-scratch *, .lc-reveal__result *")].filter(el => el.childElementCount === 0 && el.textContent.trim() && parseFloat(getComputedStyle(el).fontSize) < 11);
+  if (small.length) out.push(`${small.length} texts under 11px in the scratch, e.g. "${small[0].textContent.trim().slice(0, 30)}"`);
   return out;
 }
 
@@ -1832,7 +2040,10 @@ try {
       // state); two frames in, they have faces to show.
       if (name === "dice-rolling") await page.waitForFunction(() => [...document.querySelectorAll(".lc-dice__tray .lc-dice__face")].every(f => f.textContent.trim()), null, { timeout: 10000 });
       if (name.startsWith("welcome")) await page.waitForSelector("body[data-ready]", { timeout: 10000 });
-      if (name.startsWith("manager") || name === "box-limits" || name === "editor-deck" || name === "box-odds" || name === "drop-preview") await page.waitForSelector("body[data-ready]", { timeout: 10000 });
+      if (name.startsWith("scratch")) await page.waitForSelector(name === "scratch-unscratched" || name === "scratch-half" || name === "scratch-spectator" ? "body[data-ready]" : "body[data-landed]", { timeout: 10000 });
+      // Mid auto-scratch: the coin has opened a few panels by itself.
+      if (name === "scratch-spectator") await page.waitForFunction(() => document.querySelectorAll(".lc-scratch__panel--open").length >= 3, null, { timeout: 10000 });
+      if (name.startsWith("manager") || name === "box-limits" || name === "editor-deck" || name === "editor-scratch" || name === "box-odds" || name === "drop-preview") await page.waitForSelector("body[data-ready]", { timeout: 10000 });
       await page.waitForTimeout(500);
       const wide = await page.evaluate(() => document.scrollingElement.scrollWidth > document.scrollingElement.clientWidth + 1);
       if (name.startsWith("shop")) problems0.push(...await page.evaluate(shopControlProblems, name.endsWith("-gm")));
@@ -1847,6 +2058,7 @@ try {
         problems0.push(...await page.evaluate(shelfShopProblems, name === "shop-shelf"));
         problems0.push(...await page.evaluate(tableCardProblems, name === "shop-table"));
         problems0.push(...await page.evaluate(auctionCardProblems, name === "shop-auction"));
+        problems0.push(...await page.evaluate(scratchCardProblems, { "shop-scratch": "left", "shop-scratch-soldout": "soldout" }[name] ?? null));
       }
       else if (name.startsWith("welcome")) problems0.push(...await page.evaluate(welcomeProblems, { view: name === "welcome-news" ? "news" : "welcome", empty: name === "welcome-empty" }));
       else if (name === "box-limits") {
@@ -1858,9 +2070,11 @@ try {
         if (said.join(" | ") !== "12 of 12 left once you save | Unlimited once you save | 10 of 10 left once you save") problems0.push(`the Restock line reads ${said.join(" | ")}`);
       }
       else if (name === "editor-deck") problems0.push(...await page.evaluate(deckEditorProblems), ...await page.evaluate(shelfEditorProblems));
+      else if (name === "editor-scratch") problems0.push(...await page.evaluate(scratchEditorProblems), ...await page.evaluate(shelfEditorProblems));
       else if (name === "box-odds") problems0.push(...await page.evaluate(oddsEditorProblems));
       else if (name === "drop-preview") problems0.push(...await page.evaluate(dropPreviewProblems));
       else if (name === "landed-nothing") problems0.push(...await page.evaluate(nothingRevealProblems));
+      else if (name.startsWith("scratch")) problems0.push(...await page.evaluate(scratchRevealProblems, { "scratch-unscratched": "covered", "scratch-half": "half", "scratch-won": "won", "scratch-dud": "dud", "scratch-item": "item", "scratch-match3-won": "match3", "scratch-spectator": "spectator" }[name]));
       else if (name.startsWith("linger")) {
         problems0.push(...await page.evaluate(lingerProblems, { off: name === "linger-off", paused: name === "linger-paused" }));
         if (name === "linger-dice") problems0.push(...await page.evaluate(diceProblems, "win"));
@@ -1876,6 +2090,7 @@ try {
       else if (name === "manager-boxes-empty") problems0.push(...await page.evaluate(starterEmptyProblems, "boxes"));
       else if (name === "manager-boxes-starter") problems0.push(...await page.evaluate(starterBoxesProblems), ...await page.evaluate(panelProblems));
       else if (name === "manager-boxes-shelf") problems0.push(...await page.evaluate(shelfBoxesProblems), ...await page.evaluate(panelProblems));
+      else if (name === "manager-boxes-scratch") problems0.push(...await page.evaluate(scratchBoxesProblems), ...await page.evaluate(panelProblems));
       else if (name.startsWith("manager-boxes")) problems0.push(...await page.evaluate(boxesProblems, name.endsWith("narrow")), ...await page.evaluate(panelProblems));
       else if (name.startsWith("manager-log")) problems0.push(...await page.evaluate(logProblems, name.endsWith("narrow")), ...await page.evaluate(panelProblems));
       else if (name.startsWith("manager")) problems0.push(...await page.evaluate(managerProblems, name === "manager-narrow"));

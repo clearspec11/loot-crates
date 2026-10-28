@@ -90,6 +90,8 @@ class Element extends Node {
   get childElementCount() { return this.children.length; }
   get lastElementChild() { return this.children.at(-1) ?? null; }
   get firstElementChild() { return this.children[0] ?? null; }
+  get nextElementSibling() { const sibs = this.parentNode?.children ?? []; return sibs[sibs.indexOf(this) + 1] ?? null; }
+  get previousElementSibling() { const sibs = this.parentNode?.children ?? []; const i = sibs.indexOf(this); return i > 0 ? sibs[i - 1] : null; }
   // A <template>'s content is its own children here (manager.js htmlNode).
   get content() { return this.nodeName === "TEMPLATE" ? this : undefined; }
   // "beforeend" only: what the manager's Show more uses.

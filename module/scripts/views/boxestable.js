@@ -11,7 +11,8 @@
   its three outcomes, its cap and pity in throws. A dice game's: win and
   lose, the dragon's number, the payout and the prize. A deck's: the kinds
   of card still in it, its cards and how many are drawn, and Reshuffle
-  beside Edit. A wheel's: its odds per bet type and "Open a round" or "Go
+  beside Edit. A scratch ticket's: each prize left of its count, its
+  layout and roll ("roll 2: 43 of 100 tickets left"), and Print a new roll. A wheel's: its odds per bet type and "Open a round" or "Go
   to the table" from the live rounds. Every pulled game's row shows its
   stock and limit per character ("3 of 10 left, 1 per character",
   limits.js). Every row's price is a field the GM types into (priceInputHTML
@@ -47,6 +48,7 @@ import { diceOdds, diceOddsHTML, diceRulesText } from "../games/dicegame.js";
 import { deckOdds, deckOddsHTML, deckRulesText } from "../games/deck.js";
 import { betOdds, rouletteOddsHTML, rouletteRulesText } from "../games/roulette.js";
 import { auctionLotHTML, auctionRulesText } from "../games/auction.js";
+import { scratchOddsHTML, scratchRulesText } from "../games/scratch.js";
 import { liveRoundOf } from "../core/round.js";
 import { shopOdds, oddsModeOf } from "../core/odds.js";
 import { formatPrice } from "../core/currency.js";
@@ -57,7 +59,7 @@ import { t, words, onStrings } from "../core/i18n.js";
 
 // The New buttons, in the order the kinds arrived; their action names are
 // the manager's (test/actions.test.js keeps them off ApplicationV2's own).
-const NEW_KEYS = [["addBox", "LOOTCRATES.Boxes.NewBox"], ["addWell", "LOOTCRATES.Boxes.NewWell"], ["addDice", "LOOTCRATES.Boxes.NewDice"], ["addDeck", "LOOTCRATES.Boxes.NewDeck"], ["addWheel", "LOOTCRATES.Boxes.NewWheel"], ["addAuction", "LOOTCRATES.Boxes.NewAuction"]];
+const NEW_KEYS = [["addBox", "LOOTCRATES.Boxes.NewBox"], ["addWell", "LOOTCRATES.Boxes.NewWell"], ["addDice", "LOOTCRATES.Boxes.NewDice"], ["addDeck", "LOOTCRATES.Boxes.NewDeck"], ["addWheel", "LOOTCRATES.Boxes.NewWheel"], ["addAuction", "LOOTCRATES.Boxes.NewAuction"], ["addScratch", "LOOTCRATES.Boxes.NewScratch"]];
 export const NEW_BUTTONS = NEW_KEYS.map(([action, key]) => Object.defineProperty([action], 1, { enumerable: true, get: () => t(key) }));
 
 // The table's columns, as its header reads them and as a stacked row
@@ -72,7 +74,7 @@ const TABLE_WORDS = { roulette: words(["LOOTCRATES.Boxes.OpenRound", "LOOTCRATES
 export const tableLabel = (b, rounds = {}) => (TABLE_WORDS[kindOf(b)] ?? TABLE_WORDS.roulette)[liveRoundOf(rounds, b.id) ? 1 : 0];
 
 // Each kind's tag in the Box column, the crate's included.
-const KIND_TAG = words({ crate: "LOOTCRATES.Kind.Crate", well: "LOOTCRATES.Kind.Well", dice: "LOOTCRATES.Kind.Dice", deck: "LOOTCRATES.Kind.Deck", roulette: "LOOTCRATES.Kind.Wheel", auction: "LOOTCRATES.Kind.Auction" });
+const KIND_TAG = words({ crate: "LOOTCRATES.Kind.Crate", well: "LOOTCRATES.Kind.Well", dice: "LOOTCRATES.Kind.Dice", deck: "LOOTCRATES.Kind.Deck", roulette: "LOOTCRATES.Kind.Wheel", auction: "LOOTCRATES.Kind.Auction", scratch: "LOOTCRATES.Kind.Scratch" });
 export const kindTag = record => KIND_TAG[kindOf(record)] ?? kindOf(record);
 
 // A box's odds in the Boxes table: its ribbon over its named pills.
@@ -112,6 +114,7 @@ export function boxesTableHTML({ boxes, pools, log = [], rounds = {}, recent = n
     deck: () => deckOddsHTML(deckOdds(b, pools, log)) || `<em>${t("LOOTCRATES.Boxes.Empty")}</em>`,
     roulette: () => rouletteOddsHTML(betOdds(b), esc) || `<em>${t("LOOTCRATES.Boxes.NoPockets")}</em>`,
     auction: () => auctionLotHTML(b, esc),
+    scratch: () => scratchOddsHTML(b, log) || `<em>${t("LOOTCRATES.Boxes.Empty")}</em>`,
   }[kind(b)] ?? (() => oddsCell(oddsRows(shopOdds(b, pools)))))();
   const own = b => ({
     well: () => wellRulesText(b),
@@ -119,14 +122,16 @@ export function boxesTableHTML({ boxes, pools, log = [], rounds = {}, recent = n
     deck: () => deckRulesText(b, log),
     roulette: () => rouletteRulesText(b),
     auction: () => auctionRulesText(b),
+    scratch: () => scratchRulesText(b, log),
   }[kind(b)] ?? (() => [oddsModeOf(b) === "weight" ? (b.fromTable ? t("LOOTCRATES.Boxes.RuleTableOdds") : t("LOOTCRATES.Boxes.RuleByWeight")) : "", b.rules?.pity ? t("LOOTCRATES.Boxes.RulePityPulls", { rarity: RARITY_LABEL[b.rules.pity.minRarity] ?? b.rules.pity.minRarity, after: b.rules.pity.after }) : "", b.rules?.noDuplicates ? t("LOOTCRATES.Boxes.RuleNoDupes") : ""].filter(Boolean).join(", ")))();
   const rules = b => esc([own(b), TABLE_KINDS.includes(kind(b)) ? "" : limitsText(b)].filter(Boolean).join(", "));
-  // A deck's row reshuffles; a wheel's opens its round (or brings the open one
+  // A deck's row reshuffles; a scratch ticket's prints a new roll; a wheel's opens its round (or brings the open one
   // forward). The text button sits on a line of its own over the icons
   // (module.css lc-table__extra), so the buttons' cell, the one that never
   // wraps, is never wider than the three icons and the table fits every
   // pane down to where its rows stack.
   const extra = b => (kind(b) === "deck" ? `<button type="button" class="lc-table__extra" data-action="reshuffle" data-box="${esc(b.id)}" aria-label="${t("LOOTCRATES.Boxes.ReshuffleLabel", { name: esc(b.name) })}">${t("LOOTCRATES.Boxes.Reshuffle")}</button> `
+    : kind(b) === "scratch" ? `<button type="button" class="lc-table__extra" data-action="printRoll" data-box="${esc(b.id)}" aria-label="${t("LOOTCRATES.Boxes.PrintRollLabel", { name: esc(b.name) })}">${t("LOOTCRATES.Boxes.PrintRoll")}</button> `
     : TABLE_KINDS.includes(kind(b)) && (onShelf(b) || liveRoundOf(rounds, b.id)) ? `<button type="button" class="lc-table__extra" data-action="openTable" data-box="${esc(b.id)}" aria-label="${t("LOOTCRATES.Boxes.TableAt", { label: tableLabel(b, rounds), name: esc(b.name) })}">${tableLabel(b, rounds)}</button> ` : "");
   const [BOX, PRICE, POOLS, ODDS, RULES, ACT] = BOXES_COLUMNS;
   const rowClass = b => [b.id === recent ? "lc-row--new" : "", onShelf(b) ? "" : "lc-row--off"].filter(Boolean).join(" ");
@@ -147,7 +152,7 @@ export function boxesTableHTML({ boxes, pools, log = [], rounds = {}, recent = n
   says what the price is for the game's kind: a crate's price, a deck's
   first draw, a wheel's lowest bet, a well's or dice game's stake.
 */
-const PRICE_NAME = { deck: "LOOTCRATES.Boxes.PriceDeck", roulette: "LOOTCRATES.Boxes.PriceWheel", well: "LOOTCRATES.Boxes.PriceStake", dice: "LOOTCRATES.Boxes.PriceStake", auction: "LOOTCRATES.Boxes.PriceAuction" };
+const PRICE_NAME = { scratch: "LOOTCRATES.Boxes.PriceScratch", deck: "LOOTCRATES.Boxes.PriceDeck", roulette: "LOOTCRATES.Boxes.PriceWheel", well: "LOOTCRATES.Boxes.PriceStake", dice: "LOOTCRATES.Boxes.PriceStake", auction: "LOOTCRATES.Boxes.PriceAuction" };
 export const priceLabel = b => t(PRICE_NAME[kindOf(b)] ?? "LOOTCRATES.Boxes.PriceCrate", { name: b.name ?? "" }).trim();
 export function priceInputHTML(b, esc = s => String(s ?? "")) {
   return `<input type="text" class="lc-price-input" data-box-price="${esc(b.id)}" value="${esc(formatPrice(b.price))}" aria-label="${esc(priceLabel(b))}" autocomplete="off" spellcheck="false">`;

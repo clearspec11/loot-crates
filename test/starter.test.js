@@ -4,7 +4,8 @@
   an index by type, subtype and rarity; the games, each a valid record of
   its kind that its editor and its preview accept, priced and weighted
   within the editors' bounds, every one off the shelf, the deck holding
-  only the placeholder cards; a second press adding copies that draw from
+  only the placeholder cards, the two scratch tickets' prize lists filling
+  their rolls with item prizes their pools can give; a second press adding copies that draw from
   the pools already there; and the builder against a stubbed world, which
   writes each setting once.
 */
@@ -22,6 +23,7 @@ import { draftDice, dicePreview } from "../module/scripts/games/dicegame.js";
 import { draftDeck, deckPreview, DECK_DEFAULTS, cardsOf } from "../module/scripts/games/deck.js";
 import { draftRoulette, roulettePreview, ROULETTE_DEFAULTS, maxStakeOf } from "../module/scripts/games/roulette.js";
 import { draftAuction, auctionPreview, lotOf, openingOf, incrementOf, houseOf, MAX_HOUSE, MIN_GAVEL_SEC } from "../module/scripts/games/auction.js";
+import { draftScratch, scratchPreview, rollOf, rollState, prizesOf, bonusOf, gridOf, layoutOf, poolRarities } from "../module/scripts/games/scratch.js";
 import { formatPrice, parsePrice } from "../module/scripts/core/currency.js";
 import { stockOf } from "../module/scripts/core/limits.js";
 
@@ -158,6 +160,14 @@ function formOf(game, poolIds) {
   return v;
 }
 
+// What a scratch ticket's editor form holds: the layout, the grid, the
+// bonus spot, the roll's size and a row per prize (scratch.js scratchFieldsHTML).
+function scratchForm(game, v) {
+  const ids = game.roll.prizes.map((_, i) => `p${i}`);
+  const rows = Object.fromEntries(game.roll.prizes.flatMap((p, i) => [[`z.p${i}.count`, String(p.count)], [`z.p${i}.what`, p.bonus ? "bonus" : p.item ? `item.${p.item.rarity}` : "gp"], [`z.p${i}.gp`, p.gp != null ? String(p.gp) : ""]]));
+  return { ...v, layout: game.layout, cols: String(game.grid.cols), rows: String(game.grid.rows), bonusOn: game.bonus.on, bonusGp: String(game.bonus.gp), size: String(game.roll.size), prizes: ids, ...rows };
+}
+
 describe("the games", () => {
   const set = built();
   const pools = poolMap(set);
@@ -165,7 +175,7 @@ describe("the games", () => {
 
   it("are one of every kind, named as the starter set names them, the three crates at rising prices", () => {
     expect(set.games.map(g => g.name)).toEqual(STARTER_GAME_NAMES);
-    expect(set.games.map(kindOf)).toEqual(["crate", "crate", "crate", "well", "dice", "deck", "roulette", "auction"]);
+    expect(set.games.map(kindOf)).toEqual(["crate", "crate", "crate", "well", "dice", "deck", "roulette", "auction", "scratch", "scratch"]);
     expect(new Set(set.games.map(kindOf))).toEqual(new Set(Object.keys(NEW_DEFAULTS)));
     const crates = set.games.filter(g => kindOf(g) === "crate").map(g => g.price);
     expect(crates).toEqual([50, 250, 1000]);
@@ -208,12 +218,14 @@ describe("the games", () => {
         deck: () => draftDeck(g, { ...v, step: g.deck.step, cards: cardsOf(g).map(c => c.id), ...Object.fromEntries(cardsOf(g).flatMap(c => [[`c.${c.id}.label`, c.label], [`c.${c.id}.kind`, c.kind], [`c.${c.id}.weight`, c.weight], [`c.${c.id}.once`, c.once], [`c.${c.id}.gp`, c.gp], [`c.${c.id}.text`, c.text]])) }, poolIds),
         roulette: () => draftRoulette(g, { ...v }, poolIds),
         auction: () => draftAuction(g, { price: g.price, increment: g.auction.increment, reserve: g.auction.reserve, gavelSec: g.auction.gavelSec, houseCount: g.auction.house.count, houseBudget: g.auction.house.budget, houseChance: g.auction.house.chance }),
+        scratch: () => draftScratch(g, scratchForm(g, v), poolIds),
       }[kindOf(g)]();
       expect(draft.pools).toEqual(g.pools);
       expect(draft.price).toBe(g.price);
       if (kindOf(g) !== "auction") expect(draft.weights).toEqual(g.weights);
       if (g.deck) expect(draft.deck.cards).toEqual(cardsOf(g));
       if (g.auction) expect(draft.auction).toEqual(g.auction);
+      if (g.roll) expect({ layout: draft.layout, grid: draft.grid, bonus: draft.bonus, roll: draft.roll }).toEqual({ layout: g.layout, grid: g.grid, bonus: g.bonus, roll: g.roll });
     }
   });
 
@@ -226,6 +238,7 @@ describe("the games", () => {
         deck: () => deckPreview(g, pools, []),
         roulette: () => roulettePreview(g, pools),
         auction: () => auctionPreview(g),
+        scratch: () => ({ note: scratchPreview(g, pools).notes.map(n => n.text).join(" ") }),
       }[kindOf(g)]();
       expect([g.name, preview.note]).toEqual([g.name, ""]);
     }
@@ -265,6 +278,45 @@ describe("the games", () => {
     expect(auction.auction.gavelSec).toBeGreaterThanOrEqual(MIN_GAVEL_SEC);
   });
 
+  it("the scratch tickets: a 1 gp match 3 scratchie and a 10 gp lucky-numbers ticket, as their rolls were printed", () => {
+    const [scratchie, fortune] = set.games.filter(g => kindOf(g) === "scratch");
+    expect([scratchie.name, scratchie.price, layoutOf(scratchie), gridOf(scratchie), bonusOf(scratchie).on]).toEqual(["Market scratchie", 1, "match3", { cols: 3, rows: 2 }, false]);
+    expect([fortune.name, fortune.price, layoutOf(fortune), gridOf(fortune), bonusOf(fortune)]).toEqual(["Fortune ticket", 10, "lucky", { cols: 4, rows: 3 }, { on: true, gp: 25 }]);
+    const tiers = g => prizesOf(g).map(p => [p.count, p.kind === "item" ? p.rarity : p.kind === "bonus" ? "bonus" : p.gp]);
+    expect(tiers(scratchie)).toEqual([[1, "uncommon"], [4, 5], [10, 1]]);
+    expect(tiers(fortune)).toEqual([[1, "rare"], [2, 100], [5, 25], [12, 10], [20, 5], [3, "bonus"]]);
+    expect([rollOf(scratchie).size, rollOf(scratchie).duds]).toEqual([50, 35]);
+    expect([rollOf(fortune).size, rollOf(fortune).duds]).toEqual([100, 57]);
+  });
+
+  it("the scratch tickets' prize lists sum to the roll, every row kept, and the roll starts whole", () => {
+    for (const g of set.games.filter(x => kindOf(x) === "scratch")) {
+      // Nothing of the list is dropped or merged, and the prizes and duds are the roll.
+      expect(prizesOf(g)).toHaveLength(g.roll.prizes.length);
+      const roll = rollOf(g);
+      expect(roll.size).toBe(g.roll.size);
+      expect(roll.prizes.reduce((n, p) => n + p.count, 0) + roll.duds).toBe(g.roll.size);
+      expect(roll.duds).toBeGreaterThan(0);
+      const st = rollState(g, []);
+      expect([st.id, st.sold, st.left, st.soldOut]).toEqual([1, 0, g.roll.size, false]);
+    }
+  });
+
+  it("every scratch ticket's item prize is at a rarity its one pool takes, and the pool holds one", () => {
+    for (const g of set.games.filter(x => kindOf(x) === "scratch")) {
+      const keys = STARTER_GAMES.find(s => s.name === g.name).pools.map(([key]) => key);
+      expect(keys).toHaveLength(1);
+      const spec = STARTER_POOLS.find(p => p.key === keys[0]);
+      expect(g.pools).toEqual([{ id: set.pools.find(p => p.name === spec.name).id, share: 1 }]);
+      const items = prizesOf(g).filter(p => p.kind === "item");
+      expect(items).toHaveLength(1);
+      for (const p of items) {
+        expect(spec.rarities).toContain(p.rarity);
+        expect(poolRarities(g, pools).has(p.rarity)).toBe(true);
+      }
+    }
+  });
+
   it("leaves out a pool the compendiums had nothing for, and the games drop it", () => {
     let n = 0;
     const entries = Object.fromEntries(STARTER_POOLS.map(p => [p.key, p.key === "arms" ? [] : pickEntries(p, [{ id: "dnd5e.items", rows: ITEMS }])]));
@@ -284,7 +336,7 @@ describe("a second press", () => {
     expect(hasStarter(present)).toBe(true);
     expect(present.games).toEqual(STARTER_GAME_NAMES);
     expect(Object.keys(present.pools)).toEqual(["potions", "trinkets", "arms", "hoard"]);
-    expect(starterAgainText(present)).toMatch(/^The starter set is already here: Adventurer's cache, .* and Hoard chest auction and the pools Potions and scrolls, Wondrous trinkets, Arms and armour and Dragon's hoard\. Add it again\? Its games come in as copies, off the shelf/);
+    expect(starterAgainText(present)).toMatch(/^The starter set is already here: Adventurer's cache, .*, Hoard chest auction, Market scratchie and Fortune ticket and the pools Potions and scrolls, Wondrous trinkets, Arms and armour and Dragon's hoard\. Add it again\? Its games come in as copies, off the shelf/);
     expect(hasStarter(starterPresent({}, {}))).toBe(false);
   });
 
@@ -299,14 +351,14 @@ describe("a second press", () => {
     const auction = again.games.find(g => kindOf(g) === "auction");
     expect(auction.auction.lot.boxId).toBe(again.games.find(g => g.name === "Dragon's hoard chest (copy)").id);
     expect(again.games.every(g => !onShelf(g))).toBe(true);
-    expect(starterNotice({ ...again, reused: 4 })).toBe("Added 8 starter games as copies, all off the shelf, drawing from the starter pools already here. Players can't see them yet: look each one over, then press On the shelf on its row.");
+    expect(starterNotice({ ...again, reused: 4 })).toBe("Added 10 starter games as copies, all off the shelf, drawing from the starter pools already here. Players can't see them yet: look each one over, then press On the shelf on its row.");
   });
 });
 
 describe("the words", () => {
   it("the status line names what came in and how to put it out", () => {
     const set = built();
-    expect(starterNotice(set)).toBe("Added 4 starter pools and 8 starter games, all off the shelf. Players can't see them yet: look each one over, then press On the shelf on its row.");
+    expect(starterNotice(set)).toBe("Added 4 starter pools and 10 starter games, all off the shelf. Players can't see them yet: look each one over, then press On the shelf on its row.");
     expect(starterNotice({ games: [], notes: ["No dnd5e item compendium could be read."] })).toBe("No dnd5e item compendium could be read. Nothing was added.");
   });
 
@@ -322,7 +374,7 @@ describe("the words", () => {
   });
 
   it("every game in the set is described in STARTER_GAMES", () => {
-    expect(STARTER_GAMES.map(g => g.key)).toEqual(["cache", "coffer", "chest", "well", "dice", "deck", "wheel", "auction"]);
+    expect(STARTER_GAMES.map(g => g.key)).toEqual(["cache", "coffer", "chest", "well", "dice", "deck", "wheel", "auction", "scratchie", "fortune"]);
   });
 });
 
@@ -375,7 +427,7 @@ describe("addStarterSet", () => {
     expect(games.map(g => g.name)).toEqual(STARTER_GAME_NAMES);
     expect(games.every(g => !onShelf(g))).toBe(true);
     expect(report.notes).toEqual([]);
-    expect(report.games).toHaveLength(8);
+    expect(report.games).toHaveLength(10);
     // The index is read with the item subtype on top of the rarity fields.
     expect(items.getIndex).toHaveBeenCalledWith({ fields: expect.arrayContaining(["system.rarity", "system.rarities", "system.type.value"]) });
   });
@@ -402,7 +454,7 @@ describe("addStarterSet", () => {
     world({ packs: { "dnd5e.items": pack("dnd5e.items", ITEMS), "dnd5e.equipment24": broken } });
     const report = await addStarterSet();
     expect(report.notes).toEqual(["The dnd5e.equipment24 compendium couldn't be read, so its items were left out."]);
-    expect(report.games).toHaveLength(8);
+    expect(report.games).toHaveLength(10);
   });
 
   it("a second time, adds copies drawing from the pools already there without reading a pack", async () => {
@@ -415,7 +467,7 @@ describe("addStarterSet", () => {
     expect(items.getIndex).not.toHaveBeenCalled();
     expect(Object.keys(settings.get("pools"))).toEqual(poolIds);
     expect(report.games.map(g => g.name)).toEqual(STARTER_GAME_NAMES.map(n => `${n} (copy)`));
-    expect(Object.values(settings.get("boxes"))).toHaveLength(16);
+    expect(Object.values(settings.get("boxes"))).toHaveLength(20);
     expect(report.reused).toBe(4);
   });
 });

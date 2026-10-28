@@ -4,7 +4,9 @@
 //   FOUNDRY_URL=http://<host>:30000 MODULE_BASE=http://<this machine>:8766/ \
 //     NODE_PATH=$(npm root -g) node foundry-dev/checks/live-starter.cjs [--shot out.png]
 //
-// Env: PLAYER (default Player2, must own Crate Tester).
+// Env: PLAYER (default Player2, must own Crate Tester); BUY (default
+// "scratchie": the Market scratchie, 1 gp; "cache": the Adventurer's
+// cache, 50 gp, as before round 26).
 //
 // Two headless clients, the Gamemaster and the player, each running the
 // branch's socket and redraw code (as live-shelf.cjs does). The player
@@ -19,16 +21,19 @@
 //      there, the manager's own confirm must appear ("The starter set is
 //      already here: ..."), and the GM presses its Add copies as a person
 //      would; only the starter pools not there yet are made, and the games
-//      draw from the ones already there. Either way: eight new games, one
-//      of every kind (named as copies where the name is taken), every one
-//      off the shelf: its row dimmed, "On the shelf" unpressed, the first
-//      game's Edit focused, the status line saying what came in. The
-//      player's open shop must list none of them. out.before.path says
+//      draw from the ones already there. Either way: ten new games, every
+//      kind, two of them scratch tickets (named as copies where the name
+//      is taken), every one off the shelf: its row dimmed, "On the shelf"
+//      unpressed, the first game's Edit focused, the status line saying
+//      what came in. The player's open shop must list none of them. out.before.path says
 //      which way ran ("fresh" or "copies").
-//   2. The GM presses the Adventurer's cache row's "On the shelf"; the
+//   2. The GM presses the bought game's row's "On the shelf" (the Market
+//      scratchie's, or with BUY=cache the Adventurer's cache's); the
 //      player's shop shows it with its Buy on within 2 s.
-//   3. The player presses that Buy once and closes the reveal when it
-//      lands: 50 gp charged, one item on the sheet, one log row.
+//   3. The player presses that Buy once; on a scratch ticket, presses its
+//      Reveal all (the buyer's own button); and closes the reveal when it
+//      lands: the price charged, what the ticket won paid (coins on the
+//      purse, an item on the sheet, or nothing for a dud), one log row.
 //   4. The GM opens the Pull log by its tab, presses the row's Refund and
 //      Yes: the purse and the sheet are as before.
 //
@@ -38,15 +43,17 @@
 // run created are touched: a starter pool or game already in the world is
 // never removed or changed. The world's pool and game ids and counts are
 // printed before and after, and the run fails unless they match. One real
-// 50 gp purchase, refunded; the log row and the chat card stay, as in
-// every purchase check.
+// purchase (1 gp, or 50 gp with BUY=cache), refunded; the log row and the
+// chat card stay, as in every purchase check.
 /* global game */
 const { chromium } = require("playwright");
 const FOUNDRY = process.env.FOUNDRY_URL || "http://localhost:30000";
 const MODULE_BASE = process.env.MODULE_BASE || "http://localhost:8766/";
 const PLAYER = process.env.PLAYER || "Player2";
 const shot = process.argv.includes("--shot") ? process.argv[process.argv.indexOf("--shot") + 1] : null;
-const STARTER_GAMES = ["Adventurer's cache", "Arcane coffer", "Dragon's hoard chest", "Wishing Well", "Dragon's Teeth", "Deck of Many Things", "Tavern roulette", "Hoard chest auction"];
+const STARTER_GAMES = ["Adventurer's cache", "Arcane coffer", "Dragon's hoard chest", "Wishing Well", "Dragon's Teeth", "Deck of Many Things", "Tavern roulette", "Hoard chest auction", "Market scratchie", "Fortune ticket"];
+// The game this run buys, by its starter name, and its price in gp.
+const BUY = process.env.BUY === "cache" ? { name: "Adventurer's cache", gp: 50 } : { name: "Market scratchie", gp: 1 };
 const STARTER_POOLS = ["Potions and scrolls", "Wondrous trinkets", "Arms and armour", "Dragon's hoard"];
 
 async function join(browser, user) {
@@ -184,7 +191,7 @@ const untilCard = (pl, boxId, pred, since) => pl.evaluate(async ({ boxId, pred, 
     }, { base: MODULE_BASE });
 
     // 1. The GM presses Add starter crates.
-    out.add = await gm.page.evaluate(async ({ base, before, setPresent }) => {
+    out.add = await gm.page.evaluate(async ({ base, before, setPresent, games, buy }) => {
       const wait = ms => new Promise(r => setTimeout(r, ms));
       const until = async (fn, ms = 10000) => { for (let t = 0; t < ms && !fn(); t += 50) await wait(50); return fn(); };
       const click = el => el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, button: 0, view: window }));
@@ -201,7 +208,7 @@ const untilCard = (pl, boxId, pred, since) => pl.evaluate(async ({ boxId, pred, 
       click(button());
       const newBoxes = () => Object.values(store.getBoxes()).filter(b => !before.boxIds.includes(b.id));
       const confirm = () => [...document.querySelectorAll(".application.dialog")].find(d => /starter set is already here/.test(d.textContent));
-      await until(() => newBoxes().length >= 8 || confirm(), 60000);
+      await until(() => newBoxes().length >= games || confirm(), 60000);
       let confirmText = null;
       if (confirm()) {
         confirmText = (confirm().querySelector(".window-content p") ?? confirm()).textContent.replace(/\s+/g, " ").trim();
@@ -211,32 +218,33 @@ const untilCard = (pl, boxId, pred, since) => pl.evaluate(async ({ boxId, pred, 
         if (!yes) throw new Error("the confirm has no Add copies");
         yes.focus();
         click(yes);
-        await until(() => newBoxes().length >= 8, 60000);
+        await until(() => newBoxes().length >= games, 60000);
       } else if (setPresent) {
         throw new Error("no confirm appeared, though the starter set is already here");
       }
       const ms = Date.now() - at;
       await until(() => /^Added /.test(app.element.querySelector(".lc-manager__status")?.textContent ?? ""), 8000);
       await wait(300);
-      const games = newBoxes();
+      const added = newBoxes();
       const pools = Object.values(store.getPools()).filter(p => !before.poolIds.includes(p.id));
       const baseName = n => String(n).replace(/ \(copy(?: \d+)?\)$/, "");
-      const rows = games.map(g => {
+      const rows = added.map(g => {
         const t = app.element.querySelector(`button[data-action="toggleShelf"][data-box="${g.id}"]`);
         const tr = t?.closest("tr");
         return { id: g.id, name: g.name, base: baseName(g.name), kind: g.kind ?? "crate", shelved: g.rules?.shelved === false, price: g.price, pools: (g.pools ?? []).map(r => r.id), toggle: t?.textContent.trim(), pressed: t?.getAttribute("aria-pressed"), dimmed: !!tr?.classList.contains("lc-row--off"), tag: tr?.querySelector(".lc-kind--off")?.textContent.trim() };
       });
-      const first = games.find(g => baseName(g.name) === "Adventurer's cache");
+      const first = added.find(g => baseName(g.name) === "Adventurer's cache");
+      const bought = added.find(g => baseName(g.name) === buy);
       return {
         label, ms, rows, confirmText,
         pools: pools.map(p => ({ id: p.id, name: p.name, count: p.entries.length, compendium: p.entries.every(e => /^Compendium\.dnd5e\.(items|equipment24)\.Item\./.test(e.uuid)), sample: p.entries.slice(0, 3).map(e => `${e.name} (${e.rarity})`) })),
-        lot: games.find(g => g.kind === "auction")?.auction?.lot ?? null, chestId: games.find(g => baseName(g.name) === "Dragon's hoard chest")?.id ?? null,
+        lot: added.find(g => g.kind === "auction")?.auction?.lot ?? null, chestId: added.find(g => baseName(g.name) === "Dragon's hoard chest")?.id ?? null,
         status: app.element.querySelector(".lc-manager__status")?.textContent.trim(),
         count: app.element.querySelector(".lc-shelf-count")?.textContent.trim(),
         focusedFirst: !!first && document.activeElement === app.element.querySelector(`button[data-action="editBox"][data-box="${first.id}"]`),
-        buyId: first?.id ?? null,
+        buyId: bought?.id ?? null,
       };
-    }, { base: MODULE_BASE, before, setPresent });
+    }, { base: MODULE_BASE, before, setPresent, games: STARTER_GAMES.length, buy: BUY.name });
     const boxId = out.add.buyId;
     await pl.page.waitForTimeout(1500);
     out.playerWhileOff = await pl.page.evaluate(ids => ids.filter(id => document.querySelector(`#loot-crates-shop .lc-box[data-box="${id}"]`)).length, out.add.rows.map(r => r.id));
@@ -263,15 +271,22 @@ const untilCard = (pl, boxId, pred, since) => pl.evaluate(async ({ boxId, pred, 
       const until = async (fn, ms = 20000) => { for (let t = 0; t < ms && !fn(); t += 50) await wait(50); return fn(); };
       const click = el => el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, button: 0, view: window }));
       const buy = document.querySelector(`#loot-crates-shop .lc-box[data-box="${boxId}"] .lc-box__buy`);
-      if (!buy) throw new Error("the player's shop has no Buy for the cache");
+      if (!buy) throw new Error("the player's shop has no Buy for the game");
       const text = buy.textContent.replace(/\s+/g, " ").trim();
       buy.focus();
       click(buy);
-      const closeBtn = () => [...document.querySelectorAll(".lc-reveal")].pop()?.querySelector('[data-action="dismiss"]');
-      const landed = await until(() => closeBtn(), 25000);
+      const last = () => [...document.querySelectorAll(".lc-reveal")].pop();
+      const closeBtn = () => last()?.querySelector('[data-action="dismiss"]');
+      // A scratch ticket is the buyer's to scratch: Reveal all, pressed once.
+      let revealAll = false;
+      const landed = await until(() => {
+        const all = !revealAll && last()?.querySelector(".lc-scratch__ticket .lc-scratch__foil--painted") && last().querySelector(".lc-scratch__all");
+        if (all) { revealAll = true; all.focus(); click(all); }
+        return closeBtn();
+      }, 25000);
       const result = [...document.querySelectorAll(".lc-reveal")].pop()?.querySelector(".lc-reveal__result")?.innerText.replace(/\s+/g, " ").trim() ?? "";
       if (landed) { await wait(700); click(closeBtn()); }
-      return { text, landed: !!landed, result };
+      return { text, landed: !!landed, result, revealAll };
     }, { boxId });
     await gm.page.waitForTimeout(800);
     out.afterBuy = await gm.page.evaluate(async ({ base, before, boxId }) => {
@@ -279,7 +294,7 @@ const untilCard = (pl, boxId, pred, since) => pl.evaluate(async ({ boxId, pred, 
       const { toCopper } = await import(base + "scripts/core/currency.js");
       const actor = game.actors.get(before.actorId);
       const rows = store.getLog().filter(r => !before.logIds.includes(r.id));
-      return { purseCp: toCopper(actor.system.currency), items: actor.items.filter(i => !i.flags?.dnd5e?.cachedFor).length, rows: rows.map(r => ({ id: r.id, boxId: r.boxId, price: r.price, name: r.name, itemId: r.itemId })), boxId };
+      return { purseCp: toCopper(actor.system.currency), items: actor.items.filter(i => !i.flags?.dnd5e?.cachedFor).length, rows: rows.map(r => ({ id: r.id, boxId: r.boxId, kind: r.kind ?? "crate", price: r.price, payoutCp: r.payoutCp ?? 0, outcome: r.outcome ?? null, tier: r.tier ?? null, name: r.name, itemId: r.itemId ?? null })), boxId };
     }, { base: MODULE_BASE, before, boxId });
 
     // 4. The GM refunds it from the Pull log.
@@ -316,21 +331,29 @@ const untilCard = (pl, boxId, pred, since) => pl.evaluate(async ({ boxId, pred, 
     // The pools the press should make: the starter pools not here yet.
     const reused = before.present.pools.length;
     const missingPools = STARTER_POOLS.filter(n => !before.present.pools.includes(n));
-    const parts = [missingPools.length ? `${missingPools.length} starter pool${missingPools.length === 1 ? "" : "s"}` : "", "8 starter games"].filter(Boolean).join(" and ");
+    const parts = [missingPools.length ? `${missingPools.length} starter pool${missingPools.length === 1 ? "" : "s"}` : "", `${STARTER_GAMES.length} starter games`].filter(Boolean).join(" and ");
     const said = `Added ${parts}${reused ? " as copies" : ""}, all off the shelf${reused ? ", drawing from the starter pools already here" : ""}. Players can't see them yet: look each one over, then press On the shelf on its row.`;
     out.checks = {
       pressed: a.label === "Add starter crates",
       // The confirm appears exactly when the set is already here, and says so.
       confirm: setPresent ? /^The starter set is already here: .+ Add it again\?/.test(a.confirmText ?? "") : a.confirmText === null,
       poolsFilled: a.pools.length === missingPools.length && a.pools.map(p => p.name).sort().join() === [...missingPools].sort().join() && a.pools.every(p => p.count > 0 && p.compendium),
-      eightGames: a.rows.length === 8 && a.rows.map(r => r.base).sort().join() === [...STARTER_GAMES].sort().join() && kinds === "auction,crate,crate,crate,deck,dice,roulette,well",
+      tenGames: a.rows.length === STARTER_GAMES.length && a.rows.map(r => r.base).sort().join() === [...STARTER_GAMES].sort().join() && kinds === "auction,crate,crate,crate,deck,dice,roulette,scratch,scratch,well",
       allOffShelf: a.rows.every(r => r.shelved && r.toggle === "On the shelf" && r.pressed === "false" && r.dimmed && r.tag === "Off the shelf"),
       drawFromStarterPools: a.rows.filter(r => r.kind !== "roulette" && r.kind !== "auction").every(r => r.pools.length > 0 && r.pools.every(id => a.pools.some(p => p.id === id) || before.starterPoolIds.includes(id))),
       auctionLot: a.lot?.type === "crate" && a.lot.boxId === a.chestId,
       said: a.status === said && a.focusedFirst,
       playerSeesNone: out.playerWhileOff === 0,
       putOn: out.putOn.pressed === "true" && out.playerAfterOn.ms != null && out.playerAfterOn.ms <= 2000,
-      bought: out.buy.landed && /50 gp/.test(out.buy.text) && out.afterBuy.purseCp === before.purseCp - 5000 && out.afterBuy.items === before.items + 1 && out.afterBuy.rows.length === 1,
+      // The price charged and what the play paid: one item for a crate; for a
+      // scratch ticket its prize (coins, an item, or nothing on a dud).
+      bought: out.buy.landed && new RegExp(`\\b${BUY.gp} gp`).test(out.buy.text) && out.afterBuy.rows.length === 1 && (() => {
+        const r = out.afterBuy.rows[0];
+        const item = r.itemId ? 1 : 0;
+        const scratch = r.kind === "scratch";
+        return r.boxId === boxId && r.price === BUY.gp && out.afterBuy.purseCp === before.purseCp - BUY.gp * 100 + r.payoutCp && out.afterBuy.items === before.items + item
+          && (scratch ? out.buy.revealAll && (item === 1) === (r.outcome === "item") : item === 1);
+      })(),
       refunded: out.refund.refunded && out.refund.purseCp === before.purseCp && out.refund.items === before.items,
     };
     out.ok = Object.values(out.checks).every(Boolean);

@@ -15,6 +15,9 @@
 //      open), no record is written, and the player's shop shows no new card
 //      while it is open. Cancel: still nothing written, the Boxes table has
 //      the rows it had.
+//   1b. Click "New scratch ticket": the dialog "New scratch ticket" opens on
+//      the draft (six prize rows, the readout "1 in 2.3 tickets wins, ..."),
+//      the name focused; Cancel: nothing written.
 //   2. Click "New box": the dialog "New box"; type a name and a price, tick
 //      "Live UI pool", press "Add to shelf". Exactly one box is added, the
 //      player's shop shows its card within 2 s, the manager is on the Boxes
@@ -176,6 +179,32 @@ const untilCards = (pl, pred, since, ms = 4000) => pl.evaluate(async ({ pred, si
     }, MODULE_BASE);
     out.diceCards = await untilCards(pl.page, c => c.length !== 0, Date.now(), 300);
 
+    // 1b. New scratch ticket, then Cancel: its editor on a draft (the
+    // prize list and the readout), nothing written.
+    out.scratch = await gm.page.evaluate(async base => {
+      const store = await import(base + "scripts/foundry/store.js");
+      const rows = __lc.rows();
+      const btn = __lc.app.element.querySelector('[data-action="addScratch"]');
+      if (!btn) return { missing: true };
+      btn.focus();
+      __lc.click(btn);
+      await __lc.until(() => __lc.dialog()?.querySelector('input[name="name"]'), 8000);
+      await __lc.wait(400);
+      const d = __lc.dialog();
+      const open = {
+        button: btn.textContent.trim(), title: __lc.title(), okLabel: __lc.ok()?.textContent.trim(),
+        nameFocused: document.activeElement === d?.querySelector('input[name="name"]'),
+        name: d?.querySelector('input[name="name"]')?.value,
+        prizeRows: d?.querySelectorAll(".lc-prize-row").length ?? 0,
+        readout: d?.querySelector(".lc-scratch-form__readout")?.textContent.trim() ?? null,
+        boxes: Object.keys(store.getBoxes()).length,
+      };
+      __lc.click(__lc.cancel());
+      await __lc.until(() => !__lc.dialog(), 5000);
+      await __lc.wait(400);
+      return { rowsBefore: rows, open, after: { boxes: Object.keys(store.getBoxes()).length, rows: __lc.rows(), dialog: !!__lc.dialog() } };
+    }, MODULE_BASE);
+
     // 2. New box: type, tick, Add to shelf.
     const crateName = `Live new crate ${STAMP}`;
     out.crate = await gm.page.evaluate(async () => {
@@ -189,7 +218,7 @@ const untilCards = (pl, pred, since, ms = 4000) => pl.evaluate(async ({ pred, si
     const dlg = gm.page.locator(".application.lc-dialog").last();
     await dlg.locator('input[name="name"]').fill(crateName);
     await dlg.locator('input[name="price"]').fill("7");
-    await dlg.locator(`label.lc-row:has-text("Live UI pool") input[type="checkbox"]`).check();
+    await dlg.locator(`.lc-pool-pick:has-text("Live UI pool") input[type="checkbox"]`).check();
     out.crate.previewTicked = (await dlg.locator(".lc-form__preview").textContent()).trim();
     const t2save = Date.now();
     await dlg.locator('button[data-action="ok"]').click();
@@ -284,6 +313,8 @@ const untilCards = (pl, pred, since, ms = 4000) => pl.evaluate(async ({ pred, si
       diceWritesNothing: d.open.boxes === out.before.boxIds.length && d.open.boxesLater === out.before.boxIds.length && d.open.rows === d.rowsBefore,
       diceNoCard: out.diceCards.cards.length === out.shop.cards,
       diceCancel: d.after.boxes === out.before.boxIds.length && d.after.rows === d.rowsBefore && !d.after.dialog,
+      scratchDialog: !out.scratch.missing && out.scratch.open.button === "New scratch ticket" && out.scratch.open.title === "New scratch ticket" && out.scratch.open.okLabel === addLabel && out.scratch.open.nameFocused && out.scratch.open.name === "New scratch ticket" && out.scratch.open.prizeRows === 6 && out.scratch.open.readout === "1 in 2.3 tickets wins, the top prize (Rare item) 1 in 100, all prizes 5 gp or more",
+      scratchCancel: !out.scratch.missing && out.scratch.open.boxes === out.before.boxIds.length && out.scratch.after.boxes === out.before.boxIds.length && out.scratch.after.rows === out.scratch.rowsBefore && !out.scratch.after.dialog,
       crateDialog: c.title === "New box" && c.okLabel === addLabel && c.nameFocused && /drop nothing/.test(c.preview ?? "") && /\d+%/.test(c.previewTicked ?? ""),
       crateAdded: c.saved.added.length === 1 && c.saved.added[0].name === crateName && c.saved.added[0].price === 7 && JSON.stringify(c.saved.added[0].pools) === JSON.stringify(poolRef),
       crateShown: c.saved.tab === "boxes" && c.saved.focusOnEdit && c.saved.editLabel === `Edit ${crateName}` && c.saved.rowNew && c.saved.rowInView && c.saved.rows === d.rowsBefore + 1,
