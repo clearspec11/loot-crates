@@ -1451,10 +1451,12 @@
 .loot-crates .lc-scratch__gem { fill: var(--lc-gold); stroke: var(--lc-gold-deep); }
 .loot-crates .lc-scratch__gold-line { fill: none; stroke: var(--lc-gold-deep); }
 /* The ribbon under the band, chevron-ended like the reference tickets'
-   banners: the top prize in the display face, the roll's prizes beside it. */
+   banners: the top prize in the display face, the roll's prizes beside it.
+   The metal darkens only a third of the way to its deep shade, so the
+   12px words keep 4.5:1 on every theme (paper ink on the deep shade is 3.8). */
 .loot-crates .lc-scratch__ribbon {
   position: relative; display: flex; flex-wrap: wrap; justify-content: center; align-items: baseline; gap: 2px 14px; margin: 0 10px 10px; padding: 6px 26px; text-align: center;
-  background: linear-gradient(180deg, var(--lc-ticket-metal) 0%, var(--lc-ticket-metal-deep) 100%); color: var(--lc-paper-ink);
+  background: linear-gradient(180deg, var(--lc-ticket-metal) 0%, color-mix(in srgb, var(--lc-ticket-metal) 65%, var(--lc-ticket-metal-deep)) 100%); color: var(--lc-paper-ink);
   font-family: var(--lc-label); font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
   clip-path: polygon(12px 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 12px 100%, 0 50%);
 }
@@ -1474,8 +1476,10 @@
 /* The grid: a panel is nearly square and capped at 118px, centred in its
    cell, so a big window never stretches it into an empty field; the
    number centred in the deep colour over a faint eight-point star, the
-   prize as a pill below. An item prize's pill is edged in its rarity and
-   the panel underlined in it (the rarity ladder is edges and diamonds). */
+   prize as a pill below; a pill wraps rather than cuts its words, so a
+   phone's 70px panel still says "Rare item" whole. An item prize's pill
+   is edged in its rarity and the panel underlined in it (the rarity
+   ladder is edges and diamonds). */
 .loot-crates .lc-scratch__grid { display: grid; grid-template-columns: repeat(var(--lc-cols, 4), minmax(0, 1fr)); gap: 8px; justify-content: center; }
 .loot-crates .lc-scratch__panel {
   position: relative; box-sizing: border-box; width: 100%; max-width: 118px; justify-self: center; min-width: 0; aspect-ratio: 1 / 1.04; overflow: hidden;
@@ -1491,7 +1495,7 @@
 .loot-crates .lc-scratch__prize {
   position: relative; box-sizing: border-box; max-width: calc(100% - 12px); margin: 0 6px 6px; padding: 2px 8px; border-radius: 10px;
   background: var(--lc-ticket-deep); color: var(--lc-ticket-ink); font-family: var(--lc-label); font-size: 11px; font-weight: 700; line-height: 1.2;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .loot-crates .lc-scratch__prize--item { box-shadow: 0 0 0 2px var(--lc-rarity); }
 .loot-crates .lc-scratch__panel--win { background: var(--lc-win-bg); border-color: var(--lc-win); box-shadow: inset 0 0 0 2px var(--lc-win); }
@@ -1516,10 +1520,11 @@
 .loot-crates .lc-scratch__mark { position: relative; display: block; width: 38px; height: 38px; }
 .loot-crates .lc-scratch__mark svg { display: block; width: 100%; height: 100%; }
 /* The foot: a metal rule over the roll line, the tagline in the display
-   face and the guarantee. */
+   face and the guarantee, the words in the deep colour (the metal's deep
+   shade reads 4.0:1 on the paper at 11px, under the 4.5 the words need). */
 .loot-crates .lc-scratch__foot {
   display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 4px 10px; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--lc-ticket-metal-deep);
-  font-family: var(--lc-label); font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--lc-ticket-metal-deep);
+  font-family: var(--lc-label); font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--lc-ticket-deep);
 }
 .loot-crates .lc-scratch__foot:empty { display: none; }
 .loot-crates .lc-scratch__tag { font-family: var(--lc-slab); font-size: 12px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--lc-ticket-deep); }
