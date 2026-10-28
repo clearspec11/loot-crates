@@ -579,7 +579,7 @@ describe("the print", () => {
     const item = layCard(GAME, { kind: "item", rarity: "rare", name: "Flame Tongue" }, seededRng(4));
     expect(ticketHTML({ card: item, box: { name: "Fortune Ticket" } }, { esc })).toContain('<span class="lc-scratch__prize lc-scratch__prize--item">Flame Tongue</span>');
     // A card from before the print (no theme, no prizes) still prints: hoard, no ribbon, the tagline alone in the foot.
-    const { theme, prizes, ...old } = card;
+    const { theme: _theme, prizes: _prizes, ...old } = card;
     const bare = ticketHTML({ card: old, box: { name: "Old" } }, { esc });
     expect(bare).toContain('data-theme="hoard"');
     expect(bare).not.toContain("lc-scratch__ribbon");
@@ -614,7 +614,7 @@ describe("the print", () => {
     expect(cleanCard(card)).toMatchObject({ theme: "fey", prizes: { top: { item: "rare" }, gp: 620, items: 1, floor: 5 } });
     expect(cleanCard({ ...card, theme: "neon", prizes: { top: { item: "mythic" }, gp: -4, items: "x", floor: "y" } })).toMatchObject({ theme: "hoard", prizes: { top: null, gp: 0, items: 0, floor: null } });
     expect(cleanCard({ ...card, prizes: { top: { gp: 50 }, gp: 54.5, items: 2.7, floor: 2 } }).prizes).toEqual({ top: { gp: 50 }, gp: 54.5, items: 2, floor: 2 });
-    const { theme, prizes, ...old } = card;
+    const { theme: _theme, prizes: _prizes, ...old } = card;
     expect(cleanCard(old)).toMatchObject({ theme: "hoard", prizes: { top: null, gp: 0, items: 0, floor: null } });
   });
 });
