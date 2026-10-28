@@ -627,9 +627,14 @@ export class CrateReveal extends ApplicationV2 {
     const r = this.reveal;
     const kind = this.#kind;
     this.#stopWatching();
+    // The buyer's own first play (not a replay of it): a kind that is
+    // played by hand (the scratch ticket) hands this client the controls.
+    const buyer = !replay && !r.replay && !!r.userId && r.userId === game.user?.id;
     const spin = this.#spin = kind.play(host, r, {
       sound,
       pageHidden,
+      replay,
+      buyer,
       onLand: () => {
         this.#stopWatching();
         if (!replay) this.#resolveLanded();

@@ -57,6 +57,18 @@
   --lc-gold-deep: #8a6a22;
   --lc-win: #2f6b2a;
   --lc-win-bg: #e4f0dc;
+  /* The foil the coin takes off (foil.js paints it from these): a silver
+     gradient from hi to lo with a fine hatch and the word in foil ink.
+     The coin is a gold piece: its face from coin-hi to coin-lo, a bright
+     rim inside a deep one. */
+  --lc-foil-hi: #d9d7cf;
+  --lc-foil-lo: #a9a79f;
+  --lc-foil-ink: #6b6a63;
+  --lc-coin-hi: #f3dd8c;
+  --lc-coin: #d4ad4f;
+  --lc-coin-lo: #9a7527;
+  --lc-coin-rim: #e9cd7a;
+  --lc-coin-rim-deep: #a98434;
 
   --lc-radius: 4px;
   --lc-shadow: 0 0 6px rgba(0, 0, 0, .45);
@@ -1399,6 +1411,45 @@
   .loot-crates .lc-scratch__ticket { padding: 10px; }
   .loot-crates .lc-scratch__grid { gap: 5px; }
 }
+/* On a screen under about 1080 px tall the lucky numbers' panels go
+   wider than tall, so the whole ticket, Reveal all and the result fit the
+   window without a scroll (a buyer must see every panel to scratch it). */
+@media (max-height: 1080px) and (min-width: 481px) {
+  .loot-crates .lc-scratch__ticket[data-layout="lucky"] .lc-scratch__panel:not(.lc-scratch__spot) { aspect-ratio: 1.4 / 1; }
+}
+
+/* The scratch (foil.js): a foil canvas over each panel, one shavings
+   canvas over the ticket and the coin. Over the buyer's foil the pointer
+   is hidden and the coin takes its place; the foil takes no scroll or
+   zoom gesture, so a finger scratches. Until a panel's foil is painted
+   its canvas is flat foil, so nothing under it shows early. An opened
+   panel loses its canvas and its number pops in (scale .7 to 1, 280 ms,
+   overshoot). Reveal all and the one line of help sit under the ticket,
+   for the buyer alone, until the card lands. */
+.loot-crates .lc-scratch__stage { display: grid; justify-items: center; gap: 10px; width: 100%; min-width: 0; }
+.loot-crates .lc-scratch__ticket--covered { user-select: none; -webkit-user-select: none; }
+.loot-crates .lc-scratch__foil { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; border-radius: inherit; }
+.loot-crates .lc-scratch__foil:not(.lc-scratch__foil--painted) { background: linear-gradient(135deg, var(--lc-foil-hi), var(--lc-foil-lo) 50%, var(--lc-foil-hi)); }
+.loot-crates .lc-scratch__ticket[data-buyer] .lc-scratch__foil { cursor: none; touch-action: none; }
+.loot-crates .lc-scratch__panel--open .lc-scratch__foil { display: none; }
+.loot-crates .lc-scratch__panel:focus-visible { outline: 2px solid var(--lc-focus); outline-offset: 2px; }
+.loot-crates .lc-scratch__panel--pop .lc-scratch__num,
+.loot-crates .lc-scratch__panel--pop .lc-scratch__sym,
+.loot-crates .lc-scratch__panel--pop .lc-scratch__mark { animation: lc-scratch-pop .28s cubic-bezier(.2, 1.4, .4, 1); }
+@keyframes lc-scratch-pop { from { transform: scale(.7); } to { transform: scale(1); } }
+.loot-crates .lc-scratch__shavings { position: absolute; inset: 0; z-index: 3; width: 100%; height: 100%; pointer-events: none; }
+.loot-crates .lc-scratch__coin {
+  position: absolute; left: 0; top: 0; z-index: 4; width: 46px; height: 46px; margin: -23px 0 0 -23px; border-radius: 50%;
+  pointer-events: none; opacity: 0; transition: opacity .12s;
+  background: radial-gradient(circle at 35% 30%, var(--lc-coin-hi) 0%, var(--lc-coin) 45%, var(--lc-coin-lo) 100%);
+  box-shadow: inset 0 0 0 2px var(--lc-coin-rim), inset 0 0 0 4px var(--lc-coin-rim-deep), 0 3px 4px rgba(0, 0, 0, .35);
+}
+.loot-crates .lc-scratch__coin::after { content: ""; position: absolute; inset: 9px; border-radius: 50%; border: 1.5px dashed color-mix(in srgb, var(--lc-coin-lo) 80%, transparent); }
+.loot-crates .lc-scratch__coin--on { opacity: 1; }
+.loot-crates .lc-scratch__coin--down { box-shadow: inset 0 0 0 2px var(--lc-coin-rim), inset 0 0 0 4px var(--lc-coin-rim-deep), 0 1px 1px rgba(0, 0, 0, .5); }
+.loot-crates .lc-scratch__tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; width: 100%; max-width: 620px; }
+.loot-crates .lc-scratch__all { flex: none; min-height: 32px; padding: 0 12px; }
+.loot-crates .lc-scratch__help { flex: 1 1 240px; margin: 0; font-size: 12px; line-height: 1.4; color: var(--lc-vault-soft); text-align: left; }
 
 /* The chat card's small ticket: one square per panel, the winners filled
    in the ok green, the edge in the prize's swatch. */
@@ -1437,4 +1488,6 @@
   .loot-crates .lc-wheel__turn, .loot-crates .lc-wheel__orbit { will-change: auto; }
   .loot-crates .lc-auction__stamp, .loot-crates .lc-auction__past--new, .loot-crates .lc-gavel--reset .lc-gavel__bar { animation: none; }
   .loot-crates .lc-gavel__bar, .loot-crates .lc-gavel__head { will-change: auto; }
+  .loot-crates .lc-scratch__panel--pop .lc-scratch__num, .loot-crates .lc-scratch__panel--pop .lc-scratch__sym, .loot-crates .lc-scratch__panel--pop .lc-scratch__mark { animation: none; }
+  .loot-crates .lc-scratch__coin { transition: none; }
 }

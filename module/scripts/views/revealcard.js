@@ -10,6 +10,7 @@
 import { RARITY_LABEL, RARITIES } from "../core/config.js";
 import { formatGold } from "../core/currency.js";
 import { t } from "../core/i18n.js";
+import { getKind, kindOf, DEFAULT_KIND } from "../games/kinds.js";
 
 export const REVEAL_WIDTH = 720;
 // The reveal's rendered height in cc-dev at 1440x900, used only to centre the
@@ -91,9 +92,16 @@ export function oddsWithNothing(odds) {
   each card's name, art and rarity, where it lands, whether it teases, the
   odds ribbon, the crate and the result. No uuid, no granted item, no purse,
   so a replay can neither open the item nor say what gold is left. About 5 KB
-  for a 48-card strip, stored once in the message's flags.
+  for a 48-card strip, stored once in the message's flags. A kind with its
+  own replay (kinds.js reveal.snapshot, the scratch ticket's card) stores
+  what it names, marked with its kind.
 */
 export function replaySnapshot(reveal) {
+  const own = getKind(kindOf(reveal))?.reveal?.snapshot;
+  if (typeof own === "function") {
+    const snap = own(reveal);
+    return snap ? { ...snap, kind: kindOf(reveal) } : null;
+  }
   const strip = reveal?.strip;
   // A crate's miss replays too: its strip lands on the blank.
   const nothing = !reveal?.result && reveal?.outcome === "nothing";
@@ -121,6 +129,11 @@ const rarityOr = r => (RARITIES.includes(r) || r === "none" ? r : "common");
   same card brings the open replay forward instead of opening another.
 */
 export function replayReveal(snapshot, key) {
+  if (snapshot?.kind && snapshot.kind !== DEFAULT_KIND) {
+    const from = getKind(snapshot.kind)?.reveal?.fromSnapshot;
+    const reveal = typeof from === "function" ? from(snapshot) : null;
+    return reveal ? { ...reveal, kind: snapshot.kind, replay: true, replayKey: String(key ?? "") } : null;
+  }
   const cards = snapshot?.strip?.cards;
   const land = snapshot?.strip?.landIndex;
   if (!Array.isArray(cards) || !cards.length || !Number.isInteger(land) || land < 0 || land >= cards.length || !snapshot.result) return null;

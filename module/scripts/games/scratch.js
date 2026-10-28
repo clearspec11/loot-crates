@@ -33,9 +33,12 @@
     grantData); coins through the core's one settle() (payoutCp). An item
     prize the ticked pools can't give is left in the roll and not drawn
     until they can, so a ticket never promises what it can't hand over.
-  - The reveal here is a stand-in that shows the card open (no
-    scratching); the scratch itself (the coin, the foil, the shavings and
-    the sounds, the spectators' auto-scratch) replaces `play` later.
+  - The reveal is the scratch (mountScratch, the foil in views/foil.js):
+    the buyer rubs the foil off with a coin, panel by panel, and everyone
+    else watches the same coin scratch the card by itself; the card lands
+    when every panel is open. The result never depends on the scratching.
+    Watch again replays it as the table saw it, from the chat card's
+    snapshot.
 
   Record: { kind: "scratch", price, pools, weights, layout: "lucky" |
   "match3", grid: { cols, rows }, bonus: { on, gp } (lucky only), roll:
@@ -49,8 +52,9 @@
 import { RARITIES, RARITY_LABEL } from "../core/config.js";
 import { weightedPick, flattenPool, rarityRank } from "../core/odds.js";
 import { formatPrice, formatGold, canAfford, shortfall, parsePrice } from "../core/currency.js";
-import { playReveal, playCoinBack, playPlink } from "../foundry/sound.js";
+import { playReveal, playPlop, playScratch, playFoilTick } from "../foundry/sound.js";
 import { resultHTML } from "../views/revealcard.js";
+import { mountFoil } from "../views/foil.js";
 import { cardShell, shopReason, shortReason, draftBox } from "../views/boxcard.js";
 import { drawItem, grantData, crateLogRow } from "./crate.js";
 import { PullError, registerKind } from "./kinds.js";
@@ -65,8 +69,8 @@ export const GRID_DEFAULTS = { lucky: { cols: 4, rows: 3 }, match3: { cols: 3, r
 export const GRID_LIMITS = { lucky: { cols: [2, 6], rows: [1, 5] }, match3: { cols: [2, 5], rows: [1, 4] } };
 // A prize list is at most this many rows (a match 3 card has a symbol for each).
 export const MAX_PRIZES = 8;
-// The symbols a match 3 card is drawn in, best prize first: B2 draws them;
-// here they are named. More than MAX_PRIZES, so a card has symbols that pay nothing too.
+// The symbols a match 3 card is drawn in, best prize first, each named on
+// its panel. More than MAX_PRIZES, so a card has symbols that pay nothing too.
 export const SYMBOLS = ["crown", "gem", "chalice", "key", "star", "moon", "sun", "shield", "horn", "rose"];
 export const SYMBOL_LABEL = words({
   crown: "LOOTCRATES.Scratch.SymCrown", gem: "LOOTCRATES.Scratch.SymGem", chalice: "LOOTCRATES.Scratch.SymChalice", key: "LOOTCRATES.Scratch.SymKey", star: "LOOTCRATES.Scratch.SymStar",
@@ -499,18 +503,157 @@ export function miniHTML(card) {
   return `<span class="lc-scratch__mini" style="--lc-cols:${Number(card.cols) || 1}" aria-hidden="true">${card.panels.map((_, i) => `<i${win.has(i) ? ' class="lc-scratch__mini--win"' : ""}></i>`).join("")}</span>`;
 }
 
-/* ---------- The reveal (a stand-in until the scratch: the card open) ---------- */
+/* ---------- The reveal: the scratch ---------- */
 
 const outcomeOf = reveal => reveal.outcome ?? (reveal.result?.rarity ? "item" : reveal.payoutCp > 0 ? "coins" : "nothing");
+const escHTML = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+// A panel's lit and rarity classes, held back while it is covered: either
+// would show through the foil's edge and tell the card before it is read.
+const TELLS = /^(lc-scratch__panel--win|lc-rarity-.+)$/;
 
-// The card drawn open at once, landing as it is shown; nothing to replay.
-function play(host, reveal, { onLand }) {
+/*
+  The ticket in `host` under its foil (foil.js), as the reveal plays it:
+  the buyer scratches by hand (`buyer`), with Reveal all and the keys
+  under the ticket; everyone else watches the coin scratch it by itself.
+  Each panel says only "Panel 3, covered" until it opens, then what it
+  shows; a winner is lit as it opens (on a match 3 card, once the third of
+  its symbol is open, so a lit panel never tells the rest). `duration` 0
+  opens the card at once (the harness). Returns the foil's controller, the
+  one the core expects of a kind's play: play(), skip(), skipped,
+  reducedMotion, plus open(i), revealAll() and opened().
+*/
+export function mountScratch(host, { reveal, buyer = false, reducedMotion, duration, sounds = {}, onPanel = null, onLand = null } = {}) {
   host.classList.add("lc-scratch");
+  host.classList.remove("lc-scratch--landed");
   host.dataset.outcome = outcomeOf(reveal);
-  host.innerHTML = ticketHTML(reveal, { esc: s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]) });
-  let landed = false;
-  const land = () => { if (landed) return; landed = true; host.classList.add("lc-scratch--landed"); onLand?.(); };
-  return { play() { land(); return Promise.resolve(); }, skip: land, skipped: false, reducedMotion: true };
+  const card = reveal?.card;
+  const tools = buyer ? `<div class="lc-scratch__tools"><button type="button" class="lc-scratch__all">${escHTML(t("LOOTCRATES.Scratch.RevealAll"))}</button><p class="lc-scratch__help">${escHTML(t("LOOTCRATES.Scratch.Help"))}</p></div>` : "";
+  host.innerHTML = `<div class="lc-scratch__stage">${ticketHTML(reveal ?? {}, { esc: escHTML })}${tools}</div>`;
+  const ticket = host.querySelector(".lc-scratch__ticket");
+  const done = () => { host.classList.add("lc-scratch--landed"); host.querySelector(".lc-scratch__tools")?.remove(); onLand?.(); };
+  const els = ticket ? [...ticket.querySelectorAll("[data-panel]")] : [];
+  const held = els.map((el, i) => {
+    const keep = el.className.split(/\s+/).filter(c => TELLS.test(c));
+    if (keep.length) el.classList.remove(...keep);
+    const label = el.getAttribute("aria-label") ?? "";
+    el.setAttribute("aria-label", el.dataset.panel === "bonus" ? t("LOOTCRATES.Scratch.BonusCovered") : t("LOOTCRATES.Scratch.PanelCovered", { n: i + 1 }));
+    return { keep, label, role: el.getAttribute("role") };
+  });
+  const grid = ticket?.querySelector(".lc-scratch__grid");
+  if (buyer) {
+    grid?.setAttribute("role", "group");
+    grid?.setAttribute("aria-label", t("LOOTCRATES.Scratch.PanelsLabel", { name: reveal?.box?.name ?? "" }));
+    for (const el of els) el.setAttribute("role", "button");
+  }
+  // On a match 3 card the panels of each winning symbol, lit together.
+  const winners = new Set(card ? cardWins(card).winners : []);
+  const groupOf = i => (card?.layout === "match3" && winners.has(i) ? [...winners].filter(k => card.panels[k]?.symbol === card.panels[i]?.symbol) : [i]);
+  const isOpen = new Set();
+  const light = i => { if (held[i]?.keep.length) els[i].classList.add(...held[i].keep); };
+  const onOpen = (i, info) => {
+    isOpen.add(i);
+    els[i].setAttribute("aria-label", held[i].label);
+    const group = groupOf(i);
+    if (group.every(k => isOpen.has(k))) group.forEach(light);
+    try { onPanel?.(i, info); } catch (err) { console.error("loot-crates | a scratch panel's cue failed", err); }
+  };
+  const land = () => {
+    // The card is still and whole: a list again, read as it is printed.
+    if (buyer) {
+      grid?.setAttribute("role", "list");
+      grid?.removeAttribute("aria-label");
+      els.forEach((el, i) => { if (held[i].role) el.setAttribute("role", held[i].role); else el.removeAttribute("role"); });
+    }
+    done();
+  };
+  const foil = mountFoil(ticket ?? host, { cols: Number(card?.cols) || 1, buyer, reducedMotion, duration, sounds, onOpen, onLand: land });
+  host.querySelector(".lc-scratch__all")?.addEventListener("click", () => foil.revealAll());
+  return foil;
+}
+
+// The coin win's sting: the four rising notes the approved mockup plays,
+// which are the rarity sting's at Rare.
+const COIN_STING = "rare";
+
+/*
+  The kind's play: the buyer (this client's user bought it, and this isn't
+  a replay) scratches; the table, and every replay, watches it scratch
+  itself. The rasp and the panel's tick play on the interface channel
+  while the setting is on and the page is in view.
+*/
+function play(host, reveal, { sound = false, pageHidden = () => false, onLand, buyer = false, replay = false } = {}) {
+  const hear = () => sound && !pageHidden();
+  return mountScratch(host, {
+    reveal,
+    buyer: buyer && !replay && !reveal.replay,
+    sounds: { scratch: speed => (hear() ? playScratch(speed) : null), tick: () => { if (hear()) playFoilTick(); } },
+    onLand,
+  });
+}
+
+/*
+  What the chat card keeps for Watch again (revealcard.js replaySnapshot):
+  the card, its place in the roll, who scratched which game and what it
+  paid. Display only: no uuid, no purse, so a replay can neither open the
+  item nor say what gold is left. A few hundred bytes.
+*/
+function snapshot(reveal) {
+  const card = cleanCard(reveal?.card);
+  if (!card) return null;
+  const outcome = outcomeOf(reveal);
+  const r = reveal.result ?? null;
+  return {
+    card, outcome, payoutCp: Math.max(0, Math.round(Number(reveal.payoutCp) || 0)),
+    ticket: cleanTicket(reveal.ticket),
+    box: { name: String(reveal.box?.name ?? ""), price: Number(reveal.box?.price) || 0 },
+    actorName: String(reveal.actorName ?? ""),
+    result: outcome === "item" && r ? { name: String(r.name ?? ""), rarity: RARITIES.includes(r.rarity) ? r.rarity : "common", img: String(r.img ?? "") } : outcome === "coins" ? { name: String(r?.name ?? ""), outcome: "coins" } : null,
+  };
+}
+
+// The reveal a replay plays from a stored snapshot (anything can be in a
+// message's flags), or null when it can't be played.
+function fromSnapshot(s) {
+  const card = cleanCard(s?.card);
+  if (!card) return null;
+  const outcome = ["item", "coins", "nothing"].includes(s.outcome) ? s.outcome : "nothing";
+  const r = s.result;
+  return {
+    card, outcome, payoutCp: Math.max(0, Math.round(Number(s.payoutCp) || 0)),
+    ticket: cleanTicket(s.ticket),
+    box: { name: String(s.box?.name ?? ""), price: Number(s.box?.price) || 0 },
+    actorName: String(s.actorName ?? ""),
+    result: outcome === "item" && r?.name ? { name: String(r.name), rarity: RARITIES.includes(r.rarity) ? r.rarity : "common", img: String(r.img ?? "") } : outcome === "coins" ? { name: String(r?.name ?? ""), outcome: "coins" } : null,
+  };
+}
+
+const int = (v, lo, hi) => (Number.isInteger(v) && v >= lo && v <= hi ? v : null);
+const cleanTicket = tk => (tk && int(tk.rollId, 1, 1e9) && int(tk.no, 1, 1e9) && int(tk.size, 1, 1e9) ? { rollId: tk.rollId, no: tk.no, size: tk.size } : null);
+const cleanPrize = p => (p?.item ? (RARITIES.includes(p.item) ? { item: p.item, ...(p.name ? { name: String(p.name) } : {}), ...(p.img ? { img: String(p.img) } : {}) } : null) : Number.isFinite(p?.gp) && p.gp >= 0 ? { gp: p.gp } : null);
+
+/*
+  A card as layCard makes it, checked field by field and copied, or null:
+  a known layout, a grid inside its limits with a panel for every cell,
+  whole numbers and coin or item prizes on lucky numbers, known symbols
+  on match 3.
+*/
+export function cleanCard(card) {
+  if (!card || !LAYOUTS.includes(card.layout)) return null;
+  const lim = GRID_LIMITS[card.layout];
+  const cols = int(card.cols, lim.cols[0], lim.cols[1]), rows = int(card.rows, lim.rows[0], lim.rows[1]);
+  if (!cols || !rows || !Array.isArray(card.panels) || card.panels.length !== cols * rows) return null;
+  if (card.layout === "match3") {
+    if (!Array.isArray(card.key) || card.key.length > MAX_PRIZES) return null;
+    const key = card.key.map(k => (SYMBOLS.includes(k?.symbol) ? { symbol: k.symbol, prize: cleanPrize(k.prize) } : null));
+    const panels = card.panels.map(p => (SYMBOLS.includes(p?.symbol) ? { symbol: p.symbol } : null));
+    if (key.some(k => !k?.prize) || panels.some(p => !p)) return null;
+    return { layout: "match3", cols, rows, key, panels };
+  }
+  if (!Array.isArray(card.lucky) || !card.lucky.length || card.lucky.length > 8 || card.lucky.some(n => !int(n, 1, 999))) return null;
+  const panels = card.panels.map(p => (int(p?.n, 1, 999) && cleanPrize(p.prize) ? { n: p.n, prize: cleanPrize(p.prize) } : null));
+  if (panels.some(p => !p)) return null;
+  const bonus = card.bonus && Number.isFinite(card.bonus.gp) ? { gp: card.bonus.gp, win: !!card.bonus.win } : null;
+  return { layout: "lucky", cols, rows, lucky: [...card.lucky], panels, bonus };
 }
 
 // "Tam scratches Fortune Ticket 5 gp".
@@ -548,11 +691,14 @@ function result(reveal, { esc = String, canSee = false } = {}) {
     + (where.length ? `<div class="lc-reveal__where">${where.join(" · ")}</div>` : "");
 }
 
+// The card's sting once every panel is open: an item's rarity sting, a
+// coin win's four rising notes, a dud's two low falling ones (the plop),
+// as the mockup ends a win and a dud.
 function sting(reveal) {
   const outcome = outcomeOf(reveal);
   if (outcome === "item") playReveal(reveal.result?.rarity);
-  else if (outcome === "coins") playCoinBack();
-  else playPlink();
+  else if (outcome === "coins") playReveal(COIN_STING);
+  else playPlop();
 }
 
 // The buyer's own word on a dud, in case the window sits behind the shop.
@@ -861,7 +1007,9 @@ export const SCRATCH = registerKind({
     sting,
     notice,
     again,
-    replayable: false,
+    snapshot,
+    fromSnapshot,
+    replayable: true,
   },
   // Every ticket posts one, a dud too, so the seal shows its head with "Opening…".
   chat: { card: chatCard },

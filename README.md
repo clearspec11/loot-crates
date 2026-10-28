@@ -88,6 +88,8 @@ Put one item, or a sealed crate, up for bids at the table, with an opening bid, 
 
 You print a roll of tickets with a fixed prize list: so many tickets win coins, one or two win an item at a rarity from the ticket's pools, a few win the bonus spot, and the rest are duds. Each ticket bought comes off the roll, so the shop shows what is left (the tickets, and each prize still in the roll) and the odds of what is left. When the roll is sold out, press **Print a new roll** on its row. Pick **lucky numbers** (match any of your numbers to a lucky number to win the prize under it; wins add up) or **match 3** (three of a symbol win its prize). The editor reads out the roll's odds as you type the prize list: "1 in 2.3 tickets wins, the top prize (Rare item) 1 in 100, all prizes 5 gp or more". A refund puts the ticket back in the roll.
 
+The buyer scratches the ticket themselves: hold the mouse button and rub the gold coin over the foil, panel by panel, until the card is open (a finger works on a touch screen). The arrow keys, Space and R work too, and **Reveal all** opens the whole card at once. Everyone else at the table watches the same coin scratch the card by itself, and the chat card stays sealed until it is open. The result was decided when the ticket was bought: scratching only shows it.
+
 ### Crates from roll tables
 
 Already have loot tables? Right-click a table in the **Roll Tables** sidebar and choose **Make a crate**, or drop it on the Boxes tab. The crate keeps the table's own odds, so a 1 in 100 result stays 1 in 100, and nested tables are flattened. Type a price and press **Add to shelf**.

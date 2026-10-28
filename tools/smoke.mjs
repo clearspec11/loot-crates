@@ -192,6 +192,24 @@ const STATES = [
   ["shop-scratch-soldout", "state=shop&scratch=soldout"],
   ["editor-scratch", "state=editor&scratch=1"],
   ["manager-boxes-scratch", "state=manager&tab=boxes&scratch=1"],
+  // The scratch itself (scratch.js mountScratch, the foil in foil.js), as
+  // the approved mockup has it, played with motion on: the buyer's card
+  // untouched (foil on every panel and the bonus spot, no win showing
+  // through, each panel "covered" to a screen reader, the coin over the
+  // second panel with the pointer hidden, Reveal all and the help under
+  // it); scratched with real pointer strokes (five panels open, the sixth
+  // part-scraped under 60% and still shut); the card open as a coin win,
+  // a dud, the item and a match 3 win (winners lit, the result, Close
+  // focused, no foil, coin or tools left); and the table's view mid
+  // auto-scratch (the coin scraping by itself, some panels open, no
+  // Reveal all, the pointer its own).
+  ["scratch-unscratched", "state=scratch&buyer=1&phase=covered"],
+  ["scratch-half", "state=scratch&buyer=1&phase=half"],
+  ["scratch-won", "state=scratch&outcome=coins&buyer=1&duration=0"],
+  ["scratch-dud", "state=scratch&outcome=nothing&buyer=1&duration=0"],
+  ["scratch-item", "state=scratch&outcome=item&buyer=1&duration=0"],
+  ["scratch-match3-won", "state=scratch&layout=match3&outcome=coins&buyer=1&duration=0"],
+  ["scratch-spectator", "state=scratch&phase=sweep&duration=8000"],
   ["manager-empty", "state=manager&empty=1"],
   ["manager-boxes-empty", "state=manager&tab=boxes&empty=1"],
   ["manager-boxes-starter", "state=manager&tab=boxes&starter=1"],
@@ -1715,6 +1733,89 @@ function dropPreviewProblems() {
   return out;
 }
 
+// A scratch ticket's reveal (scratch.js, foil.js). `mode`: covered | half
+// (the buyer's, scratching) | won | dud | item | match3 (landed) |
+// spectator (mid auto-scratch). The foil's pixels are read back, so a
+// panel counts as scraped only where the coin really took the foil off.
+function scratchRevealProblems(mode) {
+  const out = [];
+  const shown = el => !!el && !el.hidden && el.getBoundingClientRect().height > 0;
+  const ticket = document.querySelector(".lc-scratch__ticket");
+  if (!ticket) return ["no scratch ticket"];
+  const panels = [...ticket.querySelectorAll("[data-panel]")];
+  const open = panels.filter(p => p.classList.contains("lc-scratch__panel--open"));
+  const coin = ticket.querySelector(".lc-scratch__coin");
+  const coinOn = !!coin && coin.classList.contains("lc-scratch__coin--on") && getComputedStyle(coin).opacity !== "0";
+  const tools = document.querySelector(".lc-scratch__tools");
+  // The share of a panel's foil scraped off, from its canvas's alpha on a coarse grid.
+  const scraped = p => {
+    const c = p.querySelector(".lc-scratch__foil");
+    if (!c?.width) return null;
+    const d = c.getContext("2d").getImageData(0, 0, c.width, c.height).data;
+    let clear = 0, n = 0;
+    for (let y = 2; y < c.height; y += 6) for (let x = 2; x < c.width; x += 6) { n++; if (d[(y * c.width + x) * 4 + 3] < 40) clear++; }
+    return clear / n;
+  };
+  if (mode === "covered" || mode === "half" || mode === "spectator") {
+    if (!ticket.classList.contains("lc-scratch__ticket--covered")) out.push("the ticket isn't covered while it is being scratched");
+    if (document.body.dataset.landed) out.push("the card landed before every panel was open");
+    for (const p of panels) {
+      const isOpen = p.classList.contains("lc-scratch__panel--open");
+      const foil = p.querySelector(".lc-scratch__foil");
+      if (!isOpen && !(foil?.classList.contains("lc-scratch__foil--painted") && foil.getBoundingClientRect().width > 0)) out.push(`panel ${p.dataset.panel} has no painted foil`);
+      if (!isOpen && (p.classList.contains("lc-scratch__panel--win") || [...p.classList].some(c => c.startsWith("lc-rarity-")))) out.push(`panel ${p.dataset.panel} shows its win through the foil`);
+      if (!isOpen && !/covered/.test(p.getAttribute("aria-label") ?? "")) out.push(`covered panel ${p.dataset.panel} reads "${p.getAttribute("aria-label")}"`);
+      if (isOpen && /covered/.test(p.getAttribute("aria-label") ?? "")) out.push(`open panel ${p.dataset.panel} still reads covered`);
+    }
+    if (!coinOn) out.push("no coin on the foil");
+  }
+  if (mode === "covered") {
+    if (open.length) out.push(`${open.length} panels open on an untouched card`);
+    const foil = panels[1]?.querySelector(".lc-scratch__foil");
+    if (foil && getComputedStyle(foil).cursor !== "none") out.push("the pointer isn't hidden over the buyer's foil");
+    if (foil && getComputedStyle(foil).touchAction !== "none") out.push("the buyer's foil takes scroll gestures");
+    if (scraped(panels[0]) !== 0) out.push("the untouched foil isn't whole");
+    const r = panels[1].getBoundingClientRect(), c = coin.getBoundingClientRect();
+    if (Math.abs(c.left + c.width / 2 - (r.left + r.width * 0.55)) > 3 || Math.abs(c.top + c.height / 2 - (r.top + r.height * 0.4)) > 3) out.push("the coin isn't where the pointer is");
+    if (!document.querySelector(".lc-scratch__ticket[data-buyer]") || !panels.some(p => p.getAttribute("tabindex") === "0")) out.push("the buyer's panels aren't a keyboard group");
+  }
+  if (mode === "covered" || mode === "half") {
+    const all = tools?.querySelector(".lc-scratch__all");
+    if (!shown(all) || all.textContent.trim() !== "Reveal all") out.push("no Reveal all under the buyer's card");
+    if (!/R reveals the whole card/.test(tools?.querySelector(".lc-scratch__help")?.textContent ?? "")) out.push("no keyboard help under the buyer's card");
+  }
+  if (mode === "half") {
+    if (open.length !== 5 || open.some(p => Number(p.dataset.panel) > 4)) out.push(`${open.length} panels open after five scratched (${open.map(p => p.dataset.panel).join(", ")})`);
+    for (const p of open) if (shown(p.querySelector(".lc-scratch__foil"))) out.push(`open panel ${p.dataset.panel} keeps its foil`);
+    const part = scraped(panels[5]);
+    if (part == null || part < 0.08 || part >= 0.6) out.push(`the part-scraped panel is ${part == null ? "unpainted" : `${Math.round(part * 100)}% scraped`}`);
+    if (panels[5].classList.contains("lc-scratch__panel--open")) out.push("a panel under 60% opened");
+  }
+  if (mode === "spectator") {
+    if (open.length < 2 || open.length >= panels.length) out.push(`${open.length} of ${panels.length} panels open mid auto-scratch`);
+    if (tools) out.push("the table's view has the buyer's tools");
+    if (ticket.dataset.buyer) out.push("the table's card takes the pointer");
+  }
+  if (["won", "dud", "item", "match3"].includes(mode)) {
+    if (!document.body.dataset.landed) out.push("the card never landed");
+    if (open.length !== panels.length) out.push(`${open.length} of ${panels.length} panels open once landed`);
+    if (ticket.classList.contains("lc-scratch__ticket--covered") || !ticket.classList.contains("lc-scratch__ticket--open")) out.push("the landed ticket is still covered");
+    if (panels.some(p => shown(p.querySelector(".lc-scratch__foil")))) out.push("foil left on a landed card");
+    if (coinOn) out.push("the coin is still up once landed");
+    if (tools) out.push("Reveal all is still there once landed");
+    if (document.activeElement !== document.querySelector(".lc-reveal__close")) out.push("focus didn't move to Close on landing");
+    const lit = panels.filter(p => p.classList.contains("lc-scratch__panel--win"));
+    const text = document.querySelector(".lc-reveal__result")?.innerText.trim() ?? "";
+    if (mode === "won" && (!lit.length || !/^Won 25 gp/.test(text))) out.push(`a coin win lit ${lit.length} panels and reads "${text}"`);
+    if (mode === "dud" && (lit.length || !/^A dud/.test(text))) out.push(`a dud lit ${lit.length} panels and reads "${text}"`);
+    if (mode === "item" && (lit.length !== 1 || ![...lit[0].classList].some(c => c.startsWith("lc-rarity-")) || !shown(document.querySelector(".lc-reveal__open")))) out.push("the item's panel isn't lit with its rarity, or no Open item");
+    if (mode === "match3" && (lit.length !== 3 || new Set(lit.map(p => p.querySelector("[data-symbol]")?.dataset.symbol)).size !== 1)) out.push(`a match 3 win lit ${lit.length} panels`);
+  }
+  const small = [...document.querySelectorAll(".lc-scratch *, .lc-reveal__result *")].filter(el => el.childElementCount === 0 && el.textContent.trim() && parseFloat(getComputedStyle(el).fontSize) < 11);
+  if (small.length) out.push(`${small.length} texts under 11px in the scratch, e.g. "${small[0].textContent.trim().slice(0, 30)}"`);
+  return out;
+}
+
 // A crate pull that found nothing: the quiet line, the buyer's gold, no
 // Open item and nothing said about an inventory; the strip landed on the
 // blank (no art), and focus on Close.
@@ -1939,6 +2040,9 @@ try {
       // state); two frames in, they have faces to show.
       if (name === "dice-rolling") await page.waitForFunction(() => [...document.querySelectorAll(".lc-dice__tray .lc-dice__face")].every(f => f.textContent.trim()), null, { timeout: 10000 });
       if (name.startsWith("welcome")) await page.waitForSelector("body[data-ready]", { timeout: 10000 });
+      if (name.startsWith("scratch")) await page.waitForSelector(name === "scratch-unscratched" || name === "scratch-half" || name === "scratch-spectator" ? "body[data-ready]" : "body[data-landed]", { timeout: 10000 });
+      // Mid auto-scratch: the coin has opened a few panels by itself.
+      if (name === "scratch-spectator") await page.waitForFunction(() => document.querySelectorAll(".lc-scratch__panel--open").length >= 3, null, { timeout: 10000 });
       if (name.startsWith("manager") || name === "box-limits" || name === "editor-deck" || name === "editor-scratch" || name === "box-odds" || name === "drop-preview") await page.waitForSelector("body[data-ready]", { timeout: 10000 });
       await page.waitForTimeout(500);
       const wide = await page.evaluate(() => document.scrollingElement.scrollWidth > document.scrollingElement.clientWidth + 1);
@@ -1970,6 +2074,7 @@ try {
       else if (name === "box-odds") problems0.push(...await page.evaluate(oddsEditorProblems));
       else if (name === "drop-preview") problems0.push(...await page.evaluate(dropPreviewProblems));
       else if (name === "landed-nothing") problems0.push(...await page.evaluate(nothingRevealProblems));
+      else if (name.startsWith("scratch")) problems0.push(...await page.evaluate(scratchRevealProblems, { "scratch-unscratched": "covered", "scratch-half": "half", "scratch-won": "won", "scratch-dud": "dud", "scratch-item": "item", "scratch-match3-won": "match3", "scratch-spectator": "spectator" }[name]));
       else if (name.startsWith("linger")) {
         problems0.push(...await page.evaluate(lingerProblems, { off: name === "linger-off", paused: name === "linger-paused" }));
         if (name === "linger-dice") problems0.push(...await page.evaluate(diceProblems, "win"));

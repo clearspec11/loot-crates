@@ -17,7 +17,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("../module/scripts/foundry/reveal.js", () => ({ showReveal: vi.fn(async () => ({ landed: Promise.resolve() })), heldState: () => null, heldBefore: () => null, boxHeld: () => false, onHold: () => () => {}, onRelease: () => () => {} }));
-vi.mock("../module/scripts/foundry/sound.js", () => ({ playTick: vi.fn(), playSlow: vi.fn(), playReveal: vi.fn(), playPlop: vi.fn(), playPlink: vi.fn(), playCoinBack: vi.fn(), playBane: vi.fn() }));
+vi.mock("../module/scripts/foundry/sound.js", () => ({ playTick: vi.fn(), playSlow: vi.fn(), playReveal: vi.fn(), playPlop: vi.fn(), playPlink: vi.fn(), playCoinBack: vi.fn(), playBane: vi.fn(), playScratch: vi.fn(), playFoilTick: vi.fn() }));
 
 const scratch = await import("../module/scripts/games/scratch.js");
 const { SCRATCH, SCRATCH_DEFAULTS, SYMBOLS, prizesOf, rollOf, gridOf, bonusOf, layoutOf, rollState, ticketsSold, drawBag, rollReason, layCard, cardWins, splitsOf, luckyCount, rollOdds, oddsText, oneIn, prizeText, ticketsLeftText, scratchRulesText, scratchOddsHTML, nextRoll, draftScratch, scratchPreview, scratchPreviewHTML, ticketHTML, miniHTML, shownState, prizeListHTML } = scratch;
@@ -438,23 +438,16 @@ describe("the words", () => {
     expect((html.match(/lc-scratch__panel--win/g) ?? []).length).toBe(cardWins(card).winners.length);
     expect(html).toContain("Reveal the gem to win <strong>25 gp</strong> on top.");
     expect(miniHTML(card).match(/<i/g)).toHaveLength(12);
-    k.sting(coins); expect(sound.playCoinBack).toHaveBeenCalledTimes(1);
-    k.sting(reveal({ outcome: "nothing", result: null })); expect(sound.playPlink).toHaveBeenCalledTimes(1);
+    // A coin win's four rising notes (the rarity sting at Rare), a dud's two falling ones.
+    k.sting(coins); expect(sound.playReveal).toHaveBeenLastCalledWith("rare");
+    k.sting(reveal({ outcome: "nothing", result: null })); expect(sound.playPlop).toHaveBeenCalledTimes(1);
+    expect(sound.playCoinBack).not.toHaveBeenCalled();
+    expect(sound.playPlink).not.toHaveBeenCalled();
     k.sting(reveal({ outcome: "item", result: { name: "Flame Tongue", rarity: "rare" } })); expect(sound.playReveal).toHaveBeenCalledWith("rare");
     expect(k.notice(reveal({ outcome: "nothing", result: null }))).toBe("Fortune Ticket: a dud.");
     expect(k.notice(coins)).toBeNull();
-    expect(k.replayable).toBe(false);
-  });
-
-  it("the stand-in play draws the card open and lands at once, with nothing to replay", () => {
-    const host = { classList: { add: vi.fn() }, dataset: {}, innerHTML: "" };
-    const onLand = vi.fn();
-    const ctrl = SCRATCH.reveal.play(host, reveal({ card: layCard(MATCH3, { kind: "gp", gp: 5 }, seededRng(2)), outcome: "coins", payoutCp: 500, box: { name: "Market Scratchie", price: 1 } }), { onLand });
-    expect(ctrl.reducedMotion).toBe(true);
-    ctrl.play(); ctrl.skip();
-    expect(onLand).toHaveBeenCalledTimes(1);
-    expect(host.innerHTML).toContain("Three the same win that prize");
-    expect((host.innerHTML.match(/lc-scratch__panel--win/g) ?? []).length).toBe(3);
+    // Watch again replays the scratch (test/scratchplay.test.js plays it).
+    expect(k.replayable).toBe(true);
   });
 
   it("Another ticket for 5 gp while the roll has tickets, off with the reason when it is sold out or the purse is short", () => {

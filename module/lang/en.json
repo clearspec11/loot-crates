@@ -1196,7 +1196,13 @@
       "SymHorn": "Horn",
       "SymRose": "Rose",
       "HeadTickets": "Tickets",
-      "HeadPrize": "Prize"
+      "HeadPrize": "Prize",
+      "FoilWord": "Scratch",
+      "PanelCovered": "Panel {n}, covered",
+      "BonusCovered": "Bonus spot, covered",
+      "PanelsLabel": "The panels of {name}",
+      "RevealAll": "Reveal all",
+      "Help": "Hold the mouse button and rub the coin over the foil. Keyboard: the arrow keys move between panels, Space scratches one, R reveals the whole card."
     }
   }
 }
