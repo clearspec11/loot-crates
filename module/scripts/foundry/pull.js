@@ -21,6 +21,7 @@ import "../games/dicegame.js";
 import "../games/deck.js";
 import "../games/roulette.js";
 import "../games/auction.js";
+import "../games/scratch.js";
 import { settle, canAfford, formatPrice } from "../core/currency.js";
 import { limitState, limitRefusal } from "../core/limits.js";
 import { onShelf, shelfRefusal } from "../core/shelf.js";

@@ -230,6 +230,18 @@ export function heldState(actorId, boxId) {
 }
 
 /*
+  The state from before the oldest pull of this game still playing here,
+  whoever bought it, or null: a game whose shop card shows the whole
+  table something a pull changes (a scratch roll's prizes left) reads it,
+  so no shop strikes a prize from the list before the card is open.
+*/
+export function heldBefore(boxId) {
+  if (!boxId) return null;
+  for (const h of held.values()) if (h.boxId === boxId && h.stateBefore) return h.stateBefore;
+  return null;
+}
+
+/*
   Whether a table game's round is still playing here (showRound's one hold
   for the whole table, which has no buyer): the shop's card says "Still
   spinning" and the GM's Open a round waits for it (table.js openRound),

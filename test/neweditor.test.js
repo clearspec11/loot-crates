@@ -33,6 +33,10 @@ vi.mock("../module/scripts/foundry/store.js", async importOriginal => {
 // nothing (its action name stands in); closing the dialog resolves null.
 let dialog = null;
 class Dialog {
+  // A confirm (Print a new roll's): what the test set it to answer, and what it asked.
+  static answer = true;
+  static asked = [];
+  static async confirm(config) { Dialog.asked.push(config); return Dialog.answer; }
   static wait(config) {
     return new Promise(resolve => {
       const form = document.createElement("form");
@@ -52,14 +56,15 @@ class Dialog {
   }
 }
 
-// FormData over the minidom form: named inputs (a ticked checkbox as "on")
-// and selects, as readForm reads them.
+// FormData over the minidom form: named inputs (a ticked checkbox as "on",
+// the checked radio of a group) and selects, as readForm reads them.
 class FormDataStub {
   constructor(form) {
     this.rows = [];
     for (const el of form.querySelectorAll("input")) {
       if (!el.getAttribute("name")) continue;
       if (el.getAttribute("type") === "checkbox") { if (el.checked) this.rows.push([el.getAttribute("name"), "on"]); continue; }
+      if (el.getAttribute("type") === "radio") { if (el.checked) this.rows.push([el.getAttribute("name"), el.value]); continue; }
       this.rows.push([el.getAttribute("name"), el.value]);
     }
     for (const el of form.querySelectorAll("select")) if (el.getAttribute("name") && !el.hasAttribute("multiple")) this.rows.push([el.getAttribute("name"), el.value]);
@@ -129,7 +134,7 @@ const field = name => dialog.form.querySelector(`[name="${name}"]`);
 const status = app => app.element.querySelector(".lc-manager__status");
 const focused = () => document.activeElement;
 
-const NEWS = [["addBox", "crate", "New box"], ["addWell", "well", "New well"], ["addDice", "dice", "New dice game"], ["addDeck", "deck", "New deck"], ["addWheel", "roulette", "New wheel"], ["addAuction", "auction", "New auction"]];
+const NEWS = [["addBox", "crate", "New box"], ["addWell", "well", "New well"], ["addDice", "dice", "New dice game"], ["addDeck", "deck", "New deck"], ["addWheel", "roulette", "New wheel"], ["addAuction", "auction", "New auction"], ["addScratch", "scratch", "New scratch ticket"]];
 
 describe("New then Cancel", () => {
   for (const [action, kind, title] of NEWS) {
@@ -229,6 +234,79 @@ describe("New then Save", () => {
     const made = Object.values(store.getBoxes()).find(b => b.kind === "auction");
     expect(made).toMatchObject({ kind: "auction", name: "The Flame Tongue", price: 20, pools: [], auction: { lot: { type: "item", uuid: "Item.b", name: "Flame Tongue", rarity: "rare" }, increment: 2, reserve: 40, gavelSec: 15, house: { count: 2, budget: 60, chance: 30 } } });
     expect(status(app).textContent).toBe("The Flame Tongue is on the shelf; bids open at 20 gp.");
+  });
+
+  it("addScratch: the readout follows the prize list, Add prize and remove change it, the layout moves the grid, and Save writes the roll", async () => {
+    const app = await manager();
+    const pending = act(app, "addScratch");
+    await settle(2);
+    const form = dialog.form;
+    const readout = () => form.querySelector(".lc-scratch-form__readout").textContent;
+    expect(readout()).toBe("1 in 2.3 tickets wins, the top prize (Rare item) 1 in 100, all prizes 5 gp or more");
+    // The Rare item has no pool ticked yet: the readout says so.
+    expect(form.querySelector(".lc-form__preview").textContent).toContain("Tick a pool for the item prizes");
+    expect(form.querySelectorAll(".lc-prize-row")).toHaveLength(6);
+    expect(form.querySelectorAll(".lc-prize-row__count").map(el => el.getAttribute("aria-label"))).toEqual([1, 2, 3, 4, 5, 6].map(n => `Tickets that win prize ${n}`));
+    field("name").value = "Fortune Ticket";
+    field("pool.p").checked = true;
+    // Add prize: a seventh row, its count focused; 10 tickets of 1 gp.
+    form.querySelector(".lc-prizes__add").dispatchEvent({ type: "click" });
+    const added = form.querySelectorAll(".lc-prize-row")[6];
+    expect(focused() === added.querySelector(".lc-prize-row__count")).toBe(true);
+    added.querySelector(".lc-prize-row__count").value = "10";
+    added.querySelector(".lc-prize-row__gp").value = "1";
+    form.dispatchEvent({ type: "input" });
+    expect(readout()).toBe("1 in 1.9 tickets wins, the top prize (Rare item) 1 in 100");
+    expect(form.querySelector(".lc-form__preview").textContent).not.toContain("Tick a pool");
+    // Remove the bonus row (the sixth): focus goes to the next row's count.
+    const bonusRemove = form.querySelectorAll(".lc-prize-row__remove")[5];
+    form.dispatchEvent({ type: "click", target: bonusRemove });
+    expect(form.querySelectorAll(".lc-prize-row")).toHaveLength(6);
+    expect(focused() === added.querySelector(".lc-prize-row__count")).toBe(true);
+    expect(added.querySelector(".lc-prize-row__count").getAttribute("aria-label")).toBe("Tickets that win prize 6");
+    // Match 3: the grid moves from 4 x 3 to its own 3 x 2, the bonus spot goes.
+    const match3 = form.querySelector('input[name="layout"][value="match3"]');
+    form.querySelector('input[name="layout"][value="lucky"]').checked = false;
+    match3.checked = true;
+    form.dispatchEvent({ type: "change", target: match3 });
+    expect([field("cols").value, field("rows").value].map(String)).toEqual(["3", "2"]);
+    expect(form.querySelector(".lc-scratch-form__bonus").hidden).toBe(true);
+    field("size").value = "50";
+    dialog.save();
+    await pending;
+    await settle();
+    const made = Object.values(store.getBoxes()).find(b => b.kind === "scratch");
+    expect(made).toMatchObject({ kind: "scratch", name: "Fortune Ticket", price: 5, layout: "match3", grid: { cols: 3, rows: 2 }, pools: [{ id: "p", share: 1 }], roll: { id: 1, size: 50 } });
+    expect(made.roll.prizes).toEqual([{ count: 1, item: { rarity: "rare" } }, { count: 2, gp: 100 }, { count: 5, gp: 25 }, { count: 12, gp: 10 }, { count: 20, gp: 5 }, { count: 10, gp: 1 }]);
+    expect(status(app).textContent).toBe("Fortune Ticket is on the shelf at 5 gp.");
+  });
+
+  it("printRoll: a sold-out roll is printed again at once; one with tickets left asks first, naming them, and Cancel prints nothing", async () => {
+    const game = { ...newgame.NEW_DEFAULTS.scratch(), id: "t1", name: "Tiny Ticket", roll: { id: 1, size: 2, prizes: [{ count: 1, gp: 5 }] } };
+    await store.saveBox(game);
+    await store.appendLog({ kind: "scratch", boxId: "t1", actorId: "a1", rollId: 1, tier: "gp.5", price: 5 });
+    const app = await manager();
+    const btn = app.element.querySelector('[data-action="printRoll"][data-box="t1"]');
+    expect(btn.textContent).toBe("Print a new roll");
+    Dialog.asked = [];
+    Dialog.answer = false;
+    await act(app, "printRoll", btn);
+    await settle();
+    expect(Dialog.asked[0].content).toBe("<p>Print a new roll of <strong>Tiny Ticket</strong>? Roll 1 still has 1 of 2 tickets left; they come off sale, and the new roll starts with every prize on the list.</p>");
+    expect(store.getBoxes().t1.roll.id).toBe(1);
+    Dialog.answer = true;
+    await act(app, "printRoll", btn);
+    await settle();
+    expect(store.getBoxes().t1.roll).toEqual({ ...game.roll, id: 2 });
+    expect(status(app).textContent).toBe("Tiny Ticket: Roll 2 is printed, 2 tickets on sale.");
+    // Sold out: no question, printed straight away.
+    await store.appendLog({ kind: "scratch", boxId: "t1", actorId: "a1", rollId: 2, tier: "gp.5", price: 5 });
+    await store.appendLog({ kind: "scratch", boxId: "t1", actorId: "a1", rollId: 2, tier: "dud", price: 5 });
+    Dialog.asked = [];
+    await act(app, "printRoll", app.element.querySelector('[data-action="printRoll"][data-box="t1"]'));
+    await settle();
+    expect(Dialog.asked).toEqual([]);
+    expect(store.getBoxes().t1.roll.id).toBe(3);
   });
 
   it("reads Add, and says the shop is closed, while it is", async () => {

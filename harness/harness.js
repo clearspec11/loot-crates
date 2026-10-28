@@ -91,6 +91,12 @@
   ?table=1 (shop: a crate made from a roll table, Goblin's Pockets, leads
   the shelf; it draws at the table's own odds, so its card names its items
   with their real chances, "and 3 more" and "Nothing 25%")
+  ?scratch=1 (shop: the Fortune Ticket leads the shelf, 43 of its 100
+  tickets sold, both 100 gp prizes gone; scratch.js) | soldout (the Market
+  Scratchie's roll 2 sold out: Sold out under an off Buy); on the Boxes
+  tab, the Fortune Ticket's row with Print a new roll; in the editor
+  (state=editor&scratch=1), the scratch ticket's editor with its prize
+  list and the live readout
   ?odds=weight (editor: the crate editor on that table's draft, the odds
   choice on the table's odds, the copy note, "Count text results as
   nothing" and the named chances)
@@ -118,7 +124,7 @@
   update, Close the primary). Add starter crates goes to ?starter=1, Open
   the manager to the manager.
 */
-import { POOLS, BOX, BOXES, TABLE_POOL, TABLE_CRATE, TABLE_PLAN, WELL, DICE, DICE_FACES, DECK, ROULETTE, AUCTION, AUCTION_CRATE, auctionRound, auctionBids, rouletteRound, wheelStakes, deckDraws, wellThrows, limitBuys, sampleLog, MANAGER_POOLS, MANAGER_SOURCES, MANAGER_BOXES, STARTER_INDEX } from "./sample.js";
+import { POOLS, BOX, BOXES, TABLE_POOL, TABLE_CRATE, TABLE_PLAN, WELL, DICE, DICE_FACES, DECK, ROULETTE, AUCTION, AUCTION_CRATE, SCRATCH, SCRATCH_MATCH3, scratchTickets, auctionRound, auctionBids, rouletteRound, wheelStakes, deckDraws, wellThrows, limitBuys, sampleLog, MANAGER_POOLS, MANAGER_SOURCES, MANAGER_BOXES, STARTER_INDEX } from "./sample.js";
 import { welcomeHTML, newsFor, WELCOME_TITLE } from "../module/scripts/views/welcome.js";
 import { LATEST } from "../module/scripts/core/changelog.js";
 import { STARTER_POOLS, pickEntries, buildStarter, starterNotice, starterCallHTML } from "../module/scripts/views/starter.js";
@@ -131,6 +137,7 @@ import { mountDeck, TONE_OF, CARD_KIND_LABEL, priceAt, deckPlan, deckRiseFieldsH
 import { resolve as resolveBets, pocketsOf, coloursOf, betName } from "../module/scripts/games/roulette.js";
 import { tableBodyHTML } from "../module/scripts/views/tableview.js";
 import { lotOf } from "../module/scripts/games/auction.js";
+import { scratchFieldsHTML, wireScratchEditor, draftScratch, scratchPreview, scratchPreviewHTML, rollState } from "../module/scripts/games/scratch.js";
 import { poolRows, sortRows, defaultView, poolSummary, poolBody, pinRecent, dropNotice, poolUsers, dropPreviewHTML } from "../module/scripts/views/poolview.js";
 import { boxesTabHTML } from "../module/scripts/views/boxestable.js";
 import { managerNavHTML, shopControls, shopEmptyHTML } from "../module/scripts/views/route.js";
@@ -172,12 +179,16 @@ let GAMES = q.get("shelf") === "off" ? BOXES.map(b => (b.id === "royal" ? { ...b
 if (q.get("table") === "1") GAMES = [TABLE_CRATE, ...GAMES];
 // With ?auction=1 the Midnight Lot leads the shelf, its auction open.
 if (q.get("auction") === "1") GAMES = [AUCTION, ...GAMES];
+// With ?scratch=1 the Fortune Ticket leads the shelf, 57 of its 100
+// tickets left; with ?scratch=soldout the Market Scratchie, its roll gone.
+if (q.get("scratch") === "1") GAMES = [SCRATCH, ...GAMES];
+if (q.get("scratch") === "soldout") GAMES = [SCRATCH_MATCH3, ...GAMES];
 // Every pool the shop's games draw from, the table crate's included.
 const SHOP_POOLS = { ...POOLS, [TABLE_POOL.id]: TABLE_POOL };
 document.body.classList.replace("theme-dark", `theme-${theme}`);
 
 // The window the module would open for this state: its class and title.
-const WINDOWS = { welcome: ["lc-welcome-window", WELCOME_TITLE], auction: ["lc-table", `The auction at ${q.get("lot") === "crate" ? AUCTION_CRATE.name : AUCTION.name}`], editor: ["lc-dialog", q.get("odds") ? "New box" : q.get("deck") ? "Edit deck" : "Edit box"], preview: ["lc-dialog", "Add to Goblin's Pockets"], shop: ["lc-shop", "Crate Shop"], manager: ["lc-manager", "Loot Crates"], well: ["lc-reveal", "A coin in the well"], dice: ["lc-reveal", "Dragon's Teeth"], deck: ["lc-reveal", "A card from the deck"], table: ["lc-table", `The wheel at ${ROULETTE.name}`] };
+const WINDOWS = { welcome: ["lc-welcome-window", WELCOME_TITLE], auction: ["lc-table", `The auction at ${q.get("lot") === "crate" ? AUCTION_CRATE.name : AUCTION.name}`], editor: ["lc-dialog", q.get("odds") ? "New box" : q.get("deck") ? "Edit deck" : q.get("scratch") ? "Edit scratch ticket" : "Edit box"], preview: ["lc-dialog", "Add to Goblin's Pockets"], shop: ["lc-shop", "Crate Shop"], manager: ["lc-manager", "Loot Crates"], well: ["lc-reveal", "A coin in the well"], dice: ["lc-reveal", "Dragon's Teeth"], deck: ["lc-reveal", "A card from the deck"], table: ["lc-table", `The wheel at ${ROULETTE.name}`] };
 const [appClass, appTitle] = WINDOWS[state] ?? ["lc-reveal", "Opening a crate"];
 document.getElementById("app").classList.add(appClass);
 // The welcome opens at its window's width (welcomewindow.js), 540px.
@@ -191,7 +202,7 @@ document.getElementById("title").textContent = appTitle;
 const CRATE_ICON = `<svg class="lc-box__icon" viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M3 8.5 12 4l9 4.5v8L12 21l-9-4.5z"/><path d="M3 8.5 12 13l9-4.5M12 13v8"/></svg>`;
 
 const nav = document.getElementById("nav");
-for (const [label, query] of [["shop", "state=shop"], ["spin", "state=spin"], ["landed", "state=landed"], ["landed, buyer", "state=landed&buyer=1"], ["missed", "state=landed&buyer=1&watched=0"], ["replay", "state=replay"], ["well", "state=well&buyer=1"], ["well, coin", "state=well&outcome=coin&buyer=1"], ["well, item", "state=well&outcome=item&buyer=1"], ["dice", "state=dice&buyer=1"], ["dice, lost", "state=dice&outcome=lose&buyer=1"], ["dice, prize", "state=dice&outcome=prize&buyer=1"], ["deck", "state=deck&buyer=1"], ["deck, item", "state=deck&outcome=item&buyer=1"], ["deck, bane", "state=deck&outcome=loss&buyer=1"], ["deck, effect", "state=deck&outcome=effect&buyer=1"], ["table", "state=table"], ["table, GM", "state=table&phase=waiting&gm=1"], ["wheel", "state=table&phase=spinning"], ["wheel, landed", "state=table&phase=landed&duration=0"], ["manager", "state=manager"], ["empty manager", "state=manager&empty=1"], ["boxes", "state=manager&tab=boxes&added=1"], ["starter", "state=manager&tab=boxes&starter=1"], ["pull log", "state=manager&tab=log"], ["box editor", "state=editor"], ["table crate", "state=shop&table=1"], ["table editor", "state=editor&odds=weight"], ["table drop", "state=preview"], ["nothing", "state=landed&nothing=1&buyer=1"], ["auction", "state=auction&phase=open"], ["auction, bids", "state=auction&phase=bid"], ["auction, GM", "state=auction&phase=bid&gm=1"], ["auction, hammer", "state=auction&phase=hammer&duration=0"], ["auction, crate", "state=auction&phase=hammer&lot=crate"], ["auction card", "state=shop&auction=1"], ["welcome", "state=welcome"], ["welcome, new world", "state=welcome&empty=1"], ["what's new", "state=welcome&view=news"]]) {
+for (const [label, query] of [["shop", "state=shop"], ["spin", "state=spin"], ["landed", "state=landed"], ["landed, buyer", "state=landed&buyer=1"], ["missed", "state=landed&buyer=1&watched=0"], ["replay", "state=replay"], ["well", "state=well&buyer=1"], ["well, coin", "state=well&outcome=coin&buyer=1"], ["well, item", "state=well&outcome=item&buyer=1"], ["dice", "state=dice&buyer=1"], ["dice, lost", "state=dice&outcome=lose&buyer=1"], ["dice, prize", "state=dice&outcome=prize&buyer=1"], ["deck", "state=deck&buyer=1"], ["deck, item", "state=deck&outcome=item&buyer=1"], ["deck, bane", "state=deck&outcome=loss&buyer=1"], ["deck, effect", "state=deck&outcome=effect&buyer=1"], ["table", "state=table"], ["table, GM", "state=table&phase=waiting&gm=1"], ["wheel", "state=table&phase=spinning"], ["wheel, landed", "state=table&phase=landed&duration=0"], ["manager", "state=manager"], ["empty manager", "state=manager&empty=1"], ["boxes", "state=manager&tab=boxes&added=1"], ["starter", "state=manager&tab=boxes&starter=1"], ["pull log", "state=manager&tab=log"], ["box editor", "state=editor"], ["table crate", "state=shop&table=1"], ["table editor", "state=editor&odds=weight"], ["table drop", "state=preview"], ["nothing", "state=landed&nothing=1&buyer=1"], ["auction", "state=auction&phase=open"], ["auction, bids", "state=auction&phase=bid"], ["auction, GM", "state=auction&phase=bid&gm=1"], ["auction, hammer", "state=auction&phase=hammer&duration=0"], ["auction, crate", "state=auction&phase=hammer&lot=crate"], ["auction card", "state=shop&auction=1"], ["scratch card", "state=shop&scratch=1"], ["sold out", "state=shop&scratch=soldout"], ["scratch editor", "state=editor&scratch=1"], ["welcome", "state=welcome"], ["welcome, new world", "state=welcome&empty=1"], ["what's new", "state=welcome&view=news"]]) {
   const a = document.createElement("a");
   a.href = `?${query}&seed=${seed}&theme=${theme}`;
   a.textContent = label;
@@ -272,7 +283,7 @@ function renderShop(extra = {}) {
     stateOf: id => (pityDue && id === BOX.id ? { sinceRare: BOX.rules.pity.after } : {}),
     // The in-game day and the log the well counts today's throws from, and
     // the deck its draws in a row.
-    today: "y1d1", log: [...deckDraws(Number(q.get("streak")) || 0), ...wellThrows(q.get("well") === "capped" ? WELL.rules.cap : 1), ...wheelStakes(), ...limitBuys(q.get("limit") === "reached" ? 2 : 1), ...(q.get("auction") === "1" ? auctionBids() : [])],
+    today: "y1d1", log: [...deckDraws(Number(q.get("streak")) || 0), ...wellThrows(q.get("well") === "capped" ? WELL.rules.cap : 1), ...wheelStakes(), ...limitBuys(q.get("limit") === "reached" ? 2 : 1), ...(q.get("auction") === "1" ? auctionBids() : []), ...(q.has("scratch") ? scratchTickets() : [])],
     // The wheel's round, as the card reads it: open on the clock, closed, or
     // none; and the auction's, its gavel running.
     rounds: { ...(q.get("round") === "none" ? {} : { R1: q.get("round") === "closed" ? rouletteRound(Date.now(), { status: "closed", closesAt: Date.now() - 1000 }) : rouletteRound() }), ...(q.get("auction") === "1" ? { A1: auctionRound() } : {}) },
@@ -857,7 +868,7 @@ function renderBoxes({ toggled = null } = {}) {
     <div class="lc-manager__body">
       ${managerNavHTML({ tab: "boxes", shopOpen: q.get("shop") !== "closed" })}
       <section class="lc-tab" role="tabpanel">
-        ${boxesTabHTML({ boxes: GAMES, pools: POOLS, log: [...deckDraws(1, now), ...limitBuys(1)], rounds: { R1: rouletteRound(now) }, recent: added?.id ?? null, esc })}
+        ${boxesTabHTML({ boxes: GAMES, pools: POOLS, log: [...deckDraws(1, now), ...limitBuys(1), ...(q.has("scratch") ? scratchTickets() : [])], rounds: { R1: rouletteRound(now) }, recent: added?.id ?? null, esc })}
       </section>
     </div>`;
   if (added) {
@@ -990,6 +1001,7 @@ function renderEditor() {
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   if (q.get("odds")) return renderTableEditor(esc);
   if (q.get("deck")) return renderDeckEditor(esc);
+  if (q.get("scratch")) return renderScratchEditor(esc);
   const royal = BOXES.find(b => b.id === "royal");
   const box = { ...royal, pools: [{ id: "core", share: 2 }], rules: { ...royal.rules, perCharacter: { max: 1, per: "day" } } };
   stage.innerHTML = `
@@ -1035,6 +1047,54 @@ function renderDeckEditor(esc) {
       </div></div>
       <footer class="form-footer"><button type="button">Save</button><button type="button">Cancel</button></footer>
     </div>`;
+  document.body.dataset.ready = "1";
+}
+
+/*
+  The scratch ticket's editor (?scratch=1) for the Fortune Ticket, as
+  manager.js #editScratch draws it: the price, the layout and grid, the
+  bonus spot, the roll (43 sold, so its note says the prizes left follow
+  the list), its prize rows with Add prize and remove, and the readout,
+  live as the GM types; then the pools, the limit and On the shelf.
+*/
+function renderScratchEditor(esc) {
+  const box = SCRATCH;
+  const sold = rollState(box, scratchTickets()).sold;
+  stage.innerHTML = `
+    <div class="dialog-form">
+      <div class="dialog-content"><div class="lc-form">
+        <label>Name <input name="name" value="${esc(box.name)}"></label>
+        <label class="lc-form__price">Price of a ticket <input name="price" type="text" data-price-field value="${esc(formatPrice(box.price))}" placeholder="50 gp, 5 sp or 12 gp 5 sp" autocomplete="off" spellcheck="false"></label>
+        ${scratchFieldsHTML(box, { esc, sold })}
+        <div class="lc-form__odds" role="group" aria-labelledby="lc-odds-h"><div class="lc-form__label" id="lc-odds-h">The roll as printed</div><div class="lc-form__preview"></div><p class="lc-sr-only" role="status" aria-live="polite"></p></div>
+        ${poolsFieldset("Pools the item prizes come from", Object.values(POOLS), box.pools, { esc })}
+        ${limitsFieldset(box, { stock: false, hasClock: true, esc })}
+        ${shelfFieldHTML(box)}
+      </div></div>
+      <footer class="form-footer"><button type="button">Save</button><button type="button">Cancel</button></footer>
+    </div>`;
+  const form = stage.querySelector(".lc-form");
+  // The form's values as manager.js readForm reads them: repeats as a list.
+  const read = () => {
+    const out = {};
+    for (const el of form.querySelectorAll("input, select")) {
+      if (!el.name || (el.type === "radio" && !el.checked)) continue;
+      const v = el.type === "checkbox" ? el.checked : el.value;
+      out[el.name] = el.name in out ? [].concat(out[el.name], v) : v;
+    }
+    return out;
+  };
+  let n = 0;
+  const paint = () => {
+    syncShares(form);
+    const draft = draftScratch(box, read(), Object.keys(POOLS));
+    form.querySelector(".lc-form__preview").innerHTML = scratchPreviewHTML(scratchPreview(draft, POOLS), esc);
+  };
+  form.addEventListener("input", paint);
+  form.addEventListener("change", paint);
+  wireScratchEditor(form, { newId: () => `new${++n}`, paint });
+  paint();
+  window.__lootCrates = { paint };
   document.body.dataset.ready = "1";
 }
 

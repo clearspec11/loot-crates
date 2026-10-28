@@ -6,7 +6,7 @@ The newest numbered entry's version is the one in `module/module.json`, and its 
 
 ## Unreleased
 
-- Nothing yet.
+- New game: scratch tickets. You print a roll of tickets with a fixed prize list (coins, an item at a rarity from the ticket's pools, a bonus spot, and duds), and each ticket bought comes off the roll, so the shop shows the tickets and prizes left and the odds of what is left, and a sold-out roll says so until you press **Print a new roll**. Two layouts, lucky numbers and match 3; the editor reads out the roll's odds as you type. A refund puts the ticket back. For now the ticket shows open when bought; scratching it by hand comes next.
 
 ## 1.2.1
 

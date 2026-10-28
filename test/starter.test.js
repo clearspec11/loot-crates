@@ -166,7 +166,8 @@ describe("the games", () => {
   it("are one of every kind, named as the starter set names them, the three crates at rising prices", () => {
     expect(set.games.map(g => g.name)).toEqual(STARTER_GAME_NAMES);
     expect(set.games.map(kindOf)).toEqual(["crate", "crate", "crate", "well", "dice", "deck", "roulette", "auction"]);
-    expect(new Set(set.games.map(kindOf))).toEqual(new Set(Object.keys(NEW_DEFAULTS)));
+    // Scratch tickets join the starter set once their scratch is in (round 26's third seat).
+    expect(new Set(set.games.map(kindOf))).toEqual(new Set(Object.keys(NEW_DEFAULTS).filter(k => k !== "scratch")));
     const crates = set.games.filter(g => kindOf(g) === "crate").map(g => g.price);
     expect(crates).toEqual([50, 250, 1000]);
   });

@@ -65,7 +65,10 @@
   multiplier, the perfect-roll prize), or a Deck of Many Things (deck.js:
   the first draw's price, how much each draw in a row multiplies it, and
   the cards as rows the GM writes: a name, what it does, its weight, once
-  per deck, its gold or its text; Reshuffle puts every drawn card back).
+  per deck, its gold or its text; Reshuffle puts every drawn card back), or
+  a scratch ticket (scratch.js: the price, lucky numbers or match 3, the
+  grid, the bonus spot, the roll's size and its prize list, with the
+  roll's odds read out live; Print a new roll starts the next roll).
   Every New opens its kind's editor on an unsaved draft (newgame.js):
   nothing is written until "Add to shelf", so Cancel leaves no empty row
   and a player's shelf never shows a half-built game. The Save then
@@ -92,6 +95,7 @@ import { WELL_DEFAULTS, stakeCoins, stakeGp, draftWell, wellPreview, wellPreview
 import { DICE_DEFAULTS, FORMULAS, draftDice, dicePreview, dicePreviewHTML, diceSummary } from "../games/dicegame.js";
 import { CARD_KINDS, CARD_KIND_HINT, cardsOf, streakMinutesOf, deckRiseFieldsHTML, deckOdds, draftDeck, deckPreview, deckPreviewHTML, deckSummary } from "../games/deck.js";
 import { ROULETTE_DEFAULTS, BET_TYPES, BET_TYPE_LABEL, pocketsOf, coloursOf, draftRoulette, roulettePreview, roulettePreviewHTML, rouletteSummary, payoutOf, maxStakeOf, maxBetsOf, windowMsOf, itemOnRarity } from "../games/roulette.js";
+import { scratchFieldsHTML, wireScratchEditor, draftScratch, scratchPreview, scratchPreviewHTML, scratchSummary, rollState, nextRoll, rollName, ticketsLeftText } from "../games/scratch.js";
 import { MAX_HOUSE, MIN_GAVEL_SEC, HOUSE_TICK_MS, lotOf, lotFromEntry, lotFromCrate, incrementOf, reserveOf, gavelMsOf, houseOf, draftAuction, auctionPreview, auctionPreviewHTML, auctionSummary } from "../games/auction.js";
 import { newDraft, crateFromPool, crateFromTable, copyOf, editorTitle, addLabel, addedNotice, deleteTitle, deleteGameText, deletedNotice } from "../views/newgame.js";
 import { boxesTabHTML } from "../views/boxestable.js";
@@ -142,8 +146,8 @@ export class CrateManager extends ApplicationV2 {
       switchTab: CrateManager.#switchTab,
       addPool: CrateManager.#addPool, editPool: CrateManager.#editPool, deletePool: CrateManager.#deletePool,
       bulkAdd: CrateManager.#bulkAdd, setUnsetRarity: CrateManager.#setUnsetRarity, removeEntry: CrateManager.#removeEntry, updateEntry: CrateManager.#updateEntry, relinkEntry: CrateManager.#relinkEntry,
-      addBox: CrateManager.#addBox, addWell: CrateManager.#addWell, addDice: CrateManager.#addDice, addDeck: CrateManager.#addDeck, addWheel: CrateManager.#addWheel, addAuction: CrateManager.#addAuction, crateFromPool: CrateManager.#crateFromPool,
-      editBox: CrateManager.#editBox, toggleShelf: CrateManager.#toggleShelf, copyBox: CrateManager.#copyBox, deleteBox: CrateManager.#deleteBox, reshuffle: CrateManager.#reshuffle, openTable: CrateManager.#openTable,
+      addBox: CrateManager.#addBox, addWell: CrateManager.#addWell, addDice: CrateManager.#addDice, addDeck: CrateManager.#addDeck, addWheel: CrateManager.#addWheel, addAuction: CrateManager.#addAuction, addScratch: CrateManager.#addScratch, crateFromPool: CrateManager.#crateFromPool,
+      editBox: CrateManager.#editBox, toggleShelf: CrateManager.#toggleShelf, copyBox: CrateManager.#copyBox, deleteBox: CrateManager.#deleteBox, reshuffle: CrateManager.#reshuffle, printRoll: CrateManager.#printRoll, openTable: CrateManager.#openTable,
       refund: CrateManager.#refund, toggleShop: CrateManager.#toggleShop, openShop: CrateManager.#openShop, toggleMisses: CrateManager.#toggleMisses,
       filterChip: CrateManager.#filterChip, showMore: CrateManager.#showMore,
       starterCrates: CrateManager.#starterCrates,
@@ -582,6 +586,7 @@ export class CrateManager extends ApplicationV2 {
   static #addDeck() { return this.#openEditor(newDraft("deck", { id: newId() }), { isNew: true }); }
   static #addWheel() { return this.#openEditor(newDraft("roulette", { id: newId() }), { isNew: true }); }
   static #addAuction() { return this.#openEditor(newDraft("auction", { id: newId() }), { isNew: true }); }
+  static #addScratch() { return this.#openEditor(newDraft("scratch", { id: newId() }), { isNew: true }); }
 
   // "New crate from this pool" on a pool's bar: the crate's editor on a
   // draft named for the pool and drawing only from it, the price focused,
@@ -634,7 +639,7 @@ export class CrateManager extends ApplicationV2 {
 
   // The editor for a record's kind, on the record or on a new draft.
   #openEditor(box, opts = {}) {
-    const editor = { well: CrateManager.#editWell, dice: CrateManager.#editDice, deck: CrateManager.#editDeck, roulette: CrateManager.#editWheel, auction: CrateManager.#editAuction }[kindOf(box)] ?? CrateManager.#editCrate;
+    const editor = { well: CrateManager.#editWell, dice: CrateManager.#editDice, deck: CrateManager.#editDeck, roulette: CrateManager.#editWheel, auction: CrateManager.#editAuction, scratch: CrateManager.#editScratch }[kindOf(box)] ?? CrateManager.#editCrate;
     return editor.call(this, box, { isNew: false, focus: null, ...opts });
   }
 
@@ -733,6 +738,29 @@ export class CrateManager extends ApplicationV2 {
     const saved = await updateBox(box.id, fresh => ({ ...fresh, deck: { ...(fresh.deck ?? {}), shuffledAt: Date.now() } }));
     if (saved) ui.notifications.info(t("LOOTCRATES.Manager.Reshuffled", { name: box.name }));
     this.render();
+  }
+
+  /*
+    Print a new roll of a scratch ticket: the next roll id, the same prize
+    list, every ticket on sale again; the old roll's rows stay in the log,
+    counted against the old roll. A roll that still has tickets asks
+    first, naming them; a sold-out one is printed at once. The Boxes
+    tab's status line says so.
+  */
+  static async #printRoll(_e, target) {
+    const box = getBoxes()[target.dataset.box];
+    if (!box) return this.render();
+    const st = rollState(box, getLog());
+    if (!st.soldOut) {
+      const ok = await DialogV2.confirm({ window: { title: t("LOOTCRATES.Boxes.PrintRoll") }, content: `<p>${t("LOOTCRATES.Manager.PrintRollAsk", { name: `<strong>${esc(box.name)}</strong>`, roll: esc(rollName(st.id)), left: esc(ticketsLeftText(st.left, st.size)) })}</p>` });
+      if (!ok) return target.focus?.();
+    }
+    const saved = await updateBox(box.id, fresh => ({ ...fresh, roll: nextRoll(fresh) }));
+    await this.render();
+    if (saved) {
+      const now = rollState(saved, getLog());
+      this.#announce(t("LOOTCRATES.Manager.RollPrinted", { name: saved.name, roll: rollName(now.id), size: now.size }));
+    }
   }
 
   static #editBox(_e, target) {
@@ -1012,6 +1040,65 @@ export class CrateManager extends ApplicationV2 {
       pools: draft.pools.filter(ref => ref.id in getPools()),
       weights: draft.weights,
       deck: { ...(fresh.deck ?? {}), step: draft.deck.step, streakMinutes: draft.deck.streakMinutes ?? streakMinutesOf(fresh), cards: draft.deck.cards },
+      rules: { ...(fresh.rules ?? {}), perCharacter: perCharacterFromForm(data) },
+    }), data);
+  }
+
+  /*
+    The scratch ticket's editor (scratch.js): the price of a ticket, the
+    layout (lucky numbers or match 3) and its grid, the bonus spot, the
+    roll's size and its prize list as rows of count x prize (coins, an
+    item at a rarity from the pools, or the bonus spot), with Add prize
+    and a remove on each; the readout beside it says the odds of the roll
+    as printed and what would keep a ticket from being sold; then the
+    pools the item prizes draw from. Saving keeps the roll's id: Print a
+    new roll on the Boxes tab starts a fresh one. Nothing is written
+    until Save.
+  */
+  static async #editScratch(box, opts) {
+    const { isNew } = opts;
+    const pools = Object.values(getPools());
+    const poolIds = pools.map(p => p.id);
+    const sold = isNew ? 0 : rollState(box, getLog()).sold;
+    const data = await promptForm(editorTitle(box, isNew, opts.copy), `
+      <label>${t("LOOTCRATES.Manager.Name")} <input name="name" value="${esc(box.name)}"${autofocus("name", opts)}></label>
+      ${priceFieldHTML(t("LOOTCRATES.Scratch.PriceField"), box, opts)}
+      ${scratchFieldsHTML(box, { esc, sold })}
+      <div class="lc-form__odds" role="group" aria-labelledby="lc-odds-${esc(box.id)}">
+        <div class="lc-form__label" id="lc-odds-${esc(box.id)}">${t("LOOTCRATES.Scratch.ReadoutLabel")}</div>
+        <div class="lc-form__preview"></div>
+        <p class="lc-sr-only" role="status" aria-live="polite"></p>
+      </div>
+      ${poolsFieldset(t("LOOTCRATES.Scratch.PoolsField"), pools, box.pools, { esc })}
+      ${limitsFieldset(box, { stock: false, draft: isNew, ...dayOpts(), esc })}
+      ${shelfFieldHTML(box, opts)}`, {
+      onForm: form => {
+        wireShelf(form, isNew);
+        wirePrice(form);
+        const paint = liveOdds(form, box, poolIds, (draft, live) => {
+          const preview = scratchPreview(draft, live);
+          return { html: scratchPreviewHTML(preview, esc), summary: scratchSummary(preview), held: preview.held };
+        }, draftScratch);
+        wireScratchEditor(form, { newId: () => foundry.utils.randomID(8), paint });
+      },
+      position: { width: 520 },
+      okLabel: saveLabel(isNew),
+    });
+    if (!data) return;
+    const draft = draftScratch(box, data, poolIds);
+    return this.#saveEditor(box, isNew, fresh => ({
+      ...fresh,
+      kind: "scratch",
+      name: data.name || fresh.name,
+      price: draft.price,
+      pools: draft.pools.filter(ref => ref.id in getPools()),
+      weights: draft.weights,
+      layout: draft.layout,
+      grid: draft.grid,
+      bonus: draft.bonus,
+      // The roll as it is now (Print a new roll may have moved it on while
+      // the dialog was open), with the GM's size and prizes.
+      roll: { ...(fresh.roll ?? {}), size: draft.roll.size, prizes: draft.roll.prizes },
       rules: { ...(fresh.rules ?? {}), perCharacter: perCharacterFromForm(data) },
     }), data);
   }
@@ -1805,8 +1892,10 @@ function heldRarities(draft, pools) {
   pools' "In X, Y" lines, and only those that differ
   (CrateManager.patchUsers). The pity state shows nowhere here (each
   buyer's shop shows their own). The log shows on the Boxes tab too while
-  a deck is on it: a deck's row reads its cards drawn and its odds from the
-  log (deck.js deckOdds), so a draw or a refund redraws it there and then.
+  a deck or a scratch ticket is on it: a deck's row reads its cards drawn
+  and its odds from the log (deck.js deckOdds), a scratch ticket's its
+  roll's tickets and prizes left (scratch.js rollState), so a play or a
+  refund redraws it there and then.
   The rounds show there too while a wheel is on it: its row's button reads
   "Open a round" or "Go to the table" from them (round.js liveRoundOf), so
   a round opened or spun from the table window changes it there and then.
@@ -1814,7 +1903,7 @@ function heldRarities(draft, pools) {
 export function managerShows(tab, key, boxes = {}) {
   if (key === SETTINGS.SHOP_OPEN) return true;
   const has = kind => Object.values(boxes ?? {}).some(b => kindOf(b) === kind);
-  if (key === SETTINGS.LOG) return tab === "log" || (tab === "boxes" && has("deck"));
+  if (key === SETTINGS.LOG) return tab === "log" || (tab === "boxes" && (has("deck") || has("scratch")));
   if (key === SETTINGS.ROUNDS) return tab === "log" || (tab === "boxes" && (has("roulette") || has("auction")));
   if (key === SETTINGS.POOLS) return tab === "boxes" || tab === "pools";
   if (key === SETTINGS.BOXES) return tab === "boxes";

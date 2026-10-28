@@ -1,6 +1,6 @@
 # Loot Crates
 
-Loot Crates is a Foundry VTT module for D&D 5e that turns treasure into a game the whole table watches. The GM fills **pools** with magic items, sets the odds and the price, and players spend their character's own coins to open a crate. The crate spins on every screen at once, slows past the near-misses and lands on the find, which goes straight into the character's inventory. Beside the crate there are five more games of chance on the same rules: the Wishing Well, Dragon's Teeth dice, a Deck of Many Things, Roulette and an Auction.
+Loot Crates is a Foundry VTT module for D&D 5e that turns treasure into a game the whole table watches. The GM fills **pools** with magic items, sets the odds and the price, and players spend their character's own coins to open a crate. The crate spins on every screen at once, slows past the near-misses and lands on the find, which goes straight into the character's inventory. Beside the crate there are six more games of chance on the same rules: the Wishing Well, Dragon's Teeth dice, a Deck of Many Things, Roulette, an Auction and scratch tickets.
 
 ![The Crate Shop, showing three crates with their odds, the Wishing Well and Dragon's Teeth](docs/images/shop.webp)
 
@@ -83,6 +83,10 @@ The first table game: everyone bets at once and one spin settles every bet. Bet 
 Put one item, or a sealed crate, up for bids at the table, with an opening bid, a least raise, a reserve and optional house bidders. A bid holds its coins until it is beaten, then gives them back; only the winner pays. The gavel bar drains and fills again on every bid, and comes down by itself when it runs out (or press **Bring the gavel down**; **Call it off** returns every bid).
 
 ![The auction board with the top bid, the last five bids and the gavel bar](docs/images/auction.webp)
+
+### Scratch tickets
+
+You print a roll of tickets with a fixed prize list: so many tickets win coins, one or two win an item at a rarity from the ticket's pools, a few win the bonus spot, and the rest are duds. Each ticket bought comes off the roll, so the shop shows what is left (the tickets, and each prize still in the roll) and the odds of what is left. When the roll is sold out, press **Print a new roll** on its row. Pick **lucky numbers** (match any of your numbers to a lucky number to win the prize under it; wins add up) or **match 3** (three of a symbol win its prize). The editor reads out the roll's odds as you type the prize list: "1 in 2.3 tickets wins, the top prize (Rare item) 1 in 100, all prizes 5 gp or more". A refund puts the ticket back in the roll.
 
 ### Crates from roll tables
 

@@ -31,6 +31,7 @@ import { DICE_DEFAULTS } from "../games/dicegame.js";
 import { DECK_DEFAULTS } from "../games/deck.js";
 import { ROULETTE_DEFAULTS } from "../games/roulette.js";
 import { AUCTION_DEFAULTS } from "../games/auction.js";
+import { SCRATCH_DEFAULTS, GRID_DEFAULTS } from "../games/scratch.js";
 import { formatPrice } from "../core/currency.js";
 import { restocked } from "../core/limits.js";
 import { onShelf } from "../core/shelf.js";
@@ -48,8 +49,11 @@ const weights = () => ({ ...DEFAULT_WEIGHTS });
   colours and four rarity bands, 5 gp to 50 gp a bet, three bets a
   character, a 45-second betting window. An auction: no lot yet (the
   editor asks for one), bids opening at 10 gp and rising by 5 gp, no
-  reserve, a 20-second gavel, no house bidders. Each call builds fresh
-  copies.
+  reserve, a 20-second gavel, no house bidders. A scratch ticket: the
+  approved mockup's Fortune Ticket, 5 gp, lucky numbers on a 4 x 3 grid
+  with a 25 gp bonus spot, roll 1 of 100 tickets (one Rare item, coins
+  from 5 gp to 100 gp, three bonus tickets, 57 duds). Each call builds
+  fresh copies.
 */
 export const NEW_DEFAULTS = {
   crate: () => ({ name: t("LOOTCRATES.Boxes.NewBox"), price: DEFAULT_PRICE_GP, pools: [], weights: weights(), rules: {} }),
@@ -64,14 +68,18 @@ export const NEW_DEFAULTS = {
     const d = AUCTION_DEFAULTS;
     return { kind: "auction", name: t("LOOTCRATES.Boxes.NewAuction"), price: d.price, pools: [], weights: weights(), auction: { lot: null, increment: d.increment, reserve: d.reserve, gavelSec: d.gavelSec, house: { ...d.house } }, rules: {} };
   },
+  scratch: () => {
+    const d = SCRATCH_DEFAULTS;
+    return { kind: "scratch", name: t("LOOTCRATES.Boxes.NewScratch"), price: d.price, pools: [], weights: weights(), layout: d.layout, grid: { ...GRID_DEFAULTS[d.layout] }, bonus: { on: true, gp: d.bonusGp }, roll: { id: 1, size: d.size, prizes: d.prizes.map(p => structuredClone(p)) }, rules: {} };
+  },
 };
 
 // The dialog's title: the words on the button that opened it, so what the
 // GM pressed is what they see. An existing record's editor says Edit.
-export const NEW_TITLE = words({ crate: "LOOTCRATES.Boxes.NewBox", well: "LOOTCRATES.Boxes.NewWell", dice: "LOOTCRATES.Boxes.NewDice", deck: "LOOTCRATES.Boxes.NewDeck", roulette: "LOOTCRATES.Boxes.NewWheel", auction: "LOOTCRATES.Boxes.NewAuction" });
-export const EDIT_TITLE = words({ crate: "LOOTCRATES.Game.EditBox", well: "LOOTCRATES.Game.EditWell", dice: "LOOTCRATES.Game.EditDice", deck: "LOOTCRATES.Game.EditDeck", roulette: "LOOTCRATES.Game.EditWheel", auction: "LOOTCRATES.Game.EditAuction" });
-export const COPY_TITLE = words({ crate: "LOOTCRATES.Game.CopyBox", well: "LOOTCRATES.Game.CopyWell", dice: "LOOTCRATES.Game.CopyDice", deck: "LOOTCRATES.Game.CopyDeck", roulette: "LOOTCRATES.Game.CopyWheel", auction: "LOOTCRATES.Game.CopyAuction" });
-export const DELETE_TITLE = words({ crate: "LOOTCRATES.Game.DeleteBox", well: "LOOTCRATES.Game.DeleteWell", dice: "LOOTCRATES.Game.DeleteDice", deck: "LOOTCRATES.Game.DeleteDeck", roulette: "LOOTCRATES.Game.DeleteWheel", auction: "LOOTCRATES.Game.DeleteAuction" });
+export const NEW_TITLE = words({ crate: "LOOTCRATES.Boxes.NewBox", well: "LOOTCRATES.Boxes.NewWell", dice: "LOOTCRATES.Boxes.NewDice", deck: "LOOTCRATES.Boxes.NewDeck", roulette: "LOOTCRATES.Boxes.NewWheel", auction: "LOOTCRATES.Boxes.NewAuction", scratch: "LOOTCRATES.Boxes.NewScratch" });
+export const EDIT_TITLE = words({ crate: "LOOTCRATES.Game.EditBox", well: "LOOTCRATES.Game.EditWell", dice: "LOOTCRATES.Game.EditDice", deck: "LOOTCRATES.Game.EditDeck", roulette: "LOOTCRATES.Game.EditWheel", auction: "LOOTCRATES.Game.EditAuction", scratch: "LOOTCRATES.Game.EditScratch" });
+export const COPY_TITLE = words({ crate: "LOOTCRATES.Game.CopyBox", well: "LOOTCRATES.Game.CopyWell", dice: "LOOTCRATES.Game.CopyDice", deck: "LOOTCRATES.Game.CopyDeck", roulette: "LOOTCRATES.Game.CopyWheel", auction: "LOOTCRATES.Game.CopyAuction", scratch: "LOOTCRATES.Game.CopyScratch" });
+export const DELETE_TITLE = words({ crate: "LOOTCRATES.Game.DeleteBox", well: "LOOTCRATES.Game.DeleteWell", dice: "LOOTCRATES.Game.DeleteDice", deck: "LOOTCRATES.Game.DeleteDeck", roulette: "LOOTCRATES.Game.DeleteWheel", auction: "LOOTCRATES.Game.DeleteAuction", scratch: "LOOTCRATES.Game.DeleteScratch" });
 export const deleteTitle = game => DELETE_TITLE[kindOf(game)] ?? t("LOOTCRATES.Game.DeleteGame");
 
 /*
@@ -152,8 +160,10 @@ export function crateFromTable(table, poolId, id) {
   name in `names`, the games there already, is used twice). Nothing of the source's history comes along: the stock is
   full again (what the GM set, limits.js restocked; a record with a count
   alone keeps it), the deck's shuffle mark is `now` so no card counts as
-  drawn, and the log, each character's pity and collection and any live
-  round are keyed on the source's id, so the copy starts with none.
+  drawn, a scratch ticket's roll is its first again (the prize list
+  whole: its tickets are counted at the copy's own id), and the log, each
+  character's pity and collection and any live round are keyed on the
+  source's id, so the copy starts with none.
 */
 export function copyOf(game, { id, now = 0, names = [] } = {}) {
   const copy = structuredClone(game);
@@ -161,6 +171,7 @@ export function copyOf(game, { id, now = 0, names = [] } = {}) {
   copy.name = copyName(game?.name, names);
   copy.rules = restocked(copy.rules ?? {});
   if (copy.deck) copy.deck = { ...copy.deck, shuffledAt: now };
+  if (copy.roll) copy.roll = { ...copy.roll, id: 1 };
   return copy;
 }
 

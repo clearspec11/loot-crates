@@ -179,6 +179,19 @@ const STATES = [
   // it: eight games, one of every kind, every one off the shelf (dimmed,
   // "On the shelf" unpressed, "0 of 8 on the shelf"), the first game's Edit focused,
   // the status line naming what came in, the button kept on the toolbar.
+  // Scratch tickets (scratch.js): the Fortune Ticket leads the shelf, 43
+  // of its 100 tickets sold: "57 of 100 tickets left", a row per prize with
+  // what is left of it (both 100 gp struck through), the odds of what is
+  // left and the guarantee, "Buy a ticket for 5 gp" on. Then the Market
+  // Scratchie's roll 2 sold out: "Roll 2 is sold out", Sold out under an
+  // off Buy, no odds. Its editor: the layout and grid, the bonus spot, the
+  // roll with its note (43 sold), the prize rows and the live readout.
+  // The Boxes tab with its row: the prizes left as pills, the roll in the
+  // rules, Print a new roll on a line of its own over the icons.
+  ["shop-scratch", "state=shop&scratch=1"],
+  ["shop-scratch-soldout", "state=shop&scratch=soldout"],
+  ["editor-scratch", "state=editor&scratch=1"],
+  ["manager-boxes-scratch", "state=manager&tab=boxes&scratch=1"],
   ["manager-empty", "state=manager&empty=1"],
   ["manager-boxes-empty", "state=manager&tab=boxes&empty=1"],
   ["manager-boxes-starter", "state=manager&tab=boxes&starter=1"],
@@ -425,7 +438,7 @@ function navProblems() {
 function priceProblems() {
   const out = [];
   const pane = document.querySelector(".lc-tab")?.getBoundingClientRect();
-  const NAME = { Crate: "Price of", Deck: "First draw at", Wheel: "Lowest bet at", Well: "Stake at", Dice: "Stake at", Auction: "Opening bid at" };
+  const NAME = { Crate: "Price of", Deck: "First draw at", Wheel: "Lowest bet at", Well: "Stake at", Dice: "Stake at", Auction: "Opening bid at", Scratch: "Ticket price at" };
   const rows = [...document.querySelectorAll(".lc-table--boxes tbody tr")];
   if (!rows.length) return ["no Boxes rows"];
   for (const r of rows) {
@@ -503,7 +516,7 @@ function boxesProblems(narrow) {
   const toolbar = document.querySelector(".lc-toolbar--boxes");
   if (!toolbar) return [...out, "no Boxes toolbar"];
   const news = [...toolbar.querySelectorAll('[data-action^="add"]')].map(b => b.textContent.trim());
-  if (news.join("|") !== "New box|New well|New dice game|New deck|New wheel|New auction") out.push(`the New buttons read ${news.join(", ")}`);
+  if (news.join("|") !== "New box|New well|New dice game|New deck|New wheel|New auction|New scratch ticket") out.push(`the New buttons read ${news.join(", ")}`);
   if (toolbar.scrollWidth > toolbar.clientWidth + 1 || toolbar.getBoundingClientRect().right > app.right + 1) out.push("the Boxes toolbar overflows the window");
   if (document.querySelectorAll('[role="status"]').length !== 1) out.push("expected one role=status");
   const status = document.querySelector(".lc-manager__status");
@@ -641,7 +654,7 @@ function starterBoxesProblems() {
   const starter = document.querySelectorAll('.lc-toolbar--boxes [data-action="starterCrates"]');
   if (starter.length !== 1 || starter[0].textContent.trim() !== "Add starter crates") out.push("the toolbar has no Add starter crates");
   const news = [...document.querySelectorAll('.lc-toolbar--boxes [data-action^="add"]')].map(b => b.textContent.trim());
-  if (news.join("|") !== "New box|New well|New dice game|New deck|New wheel|New auction") out.push(`the New buttons read ${news.join(", ")}`);
+  if (news.join("|") !== "New box|New well|New dice game|New deck|New wheel|New auction|New scratch ticket") out.push(`the New buttons read ${news.join(", ")}`);
   const status = document.querySelector(".lc-manager__status")?.textContent ?? "";
   if (status !== "Added 4 starter pools and 8 starter games, all off the shelf. Players can't see them yet: look each one over, then press On the shelf on its row.") out.push(`status line says "${status}"`);
   const first = rows[0]?.querySelector('[data-action="editBox"]');
@@ -1445,6 +1458,100 @@ function auctionCardProblems(on) {
 // The stock and the limit per character on the shop's cards (limits.js):
 // the Royal Vault reads "3 of 10 left"; the Pauper's Box says Tam can buy
 // one more, or once reached, says so as its reason with the Buy off.
+// The scratch ticket's card in the shop (scratch.js): the tickets left,
+// a row per prize with what is left (a prize gone struck through), the
+// odds of what is left with the guarantee and an on Buy; sold out, the
+// roll said sold out, Sold out under an off Buy and no odds. Nothing in
+// the card under the 11px floor, nothing past its edge.
+function scratchCardProblems(mode) {
+  const out = [];
+  const card = document.querySelector('.lc-box[data-box="fortune"], .lc-box[data-box="market"]');
+  if (!mode) return card ? ["a scratch card in a shop without one"] : [];
+  if (!card) return ["no scratch card in the shop"];
+  const text = card.innerText.replace(/\s+/g, " ");
+  const buy = card.querySelector(".lc-box__buy");
+  const rows = [...card.querySelectorAll(".lc-scratch__tier")];
+  if (mode === "left") {
+    for (const bit of ["57 of 100 tickets left", "Rare item", "1 of 1", "0 of 2", "14 of 20", "1 in 2 tickets wins, the top prize (Rare item) 1 in 57, all prizes 5 gp or more"]) if (!text.includes(bit)) out.push(`the scratch card doesn't say "${bit}"`);
+    if (rows.length !== 6) out.push(`expected 6 prize rows, got ${rows.length}`);
+    const gone = card.querySelectorAll(".lc-scratch__tier--gone s");
+    if (gone.length !== 1 || gone[0].textContent !== "100 gp") out.push("the 100 gp prize isn't struck through");
+    if (buy?.getAttribute("aria-disabled") === "true" || !/Buy a ticket for 5 gp$/.test(buy?.textContent.trim() ?? "")) out.push(`the scratch Buy reads "${buy?.textContent.trim()}"`);
+    const bar = card.querySelector(".lc-scratch__tier:not(.lc-scratch__tier--gone) .lc-scratch__bar");
+    if (!bar || bar.getBoundingClientRect().width < 16) out.push("a prize's bar is too narrow to read");
+  } else {
+    if (!text.includes("Roll 2 is sold out")) out.push("the sold-out card doesn't say its roll is sold out");
+    if (buy?.getAttribute("aria-disabled") !== "true") out.push("the sold-out Buy is on");
+    const why = card.querySelector(".lc-box__why");
+    if (why?.textContent !== "Sold out") out.push(`the sold-out reason reads "${why?.textContent}"`);
+    if (/tickets wins/.test(text)) out.push("a sold-out card still gives odds");
+    if (card.querySelectorAll(".lc-scratch__tier--gone").length !== rows.length) out.push("a sold-out roll's prize isn't struck through");
+  }
+  const cr = card.getBoundingClientRect();
+  for (const el of card.querySelectorAll(".lc-scratch__prizes *")) {
+    const r = el.getBoundingClientRect();
+    if (r.width && (r.right > cr.right + 1 || r.left < cr.left - 1)) { out.push(`the prize list overflows the card: ${el.className}`); break; }
+  }
+  const small = [...card.querySelectorAll("*")].filter(el => [...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim()) && parseFloat(getComputedStyle(el).fontSize) < 11);
+  if (small.length) out.push(`${small.length} texts under 11px in the scratch card, e.g. "${small[0].textContent.trim().slice(0, 30)}"`);
+  return out;
+}
+
+// The scratch ticket's editor (scratch.js scratchFieldsHTML): the two
+// layouts as radios with a sentence each, the grid, the bonus spot, the
+// roll's size and its live-roll note, six prize rows each naming its
+// fields by number, the readout. Add prize adds a seventh with its count
+// focused and the readout follows; its remove takes it again.
+async function scratchEditorProblems() {
+  const out = [];
+  const form = document.querySelector(".lc-form");
+  const radios = [...form.querySelectorAll('input[name="layout"]')];
+  if (radios.map(r => r.value).join("|") !== "lucky|match3" || !radios[0].checked) out.push("the layout radios are wrong");
+  for (const r of radios) if (!document.getElementById(r.getAttribute("aria-describedby"))?.textContent.trim()) out.push(`the ${r.value} layout has no sentence`);
+  if (form.querySelector('input[name="cols"]')?.value !== "4" || form.querySelector('input[name="rows"]')?.value !== "3") out.push("the grid isn't 4 x 3");
+  if (form.querySelector(".lc-scratch-form__bonus")?.hidden) out.push("the bonus spot is hidden for lucky numbers");
+  if (!/Roll 1 has sold 43 so far/.test(form.textContent)) out.push("the live roll's note is missing");
+  const rows = () => [...form.querySelectorAll(".lc-prize-row")];
+  if (rows().length !== 6) out.push(`expected 6 prize rows, got ${rows().length}`);
+  const labels = rows().map(r => r.querySelector(".lc-prize-row__count").getAttribute("aria-label"));
+  if (labels.join("|") !== [1, 2, 3, 4, 5, 6].map(n => `Tickets that win prize ${n}`).join("|")) out.push(`the counts are named ${labels.join(", ")}`);
+  if (rows().filter(r => getComputedStyle(r.querySelector(".lc-prize-row__gp")).visibility === "visible").length !== 4) out.push("the gold field shows on a row that isn't coins");
+  const readout = () => form.querySelector(".lc-scratch-form__readout")?.textContent;
+  if (readout() !== "1 in 2.3 tickets wins, the top prize (Rare item) 1 in 100, all prizes 5 gp or more") out.push(`the readout reads "${readout()}"`);
+  form.querySelector(".lc-prizes__add").click();
+  const added = rows()[6];
+  if (!added || document.activeElement !== added.querySelector(".lc-prize-row__count")) out.push("Add prize didn't add a row with its count focused");
+  else {
+    added.querySelector(".lc-prize-row__gp").value = "1";
+    added.querySelector(".lc-prize-row__count").value = "10";
+    added.querySelector(".lc-prize-row__count").dispatchEvent(new Event("input", { bubbles: true }));
+    if (readout() !== "1 in 1.9 tickets wins, the top prize (Rare item) 1 in 100") out.push(`after Add prize the readout reads "${readout()}"`);
+    added.querySelector(".lc-prize-row__remove").click();
+    if (rows().length !== 6 || readout() !== "1 in 2.3 tickets wins, the top prize (Rare item) 1 in 100, all prizes 5 gp or more") out.push("removing the added row didn't put the readout back");
+  }
+  const small = [...form.querySelectorAll("*")].filter(el => [...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim()) && parseFloat(getComputedStyle(el).fontSize) < 11);
+  if (small.length) out.push(`${small.length} texts under 11px, e.g. "${small[0].textContent.trim().slice(0, 30)}"`);
+  const fr = form.getBoundingClientRect();
+  const over = [...form.querySelectorAll("input, select, button")].filter(el => { const r = el.getBoundingClientRect(); return r.width && (r.right > fr.right + 1 || r.left < fr.left - 1); });
+  if (over.length) out.push(`${over.length} controls past the form's edge, e.g. ${over[0].name || over[0].className}`);
+  return out;
+}
+
+// The Boxes tab with the Fortune Ticket's row: tagged Scratch, its prizes
+// left as pills, its roll in the rules, Print a new roll named for it.
+function scratchBoxesProblems() {
+  const out = [];
+  const row = [...document.querySelectorAll(".lc-table--boxes tbody tr")].find(r => /Fortune Ticket/.test(r.querySelector(".lc-table__name")?.textContent ?? ""));
+  if (!row) return ["no Fortune Ticket row"];
+  if (row.querySelector(".lc-kind")?.textContent !== "Scratch") out.push("the scratch row isn't tagged Scratch");
+  const pills = [...row.querySelectorAll(".lc-odd")].map(p => p.textContent.trim());
+  if (pills.join("|") !== "Rare item 1/1|100 gp 0/2|25 gp 4/5|10 gp 8/12|5 gp 14/20|Bonus, 25 gp 2/3") out.push(`the scratch row's pills read ${pills.join(", ")}`);
+  if (!/Lucky numbers 4 × 3, bonus 25 gp, Roll 1: 57 of 100 tickets left/.test(row.querySelector('td[data-label="Rules"]')?.textContent ?? "")) out.push(`the scratch row's rules read "${row.querySelector('td[data-label="Rules"]')?.textContent}"`);
+  const print = row.querySelector('[data-action="printRoll"]');
+  if (print?.textContent.trim() !== "Print a new roll" || print.getAttribute("aria-label") !== "Print a new roll of Fortune Ticket") out.push("the scratch row has no Print a new roll");
+  return out;
+}
+
 async function limitCardProblems({ reached, off, shelved = false }) {
   const out = [];
   const card = id => document.querySelector(`.lc-box[data-box="${id}"]`);
@@ -1832,7 +1939,7 @@ try {
       // state); two frames in, they have faces to show.
       if (name === "dice-rolling") await page.waitForFunction(() => [...document.querySelectorAll(".lc-dice__tray .lc-dice__face")].every(f => f.textContent.trim()), null, { timeout: 10000 });
       if (name.startsWith("welcome")) await page.waitForSelector("body[data-ready]", { timeout: 10000 });
-      if (name.startsWith("manager") || name === "box-limits" || name === "editor-deck" || name === "box-odds" || name === "drop-preview") await page.waitForSelector("body[data-ready]", { timeout: 10000 });
+      if (name.startsWith("manager") || name === "box-limits" || name === "editor-deck" || name === "editor-scratch" || name === "box-odds" || name === "drop-preview") await page.waitForSelector("body[data-ready]", { timeout: 10000 });
       await page.waitForTimeout(500);
       const wide = await page.evaluate(() => document.scrollingElement.scrollWidth > document.scrollingElement.clientWidth + 1);
       if (name.startsWith("shop")) problems0.push(...await page.evaluate(shopControlProblems, name.endsWith("-gm")));
@@ -1847,6 +1954,7 @@ try {
         problems0.push(...await page.evaluate(shelfShopProblems, name === "shop-shelf"));
         problems0.push(...await page.evaluate(tableCardProblems, name === "shop-table"));
         problems0.push(...await page.evaluate(auctionCardProblems, name === "shop-auction"));
+        problems0.push(...await page.evaluate(scratchCardProblems, { "shop-scratch": "left", "shop-scratch-soldout": "soldout" }[name] ?? null));
       }
       else if (name.startsWith("welcome")) problems0.push(...await page.evaluate(welcomeProblems, { view: name === "welcome-news" ? "news" : "welcome", empty: name === "welcome-empty" }));
       else if (name === "box-limits") {
@@ -1858,6 +1966,7 @@ try {
         if (said.join(" | ") !== "12 of 12 left once you save | Unlimited once you save | 10 of 10 left once you save") problems0.push(`the Restock line reads ${said.join(" | ")}`);
       }
       else if (name === "editor-deck") problems0.push(...await page.evaluate(deckEditorProblems), ...await page.evaluate(shelfEditorProblems));
+      else if (name === "editor-scratch") problems0.push(...await page.evaluate(scratchEditorProblems), ...await page.evaluate(shelfEditorProblems));
       else if (name === "box-odds") problems0.push(...await page.evaluate(oddsEditorProblems));
       else if (name === "drop-preview") problems0.push(...await page.evaluate(dropPreviewProblems));
       else if (name === "landed-nothing") problems0.push(...await page.evaluate(nothingRevealProblems));
@@ -1876,6 +1985,7 @@ try {
       else if (name === "manager-boxes-empty") problems0.push(...await page.evaluate(starterEmptyProblems, "boxes"));
       else if (name === "manager-boxes-starter") problems0.push(...await page.evaluate(starterBoxesProblems), ...await page.evaluate(panelProblems));
       else if (name === "manager-boxes-shelf") problems0.push(...await page.evaluate(shelfBoxesProblems), ...await page.evaluate(panelProblems));
+      else if (name === "manager-boxes-scratch") problems0.push(...await page.evaluate(scratchBoxesProblems), ...await page.evaluate(panelProblems));
       else if (name.startsWith("manager-boxes")) problems0.push(...await page.evaluate(boxesProblems, name.endsWith("narrow")), ...await page.evaluate(panelProblems));
       else if (name.startsWith("manager-log")) problems0.push(...await page.evaluate(logProblems, name.endsWith("narrow")), ...await page.evaluate(panelProblems));
       else if (name.startsWith("manager")) problems0.push(...await page.evaluate(managerProblems, name === "manager-narrow"));

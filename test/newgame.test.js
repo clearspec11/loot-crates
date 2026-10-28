@@ -19,7 +19,7 @@ import { DECK_DEFAULTS } from "../module/scripts/games/deck.js";
 import { ROULETTE_DEFAULTS } from "../module/scripts/games/roulette.js";
 import { kindOf } from "../module/scripts/games/kinds.js";
 
-const KINDS = ["crate", "well", "dice", "deck", "roulette", "auction"];
+const KINDS = ["crate", "well", "dice", "deck", "roulette", "auction", "scratch"];
 
 describe("the defaults per kind", () => {
   it("cover every kind the Boxes tab offers, each as that kind with the button's name", () => {
@@ -82,10 +82,11 @@ const SOURCES = {
   dice: { id: "d1", kind: "dice", name: "Dragon's Teeth", price: 10, pools: [{ id: "p2", share: 1 }], weights: { common: 1, uncommon: 1, rare: 1, veryRare: 1, legendary: 1, artifact: 1 }, dice: { formula: "2d6", target: 9, multiplier: 2.5 }, rules: { prize: true, perCharacter: { max: 3, per: "ever" }, stock: 1, stockMax: 4 } },
   deck: { id: "k1", kind: "deck", name: "Thornwick Deck", price: 10, pools: [{ id: "p1", share: 1 }], weights: { common: 0, uncommon: 2, rare: 1, veryRare: 0, legendary: 0, artifact: 0 }, deck: { step: 1.5, shuffledAt: 1000, cards: [{ id: "a", label: "Sun", kind: "item", weight: 2, once: true, gp: 0, text: "" }, { id: "b", label: "Ruin", kind: "loss", weight: 1, once: false, gp: 25, text: "" }, { id: "c", label: "Fates", kind: "effect", weight: 1, once: true, gp: 0, text: "Undo one thing." }] }, rules: { stock: 2, stockMax: 2 } },
   auction: { id: "u1", kind: "auction", name: "The Sling", price: 10, pools: [], weights: { common: 1, uncommon: 1, rare: 1, veryRare: 1, legendary: 1, artifact: 1 }, auction: { lot: { type: "item", uuid: "Item.sling", name: "Sling +2", img: "", rarity: "uncommon" }, increment: 5, reserve: 30, gavelSec: 20, house: { count: 2, budget: 60, chance: 25 } }, rules: {} },
+  scratch: { id: "s1", kind: "scratch", name: "Fortune Ticket", price: 5, pools: [{ id: "p1", share: 1 }], weights: { common: 1, uncommon: 1, rare: 1, veryRare: 1, legendary: 1, artifact: 1 }, layout: "lucky", grid: { cols: 4, rows: 3 }, bonus: { on: true, gp: 25 }, roll: { id: 3, size: 100, prizes: [{ count: 1, item: { rarity: "rare" } }, { count: 5, gp: 25 }, { count: 3, bonus: true }] }, rules: { perCharacter: { max: 5, per: "day" } } },
   roulette: { id: "r1", kind: "roulette", name: "Wheel of Fate", price: 5, pools: [{ id: "p2", share: 1 }], weights: { common: 1, uncommon: 1, rare: 1, veryRare: 1, legendary: 1, artifact: 1 }, roulette: { colours: ["red", "black"], pockets: [{ n: 1, colour: 0, rarity: "common" }, { n: 2, colour: 1, rarity: "rare" }, { n: 3, colour: 0, rarity: "legendary" }], payouts: { colour: 1, number: 11, rarity: 3 }, itemOnRarity: true, maxStake: 50, maxBets: 3, windowSec: 45 }, rules: {} },
 };
 // The copy's settings are the source's but for the id, the name and what is reset.
-const settingsOf = g => { const { id, name, rules, deck, ...rest } = g; const { stock, ...keep } = rules ?? {}; void id; void name; void stock; return { ...rest, rules: keep, deck: deck ? { ...deck, shuffledAt: null } : undefined }; };
+const settingsOf = g => { const { id, name, rules, deck, roll, ...rest } = g; const { stock, ...keep } = rules ?? {}; void id; void name; void stock; return { ...rest, rules: keep, deck: deck ? { ...deck, shuffledAt: null } : undefined, roll: roll ? { ...roll, id: null } : undefined }; };
 
 describe("copyOf", () => {
   for (const k of KINDS) {
@@ -117,9 +118,16 @@ describe("copyOf", () => {
       if (copy.dice) copy.dice.target = 2;
       if (copy.odds) copy.odds.item = 50;
       if (copy.auction) { copy.auction.lot.name = "Changed"; copy.auction.house.count = 0; }
+      if (copy.roll) { copy.roll.prizes[0].count = 99; copy.roll.prizes.pop(); copy.grid.cols = 2; }
       expect(source).toEqual(was);
     });
   }
+
+  it("starts a scratch ticket's copy on its first roll, the prize list whole (its tickets are counted at the copy's own id)", () => {
+    const copy = copyOf(SOURCES.scratch, { id: "x" });
+    expect(copy.roll).toEqual({ ...SOURCES.scratch.roll, id: 1 });
+    expect(copy.roll.prizes).not.toBe(SOURCES.scratch.roll.prizes);
+  });
 
   it("starts with the stock full again: what the GM set, or the count alone on an older record, or none", () => {
     expect(stockOf(copyOf(SOURCES.crate, { id: "x" }))).toEqual({ left: 10, max: 10 });
@@ -235,6 +243,7 @@ describe("Delete's words", () => {
     expect(Object.keys(DELETE_TITLE)).toEqual(KINDS);
     expect(deleteTitle({ name: "Goblin Crate" })).toBe("Delete box");
     expect(deleteTitle({ kind: "roulette" })).toBe("Delete wheel");
+    expect(deleteTitle({ kind: "scratch" })).toBe("Delete scratch ticket");
     expect(deleteTitle({ kind: "auction" })).toBe("Delete auction");
     expect(deleteTitle({ kind: "dice" })).toBe("Delete dice game");
     expect(deleteTitle({ kind: "someone-elses" })).toBe("Delete game");

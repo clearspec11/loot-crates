@@ -14,7 +14,8 @@
                 row and the held shop odds until this client's reveal lands
   The kind supplies what differs, through the contract below. The crate
   (crate.js) is the first kind and the Wishing Well (well.js) the second;
-  the module API's registerKind lets another module add one.
+  scratch tickets (scratch.js) count a printed roll from the log. The
+  module API's registerKind lets another module add one.
 
   Contract (every field but roll is optional; the crate shows each):
     id            the value stored on the record as `kind`
@@ -210,7 +211,7 @@ export const kindIds = () => [...kinds.keys()];
 
 // A kind's noun (its `noun`: "crate", "wheel") in the module's words, for
 // a sentence about it ("The wheel jammed."); one the module doesn't know is said as is.
-const NOUN_KEYS = { crate: "LOOTCRATES.Kind.NounCrate", well: "LOOTCRATES.Kind.NounWell", dice: "LOOTCRATES.Kind.NounDice", deck: "LOOTCRATES.Kind.NounDeck", wheel: "LOOTCRATES.Kind.NounWheel", auction: "LOOTCRATES.Kind.NounAuction" };
+const NOUN_KEYS = { crate: "LOOTCRATES.Kind.NounCrate", well: "LOOTCRATES.Kind.NounWell", dice: "LOOTCRATES.Kind.NounDice", deck: "LOOTCRATES.Kind.NounDeck", wheel: "LOOTCRATES.Kind.NounWheel", auction: "LOOTCRATES.Kind.NounAuction", scratch: "LOOTCRATES.Kind.NounScratch" };
 export const nounText = noun => (NOUN_KEYS[noun] ? t(NOUN_KEYS[noun]) : String(noun ?? ""));
 
 // The kind of a record, or a PullError naming the game when this client
