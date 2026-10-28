@@ -202,7 +202,11 @@ const STATES = [
   // a dud, the item and a match 3 win (winners lit, the result, Close
   // focused, no foil, coin or tools left); and the table's view mid
   // auto-scratch (the coin scraping by itself, some panels open, no
-  // Reveal all, the pointer its own).
+  // Reveal all, the pointer its own). Every state reads the print the
+  // approved mockup settled (scratchPrintProblems): the band, the ribbon,
+  // the coins, the EXTRA box, the corners, the foot and near-square
+  // panels; scratch-theme-fey is the coin win printed in Fey market
+  // green, the same ticket in another colour.
   ["scratch-unscratched", "state=scratch&buyer=1&phase=covered"],
   ["scratch-half", "state=scratch&buyer=1&phase=half"],
   ["scratch-won", "state=scratch&outcome=coins&buyer=1&duration=0"],
@@ -210,6 +214,7 @@ const STATES = [
   ["scratch-item", "state=scratch&outcome=item&buyer=1&duration=0"],
   ["scratch-match3-won", "state=scratch&layout=match3&outcome=coins&buyer=1&duration=0"],
   ["scratch-spectator", "state=scratch&phase=sweep&duration=8000"],
+  ["scratch-theme-fey", "state=scratch&outcome=coins&buyer=1&duration=0&ticket=fey"],
   ["manager-empty", "state=manager&empty=1"],
   ["manager-boxes-empty", "state=manager&tab=boxes&empty=1"],
   ["manager-boxes-starter", "state=manager&tab=boxes&starter=1"],
@@ -1733,12 +1738,116 @@ function dropPreviewProblems() {
   return out;
 }
 
+// The ticket's print, the approved mockup's (scratch.js ticketHTML,
+// module.css): 560px at most and centred; the band with the name in
+// chrome between two emblems and its sheen still under reduced motion;
+// the chevron ribbon naming the top prize and the roll's prizes; the
+// caption strips; the lucky numbers as round gold coins; every panel
+// near-square (about 1 : 1.04), no wider than 118px, the grid as wide as
+// the card says (four across on the Fortune Ticket, even at 390), an
+// open panel's number centred; the bonus spot in its EXTRA box; four
+// corners; the foot with the roll line, the tagline and the guarantee;
+// the theme's two tokens on the ticket (the Fortune Ticket Dragon's
+// hoard, the Market Scratchie and ?ticket=fey Fey market); and on an
+// untouched panel the foil's stamp painted over its centre.
+function scratchPrintProblems(mode) {
+  const out = [];
+  const ticket = document.querySelector(".lc-scratch__ticket");
+  if (!ticket) return out;
+  const tr = ticket.getBoundingClientRect();
+  const stage = ticket.closest(".lc-scratch__stage")?.getBoundingClientRect();
+  if (tr.width > 561) out.push(`the ticket is ${Math.round(tr.width)}px wide`);
+  if (stage && Math.abs((stage.left + stage.right) / 2 - (tr.left + tr.right) / 2) > 2) out.push("the ticket isn't centred in the window");
+  const match3 = ticket.dataset.layout === "match3";
+  const band = ticket.querySelector(".lc-scratch__band");
+  const title = band?.querySelector(".lc-scratch__title");
+  if (!band || !title?.textContent.trim()) out.push("no band with the ticket's name");
+  if (band && band.querySelectorAll(".lc-scratch__emblem svg").length !== 2) out.push("the band hasn't an emblem each side");
+  if (title && getComputedStyle(title).textTransform !== "uppercase") out.push("the name isn't in capitals");
+  if (band && getComputedStyle(band, "::before").animationName !== "none") out.push("the band's sheen runs under reduced motion");
+  const ribbon = ticket.querySelector(".lc-scratch__ribbon");
+  const words = el => (el ? [...el.children].map(c => c.textContent.trim()).join(" ") : "");
+  const ribbonText = words(ribbon);
+  if (!ribbon) out.push("no ribbon");
+  else if (!/^Top prize/.test(ribbonText) || !/in prizes in this roll$/.test(ribbonText)) out.push(`the ribbon reads "${ribbonText}"`);
+  else if (getComputedStyle(ribbon).clipPath === "none") out.push("the ribbon has no chevron ends");
+  if (!match3 && ribbonText !== "Top prize Rare item 620 gp and 1 item in prizes in this roll") out.push(`the Fortune Ticket's ribbon reads "${ribbonText}"`);
+  const caps = [...ticket.querySelectorAll(".lc-scratch__cap")].map(words);
+  const wantCaps = match3 ? ["Three the same win that prize", "Your numbers"] : ["Lucky numbers Match any of yours to win its prize", "Your numbers Wins add up"];
+  if (caps.join("|") !== wantCaps.join("|")) out.push(`the caption strips read ${caps.join(", ")}`);
+  for (const c of ticket.querySelectorAll(".lc-scratch__cap")) if (getComputedStyle(c).backgroundColor === "rgba(0, 0, 0, 0)") out.push("a caption strip has no colour");
+  if (!match3) {
+    const coins = [...ticket.querySelectorAll(".lc-scratch__ball")];
+    if (coins.length !== 3) out.push(`${coins.length} lucky numbers`);
+    for (const c of coins) {
+      const r = c.getBoundingClientRect();
+      if (Math.abs(r.width - r.height) > 1 || getComputedStyle(c).borderRadius !== "50%") out.push("a lucky number isn't a round coin");
+    }
+    const extra = ticket.querySelector(".lc-scratch__extra");
+    if (!ticket.querySelector(".lc-scratch__bonus") || extra?.textContent.trim() !== "Extra 25 gp") out.push(`the EXTRA box reads "${extra?.textContent.trim()}"`);
+    if (ticket.querySelector(".lc-scratch__bonus p")?.textContent.trim() !== "Reveal the gem to win it on top of the card.") out.push("no line under Extra saying how");
+    const spot = ticket.querySelector(".lc-scratch__spot")?.getBoundingClientRect();
+    if (!spot || Math.abs(spot.width - spot.height) > 1) out.push("the bonus spot isn't square");
+  }
+  if (ticket.querySelectorAll(".lc-scratch__corner").length !== 4) out.push("the ticket hasn't four corners");
+  const foot = ticket.querySelector(".lc-scratch__foot");
+  const tag = foot?.querySelector(".lc-scratch__tag")?.textContent.trim();
+  if (!foot?.querySelector(".lc-scratch__roll")) out.push("no roll line in the foot");
+  if (tag !== "Fortune favours the bold") out.push(`the tagline reads "${tag}"`);
+  if (!foot?.querySelector(".lc-scratch__guarantee")?.textContent.trim()) out.push("no guarantee line in the foot");
+  if (foot && getComputedStyle(foot).borderTopWidth === "0px") out.push("the foot has no rule over it");
+  // The panels: near-square, capped, centred in their cells, the grid as wide as the card.
+  const panels = [...ticket.querySelectorAll(".lc-scratch__panel:not(.lc-scratch__spot)")];
+  const cols = Number(ticket.querySelector(".lc-scratch__grid")?.style.getPropertyValue("--lc-cols")) || 0;
+  const rects = panels.map(p => p.getBoundingClientRect());
+  const widths = new Set(rects.map(r => Math.round(r.width)));
+  if (widths.size > 1) out.push(`panels of ${[...widths].join(", ")}px`);
+  for (const r of rects) {
+    const ratio = r.height / r.width;
+    if (ratio < 0.98 || ratio > 1.12) out.push(`a panel is ${Math.round(r.width)} x ${Math.round(r.height)}px, not near-square`);
+    if (r.width > 119) out.push(`a panel is ${Math.round(r.width)}px wide, over the 118px cap`);
+    break;
+  }
+  if (cols && rects.length >= cols + 1) {
+    const row = rects.slice(0, cols);
+    if (new Set(row.map(r => Math.round(r.top))).size !== 1 || Math.round(rects[cols].top) <= Math.round(row[0].top)) out.push(`the grid isn't ${cols} wide`);
+  }
+  for (const p of panels.filter(x => x.classList.contains("lc-scratch__panel--open"))) {
+    const r = p.getBoundingClientRect(), n = p.querySelector(".lc-scratch__num, .lc-scratch__sym")?.getBoundingClientRect();
+    if (n && Math.abs((n.left + n.right) / 2 - (r.left + r.right) / 2) > 2) out.push("an open panel's number isn't centred");
+    if (n && !match3 && Math.abs((n.top + n.bottom) / 2 - (r.top + r.bottom) / 2) > r.height * 0.22) out.push("an open panel's number sits at its foot");
+    if (n && !p.querySelector(".lc-scratch__prize, .lc-scratch__sym")) out.push("an open panel has no prize pill");
+    break;
+  }
+  // The theme: the ticket says it, and its deep colour is the theme's.
+  const theme = mode === "fey" || match3 ? "fey" : "hoard";
+  const deep = { hoard: "#6e1a2b", fey: "#1f5a3a" }[theme];
+  if (ticket.dataset.theme !== theme || ticket.closest(".lc-scratch")?.dataset.theme !== theme) out.push(`the ticket is printed in ${ticket.dataset.theme}, not ${theme}`);
+  if (getComputedStyle(ticket).getPropertyValue("--lc-ticket-deep").trim() !== deep) out.push(`the ${theme} ticket's deep colour is ${getComputedStyle(ticket).getPropertyValue("--lc-ticket-deep").trim()}`);
+  if (getComputedStyle(ticket).borderTopColor !== getComputedStyle(ticket.querySelector(".lc-scratch__cap")).backgroundColor) out.push("the ticket's edge and its caption strips aren't the one deep colour");
+  // The foil's stamp: an untouched panel's canvas is opaque at its centre (the stamp's fill), painted, not flat.
+  if (mode === "covered") {
+    const c = panels[0]?.querySelector(".lc-scratch__foil");
+    if (c?.width) {
+      const d = c.getContext("2d").getImageData(Math.floor(c.width / 2), Math.floor(c.height / 2), 1, 1).data;
+      if (d[3] < 200) out.push("no stamp at the centre of an untouched panel");
+      // The lattice's threads: the foil's pixels aren't one colour along a row near the top.
+      const row = c.getContext("2d").getImageData(0, 3, c.width, 1).data;
+      const tones = new Set(); for (let i = 0; i < row.length; i += 4) tones.add(`${row[i]},${row[i + 1]},${row[i + 2]}`);
+      if (tones.size < 6) out.push("the foil has no lattice");
+    }
+  }
+  return out;
+}
+
 // A scratch ticket's reveal (scratch.js, foil.js). `mode`: covered | half
 // (the buyer's, scratching) | won | dud | item | match3 (landed) |
-// spectator (mid auto-scratch). The foil's pixels are read back, so a
-// panel counts as scraped only where the coin really took the foil off.
+// spectator (mid auto-scratch) | fey (the coin win in Fey market green).
+// The foil's pixels are read back, so a panel counts as scraped only
+// where the coin really took the foil off.
 function scratchRevealProblems(mode) {
   const out = [];
+  if (mode === "fey") mode = "won";
   const shown = el => !!el && !el.hidden && el.getBoundingClientRect().height > 0;
   const ticket = document.querySelector(".lc-scratch__ticket");
   if (!ticket) return ["no scratch ticket"];
@@ -2074,7 +2183,10 @@ try {
       else if (name === "box-odds") problems0.push(...await page.evaluate(oddsEditorProblems));
       else if (name === "drop-preview") problems0.push(...await page.evaluate(dropPreviewProblems));
       else if (name === "landed-nothing") problems0.push(...await page.evaluate(nothingRevealProblems));
-      else if (name.startsWith("scratch")) problems0.push(...await page.evaluate(scratchRevealProblems, { "scratch-unscratched": "covered", "scratch-half": "half", "scratch-won": "won", "scratch-dud": "dud", "scratch-item": "item", "scratch-match3-won": "match3", "scratch-spectator": "spectator" }[name]));
+      else if (name.startsWith("scratch")) {
+        const mode = { "scratch-unscratched": "covered", "scratch-half": "half", "scratch-won": "won", "scratch-dud": "dud", "scratch-item": "item", "scratch-match3-won": "match3", "scratch-spectator": "spectator", "scratch-theme-fey": "fey" }[name];
+        problems0.push(...await page.evaluate(scratchPrintProblems, mode), ...await page.evaluate(scratchRevealProblems, mode));
+      }
       else if (name.startsWith("linger")) {
         problems0.push(...await page.evaluate(lingerProblems, { off: name === "linger-off", paused: name === "linger-paused" }));
         if (name === "linger-dice") problems0.push(...await page.evaluate(diceProblems, "win"));

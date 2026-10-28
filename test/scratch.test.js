@@ -20,7 +20,7 @@ vi.mock("../module/scripts/foundry/reveal.js", () => ({ showReveal: vi.fn(async 
 vi.mock("../module/scripts/foundry/sound.js", () => ({ playTick: vi.fn(), playSlow: vi.fn(), playReveal: vi.fn(), playPlop: vi.fn(), playPlink: vi.fn(), playCoinBack: vi.fn(), playBane: vi.fn(), playScratch: vi.fn(), playFoilTick: vi.fn() }));
 
 const scratch = await import("../module/scripts/games/scratch.js");
-const { SCRATCH, SCRATCH_DEFAULTS, SYMBOLS, prizesOf, rollOf, gridOf, bonusOf, layoutOf, rollState, ticketsSold, drawBag, rollReason, layCard, cardWins, splitsOf, luckyCount, rollOdds, oddsText, oneIn, prizeText, ticketsLeftText, scratchRulesText, scratchOddsHTML, nextRoll, draftScratch, scratchPreview, scratchPreviewHTML, ticketHTML, miniHTML, shownState, prizeListHTML } = scratch;
+const { SCRATCH, SCRATCH_DEFAULTS, SYMBOLS, THEMES, themeOf, prizesOf, rollOf, gridOf, bonusOf, layoutOf, rollState, ticketsSold, drawBag, rollReason, layCard, cardWins, cleanCard, splitsOf, luckyCount, rollOdds, rollPrizes, ribbonTotalText, oddsText, oneIn, prizeText, ticketsLeftText, scratchRulesText, scratchOddsHTML, nextRoll, draftScratch, scratchFieldsHTML, scratchPreview, scratchPreviewHTML, ticketHTML, miniHTML, shownState, prizeListHTML } = scratch;
 const { getKind, gotText } = await import("../module/scripts/games/kinds.js");
 const { performPull, PullError } = await import("../module/scripts/foundry/pull.js");
 const { registerSocket } = await import("../module/scripts/foundry/socket.js");
@@ -296,7 +296,7 @@ describe("the readout", () => {
   it("says what the editor's draft would print, and what would keep a ticket from being sold", () => {
     const values = { price: "5 gp", layout: "lucky", cols: "4", rows: "3", bonusOn: false, bonusGp: "25", size: "10", prizes: ["a", "b", "c"], "z.a.count": "1", "z.a.what": "item.legendary", "z.b.count": "12", "z.b.what": "gp", "z.b.gp": "5", "z.c.count": "2", "z.c.what": "bonus", "pool.p": true, "share.p": "1" };
     const draft = draftScratch(GAME, values, ["p"]);
-    expect(draft).toMatchObject({ kind: "scratch", price: 5, layout: "lucky", grid: { cols: 4, rows: 3 }, bonus: { on: false, gp: 25 }, roll: { id: 1, size: 10, prizes: [{ count: 1, item: { rarity: "legendary" } }, { count: 12, gp: 5 }, { count: 2, bonus: true }] } });
+    expect(draft).toMatchObject({ kind: "scratch", price: 5, layout: "lucky", grid: { cols: 4, rows: 3 }, bonus: { on: false, gp: 25 }, theme: "hoard", roll: { id: 1, size: 10, prizes: [{ count: 1, item: { rarity: "legendary" } }, { count: 12, gp: 5 }, { count: 2, bonus: true }] } });
     const preview = scratchPreview(draft, POOLS);
     expect(preview.notes.map(n => n.text)).toEqual([
       "The prizes need 13 tickets, more than 10: the roll is printed at 13.",
@@ -446,7 +446,7 @@ describe("the words", () => {
     const html = ticketHTML({ ...coins, box: { name: "Fortune Ticket" } }, { esc });
     expect(html).toContain("Roll 1, ticket 44 of 100");
     expect((html.match(/lc-scratch__panel--win/g) ?? []).length).toBe(cardWins(card).winners.length);
-    expect(html).toContain("Reveal the gem to win <strong>25 gp</strong> on top.");
+    expect(html).toContain('<div class="lc-scratch__extra">Extra 25 gp</div><p>Reveal the gem to win it on top of the card.</p>');
     expect(miniHTML(card).match(/<i/g)).toHaveLength(12);
     // A coin win's four rising notes (the rarity sting at Rare), a dud's two falling ones.
     k.sting(coins); expect(sound.playReveal).toHaveBeenLastCalledWith("rare");
@@ -533,3 +533,88 @@ describe("the words", () => {
 
 // PullError is the core's, re-exported: a refusal reads as one sentence.
 void PullError;
+
+/*
+  The print: the look the approved mockup settled (research 5b), carried
+  on the card so every client and every replay prints the same ticket.
+*/
+describe("the print", () => {
+  it("every card carries its theme and the roll's facts; the theme is the editor's, Dragon's hoard when unset", () => {
+    expect(THEMES).toEqual(["hoard", "fey", "arcane", "mint"]);
+    expect([themeOf(GAME), themeOf({ theme: "fey" }), themeOf({ theme: "neon" }), themeOf(null)]).toEqual(["hoard", "fey", "hoard", "hoard"]);
+    const card = layCard(GAME, { kind: "gp", gp: 25 }, seededRng(4));
+    expect(card.theme).toBe("hoard");
+    // 2 x 100 + 5 x 25 + 12 x 10 + 20 x 5 + 3 x 25 (the bonus) = 620 gp, and the Rare.
+    expect(card.prizes).toEqual({ top: { item: "rare" }, gp: 620, items: 1, floor: 5 });
+    expect(layCard({ ...GAME, theme: "fey" }, { kind: "dud" }, seededRng(1)).theme).toBe("fey");
+    expect(rollPrizes(MATCH3)).toEqual({ top: { item: "uncommon" }, gp: 30, items: 1, floor: 1 });
+    // A coin top prize; a prize under the price makes no floor; no prizes, no top.
+    expect(rollPrizes({ price: 2, roll: { size: 10, prizes: [{ count: 1, gp: 50 }, { count: 4, gp: 1 }] } })).toEqual({ top: { gp: 50 }, gp: 54, items: 0, floor: null });
+    expect(rollPrizes({ price: 1, roll: { size: 10, prizes: [] } })).toEqual({ top: null, gp: 0, items: 0, floor: null });
+  });
+
+  it("the ribbon's second line adds the roll up in words, one key a shape", () => {
+    expect(ribbonTotalText({ gp: 620, items: 1 })).toBe("620 gp and 1 item in prizes in this roll");
+    expect(ribbonTotalText({ gp: 620, items: 2 })).toBe("620 gp and 2 items in prizes in this roll");
+    expect(ribbonTotalText({ gp: 30, items: 0 })).toBe("30 gp in prizes in this roll");
+    expect(ribbonTotalText({ gp: 0, items: 1 })).toBe("1 item in prizes in this roll");
+    expect(ribbonTotalText({ gp: 0, items: 3 })).toBe("3 items in prizes in this roll");
+    expect(ribbonTotalText({ gp: 0, items: 0 })).toBe("");
+    expect(ribbonTotalText(null)).toBe("");
+  });
+
+  it("the ticket prints its theme, the corners, the band with an emblem each side, the ribbon, the coins, the EXTRA box and the foot with the tagline and the guarantee", () => {
+    const card = layCard(GAME, { kind: "gp", gp: 25 }, seededRng(4));
+    const html = ticketHTML({ card, box: { name: "Fortune Ticket" }, ticket: { rollId: 1, no: 44, size: 100 } }, { esc });
+    expect(html).toContain('<div class="lc-scratch__ticket" data-layout="lucky" data-theme="hoard">');
+    expect((html.match(/lc-scratch__corner--/g) ?? []).length).toBe(4);
+    expect((html.match(/class="lc-scratch__emblem"/g) ?? []).length).toBe(2);
+    expect(html).toContain('<span class="lc-scratch__title">Fortune Ticket</span>');
+    expect(html).toContain('<div class="lc-scratch__ribbon"><span>Top prize</span><strong>Rare item</strong><span>620 gp and 1 item in prizes in this roll</span></div>');
+    expect((html.match(/class="lc-scratch__ball"/g) ?? []).length).toBe(card.lucky.length);
+    expect(html).toContain('<div class="lc-scratch__cap"><span>Lucky numbers</span><span>Match any of yours to win its prize</span></div>');
+    expect(html).toContain('<div class="lc-scratch__extra">Extra 25 gp</div>');
+    expect(html).toContain('<div class="lc-scratch__foot"><span class="lc-scratch__roll">Roll 1, ticket 44 of 100</span><span class="lc-scratch__tag">Fortune favours the bold</span><span class="lc-scratch__guarantee">All prizes 5 gp or more</span></div>');
+    // An item prize's pill is marked, so its rarity edges it.
+    const item = layCard(GAME, { kind: "item", rarity: "rare", name: "Flame Tongue" }, seededRng(4));
+    expect(ticketHTML({ card: item, box: { name: "Fortune Ticket" } }, { esc })).toContain('<span class="lc-scratch__prize lc-scratch__prize--item">Flame Tongue</span>');
+    // A card from before the print (no theme, no prizes) still prints: hoard, no ribbon, the tagline alone in the foot.
+    const { theme, prizes, ...old } = card;
+    const bare = ticketHTML({ card: old, box: { name: "Old" } }, { esc });
+    expect(bare).toContain('data-theme="hoard"');
+    expect(bare).not.toContain("lc-scratch__ribbon");
+    expect(bare).toContain('<div class="lc-scratch__foot"><span class="lc-scratch__tag">Fortune favours the bold</span></div>');
+    // Match 3: its own captions; a card without prizes still names the top prize from its key.
+    const m3 = layCard(MATCH3, { kind: "gp", gp: 5 }, seededRng(2));
+    const m3html = ticketHTML({ card: { ...m3, theme: "fey" }, box: { name: "Market Scratchie" } }, { esc });
+    expect(m3html).toContain('data-layout="match3" data-theme="fey"');
+    expect(m3html).toContain('<span>Top prize</span><strong>Uncommon item</strong><span>30 gp and 1 item in prizes in this roll</span>');
+    expect(m3html).toContain('<div class="lc-scratch__cap"><span>Your numbers</span></div>');
+    const { prizes: _p, ...m3old } = m3;
+    expect(ticketHTML({ card: m3old, box: { name: "Market Scratchie" } }, { esc })).toContain('<div class="lc-scratch__ribbon"><span>Top prize</span><strong>Uncommon item</strong></div>');
+  });
+
+  it("the editor's theme field: a select of the four, the draft keeps the pick, an unknown one keeps the game's; a copy and a new ticket start right", () => {
+    const html = scratchFieldsHTML({ ...GAME, theme: "arcane" }, { esc });
+    const select = html.match(/<select name="theme">(.*?)<\/select>/s)?.[1] ?? "";
+    expect(select.match(/<option value="(\w+)"/g)?.map(o => o.slice(15, -1))).toEqual(["hoard", "fey", "arcane", "mint"]);
+    expect(select).toContain('<option value="arcane" selected>Arcane (violet and gold)</option>');
+    expect(select).toContain(">Dragon&#39;s hoard (crimson and gold)<".replace("&#39;", "'"));
+    expect(html).toContain("Printed in <select");
+    const values = { price: "5 gp", layout: "lucky", cols: "4", rows: "3", bonusOn: true, bonusGp: "25", size: "100", prizes: [], "pool.p": true, "share.p": "1" };
+    expect(draftScratch(GAME, { ...values, theme: "mint" }, ["p"]).theme).toBe("mint");
+    expect(draftScratch({ ...GAME, theme: "fey" }, { ...values, theme: "neon" }, ["p"]).theme).toBe("fey");
+    expect(draftScratch(GAME, values, ["p"]).theme).toBe("hoard");
+    expect(copyOf({ ...GAME, theme: "mint" }, { id: "x" }).theme).toBe("mint");
+    expect(NEW_DEFAULTS.scratch().theme).toBe("hoard");
+  });
+
+  it("cleanCard keeps a sound print and gives a doubtful one the default", () => {
+    const card = layCard({ ...GAME, theme: "fey" }, { kind: "gp", gp: 25 }, seededRng(4));
+    expect(cleanCard(card)).toMatchObject({ theme: "fey", prizes: { top: { item: "rare" }, gp: 620, items: 1, floor: 5 } });
+    expect(cleanCard({ ...card, theme: "neon", prizes: { top: { item: "mythic" }, gp: -4, items: "x", floor: "y" } })).toMatchObject({ theme: "hoard", prizes: { top: null, gp: 0, items: 0, floor: null } });
+    expect(cleanCard({ ...card, prizes: { top: { gp: 50 }, gp: 54.5, items: 2.7, floor: 2 } }).prizes).toEqual({ top: { gp: 50 }, gp: 54.5, items: 2, floor: 2 });
+    const { theme, prizes, ...old } = card;
+    expect(cleanCard(old)).toMatchObject({ theme: "hoard", prizes: { top: null, gp: 0, items: 0, floor: null } });
+  });
+});

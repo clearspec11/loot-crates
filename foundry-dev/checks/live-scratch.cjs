@@ -4,7 +4,11 @@
 // itself, and Watch again replays it.
 //
 //   FOUNDRY_URL=http://<host>:30000 MODULE_BASE=http://<this machine>:8766/ \
-//     NODE_PATH=$(npm root -g) node foundry-dev/checks/live-scratch.cjs [--shot out.png]
+//     NODE_PATH=$(npm root -g) node foundry-dev/checks/live-scratch.cjs [--shot out.png] [--before out.png]
+//
+// --shot saves the player's screen once the card has landed; --before
+// saves it with the ticket just opened, every panel under its painted
+// foil (the stamp and the lattice), before the first stroke.
 //
 // Env: PLAYER (default Player2, must own Crate Tester).
 //
@@ -42,6 +46,7 @@ const FOUNDRY = process.env.FOUNDRY_URL || "http://localhost:30000";
 const MODULE_BASE = process.env.MODULE_BASE || "http://localhost:8766/";
 const PLAYER = process.env.PLAYER || "Player2";
 const shot = process.argv.includes("--shot") ? process.argv[process.argv.indexOf("--shot") + 1] : null;
+const beforeShot = process.argv.includes("--before") ? process.argv[process.argv.indexOf("--before") + 1] : null;
 const STAMP = Date.now().toString(36);
 const NAME = `Live scratch ${STAMP}`;
 
@@ -207,6 +212,7 @@ const readChat = (page, logIds) => page.evaluate(ids => {
     const logIds = await gm.page.evaluate(async ({ base, boxId }) => (await import(base + "scripts/foundry/store.js")).getLog().filter(r => r.boxId === boxId).map(r => r.id), { base: MODULE_BASE, boxId });
     await pl.page.waitForFunction(ids => game.messages.contents.some(m => ids.includes(m.flags?.["loot-crates"]?.logId)), logIds, { timeout: 10000 }).catch(() => {});
     out.chatWhileCovered = await readChat(pl.page, logIds);
+    if (beforeShot) { await pl.page.waitForTimeout(400); await pl.page.screenshot({ path: beforeShot }); }
 
     // 2. Scratch every panel with the mouse: down, strokes, up.
     out.strokes = [];

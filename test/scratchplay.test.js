@@ -390,20 +390,31 @@ describe("the scratch's sounds on Foundry's interface channel", () => {
   });
   afterEach(() => { delete globalThis.game; });
 
-  it("the rasp: looped noise through a bandpass into the channel, its pitch and level following the coin's speed", () => {
+  it("the rasp, softened (research 5a): deep brown noise through a bandpass at 450 to 1350 Hz (Q .5) and a 1.9 kHz lowpass, .025 to .09 by the coin's speed, a 15 ms attack and a 50 ms release", () => {
     const voice = real.playScratch();
-    const [src] = ctx.sources, [filt] = ctx.filters, [g] = ctx.gains;
+    const [src] = ctx.sources, [filt, lp] = ctx.filters, [g] = ctx.gains;
     expect(src.loop).toBe(true);
     expect(src.started).toBe(1);
     expect(filt.type).toBe("bandpass");
-    expect(ctx.connections.map(([a, b]) => `${a.name}>${b.name}`)).toEqual(["source>filter", "filter>gain", "gain>gainNode"]);
-    expect(real.scratchLevel(0)).toEqual({ hz: 900, gain: 0.04 });
-    expect(real.scratchLevel(1000)).toEqual({ hz: 3300, gain: 0.16 });
+    expect(filt.Q.value).toBe(0.5);
+    expect(lp.type).toBe("lowpass");
+    expect(lp.frequency.calls[0]).toEqual(["set", 1900, 5]);
+    expect(ctx.connections.map(([a, b]) => `${a.name}>${b.name}`)).toEqual(["source>filter", "filter>filter", "filter>gain", "gain>gainNode"]);
+    // The numbers the mockup settled, never the first version's 900 to 3300 Hz and .16.
+    expect([real.SCRATCH_HZ, real.SCRATCH_Q, real.SCRATCH_LOWPASS_HZ, real.SCRATCH_GAIN]).toEqual([[450, 1350], 0.5, 1900, [0.025, 0.09]]);
+    expect([real.SCRATCH_ATTACK_S, real.SCRATCH_RELEASE_S, real.FOIL_TICK_HZ, real.FOIL_TICK_GAIN]).toEqual([0.015, 0.05, 880, 0.035]);
+    expect(real.scratchLevel(0)).toEqual({ hz: 450, gain: 0.025 });
+    expect(real.scratchLevel(1000)).toEqual({ hz: 1350, gain: 0.09 });
+    // 45 Hz and .006 a px: a 5 px move sits at 675 Hz and .055.
     const mid = real.scratchLevel(5);
-    expect(mid.hz).toBeGreaterThan(900); expect(mid.hz).toBeLessThan(3300);
+    expect(mid.hz).toBe(675); expect(mid.gain).toBeCloseTo(0.055, 10);
     voice.rasp(5);
-    expect(filt.frequency.calls.at(-1)).toEqual(["target", mid.hz, 5, 0.02]);
-    expect(g.gain.calls.slice(-2)).toEqual([["set", mid.gain, 5], ["linear", 0, 5 + 0.14]]);
+    expect(filt.frequency.calls.at(-1)).toEqual(["target", 675, 5, 0.03]);
+    expect(g.gain.calls.slice(-2)).toEqual([["target", mid.gain, 5, 0.015], ["target", 0, 5 + 0.06, 0.05]]);
+    // The brown noise is deep: a one-pole lowpass with b = .9 b + .1 white, so the buffer never crackles past its scale.
+    const d = src.buffer.getChannelData(0);
+    expect(d.length).toBe(100);
+    expect(Math.max(...d.map(Math.abs))).toBeLessThanOrEqual(3.2);
     voice.stop();
     voice.stop();
     expect(src.stops).toHaveLength(1);
@@ -420,10 +431,11 @@ describe("the scratch's sounds on Foundry's interface channel", () => {
     expect(ctx.oscillators).toHaveLength(0);
   });
 
-  it("the panel's tick: one short square note at 1400 Hz", () => {
+  it("the panel's tick: one soft triangle note at 880 Hz at .035", () => {
     real.playFoilTick();
     expect(ctx.oscillators).toHaveLength(1);
-    expect(ctx.oscillators[0].type).toBe("square");
-    expect(ctx.oscillators[0].frequency.calls[0]).toEqual(["set", 1400, 5]);
+    expect(ctx.oscillators[0].type).toBe("triangle");
+    expect(ctx.oscillators[0].frequency.calls[0]).toEqual(["set", 880, 5]);
+    expect(ctx.gains.at(-1).gain.calls.some(c => c[0] === "set" && c[1] === 0.035)).toBe(true);
   });
 });

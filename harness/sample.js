@@ -202,16 +202,16 @@ export function auctionBids(now = Date.now(), { tamLast = false, boxId = AUCTION
 // Scratch tickets (scratch.js): the Fortune Ticket, the approved mockup's,
 // 5 gp, lucky numbers on a 4 x 3 grid with a 25 gp bonus spot, roll 1 of
 // 100 drawing its Rare from the core pool; and the Market Scratchie, 1 gp,
-// match 3 on a 3 x 2 grid, a roll of 20.
+// match 3 on a 3 x 2 grid, a roll of 20, printed in Fey market green.
 export const SCRATCH = {
   id: "fortune", kind: "scratch", name: "Fortune Ticket", price: 5, pools: [{ id: "core", share: 1 }], weights: {},
-  layout: "lucky", grid: { cols: 4, rows: 3 }, bonus: { on: true, gp: 25 },
+  layout: "lucky", grid: { cols: 4, rows: 3 }, bonus: { on: true, gp: 25 }, theme: "hoard",
   roll: { id: 1, size: 100, prizes: [{ count: 1, item: { rarity: "rare" } }, { count: 2, gp: 100 }, { count: 5, gp: 25 }, { count: 12, gp: 10 }, { count: 20, gp: 5 }, { count: 3, bonus: true }] },
   rules: {},
 };
 export const SCRATCH_MATCH3 = {
   id: "market", kind: "scratch", name: "Market Scratchie", price: 1, pools: [{ id: "core", share: 1 }], weights: {},
-  layout: "match3", grid: { cols: 3, rows: 2 }, bonus: { on: false, gp: 0 },
+  layout: "match3", grid: { cols: 3, rows: 2 }, bonus: { on: false, gp: 0 }, theme: "fey",
   roll: { id: 2, size: 20, prizes: [{ count: 1, item: { rarity: "uncommon" } }, { count: 4, gp: 5 }, { count: 5, gp: 1 }] },
   rules: {},
 };

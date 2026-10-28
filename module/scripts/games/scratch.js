@@ -39,12 +39,24 @@
     when every panel is open. The result never depends on the scratching.
     Watch again replays it as the table saw it, from the chat card's
     snapshot.
+  - The ticket's look is the approved mockup's (.council/fortune-ticket-
+    mockup.html, research 5b), the reference scratchies' anatomy in the
+    module's own paper and gold: a dark header band in the ticket's colour
+    with a holographic sheen, the name in gold chrome between a d20 and a
+    potion flask, a chevron ribbon naming the top prize and the roll's
+    prizes, caption strips, coin lucky numbers, near-square panels with
+    the number centred and the prize as a pill, the bonus spot framed as
+    an EXTRA box, ornamented corners and a foot with the roll line, the
+    tagline and the guarantee. Four colour themes (THEMES), picked in the
+    editor; the card carries its theme and the ribbon's facts, so every
+    client and every replay prints the same ticket. CSS and inline SVG
+    only, in module.css.
 
   Record: { kind: "scratch", price, pools, weights, layout: "lucky" |
-  "match3", grid: { cols, rows }, bonus: { on, gp } (lucky only), roll:
-  { id, size, prizes: [{ count, gp } | { count, item: { rarity } } |
-  { count, bonus: true }] }, rules }. A roll's duds are its size less its
-  prizes.
+  "match3", grid: { cols, rows }, bonus: { on, gp } (lucky only), theme
+  (THEMES, "hoard" when unset), roll: { id, size, prizes: [{ count, gp }
+  | { count, item: { rarity } } | { count, bonus: true }] }, rules }. A
+  roll's duds are its size less its prizes.
 
   No Foundry globals: the core passes the log, the pools and the rng, so
   Vitest runs the ledger, the draw and the card as they are.
@@ -76,6 +88,13 @@ export const SYMBOL_LABEL = words({
   crown: "LOOTCRATES.Scratch.SymCrown", gem: "LOOTCRATES.Scratch.SymGem", chalice: "LOOTCRATES.Scratch.SymChalice", key: "LOOTCRATES.Scratch.SymKey", star: "LOOTCRATES.Scratch.SymStar",
   moon: "LOOTCRATES.Scratch.SymMoon", sun: "LOOTCRATES.Scratch.SymSun", shield: "LOOTCRATES.Scratch.SymShield", horn: "LOOTCRATES.Scratch.SymHorn", rose: "LOOTCRATES.Scratch.SymRose",
 });
+// The ticket's colours, the mockup's four: each a deep colour and a metal
+// (module.css sets them on .lc-scratch[data-theme]). Dragon's hoard is
+// crimson and gold, Fey market green and silver, Arcane violet and gold,
+// Royal mint navy and gold.
+export const THEMES = ["hoard", "fey", "arcane", "mint"];
+export const THEME_LABEL = words({ hoard: "LOOTCRATES.Scratch.ThemeHoard", fey: "LOOTCRATES.Scratch.ThemeFey", arcane: "LOOTCRATES.Scratch.ThemeArcane", mint: "LOOTCRATES.Scratch.ThemeMint" });
+export const themeOf = game => (THEMES.includes(game?.theme) ? game.theme : "hoard");
 
 /*
   What a New scratch ticket starts as: the approved mockup's Fortune
@@ -84,7 +103,7 @@ export const SYMBOL_LABEL = words({
   10 gp, twenty 5 gp and three bonus tickets, the other 57 duds.
 */
 export const SCRATCH_DEFAULTS = {
-  price: 5, layout: "lucky", bonusGp: 25, size: 100,
+  price: 5, layout: "lucky", bonusGp: 25, size: 100, theme: "hoard",
   prizes: [{ count: 1, item: { rarity: "rare" } }, { count: 2, gp: 100 }, { count: 5, gp: 25 }, { count: 12, gp: 10 }, { count: 20, gp: 5 }, { count: 3, bonus: true }],
 };
 
@@ -302,7 +321,9 @@ const SPLIT_CHANCE = 0.4;
   prize: { gp } | { item: rarity, name?, img? } }], bonus: { gp, win } or
   null }. Match 3: { layout: "match3", cols, rows, key: [{ symbol, prize
   }], panels: [{ symbol }] }. Which panels win is not written on the card:
-  cardWins reads it from the layout, as a player does.
+  cardWins reads it from the layout, as a player does. Every card also
+  carries its print: `theme` and `prizes` (rollPrizes), what the ribbon
+  and the foot say of the roll.
 */
 export function layCard(game, win, rng = Math.random) {
   const { cols, rows } = gridOf(game);
@@ -310,7 +331,32 @@ export function layCard(game, win, rng = Math.random) {
   const prizes = prizesOf(game);
   const coinValues = prizes.filter(p => p.kind === "gp").map(p => p.gp);
   const itemRarities = prizes.filter(p => p.kind === "item").map(p => p.rarity);
-  return layoutOf(game) === "match3" ? layMatch3(win, { cols, rows, cells, prizes, coinValues, rng }) : layLucky(game, win, { cols, rows, cells, coinValues, itemRarities, rng });
+  const card = layoutOf(game) === "match3" ? layMatch3(win, { cols, rows, cells, prizes, coinValues, rng }) : layLucky(game, win, { cols, rows, cells, coinValues, itemRarities, rng });
+  return { ...card, theme: themeOf(game), prizes: rollPrizes(game) };
+}
+
+/*
+  What the ticket prints of its roll: { top: { gp } | { item: rarity } |
+  null (the best prize), gp (every coin prize and bonus in the roll, added
+  up), items (the item prizes), floor (the least any win pays, when every
+  prize pays the ticket's price or more, else null) }.
+*/
+export function rollPrizes(game) {
+  const roll = rollOf(game);
+  const top = roll.prizes[0] ?? null;
+  const gp = Math.round(roll.prizes.filter(p => p.kind !== "item").reduce((n, p) => n + p.gp * p.count, 0) * 100) / 100;
+  const items = roll.prizes.filter(p => p.kind === "item").reduce((n, p) => n + p.count, 0);
+  return { top: top ? (top.kind === "item" ? { item: top.rarity } : { gp: top.gp }) : null, gp, items, floor: rollOdds(roll.prizes, roll.size, Number(game?.price) || 0).floor };
+}
+
+// "620 gp and 1 item in prizes in this roll": the ribbon's second line, or "" on a roll with none.
+export function ribbonTotalText(prizes) {
+  const gp = Number(prizes?.gp) || 0, items = Math.max(0, Math.floor(Number(prizes?.items) || 0));
+  const price = formatPrice(gp);
+  if (gp > 0 && items > 0) return t(items === 1 ? "LOOTCRATES.Scratch.TotalGpItem" : "LOOTCRATES.Scratch.TotalGpItems", { price, count: items });
+  if (gp > 0) return t("LOOTCRATES.Scratch.TotalGp", { price });
+  if (items > 0) return t(items === 1 ? "LOOTCRATES.Scratch.TotalItem" : "LOOTCRATES.Scratch.TotalItems", { count: items });
+  return "";
 }
 
 function layLucky(game, win, { cols, rows, cells, coinValues, itemRarities, rng }) {
@@ -461,38 +507,64 @@ function gotText(out) {
 const symbolText = s => SYMBOL_LABEL[s] ?? s;
 const panelPrizeText = prize => (prize?.item ? (prize.name || t("LOOTCRATES.Scratch.ItemPrize", { rarity: RARITY_LABEL[prize.item] ?? prize.item })) : formatPrice(prize?.gp ?? 0));
 
+// The band's emblems, the mockup's: a d20 on the left, a potion flask on
+// the right, gold with a dark outline (the flask's draught in the ticket's
+// deep colour). Inline SVG; nothing to load.
+const EMBLEM_D20 = `<span class="lc-scratch__emblem" aria-hidden="true"><svg viewBox="0 0 48 48"><polygon points="24,3 43,14 43,34 24,45 5,34 5,14" class="lc-scratch__gold" stroke-width="2" stroke-linejoin="round"/><polygon points="24,12 36,31 12,31" class="lc-scratch__gold lc-scratch__gold--lite" stroke-width="1.6" stroke-linejoin="round"/><path d="M24 3 L24 12 M43 14 L36 31 M5 14 L12 31 M43 34 L36 31 M5 34 L12 31 M24 45 L24 31" class="lc-scratch__line" stroke-width="1.4"/><text x="24" y="27.5" text-anchor="middle" class="lc-scratch__emblem-text" font-weight="800" font-size="11">20</text></svg></span>`;
+const EMBLEM_FLASK = `<span class="lc-scratch__emblem" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M10 30 C8 18 16 10 24 8 C32 10 40 18 38 30 L34 40 L14 40 Z" class="lc-scratch__gold" stroke-width="2" stroke-linejoin="round"/><path d="M14 40 L34 40 M12 26 C20 23 28 23 36 26" class="lc-scratch__line" stroke-width="1.6" fill="none"/><ellipse cx="24" cy="31" rx="5" ry="3.5" class="lc-scratch__draught" stroke-width="1.2"/><path d="M24 8 L22 3 M24 8 L26 3" class="lc-scratch__line" stroke-width="1.4"/></svg></span>`;
+// The bonus spot's mark: the gem on a bonus ticket, a dashed ring on the rest.
+const MARK_GEM = `<span class="lc-scratch__mark lc-scratch__mark--gem" aria-hidden="true"><svg viewBox="0 0 40 40"><path d="M8 14 L14 6 H26 L32 14 L20 34 Z" class="lc-scratch__gem" stroke-width="2" stroke-linejoin="round"/><path d="M8 14 H32 M14 6 L20 14 L26 6 M20 14 L20 34" class="lc-scratch__gold-line" stroke-width="1.5" fill="none"/></svg></span>`;
+const MARK_NONE = `<span class="lc-scratch__mark" aria-hidden="true"><svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="12" fill="none" class="lc-scratch__gold-line" stroke-width="2" stroke-dasharray="4 3"/></svg></span>`;
+const CORNERS = `<span class="lc-scratch__corner lc-scratch__corner--tl" aria-hidden="true"></span><span class="lc-scratch__corner lc-scratch__corner--tr" aria-hidden="true"></span><span class="lc-scratch__corner lc-scratch__corner--bl" aria-hidden="true"></span><span class="lc-scratch__corner lc-scratch__corner--br" aria-hidden="true"></span>`;
+
 /*
-  The ticket, open: the title band with the top prize, the lucky numbers
-  (or the symbols' key), the grid, the bonus spot and the roll line. The
-  winning panels carry lc-scratch__panel--win. Every panel names itself
-  for a screen reader. The scratch draws its foil over this markup.
+  The ticket, open, as the mockup prints it: the corners, the band with
+  the name between its emblems, the ribbon with the top prize and the
+  roll's prizes, the caption strips, the lucky numbers as coins (or the
+  symbols' key), the grid, the bonus spot in its EXTRA box, and the foot
+  with the roll line, the tagline and the guarantee. The winning panels
+  carry lc-scratch__panel--win; an item prize's pill carries its rarity.
+  Every panel names itself for a screen reader. The scratch draws its
+  foil over this markup. The ticket's theme rides on data-theme.
 */
 export function ticketHTML(reveal, { esc = s => String(s ?? "") } = {}) {
   const card = reveal.card;
   if (!card) return "";
   const won = cardWins(card);
   const win = new Set(won.winners);
-  const top = card.layout === "match3" ? card.key?.[0]?.prize : null;
-  const foot = reveal.ticket ? t("LOOTCRATES.Scratch.TicketOf", { roll: rollName(reveal.ticket.rollId), no: reveal.ticket.no, size: reveal.ticket.size }) : "";
+  const prizes = card.prizes ?? (card.layout === "match3" && card.key?.[0] ? { top: card.key[0].prize, gp: 0, items: 0, floor: null } : null);
+  const rollLine = reveal.ticket ? t("LOOTCRATES.Scratch.TicketOf", { roll: rollName(reveal.ticket.rollId), no: reveal.ticket.no, size: reveal.ticket.size }) : "";
   const grid = `style="--lc-cols:${Number(card.cols) || 1}"`;
+  const cap = (a, b) => `<div class="lc-scratch__cap"><span>${a}</span>${b ? `<span>${b}</span>` : ""}</div>`;
   let body;
   if (card.layout === "match3") {
     const legend = (card.key ?? []).map(k => `<li class="lc-scratch__key-row lc-rarity-${esc(k.prize.item ?? "coin")}"><span class="lc-scratch__sym" data-symbol="${esc(k.symbol)}">${esc(symbolText(k.symbol))}</span> ${esc(panelPrizeText(k.prize))}</li>`).join("");
-    body = `<div class="lc-scratch__cap"><span>${t("LOOTCRATES.Scratch.Match3Cap")}</span></div>
+    body = `${cap(t("LOOTCRATES.Scratch.Match3Cap"))}
       <ul class="lc-scratch__key">${legend}</ul>
+      ${cap(t("LOOTCRATES.Scratch.YoursCap"))}
       <div class="lc-scratch__grid" ${grid} role="list">${card.panels.map((p, i) => `<div class="lc-scratch__panel${win.has(i) ? " lc-scratch__panel--win" : ""}" role="listitem" data-panel="${i}" aria-label="${esc(t(win.has(i) ? "LOOTCRATES.Scratch.PanelSymbolWin" : "LOOTCRATES.Scratch.PanelSymbol", { n: i + 1, symbol: symbolText(p.symbol) }))}"><span class="lc-scratch__sym" data-symbol="${esc(p.symbol)}">${esc(symbolText(p.symbol))}</span></div>`).join("")}</div>`;
   } else {
-    body = `<div class="lc-scratch__cap"><span>${t("LOOTCRATES.Scratch.LuckyCap")}</span><span>${t("LOOTCRATES.Scratch.LuckyHint")}</span></div>
+    body = `${cap(t("LOOTCRATES.Scratch.LuckyCap"), t("LOOTCRATES.Scratch.LuckyHint"))}
       <div class="lc-scratch__lucky" role="list" aria-label="${esc(t("LOOTCRATES.Scratch.LuckyCap"))}">${card.lucky.map(n => `<span class="lc-scratch__ball" role="listitem">${esc(n)}</span>`).join("")}</div>
-      <div class="lc-scratch__cap"><span>${t("LOOTCRATES.Scratch.YoursCap")}</span><span>${t("LOOTCRATES.Scratch.WinsAddUp")}</span></div>
+      ${cap(t("LOOTCRATES.Scratch.YoursCap"), t("LOOTCRATES.Scratch.WinsAddUp"))}
       <div class="lc-scratch__grid" ${grid} role="list">${card.panels.map((p, i) => `<div class="lc-scratch__panel${win.has(i) ? " lc-scratch__panel--win" : ""}${p.prize?.item ? ` lc-rarity-${esc(p.prize.item)}` : ""}" role="listitem" data-panel="${i}" aria-label="${esc(t(win.has(i) ? "LOOTCRATES.Scratch.PanelNumberWin" : "LOOTCRATES.Scratch.PanelNumber", { n: i + 1, number: p.n, prize: panelPrizeText(p.prize) }))}"><span class="lc-scratch__num">${esc(p.n)}</span><span class="lc-scratch__prize${p.prize?.item ? " lc-scratch__prize--item" : ""}">${esc(panelPrizeText(p.prize))}</span></div>`).join("")}</div>
-      ${card.bonus ? `<div class="lc-scratch__bonus"><div class="lc-scratch__panel lc-scratch__spot${card.bonus.win ? " lc-scratch__panel--win" : ""}" data-panel="bonus" aria-label="${esc(card.bonus.win ? t("LOOTCRATES.Scratch.BonusSpotWin", { price: formatPrice(card.bonus.gp) }) : t("LOOTCRATES.Scratch.BonusSpot"))}"><span class="lc-scratch__mark${card.bonus.win ? " lc-scratch__mark--gem" : ""}" aria-hidden="true"></span></div><p>${t("LOOTCRATES.Scratch.BonusHint", { price: `<strong>${esc(formatPrice(card.bonus.gp))}</strong>` })}</p></div>` : ""}`;
+      ${card.bonus ? `<div class="lc-scratch__bonus"><div class="lc-scratch__panel lc-scratch__spot${card.bonus.win ? " lc-scratch__panel--win" : ""}" data-panel="bonus" aria-label="${esc(card.bonus.win ? t("LOOTCRATES.Scratch.BonusSpotWin", { price: formatPrice(card.bonus.gp) }) : t("LOOTCRATES.Scratch.BonusSpot"))}">${card.bonus.win ? MARK_GEM : MARK_NONE}</div><div><div class="lc-scratch__extra">${esc(t("LOOTCRATES.Scratch.Extra", { price: formatPrice(card.bonus.gp) }))}</div><p>${esc(t("LOOTCRATES.Scratch.BonusHint"))}</p></div></div>` : ""}`;
   }
-  const topLine = top ? `<span class="lc-scratch__top">${t("LOOTCRATES.Scratch.TopPrize", { prize: esc(panelPrizeText(top)) })}</span>` : "";
-  return `<div class="lc-scratch__ticket" data-layout="${esc(card.layout)}">
-      <div class="lc-scratch__band"><span class="lc-scratch__title">${esc(reveal.box?.name ?? "")}</span>${topLine}</div>
+  const total = prizes ? ribbonTotalText(prizes) : "";
+  const ribbon = prizes?.top || total
+    ? `<div class="lc-scratch__ribbon">${prizes.top ? `<span>${esc(t("LOOTCRATES.Scratch.TopPrize"))}</span><strong>${esc(panelPrizeText(prizes.top))}</strong>` : ""}${total ? `<span>${esc(total)}</span>` : ""}</div>`
+    : "";
+  const foot = [
+    rollLine ? `<span class="lc-scratch__roll">${esc(rollLine)}</span>` : "",
+    `<span class="lc-scratch__tag">${esc(t("LOOTCRATES.Scratch.Tagline"))}</span>`,
+    prizes?.floor != null ? `<span class="lc-scratch__guarantee">${esc(t("LOOTCRATES.Scratch.Guarantee", { price: formatPrice(prizes.floor) }))}</span>` : "",
+  ].filter(Boolean).join("");
+  return `<div class="lc-scratch__ticket" data-layout="${esc(card.layout)}" data-theme="${esc(THEMES.includes(card.theme) ? card.theme : "hoard")}">
+      ${CORNERS}
+      <div class="lc-scratch__band">${EMBLEM_D20}<span class="lc-scratch__title">${esc(reveal.box?.name ?? "")}</span>${EMBLEM_FLASK}</div>
+      ${ribbon}
       ${body}
-      ${foot ? `<div class="lc-scratch__foot">${esc(foot)}</div>` : ""}
+      <div class="lc-scratch__foot">${foot}</div>
     </div>`;
 }
 
@@ -527,6 +599,7 @@ export function mountScratch(host, { reveal, buyer = false, reducedMotion, durat
   host.classList.remove("lc-scratch--landed");
   host.dataset.outcome = outcomeOf(reveal);
   const card = reveal?.card;
+  host.dataset.theme = THEMES.includes(card?.theme) ? card.theme : "hoard";
   const tools = buyer ? `<div class="lc-scratch__tools"><button type="button" class="lc-scratch__all">${escHTML(t("LOOTCRATES.Scratch.RevealAll"))}</button><p class="lc-scratch__help">${escHTML(t("LOOTCRATES.Scratch.Help"))}</p></div>` : "";
   host.innerHTML = `<div class="lc-scratch__stage">${ticketHTML(reveal ?? {}, { esc: escHTML })}${tools}</div>`;
   const ticket = host.querySelector(".lc-scratch__ticket");
@@ -635,26 +708,35 @@ const cleanPrize = p => (p?.item ? (RARITIES.includes(p.item) ? { item: p.item, 
   A card as layCard makes it, checked field by field and copied, or null:
   a known layout, a grid inside its limits with a panel for every cell,
   whole numbers and coin or item prizes on lucky numbers, known symbols
-  on match 3.
+  on match 3; its print (a known theme, the ribbon's facts) kept where it
+  is sound, else the default print.
 */
 export function cleanCard(card) {
   if (!card || !LAYOUTS.includes(card.layout)) return null;
   const lim = GRID_LIMITS[card.layout];
   const cols = int(card.cols, lim.cols[0], lim.cols[1]), rows = int(card.rows, lim.rows[0], lim.rows[1]);
   if (!cols || !rows || !Array.isArray(card.panels) || card.panels.length !== cols * rows) return null;
+  const print = { theme: THEMES.includes(card.theme) ? card.theme : "hoard", prizes: cleanPrizes(card.prizes) };
   if (card.layout === "match3") {
     if (!Array.isArray(card.key) || card.key.length > MAX_PRIZES) return null;
     const key = card.key.map(k => (SYMBOLS.includes(k?.symbol) ? { symbol: k.symbol, prize: cleanPrize(k.prize) } : null));
     const panels = card.panels.map(p => (SYMBOLS.includes(p?.symbol) ? { symbol: p.symbol } : null));
     if (key.some(k => !k?.prize) || panels.some(p => !p)) return null;
-    return { layout: "match3", cols, rows, key, panels };
+    return { layout: "match3", cols, rows, key, panels, ...print };
   }
   if (!Array.isArray(card.lucky) || !card.lucky.length || card.lucky.length > 8 || card.lucky.some(n => !int(n, 1, 999))) return null;
   const panels = card.panels.map(p => (int(p?.n, 1, 999) && cleanPrize(p.prize) ? { n: p.n, prize: cleanPrize(p.prize) } : null));
   if (panels.some(p => !p)) return null;
   const bonus = card.bonus && Number.isFinite(card.bonus.gp) ? { gp: card.bonus.gp, win: !!card.bonus.win } : null;
-  return { layout: "lucky", cols, rows, lucky: [...card.lucky], panels, bonus };
+  return { layout: "lucky", cols, rows, lucky: [...card.lucky], panels, bonus, ...print };
 }
+
+// The ribbon's facts as rollPrizes makes them, or the empty print.
+const gpOf = v => (Number.isFinite(v) && v >= 0 ? v : 0);
+const cleanPrizes = p => ({
+  top: p?.top?.item ? (RARITIES.includes(p.top.item) ? { item: p.top.item } : null) : Number.isFinite(p?.top?.gp) && p.top.gp >= 0 ? { gp: p.top.gp } : null,
+  gp: gpOf(p?.gp), items: Math.max(0, Math.floor(Number(p?.items) || 0)), floor: Number.isFinite(p?.floor) && p.floor >= 0 ? p.floor : null,
+});
 
 // "Tam scratches Fortune Ticket 5 gp".
 function head(reveal, { esc }) {
@@ -860,10 +942,11 @@ export function prizeRowHTML(p, n, id, esc = s => String(s ?? "")) {
 
 /*
   The editor's own fields, between the price and the pools: the layout,
-  the grid, the bonus spot (lucky numbers only), the roll's size and its
-  prize list as rows (Add prize, a remove on each), then the readout the
-  live preview fills. The manager and the harness draw this one copy and
-  wire it with wireScratchEditor.
+  the grid, the bonus spot (lucky numbers only), the ticket's colours
+  (Printed in, one of THEMES), the roll's size and its prize list as rows
+  (Add prize, a remove on each), then the readout the live preview fills.
+  The manager and the harness draw this one copy and wire it with
+  wireScratchEditor.
 */
 export function scratchFieldsHTML(game, { esc = s => String(s ?? ""), sold = 0 } = {}) {
   const layout = layoutOf(game);
@@ -881,6 +964,7 @@ export function scratchFieldsHTML(game, { esc = s => String(s ?? ""), sold = 0 }
           rows: `<input name="rows" type="number" min="${lim.rows[0]}" max="${lim.rows[1]}" step="1" value="${rows}" aria-label="${t("LOOTCRATES.Scratch.GridRows")}">`,
         })}</div>
         <div class="lc-row lc-row--wrap lc-scratch-form__bonus"${layout === "lucky" ? "" : " hidden"}><label class="lc-field"><input type="checkbox" name="bonusOn"${bonus.on ? " checked" : ""}> ${t("LOOTCRATES.Scratch.BonusField")}</label> <input name="bonusGp" type="number" min="0" step="1" value="${esc(bonus.gp)}" aria-label="${t("LOOTCRATES.Scratch.BonusGp")}"> gp</div>
+        <label class="lc-row lc-scratch-form__theme">${t("LOOTCRATES.Scratch.ThemeField")} <select name="theme">${THEMES.map(th => `<option value="${th}"${th === themeOf(game) ? " selected" : ""}>${esc(THEME_LABEL[th])}</option>`).join("")}</select></label>
       </fieldset>
       <fieldset class="lc-prizes"><legend>${t("LOOTCRATES.Scratch.RollLegend")}</legend>
         <label class="lc-row">${t("LOOTCRATES.Scratch.RollSize", { input: `<input name="size" type="number" min="1" step="1" value="${esc(rollOf(game).size)}">` })}</label>
@@ -892,9 +976,10 @@ export function scratchFieldsHTML(game, { esc = s => String(s ?? ""), sold = 0 }
       </fieldset>`;
 }
 
-// The editor's values as a record: the layout, the grid, the bonus spot and the roll.
+// The editor's values as a record: the layout, the grid, the bonus spot, the theme and the roll.
 export function draftScratch(game, values, poolIds) {
   const layout = LAYOUTS.includes(values.layout) ? values.layout : layoutOf(game);
+  const theme = THEMES.includes(values.theme) ? values.theme : themeOf(game);
   const ids = [].concat(values.prizes ?? []).map(String).filter(Boolean);
   const prizes = ids.map(id => {
     const what = String(values[`z.${id}.what`] ?? "gp");
@@ -909,7 +994,7 @@ export function draftScratch(game, values, poolIds) {
     ...draftBox(game, values, poolIds),
     kind: "scratch",
     price: parsePrice(values.price) ?? Math.max(0, Number(values.price) || 0),
-    layout, grid,
+    layout, grid, theme,
     bonus: { on: on(values.bonusOn), gp: toGp(values.bonusGp) },
     roll: { ...(game.roll ?? {}), id: rollOf(game).id, size: Math.max(0, Math.floor(Number(values.size) || 0)), prizes },
   };
