@@ -207,16 +207,17 @@ const lineRank = l => (l.kind === "bonus" ? -1 : l.gp);
 const byLine = (a, b) => (b.items.length ? 1 + rarityRank(b.items[0]) : 0) - (a.items.length ? 1 + rarityRank(a.items[0]) : 0) || b.items.length - a.items.length || lineRank(b) - lineRank(a);
 
 /*
-  Why a match 3 card can't show a line, or "": each of its parts is a
+  Why the card can't show a line, or "". Lucky numbers put each coin and
+  item part on a panel of its own, so a line needs a panel a part (a 3 x 1
+  card has three, and a line can pay four). Match 3 makes each part a
   three of a kind of its own symbol, so two parts the same can't be told
-  apart, and the card needs room for three panels a part. Lucky numbers
-  show any line (a part a panel, MAX_PARTS under the smallest grid).
+  apart, and the card needs room for three panels a part.
 */
 export function lineMisfit(line, game) {
-  if (layoutOf(game) !== "match3") return "";
   const paying = line.parts.filter(p => p.kind !== "bonus");
-  if (new Set(paying.map(p => p.key)).size < paying.length) return "twins";
   const { cols, rows } = gridOf(game);
+  if (layoutOf(game) !== "match3") return paying.length > cols * rows ? "panels" : "";
+  if (new Set(paying.map(p => p.key)).size < paying.length) return "twins";
   return paying.length * 3 > cols * rows ? "room" : "";
 }
 
@@ -1278,8 +1279,9 @@ export function draftScratch(game, values, poolIds) {
   5 gp or more"), the duds, and what would stop a ticket being sold: more
   prizes than tickets (the roll grows to fit), an item prize with no pool
   ticked or none at its rarity, a bonus prize with no bonus spot. A line
-  the card can't show (a match 3 card: two parts the same, no room for a
-  three of a kind a part, more prizes than its key has symbols) is named
+  the card can't show (more winning parts than a lucky numbers card has
+  panels; a match 3 card: two parts the same, no room for a three of a
+  kind a part, more prizes than its key has symbols) is named
   by its number and `refused` is true: the editor keeps Save off until it
   fits, so no roll is printed that a card would show wrong.
 */
@@ -1296,20 +1298,21 @@ export function scratchPreview(game, pools = {}) {
   const rows = game?.roll?.prizes ?? [];
   if (rows.some(p => Number(p?.count) > 0 && rowParts(p).some(q => q?.bonus)) && !bonusOf(game).on) notes.push({ text: t("LOOTCRATES.Scratch.BonusOff"), warn: true });
   const misfits = [];
-  if (layoutOf(game) === "match3") {
-    const { cols, rows: down } = gridOf(game);
-    // The lines the roll prints; one that fits the card but isn't among
-    // them is past what the key has symbols for.
-    const kept = new Set(roll.prizes.map(l => l.key));
-    rows.forEach((row, i) => {
-      const line = lineOf(row, bonusOf(game));
-      if (!line) return;
-      const why = lineMisfit(line, game);
-      if (why === "twins") misfits.push(t("LOOTCRATES.Scratch.LineTwins", { n: i + 1 }));
-      else if (why === "room") misfits.push(t("LOOTCRATES.Scratch.LineNoRoom", { n: i + 1, count: line.parts.filter(p => p.kind !== "bonus").length, cols, rows: down }));
-      else if (!kept.has(line.key)) misfits.push(t("LOOTCRATES.Scratch.KeyFull", { n: i + 1, max: MAX_PRIZES }));
-    });
-  }
+  const match3 = layoutOf(game) === "match3";
+  const { cols, rows: down } = gridOf(game);
+  // The lines the roll prints; one that fits the card but isn't among
+  // them is past what the match 3 key has symbols for.
+  const kept = new Set(roll.prizes.map(l => l.key));
+  rows.forEach((row, i) => {
+    const line = lineOf(row, bonusOf(game));
+    if (!line) return;
+    const why = lineMisfit(line, game);
+    const count = line.parts.filter(p => p.kind !== "bonus").length;
+    if (why === "panels") misfits.push(t("LOOTCRATES.Scratch.LineNoPanels", { n: i + 1, count, cols, rows: down }));
+    else if (why === "twins") misfits.push(t("LOOTCRATES.Scratch.LineTwins", { n: i + 1 }));
+    else if (why === "room") misfits.push(t("LOOTCRATES.Scratch.LineNoRoom", { n: i + 1, count, cols, rows: down }));
+    else if (match3 && !kept.has(line.key)) misfits.push(t("LOOTCRATES.Scratch.KeyFull", { n: i + 1, max: MAX_PRIZES }));
+  });
   for (const text of misfits) notes.push({ text, warn: true });
   if (misfits.length) notes.push({ text: t("LOOTCRATES.Scratch.SaveOff"), warn: true });
   return { roll, odds, notes, held, refused: misfits.length > 0 };

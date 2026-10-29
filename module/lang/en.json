@@ -1154,6 +1154,7 @@
       "AddPart": "Add a part",
       "AddPartTo": "Add a part to prize {n}",
       "PartsFull": "A prize pays up to {max} parts.",
+      "LineNoPanels": "Prize {n} needs {count} winning panels, more than a {cols} × {rows} card has. Add panels or take a part off.",
       "LineTwins": "Prize {n} pays two parts the same, which a match 3 card can't tell apart. Make them one part.",
       "LineNoRoom": "Prize {n} needs {count} sets of three, more than a {cols} × {rows} card has room for. Add panels or take a part off.",
       "KeyFull": "A match 3 card has symbols for {max} different prizes, and prize {n} needs more.",

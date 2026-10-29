@@ -619,6 +619,28 @@ describe("prize lines: tickets that pay like real ones", () => {
     expect(scratchPreview(many, POOLS).notes.map(n => n.text)).toContain("A match 3 card has symbols for 8 different prizes, and prize 1 needs more.");
   });
 
+  it("lucky numbers: a line needs a winning panel a part, so a 3 x 1 card leaves out a line of four and the editor says why with Save off", () => {
+    const four = [{ item: { rarity: "rare" } }, { item: { rarity: "uncommon" } }, { gp: 25 }, { gp: 10 }];
+    const small = { price: 1, layout: "lucky", grid: { cols: 3, rows: 1 }, bonus: { on: true, gp: 10 }, pools: [{ id: "p" }], roll: { id: 1, size: 10, prizes: [{ count: 1, parts: four }, { count: 1, parts: [{ gp: 5 }, { gp: 5 }, { gp: 5 }, { bonus: true }] }] } };
+    // Three paying parts and the gem fit three panels; four paying parts don't.
+    expect(prizesOf(small).map(l => l.key)).toEqual(["gp.5+gp.5+gp.5+bonus"]);
+    const preview = scratchPreview(small, POOLS);
+    expect(preview.refused).toBe(true);
+    expect(preview.notes.map(n => n.text)).toEqual(expect.arrayContaining([
+      "Prize 1 needs 4 winning panels, more than a 3 × 1 card has. Add panels or take a part off.",
+      "Save is off until every prize fits the card.",
+    ]));
+    // With a panel more the line is printed, and every part reads back from the card.
+    const room = { ...small, grid: { cols: 4, rows: 1 } };
+    expect(prizesOf(room).map(l => l.key)).toContain("item.rare+item.uncommon+gp.25+gp.10");
+    expect(scratchPreview(room, POOLS).refused).toBe(false);
+    for (let seed = 1; seed <= 50; seed++) {
+      const read = cardWins(layCard(room, { kind: "line", parts: [{ kind: "item", rarity: "rare" }, { kind: "item", rarity: "uncommon" }, { kind: "gp", gp: 25 }, { kind: "gp", gp: 10 }] }, seededRng(seed)));
+      expect(read.cp).toBe(3500);
+      expect(read.items.map(i => i.item).sort()).toEqual(["rare", "uncommon"]);
+    }
+  });
+
   it("thousands of seeded tickets of both layouts: every part of a combination line reads back from the card exactly, and the honesty rules hold", () => {
     const luckyLines = [
       [{ kind: "gp", gp: 5 }, { kind: "item", rarity: "rare", name: "Flame Tongue" }, { kind: "bonus" }],
