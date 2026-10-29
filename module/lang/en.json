@@ -93,7 +93,10 @@
       "NothingNew": "Nothing new for this character",
       "OpenFor": "Open for {price}",
       "Waiting": "Waiting for the GM…",
-      "Opening": "Opening…"
+      "Opening": "Opening…",
+      "Keep": "Buy to keep",
+      "KeepHint": ", {price}, a ticket for your pack to use later",
+      "Keeping": "Buying…"
     },
     "Shop": {
       "ClosedByGM": "The GM has closed the shop.",
@@ -1272,6 +1275,20 @@
       "GrantFailed": "The prize couldn't be added, so your ticket is back in your pack.",
       "GrantAndRestoreFailed": "The prize couldn't be added and the ticket couldn't be put back. Ask the GM for a new ticket.",
       "ReturnFailed": "Loot Crates: {actor}'s {box} was refunded, but the ticket couldn't be given back. Use Make a ticket on the game's row in the Boxes tab and give them the new one."
+    },
+    "Keep": {
+      "LogTag": "{price}, kept",
+      "LogGot": "A ticket to keep",
+      "Got": "got a {box} ticket to keep",
+      "ChatHead": "{actor} bought a {box} ticket to keep {price}",
+      "Done": "A {box} ticket is in {actor}'s pack ({count} now). Use it from the character sheet whenever you like.",
+      "Failed": "The ticket couldn't be put in the pack, so your coins are back.",
+      "FailedAndRestoreFailed": "The ticket couldn't be put in the pack and the coins couldn't be returned. Ask the GM to refund it from the Pull log.",
+      "RefundAsk": "{money} and take one {box} ticket out of their pack?",
+      "RefundAskFree": "Take one {box} ticket out of {name}'s pack? It cost nothing, so no coins move.",
+      "RefundDone": "{box} refunded for {name}: one ticket out of their pack and {price} back in their purse.",
+      "RefundGone": "{actor} has no {box} ticket left to give back (it was used or traded), so nothing was refunded.",
+      "RefundTaken": "One {box} ticket was taken out of their pack."
     }
   }
 }

@@ -1370,7 +1370,10 @@ export class CrateManager extends ApplicationV2 {
       : coins < 0 ? t("LOOTCRATES.Refund.TicketTakeBack", ticketArgs)
       : t("LOOTCRATES.Refund.TicketBack", ticketArgs);
     const strong = names => listAnd(names.map(n => `<strong>${esc(n)}</strong>`));
-    const ask = items.length && gone.length ? t("LOOTCRATES.Refund.AskRemoveSomeGone", { money, item: strong(items.map(i => i.name)), gone: strong(gone) })
+    // A Buy to keep: one kept ticket comes out of the pack, its price back.
+    const keptBox = `<strong>${esc(row.boxName)}</strong>`;
+    const ask = row.keep ? (coins ? t("LOOTCRATES.Keep.RefundAsk", { money: coinsText, box: keptBox }) : t("LOOTCRATES.Keep.RefundAskFree", { name: esc(actor.name), box: keptBox }))
+      : items.length && gone.length ? t("LOOTCRATES.Refund.AskRemoveSomeGone", { money, item: strong(items.map(i => i.name)), gone: strong(gone) })
       : items.length ? t("LOOTCRATES.Refund.AskRemove", { money, item: strong(items.map(i => i.name)) })
       : gone.length > 1 ? t("LOOTCRATES.Refund.AskGoneSeveral", { money, items: strong(gone) })
       : gone.length ? t("LOOTCRATES.Refund.AskGone", { money, item: strong(gone) }) : t("LOOTCRATES.Refund.Ask", { money });
@@ -1388,7 +1391,8 @@ export class CrateManager extends ApplicationV2 {
     this.#focusRow = row.id;
     const done = await refundPull(row.id);
     if (done.status === "refunded") {
-      const keys = row.redeem ? ["LOOTCRATES.Refund.DoneTicket", "LOOTCRATES.Refund.DoneTicketRemoved"]
+      const keys = row.keep ? ["LOOTCRATES.Keep.RefundDone", "LOOTCRATES.Keep.RefundDone"]
+        : row.redeem ? ["LOOTCRATES.Refund.DoneTicket", "LOOTCRATES.Refund.DoneTicketRemoved"]
         : coins === 0 ? ["LOOTCRATES.Refund.DoneNoCoins", "LOOTCRATES.Refund.DoneNoCoinsRemoved"]
         : coins > 0 ? ["LOOTCRATES.Refund.DoneReturned", "LOOTCRATES.Refund.DoneReturnedRemoved"]
         : ["LOOTCRATES.Refund.DoneTaken", "LOOTCRATES.Refund.DoneTakenRemoved"];

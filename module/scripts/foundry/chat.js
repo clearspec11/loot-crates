@@ -48,6 +48,25 @@ export async function postPullCard(reveal) {
 }
 
 /*
+  Buy to keep's chat line (socket.js doKeep): who bought which game's
+  ticket to keep and for how much. No reveal and nothing to watch again;
+  flags.logId ties it to its row, so a refund marks it as it marks a pull's
+  card (refund.js markPullCard).
+*/
+export async function postKeptCard(row) {
+  const actor = game.actors.get(row.actorId);
+  const content = `
+    <div class="loot-crates lc-chat lc-chat--kept">
+      <div class="lc-chat__head">${t("LOOTCRATES.Keep.ChatHead", { actor: esc(row.actorName), box: `<strong>${esc(row.boxName)}</strong>`, price: `<span class="lc-chat__price">${esc(formatPrice(row.price))}</span>` })}</div>
+    </div>`;
+  return ChatMessage.create({
+    content,
+    speaker: ChatMessage.getSpeaker({ actor }),
+    flags: { "loot-crates": { boxId: row.boxId, logId: row.id, kept: true } },
+  });
+}
+
+/*
   The refund card's line about the items, or null for a row that granted
   none. A play that granted several (refund.js removedItems, goneItems)
   names each removed and each already gone; a caller that passes only
@@ -91,7 +110,9 @@ export async function postRefundCard({ row, actor, removedItem, removedItems, go
   // + 25 gp) says both, since its head carries no price.
   const itemsLine = refundItemsLine({ row, removedItem, removedItems, goneItems });
   const ticketLine = ticket ? t(ticketBack ? "LOOTCRATES.Chat.RefundTicketBack" : "LOOTCRATES.Chat.RefundTicketLost", { box: esc(row.boxName) }) : null;
-  const line = ticket ? [ticketLine, itemsLine, coinsLine].filter(Boolean).join(" ")
+  // A Buy to keep (row.keep): the ticket left the pack and its price came back.
+  const line = row.keep ? [t("LOOTCRATES.Keep.RefundTaken", { box: esc(row.boxName) }), net ? coinsLine : null].filter(Boolean).join(" ")
+    : ticket ? [ticketLine, itemsLine, coinsLine].filter(Boolean).join(" ")
     : itemsLine && payout ? `${itemsLine} ${coinsLine}` : itemsLine ?? coinsLine;
   const content = `
     <div class="loot-crates lc-chat lc-rarity-${esc(row.rarity ?? "none")}">

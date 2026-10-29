@@ -17,6 +17,13 @@
   Only a game a player pulls has tickets (the crate, the Wishing Well,
   Dragon's Teeth, the deck, scratch tickets); a table game is staked in
   rounds, never pulled. Pure: no Foundry globals.
+
+  A ticket bought in the shop with Buy to keep (foundry/tickets.js
+  keepTicket) is marked `kept`: the purchase was the play's, so its own
+  log row (`keep`, see keepRow) counts toward the limit per character and
+  took the stock, and the play it is later used for counts toward neither
+  (limits.js boughtBy, pull.js). Kept tickets of one game at one price
+  stack as one item.
 */
 import { getKind, kindOf } from "./kinds.js";
 import { formatPrice } from "../core/currency.js";
@@ -58,7 +65,7 @@ const gp = v => Math.max(0, Number(v) || 0);
   ticket handed out); the item's value is that, or the game's price for
   one handed out, so a merchant or a loot sheet prices it as the game does.
 */
-export function ticketData(box, { paid = 0 } = {}) {
+export function ticketData(box, { paid = 0, kept = false } = {}) {
   const verb = useWord(box);
   const price = gp(paid) || gp(box?.price);
   return {
@@ -83,16 +90,54 @@ export function ticketData(box, { paid = 0 } = {}) {
         },
       },
     },
-    flags: { "loot-crates": { [TICKET_FLAG]: { boxId: String(box?.id ?? ""), paid: gp(paid) } } },
+    flags: { "loot-crates": { [TICKET_FLAG]: { boxId: String(box?.id ?? ""), paid: gp(paid), ...(kept ? { kept: true } : {}) } } },
   };
 }
 
-// An item's ticket mark ({ boxId, paid }), or null for any other item.
+// An item's ticket mark ({ boxId, paid }, with kept: true for one bought
+// with Buy to keep), or null for any other item.
 export function ticketOf(item) {
   const mark = item?.flags?.["loot-crates"]?.[TICKET_FLAG];
   if (!mark || typeof mark.boxId !== "string" || !mark.boxId) return null;
-  return { boxId: mark.boxId, paid: gp(mark.paid) };
+  return { boxId: mark.boxId, paid: gp(mark.paid), ...(mark.kept ? { kept: true } : {}) };
 }
+
+/*
+  The kept ticket on a character a Buy to keep of `box` at `paid` gp
+  stacks onto: a kept ticket to the same game bought at the same price,
+  or null. `items` are the character's items (any iterable).
+*/
+export function keptStack(items, { boxId, paid }) {
+  for (const item of items ?? []) {
+    const mark = ticketOf(item);
+    if (mark?.kept && mark.boxId === boxId && mark.paid === gp(paid)) return item;
+  }
+  return null;
+}
+
+/*
+  The kept ticket a refund of a Buy to keep row takes back: the stack the
+  ticket went onto while it still holds one, else another kept ticket to
+  the same game at the same price (a stack used up and given back by a
+  refund is a new item), or null when every one has been used or traded.
+*/
+export function keptTicketFor(items, row) {
+  const keep = row?.keep;
+  if (!keep) return null;
+  const list = [...(items ?? [])];
+  const same = item => { const mark = ticketOf(item); return !!mark?.kept && mark.boxId === row.boxId && mark.paid === gp(keep.paid) && ticketCount(item) >= 1; };
+  return list.find(i => i.id === keep.itemId && same(i)) ?? list.find(same) ?? null;
+}
+
+// A Buy to keep's log row: { itemId, itemName, paid }, the stack the
+// ticket went onto and what it cost. The row has no itemId of its own: no
+// prize was granted, and a refund takes the ticket back, never the stack.
+export const keepRow = ({ item, paid }) => ({ itemId: item?.id ?? null, itemName: String(item?.name ?? ""), paid: gp(paid) });
+
+// Whether a log row is a Buy to keep (a ticket sold, nothing played): no
+// game counts it as a play (the well's throws today, the deck's streak, a
+// scratch roll's tickets sold).
+export const isKept = row => !!row?.keep;
 
 // How many plays a ticket item holds (its quantity, 0 when it has none).
 export const ticketCount = item => Math.max(0, Math.floor(Number(item?.system?.quantity) || 0));
@@ -101,7 +146,8 @@ export const ticketCount = item => Math.max(0, Math.floor(Number(item?.system?.q
   What a redeemed play's log row keeps of the ticket, so a refund can give
   it back: { itemId, itemName, paid, data }, `data` the item as one ticket
   (quantity 1, no id or stats), re-created from the row when the stack was
-  used up. `source` is the item's data (Item#toObject()).
+  used up. `source` is the item's data (Item#toObject()). A kept ticket's
+  row says `kept`: its play doesn't count toward the limit (limits.js).
 */
 export function redeemRow(source, mark) {
   const data = structuredClone(source ?? {});
@@ -110,12 +156,13 @@ export function redeemRow(source, mark) {
   delete data._stats;
   delete data.folder;
   data.system = { ...(data.system ?? {}), quantity: 1 };
-  return { itemId, itemName: String(source?.name ?? ""), paid: gp(mark?.paid), data };
+  return { itemId, itemName: String(source?.name ?? ""), paid: gp(mark?.paid), ...(mark?.kept ? { kept: true } : {}), data };
 }
 
 // What the reveal and the chat card show where a purchase shows its price:
 // the price, or "with a ticket" for a redeemed play.
 export const priceTag = reveal => (reveal?.redeem ? t("LOOTCRATES.Ticket.WithTicket") : formatPrice(reveal?.box?.price));
 
-// The Pull log's word after the game's name: "(12 gp)", or "(ticket)".
-export const rowPriceTag = row => (row?.redeem ? t("LOOTCRATES.Ticket.LogTag") : formatPrice(row?.price));
+// The Pull log's word after the game's name: "(12 gp)", "(ticket)", or
+// "(12 gp, kept)" for a Buy to keep.
+export const rowPriceTag = row => (row?.redeem ? t("LOOTCRATES.Ticket.LogTag") : row?.keep ? t("LOOTCRATES.Keep.LogTag", { price: formatPrice(row.price) }) : formatPrice(row?.price));

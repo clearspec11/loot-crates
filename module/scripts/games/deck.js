@@ -140,7 +140,8 @@ export function windowText(game) {
 export const shuffledAt = game => Math.max(0, Number(game?.deck?.shuffledAt) || 0);
 
 const at = r => Number(r?.at) || 0;
-const deckRows = (log, boxId) => (log ?? []).filter(r => r.kind === "deck" && r.boxId === boxId && !r.refunded);
+// The draws: a ticket bought to keep (row.keep) draws nothing until it is used.
+const deckRows = (log, boxId) => (log ?? []).filter(r => r.kind === "deck" && r.boxId === boxId && !r.refunded && !r.keep);
 
 // The once cards out of the deck now: named by an unrefunded row since the
 // last reshuffle. A card the GM has since set to draw every time is back in.

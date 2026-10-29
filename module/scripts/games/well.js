@@ -57,9 +57,10 @@ export function capOf(game) {
 
 // How many throws this character has made at this well today: its unrefunded
 // log rows carrying today's key. None when the world has no clock (day null).
+// A coin bought to keep (row.keep) isn't thrown until its ticket is used.
 export function throwsToday(log, { boxId, actorId, day }) {
   if (!day) return 0;
-  return (log ?? []).filter(r => r.boxId === boxId && r.actorId === actorId && r.day === day && !r.refunded).length;
+  return (log ?? []).filter(r => r.boxId === boxId && r.actorId === actorId && r.day === day && !r.refunded && !r.keep).length;
 }
 
 export const stillLine = (thrown, cap) => t("LOOTCRATES.Well.Still", { thrown, cap });

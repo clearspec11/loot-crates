@@ -7,6 +7,7 @@ The newest numbered entry's version is the one in `module/module.json`, and its 
 ## Unreleased
 
 - Tickets you carry. **Make a ticket** on a game's row in the Boxes tab puts a ticket for that game in the Items sidebar (folder "Loot Crates tickets") to hand out: drag it onto a sheet, a loot sheet, a merchant or into a pool. On the character sheet it has a Use button like any item, and using it plays the game for the whole table with no coins taken and one ticket used up. Works for crates, the well, the dice, the deck and scratch tickets (not the wheel or the auction). The reveal and the chat card say "with a ticket" instead of a price, and a refund gives the ticket back.
+- Buy to keep. Every shop card of a game players pull has a second, quieter button under the Buy: **Buy to keep** charges the same price, with the same limits (purse, stock, the limit per character), and puts a ticket for that game in the character's pack instead of playing now, to use from the sheet later. Tickets bought at the same price stack. A scratch ticket bought to keep is drawn from the roll when it is used, and a coin kept for the well isn't a throw until then. The Pull log shows the sale as "(10 gp, kept)", the table gets a chat line, and a refund takes one of those tickets back out of the pack and returns the coins (refused if the character no longer has one: used or traded).
 
 ## 1.4.0
 

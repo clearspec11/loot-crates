@@ -24,6 +24,12 @@
   so none come back for it: the ticket does (tickets.js returnTicket: one
   more on its stack, or made again from the row), and what the play won is
   taken back as any refund takes it. It took no stock, so it gives none.
+
+  A Buy to keep (its row's `keep`, socket.js doKeep) played nothing: its
+  refund takes one kept ticket out of the pack (tickets.js takeKeptTicket)
+  and gives its price back, and the stock it took. A character who no
+  longer has one (used or traded) is refused before anything is marked,
+  as a refund whose winnings are spent is: nothing moves.
 */
 import { settle, toCopper, formatPrice } from "../core/currency.js";
 import { getLog, updateLog, getBoxes, saveBox, enqueueWrite, getActorState, setActorState } from "./store.js";
@@ -33,7 +39,8 @@ import { t, listAnd } from "../core/i18n.js";
 // The crate registers itself when imported, so a row or record with no kind is found.
 import "../games/crate.js";
 import { findPullCard, isRefundedCard, refundedCardContent } from "../views/chatcard.js";
-import { returnTicket } from "./tickets.js";
+import { returnTicket, takeKeptTicket } from "./tickets.js";
+import { keptTicketFor } from "../games/ticket.js";
 
 // What a refund of this row moves, in copper: the stake back, the payout
 // taken back, and coins the game took beyond the stake (a negative payout,
@@ -96,8 +103,10 @@ export function grantedItems(row, actor) {
 export const grantedItem = (row, actor) => grantedItems(row, actor).items[0] ?? null;
 
 // What a refund of this row would do, for the confirm dialog. Writes nothing.
-// status: "ready" | "already" | "missing" | "no-actor" | "short"
+// status: "ready" | "already" | "missing" | "no-actor" | "short" | "ticket-gone"
 // `coins` is what the character gets back, in copper (negative: gives back).
+// A Buy to keep is ready while the character still has a kept ticket to
+// that game at that price (`ticket`, the stack one is taken from).
 export function describeRefund(rowId) {
   const row = getLog().find(r => r.id === rowId);
   if (!row) return { status: "missing", message: t("LOOTCRATES.Refund.Missing") };
@@ -105,6 +114,11 @@ export function describeRefund(rowId) {
   const actor = game.actors.get(row.actorId);
   if (!actor) return { status: "no-actor", row, message: t("LOOTCRATES.Refund.NoActor") };
   const box = getBoxes()[row.boxId] ?? null;
+  if (row.keep) {
+    const ticket = keptTicketFor(actor.items?.values?.() ?? [], row);
+    if (!ticket) return { status: "ticket-gone", row, actor, box, message: t("LOOTCRATES.Keep.RefundGone", { actor: actor.name, box: row.boxName }) };
+    return { status: "ready", row, actor, box, ticket, item: null, items: [], gone: [], coins: refundCoins(row), state: null };
+  }
   const short = spentWinnings(row, actor);
   if (short > 0) return { status: "short", row, actor, box, short, message: shortMessage(row, actor) };
   const { items, gone } = grantedItems(row, actor);
@@ -139,6 +153,22 @@ async function doRefund(rowId) {
   // round stops counting it, and its resolve passes it by.
   const refunded = Date.now();
   await updateLog(row.id, { refunded, ...(row.status === "open" ? { status: "refunded" } : {}) });
+
+  // A Buy to keep: the ticket out of the pack before its coins come back.
+  // Gone since the confirm (used in the meantime): the mark is lifted and
+  // nothing moves, as describeRefund would have said.
+  let keptBack = null;
+  if (row.keep) {
+    try {
+      keptBack = await takeKeptTicket(actor, row);
+    } catch (err) {
+      console.error(`loot-crates | taking ${row.actorName}'s ${row.boxName} ticket back failed; nothing was refunded`, err);
+    }
+    if (!keptBack) {
+      await updateLog(row.id, { refunded: null });
+      return { status: "ticket-gone", row, message: t("LOOTCRATES.Keep.RefundGone", { actor: actor.name, box: row.boxName }) };
+    }
+  }
 
   const purse = settle(actor.system?.currency ?? {}, plan.coins);
   await actor.update({ "system.currency": purse });
@@ -177,7 +207,9 @@ async function doRefund(rowId) {
   // by now, so a failed write is reported for the GM to fix, not thrown:
   // the card is still marked and the manager still posts the refund.
   let state = null;
-  if (box) {
+  // A Buy to keep rolled nothing, so there is no pity or no-duplicates
+  // record to put back.
+  if (box && !row.keep) {
     const next = stateAfter(row, box);
     try {
       await setActorState(row.actorId, row.boxId, next.after);
@@ -189,7 +221,7 @@ async function doRefund(rowId) {
   }
 
   const card = await markPullCard({ ...row, refunded });
-  return { status: "refunded", row, purse, removedItem, removedItems, goneItems: gone, stock, state, card, ticketBack };
+  return { status: "refunded", row, purse, removedItem, removedItems, goneItems: gone, stock, state, card, ticketBack, keptBack: keptBack ? keptBack.item.name : null };
 }
 
 // Rewrites the card that announced this pull, once. The coins and the item

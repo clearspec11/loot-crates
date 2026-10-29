@@ -313,7 +313,9 @@ function renderShop(extra = {}) {
   };
   const fresh = document.createElement("div");
   fresh.className = "lc-shop__body";
-  const notice = shopNotice(ctx);
+  // extra.said: a line the shop itself puts in the notice (shop.js #kept,
+  // after a Buy to keep), in its own tone.
+  const notice = extra.said ?? shopNotice(ctx);
   fresh.innerHTML = shopHTML({
     fields: `${actorPicker({ actors: characters, actorId: "tam", busy: !!ctx.busy })}
         <div class="lc-shop__field lc-shop__field--purse"><span class="lc-label">Purse</span><span class="lc-shop__purse">${formatGold(purse)}</span></div>`,

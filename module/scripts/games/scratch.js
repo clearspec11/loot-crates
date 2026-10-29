@@ -263,8 +263,10 @@ export function rollOf(game) {
 
 /* ---------- The ledger, from the log ---------- */
 
-// The unrefunded rows of this roll at this game: the tickets sold.
-export const rollRows = (log, { boxId, rollId }) => (log ?? []).filter(r => r?.kind === "scratch" && r.boxId === boxId && Number(r.rollId) === rollId && !r.refunded);
+// The unrefunded rows of this roll at this game: the tickets sold. A
+// ticket bought to keep (row.keep) is drawn from the roll when it is used,
+// not when it is bought.
+export const rollRows = (log, { boxId, rollId }) => (log ?? []).filter(r => r?.kind === "scratch" && r.boxId === boxId && Number(r.rollId) === rollId && !r.refunded && !r.keep);
 export const ticketsSold = (log, { boxId, rollId }) => rollRows(log, { boxId, rollId }).length;
 
 /*

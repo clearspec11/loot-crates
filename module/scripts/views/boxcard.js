@@ -17,6 +17,7 @@ import { canAfford, formatPrice, shortfall } from "../core/currency.js";
 import { stockOf, stockText, limitState, limitLine, withLimit } from "../core/limits.js";
 import { onShelf, offShelfReason } from "../core/shelf.js";
 import { t, words } from "../core/i18n.js";
+import { ticketable } from "../games/ticket.js";
 
 // What an odds row is called: its rarity, or "Nothing" for a crate's miss.
 const rowName = (row, names = RARITY_SHORT) => (row.rarity === "none" ? t("LOOTCRATES.Odds.Nothing") : names[row.rarity] ?? row.rarity);
@@ -352,6 +353,17 @@ export function boxCard(box, pools, ctx) {
   actorId, actorName and today. A game off the shelf (shelf.js) reaches
   only the GM's shop, where its card says so over every other reason: the
   GM refuses a pull on it from anyone, the GM included.
+
+  Every game a player pulls (games/ticket.js ticketable: not a table game)
+  has a second, quieter button under the Buy: Buy to keep (data-action
+  "keep"), at the same price and off for the same reasons, described by the
+  same lines, which puts a ticket in the character's pack instead of
+  playing now (shop.js, socket.js doKeep). Its name starts with the game's
+  and ends with the price and what it does, for screen readers only; the
+  visible words stay "Buy to keep". While one is out (`ctx.busyKeep`) the
+  pressed card's keep button says "Buying…" and its Buy keeps its label.
+  It names its game in data-keep, not data-box: patchShop's morph pairs
+  nodes by data-box, and two buttons with one key in a card would swap.
 */
 export function cardShell(box, ctx, { rarityClass, art = "", middle: lines = [], reason: own = "", label, price: cost = box.price }) {
   const esc = ctx.esc ?? (s => String(s ?? ""));
@@ -366,8 +378,10 @@ export function cardShell(box, ctx, { rarityClass, art = "", middle: lines = [],
   const whyId = `lc-why-${box.id}`;
   const describedBy = [notice ? SHOP_NOTICE_ID : "", reason ? whyId : ""].filter(Boolean).join(" ");
   const off = !!(reason || notice || ctx.busy);
-  const opening = ctx.busy && (ctx.busyBox == null || ctx.busyBox === box.id);
-  const waiting = opening && WAITING[ctx.waiting];
+  const pressed = ctx.busy && (ctx.busyBox == null || ctx.busyBox === box.id);
+  const opening = pressed && !ctx.busyKeep;
+  const keeping = pressed && !!ctx.busyKeep;
+  const waiting = pressed && WAITING[ctx.waiting];
   // The price this Buy says, which the shop sends with the pull (shop.js #buy).
   const price = Number.isFinite(Number(cost)) && cost !== "" && cost != null ? String(Number(cost)) : "";
   return `
@@ -379,6 +393,9 @@ export function cardShell(box, ctx, { rarityClass, art = "", middle: lines = [],
           <button type="button" class="lc-box__buy" data-action="buy" data-box="${esc(box.id)}"${price ? ` data-price="${esc(price)}"` : ""}${off ? ` aria-disabled="true"` : ""}${off && describedBy ? ` aria-describedby="${esc(describedBy)}"` : ""}>
             <span class="lc-sr-only">${esc(box.name)}: </span>${opening ? (waiting ? t("LOOTCRATES.Card.Waiting") : t("LOOTCRATES.Card.Opening")) : label}
           </button>
+          ${ticketable(box) ? `<button type="button" class="lc-box__keep" data-action="keep" data-keep="${esc(box.id)}"${price ? ` data-price="${esc(price)}"` : ""}${off ? ` aria-disabled="true"` : ""}${off && describedBy ? ` aria-describedby="${esc(describedBy)}"` : ""}>
+            <span class="lc-sr-only">${esc(box.name)}: </span>${keeping ? (waiting ? t("LOOTCRATES.Card.Waiting") : t("LOOTCRATES.Card.Keeping")) : `${t("LOOTCRATES.Card.Keep")}<span class="lc-sr-only">${t("LOOTCRATES.Card.KeepHint", { price: esc(formatPrice(cost)) })}</span>`}
+          </button>` : ""}
           ${reason ? `<div class="lc-box__why" id="${esc(whyId)}">${esc(reason)}</div>` : ""}
         </div>
       </div>`;

@@ -21,12 +21,18 @@
                            runs it as the play's payment, before the grant
     returnTicket(...)      a refund's: one back on the same stack, or the
                            ticket made again from its log row
+    keepTicket(...)        Buy to keep's: one kept ticket into the pack, on
+                           the stack of the same game at the same price, or
+                           a new item; returns how to take it out again
+    takeKeptTicket(...)    a refund of a Buy to keep: one kept ticket out of
+                           the pack (games/ticket.js keptTicketFor), or null
+                           when none is left to take
 
   Only a GM client writes: the hook on a player's client only asks.
 */
 import { MODULE_ID } from "../core/config.js";
 import { PullError, getKind, kindOf } from "../games/kinds.js";
-import { ticketData, ticketOf, ticketCount, redeemRow } from "../games/ticket.js";
+import { ticketData, ticketOf, ticketCount, redeemRow, keptStack, keptTicketFor } from "../games/ticket.js";
 import { t } from "../core/i18n.js";
 
 // The Items folder tickets are made in, found by its flag, so a GM who
@@ -126,4 +132,37 @@ export async function returnTicket(actor, row) {
   const made = await actor.createEmbeddedDocuments("Item", [data]);
   if (!made?.length) throw new Error(`the ticket for ${row.boxName} was not made again on ${actor.name}`);
   return "made";
+}
+
+/*
+  Buy to keep, on the GM in the write queue after the charge: one ticket to
+  `box` bought at `paid` gp into the character's pack, added to a kept
+  ticket of the same game at the same price when there is one (a stack of
+  scratchies is one item), else a new item. Returns { item, stacked, undo },
+  `undo` taking that one ticket out again, for a sale whose log row then
+  fails. Throws when the item isn't made (another module's preCreateItem
+  hook cancelled it): the caller puts the coins back.
+*/
+export async function keepTicket(actor, box, paid) {
+  const stack = keptStack(actor?.items?.values?.() ?? [], { boxId: String(box.id), paid });
+  if (stack) {
+    const qty = ticketCount(stack);
+    await stack.update({ "system.quantity": qty + 1 });
+    return { item: stack, stacked: true, undo: () => stack.update({ "system.quantity": qty }) };
+  }
+  const [item] = (await actor.createEmbeddedDocuments("Item", [ticketData(box, { paid, kept: true })])) ?? [];
+  if (!item) throw new Error(`the ${box.name} ticket was not made on ${actor.name} (another module's preCreateItem hook cancelled it)`);
+  return { item, stacked: false, undo: () => item.delete() };
+}
+
+/*
+  A refund of a Buy to keep: one kept ticket out of the pack (the stack goes
+  down by one, or the item is deleted at the last). Returns { item, undo },
+  `undo` putting it back should the refund's next write fail, or null when
+  the character has none of it left (used or traded), so nothing moved.
+*/
+export async function takeKeptTicket(actor, row) {
+  const item = keptTicketFor(actor?.items?.values?.() ?? [], row);
+  if (!item) return null;
+  return { item, undo: await spendTicket(actor, item) };
 }
