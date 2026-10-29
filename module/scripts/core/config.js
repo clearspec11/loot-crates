@@ -41,6 +41,18 @@ export const RARITY_SHORT = words({
   artifact: "LOOTCRATES.RarityShort.Artifact",
 });
 
+/*
+  What an item of each rarity is nominally worth in gp, for placing it
+  among a scratch roll's prize sizes when Fill the prize list builds one
+  (scratchplan.js): the low end of each band in the 2014 Dungeon Master's
+  Guide's magic item prices (common 50-100 gp, uncommon 101-500, rare
+  501-5,000, very rare 5,001-50,000, legendary 50,001 and up; an artifact
+  is priceless there, so it is put with legendary). An item at that
+  value can stand in for that much of a prize: "Uncommon item + 25 gp" is
+  a 125 gp prize. It is a yardstick only; nothing is bought or sold at it.
+*/
+export const ITEM_VALUE = { common: 50, uncommon: 100, rare: 500, veryRare: 5000, legendary: 50000, artifact: 50000 };
+
 // Odds of a pull landing on each rarity, before the box narrows them.
 export const DEFAULT_WEIGHTS = { common: 60, uncommon: 26, rare: 10, veryRare: 3, legendary: 1, artifact: 0 };
 

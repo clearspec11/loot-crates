@@ -201,6 +201,11 @@ const STATES = [
   ["shop-scratch-hidden", "state=shop&scratch=hidden"],
   ["shop-scratch-soldout", "state=shop&scratch=soldout"],
   ["editor-scratch", "state=editor&scratch=1"],
+  // Fill the prize list (scratchplan.js): its fields open, then after a
+  // Fill (the Fortune Ticket's six rows replaced, the harness saying yes
+  // to the confirm), the rows, the readout's payback and the status line.
+  ["editor-scratch-fill", "state=editor&scratch=1&fill=open"],
+  ["editor-scratch-filled", "state=editor&scratch=1&fill=done"],
   ["manager-boxes-scratch", "state=manager&tab=boxes&scratch=1"],
   // The scratch itself (scratch.js mountScratch, the foil in foil.js), as
   // the approved mockup has it, played with motion on: the buyer's card
@@ -1614,6 +1619,50 @@ async function scratchEditorProblems() {
   return out;
 }
 
+// Fill the prize list (scratchplan.js): the toggle open over its fields
+// with the defaults (65%, 1 in 3.5, the roll's Rare item on top, some
+// combinations), Shuffle off until a Fill. After a Fill: the harness's
+// confirm asked about the six rows, new rows numbered from 1 with the Rare
+// item first, the readout near 1 in 3.5 and the payback near 65%, the
+// status line, Shuffle on; nothing past the form's edge or under 11px.
+function scratchFillProblems(filled) {
+  const out = [];
+  const form = document.querySelector(".lc-form");
+  const toggle = form.querySelector(".lc-fill__toggle");
+  if (toggle?.textContent.trim() !== "Fill the prize list" || toggle.getAttribute("aria-expanded") !== "true") out.push("the Fill toggle isn't open");
+  const body = form.querySelector(".lc-fill__body");
+  if (!body || body.hidden || !body.getBoundingClientRect().height) out.push("the Fill fields don't show");
+  const val = n => form.querySelector(`[name="${n}"]`)?.value;
+  if (val("fillPayback") !== "65" || val("fillWinEvery") !== "3.5" || val("fillTop") !== "item.rare") out.push(`the Fill fields read ${val("fillPayback")}, ${val("fillWinEvery")}, ${val("fillTop")}`);
+  if (!form.querySelector('input[name="fillCombos"][value="some"]')?.checked) out.push("Some combinations isn't picked");
+  const shuffle = form.querySelector(".lc-fill__shuffle");
+  const said = form.querySelector(".lc-fill__said")?.textContent ?? "";
+  const rows = [...form.querySelectorAll(".lc-prize-row")];
+  if (!filled) {
+    if (shuffle?.getAttribute("aria-disabled") !== "true") out.push("Shuffle is on before a Fill");
+    if (rows.length !== 6) out.push(`expected the Fortune Ticket's 6 rows, got ${rows.length}`);
+  } else {
+    const asked = window.__lootCrates?.asked ?? [];
+    if (asked.join("|") !== "Replace the 6 prizes in the list with a new list?") out.push(`the confirm asked "${asked.join("|")}"`);
+    if (rows.length < 3) out.push(`only ${rows.length} rows after Fill`);
+    const labels = rows.map(r => r.querySelector(".lc-prize-row__count").getAttribute("aria-label"));
+    if (labels.some((l, i) => l !== `Tickets that win prize ${i + 1}`)) out.push(`the filled rows are named ${labels.join(", ")}`);
+    if (rows[0]?.querySelector(".lc-prize-row__what")?.value !== "item.rare" || rows[0]?.querySelector(".lc-prize-row__count")?.value !== "1") out.push("the first filled row isn't one Rare item");
+    const readout = form.querySelector(".lc-scratch-form__readout")?.textContent ?? "";
+    if (!/^1 in 3\.[3-7] tickets wins, the top prize \(Rare item\) 1 in 100/.test(readout)) out.push(`the readout reads "${readout}"`);
+    const pct = Number(form.querySelector(".lc-scratch-form__payback")?.textContent.match(/Pays back (\d+)% in coins/)?.[1]);
+    if (!(Math.abs(pct - 65) <= 3)) out.push(`the payback reads "${form.querySelector(".lc-scratch-form__payback")?.textContent}"`);
+    if (!/prizes filled in\. Pays back \d+% in coins.*Nothing is saved until you press Save\.$/.test(said)) out.push(`the status line reads "${said}"`);
+    if (shuffle?.hasAttribute("aria-disabled")) out.push("Shuffle is still off after a Fill");
+  }
+  const small = [...form.querySelectorAll("*")].filter(el => [...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim()) && parseFloat(getComputedStyle(el).fontSize) < 11);
+  if (small.length) out.push(`${small.length} texts under 11px, e.g. "${small[0].textContent.trim().slice(0, 30)}"`);
+  const fr = form.getBoundingClientRect();
+  const over = [...form.querySelectorAll("input, select, button")].filter(el => { const r = el.getBoundingClientRect(); return r.width && (r.right > fr.right + 1 || r.left < fr.left - 1); });
+  if (over.length) out.push(`${over.length} controls past the form's edge, e.g. ${over[0].name || over[0].className}`);
+  return out;
+}
+
 // The Boxes tab with the Fortune Ticket's row: tagged Scratch, its prizes
 // left as pills, its roll in the rules, Print a new roll named for it.
 function scratchBoxesProblems() {
@@ -2313,7 +2362,7 @@ try {
       if (name.startsWith("scratch")) await page.waitForSelector(name === "scratch-unscratched" || name === "scratch-half" || name === "scratch-spectator" ? "body[data-ready]" : "body[data-landed]", { timeout: 10000 });
       // Mid auto-scratch: the coin has opened a few panels by itself.
       if (name === "scratch-spectator") await page.waitForFunction(() => document.querySelectorAll(".lc-scratch__panel--open").length >= 3, null, { timeout: 10000 });
-      if (name.startsWith("manager") || name === "box-limits" || name === "editor-deck" || name === "editor-scratch" || name === "box-odds" || name === "drop-preview") await page.waitForSelector("body[data-ready]", { timeout: 10000 });
+      if (name.startsWith("manager") || name === "box-limits" || name === "editor-deck" || name.startsWith("editor-scratch") || name === "box-odds" || name === "drop-preview") await page.waitForSelector("body[data-ready]", { timeout: 10000 });
       await page.waitForTimeout(500);
       const wide = await page.evaluate(() => document.scrollingElement.scrollWidth > document.scrollingElement.clientWidth + 1);
       if (name.startsWith("shop")) problems0.push(...await page.evaluate(shopControlProblems, name.endsWith("-gm")));
@@ -2344,6 +2393,7 @@ try {
       }
       else if (name === "editor-deck") problems0.push(...await page.evaluate(deckEditorProblems), ...await page.evaluate(shelfEditorProblems));
       else if (name === "editor-scratch") problems0.push(...await page.evaluate(scratchEditorProblems), ...await page.evaluate(shelfEditorProblems));
+      else if (name.startsWith("editor-scratch-fill")) problems0.push(...await page.evaluate(scratchFillProblems, name === "editor-scratch-filled"));
       else if (name === "box-odds") problems0.push(...await page.evaluate(oddsEditorProblems));
       else if (name === "drop-preview") problems0.push(...await page.evaluate(dropPreviewProblems));
       else if (name === "landed-nothing") problems0.push(...await page.evaluate(nothingRevealProblems));

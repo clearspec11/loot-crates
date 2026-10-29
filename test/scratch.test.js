@@ -387,6 +387,38 @@ describe("the GM's socket path and the one refund", () => {
     expect(rollState(SMALL, getLog()).prizes.find(p => p.key === "item.rare").left).toBe(1);
   });
 
+  it("a game whose players don't see what is left sends no counts to anyone's browser: no left, no held counts, no place in the roll, in the reveal or the chat card's replay", async () => {
+    const world = makeWorld();
+    await world.game.settings.set("loot-crates", "boxes", { small: { ...SMALL, showLeft: false } });
+    await world.game.settings.set("loot-crates", "pools", POOLS);
+    for (let i = 0; i < 6; i++) await buyOnce(world, 40 + i, { requestId: `h${i}` });
+    const reveals = world.emitted.filter(m => m.type === "reveal");
+    expect(reveals).toHaveLength(6);
+    for (const r of reveals) {
+      expect(r).not.toHaveProperty("left");
+      expect(r.stateBefore ?? {}).not.toHaveProperty("scratch");
+      expect(r.ticket).toEqual({ rollId: 1, hidden: true });
+      // Nothing in what was sent says what is left (the card prints the roll as printed, as a real ticket does).
+      const sent = JSON.stringify(r);
+      for (const k of ['"left"', '"sold"', '"no":', '"size":6']) expect(sent).not.toContain(k);
+      // The card still wins what the row paid, and the log keeps the GM's counts.
+      const logged = getLog().find(l => l.id === r.logId);
+      expect(cardWins(r.card).cp).toBe(logged.payoutCp);
+      expect(logged).toMatchObject({ rollId: 1, tier: expect.any(String), ticketNo: expect.any(Number) });
+    }
+    const snaps = globalThis.ChatMessage.create.mock.calls.map(c => JSON.stringify(c[0].flags ?? {}));
+    for (const snap of snaps) for (const k of ['"no":', '"left"', '"size":6']) expect(snap).not.toContain(k);
+    // The roll still sells out from the log, before anything is charged.
+    await buyOnce(world, 99, { requestId: "h7" });
+    expect(world.emitted.find(m => m.type === "error" && m.requestId === "h7")?.message).toContain("sold out");
+    // A shown game still sends its counts, which every shop holds until the card is open.
+    const shown = makeWorld();
+    await shown.game.settings.set("loot-crates", "boxes", { small: SMALL });
+    await shown.game.settings.set("loot-crates", "pools", POOLS);
+    await buyOnce(shown, 40, { requestId: "s0" });
+    expect(shown.emitted.find(m => m.type === "reveal")).toMatchObject({ left: { rollId: 1, left: 6 }, stateBefore: { scratch: { rollId: 1, left: 6 } } });
+  });
+
   it("chat: the small card with the winning panels marked and what it paid, inside the block the core seals", async () => {
     const world = makeWorld();
     await world.game.settings.set("loot-crates", "boxes", { small: SMALL });
@@ -835,10 +867,14 @@ describe("prize lines: tickets that pay like real ones", () => {
     // The ticket and the reveal say no counts either: the roll by name alone.
     const out = await performPull({ box: { ...SMALL, showLeft: false }, pools: POOLS, actor: actorOf(), rng: seededRng(5), log: [] });
     expect(out.ticket).toMatchObject({ rollId: 1, no: 1, size: 6, hidden: true });
-    const rv = { kind: "scratch", actorName: "Tam", box: { id: "small", name: "Small Ticket", price: 5 }, ...out };
+    expect(out).not.toHaveProperty("left");
+    const rv = { kind: "scratch", actorName: "Tam", box: { id: "small", name: "Small Ticket", price: 5 }, ...out, ...SCRATCH.revealExtra({ state: {}, out }) };
+    expect(rv.ticket).toEqual({ rollId: 1, hidden: true });
     expect(ticketHTML(rv, { esc })).toContain(`<span class="lc-scratch__roll">Roll 1</span>`);
     expect(SCRATCH.reveal.result(rv, { esc, canSee: true })).not.toContain("tickets left");
-    expect(SCRATCH.reveal.fromSnapshot(SCRATCH.reveal.snapshot(rv)).ticket.hidden).toBe(true);
+    expect(SCRATCH.reveal.fromSnapshot(SCRATCH.reveal.snapshot(rv)).ticket).toEqual({ rollId: 1, hidden: true });
+    // A chat card from 1.4.0 kept the hidden ticket's place and size: a replay drops them.
+    expect(SCRATCH.reveal.fromSnapshot({ ...SCRATCH.reveal.snapshot(rv), ticket: { rollId: 1, no: 4, size: 6, hidden: true } }).ticket).toEqual({ rollId: 1, hidden: true });
     // The editor: the switch, on by default; the draft keeps the GM's pick, or the game's when the form has none.
     expect(scratchFieldsHTML(GAME, { esc })).toMatch(/<input type="checkbox" name="showLeft" checked[^>]*> Players see what is left in the roll/);
     expect(scratchFieldsHTML(hidden, { esc })).toMatch(/<input type="checkbox" name="showLeft" aria-describedby/);

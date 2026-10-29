@@ -97,7 +97,8 @@ import { WELL_DEFAULTS, stakeCoins, stakeGp, draftWell, wellPreview, wellPreview
 import { DICE_DEFAULTS, FORMULAS, draftDice, dicePreview, dicePreviewHTML, diceSummary } from "../games/dicegame.js";
 import { CARD_KINDS, CARD_KIND_HINT, cardsOf, streakMinutesOf, deckRiseFieldsHTML, deckOdds, draftDeck, deckPreview, deckPreviewHTML, deckSummary } from "../games/deck.js";
 import { ROULETTE_DEFAULTS, BET_TYPES, BET_TYPE_LABEL, pocketsOf, coloursOf, draftRoulette, roulettePreview, roulettePreviewHTML, rouletteSummary, payoutOf, maxStakeOf, maxBetsOf, windowMsOf, itemOnRarity } from "../games/roulette.js";
-import { scratchFieldsHTML, wireScratchEditor, draftScratch, scratchPreview, scratchPreviewHTML, scratchSummary, rollState, nextRoll, rollName, ticketsLeftText } from "../games/scratch.js";
+import { scratchFieldsHTML, wireScratchEditor, draftScratch, scratchPreview, scratchPreviewHTML, scratchSummary, rollState, nextRoll, rollName, ticketsLeftText, poolRarities } from "../games/scratch.js";
+import { fillFieldsHTML, wireFill } from "../games/scratchplan.js";
 import { MAX_HOUSE, MIN_GAVEL_SEC, HOUSE_TICK_MS, lotOf, lotFromEntry, lotFromCrate, incrementOf, reserveOf, gavelMsOf, houseOf, draftAuction, auctionPreview, auctionPreviewHTML, auctionSummary } from "../games/auction.js";
 import { newDraft, crateFromPool, crateFromTable, copyOf, editorTitle, addLabel, addedNotice, deleteTitle, deleteGameText, deletedNotice } from "../views/newgame.js";
 import { boxesTabHTML } from "../views/boxestable.js";
@@ -1071,8 +1072,10 @@ export class CrateManager extends ApplicationV2 {
   /*
     The scratch ticket's editor (scratch.js): the price of a ticket, the
     layout (lucky numbers or match 3) and its grid, the bonus spot, the
-    roll's size, whether players see what is left in it, and its prize
-    list as rows of count x prize line (one or more parts: coins, an item
+    roll's size, whether players see what is left in it, Fill the prize
+    list (scratchplan.js: a prize list built from a few numbers, written
+    into the rows after a confirm when they hold the GM's own), and its
+    prize list as rows of count x prize line (one or more parts: coins, an item
     at a rarity from the pools, the bonus spot's gem), with Add prize, Add
     a part and a remove on each; the readout beside it says the odds of
     the roll as printed and what would keep a ticket from being sold, and
@@ -1089,7 +1092,7 @@ export class CrateManager extends ApplicationV2 {
     const data = await promptForm(editorTitle(box, isNew, opts.copy), `
       <label>${t("LOOTCRATES.Manager.Name")} <input name="name" value="${esc(box.name)}"${autofocus("name", opts)}></label>
       ${priceFieldHTML(t("LOOTCRATES.Scratch.PriceField"), box, opts)}
-      ${scratchFieldsHTML(box, { esc, sold })}
+      ${scratchFieldsHTML(box, { esc, sold, fill: fillFieldsHTML(box, { esc }) })}
       <div class="lc-form__odds" role="group" aria-labelledby="lc-odds-${esc(box.id)}">
         <div class="lc-form__label" id="lc-odds-${esc(box.id)}">${t("LOOTCRATES.Scratch.ReadoutLabel")}</div>
         <div class="lc-form__preview"></div>
@@ -1109,6 +1112,13 @@ export class CrateManager extends ApplicationV2 {
           return { html: scratchPreviewHTML(preview, esc), summary: scratchSummary(preview), held: preview.held };
         }, draftScratch);
         wireScratchEditor(form, { newId: () => foundry.utils.randomID(8), paint });
+        // Fill the prize list: combinations use only rarities the ticked pools hold.
+        wireFill(form, {
+          read: () => readForm(form),
+          items: values => poolRarities(draftScratch(box, values, poolIds), getPools()),
+          newId: () => foundry.utils.randomID(8),
+          confirm: text => DialogV2.confirm({ window: { title: t("LOOTCRATES.Scratch.FillToggle") }, content: `<p>${esc(text)}</p>`, rejectClose: false }),
+        });
       },
       position: { width: 520 },
       okLabel: saveLabel(isNew),

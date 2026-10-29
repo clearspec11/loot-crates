@@ -1647,6 +1647,28 @@
 .loot-crates .lc-form .lc-scratch-form__left .lc-form__hint { margin: 2px 0 0; }
 .loot-crates .lc-form .lc-prizes__add[aria-disabled="true"] { opacity: .55; cursor: default; }
 .loot-crates .lc-form .lc-scratch-form__bonus input[type=number], .loot-crates .lc-form .lc-scratch-form__layout input[type=number] { width: 4.4em; }
+/* Fill the prize list: a quiet disclosure above the rows; open, its
+   fields sit on a gold rule at the left, inside the roll's fieldset. */
+.loot-crates .lc-form .lc-fill { margin: 4px 0 8px; }
+.loot-crates .lc-form .lc-fill__toggle { width: auto; display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 10px; font-size: 13px; }
+.loot-crates .lc-form .lc-fill__toggle::after { content: ""; width: 6px; height: 6px; margin-left: 2px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: translateY(-2px) rotate(45deg); }
+.loot-crates .lc-form .lc-fill__toggle[aria-expanded="true"]::after { transform: translateY(1px) rotate(-135deg); }
+.loot-crates .lc-form .lc-fill__body { margin-top: 6px; padding: 2px 0 2px 10px; border-left: 3px solid var(--lc-gold); }
+.loot-crates .lc-form .lc-fill__body[hidden] { display: none; }
+.loot-crates .lc-form .lc-fill__body > .lc-form__hint { margin: 0 0 6px; }
+.loot-crates .lc-form .lc-fill__fields { display: grid; gap: 6px; }
+.loot-crates .lc-form .lc-fill__fields input[type=number] { width: 4.8em; }
+.loot-crates .lc-form .lc-fill__fields select { width: auto; max-width: 100%; min-width: 0; }
+.loot-crates .lc-form .lc-fill__top > .lc-row { flex-wrap: wrap; }
+.loot-crates .lc-form .lc-fill__gp[hidden] { display: none; }
+.loot-crates .lc-form .lc-fill__picks { display: inline-flex; flex-wrap: nowrap; gap: 14px; }
+.loot-crates .lc-form .lc-fill__go { margin-top: 8px; flex-wrap: wrap; }
+.loot-crates .lc-form .lc-fill__go button { width: auto; flex: none; min-height: 30px; padding: 0 14px; }
+.loot-crates .lc-form .lc-fill__fill { background: var(--lc-btn); color: var(--lc-btn-ink); border-color: var(--lc-btn); }
+.loot-crates .lc-form .lc-fill__shuffle[aria-disabled="true"] { opacity: .55; cursor: default; }
+.loot-crates .lc-form .lc-fill__said { margin: 6px 0 0; }
+.loot-crates .lc-form .lc-fill__said:empty { display: none; }
+.loot-crates .lc-scratch-form__payback { margin: 2px 0 0; font-size: 13px; color: var(--lc-ink-soft); }
 .loot-crates .lc-scratch-form__readout { margin: 0; font-family: var(--lc-slab); font-size: 14px; font-weight: 700; line-height: 1.35; color: var(--lc-ink); }
 
 @media (prefers-reduced-motion: reduce) {
