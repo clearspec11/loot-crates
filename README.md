@@ -90,6 +90,10 @@ You print a roll of tickets with a fixed prize list: so many tickets win coins, 
 
 The buyer scratches the ticket themselves: hold the mouse button and rub the gold coin over the foil, panel by panel, until the card is open (a finger works on a touch screen). The arrow keys, Space and R work too, and **Reveal all** opens the whole card at once. Everyone else at the table watches the same coin scratch the card by itself, and the chat card stays sealed until it is open. The result was decided when the ticket was bought: scratching only shows it.
 
+### Tickets
+
+Any game players pull (a crate, the well, the dice, the deck, a scratch ticket) can also be a ticket a character carries. Press **Make a ticket** on its row in the Boxes tab: a ticket for that game appears in the Items sidebar, in the folder **Loot Crates tickets**. Drag it onto a character's sheet, a loot sheet or a merchant, or into a pool so a crate can drop one. Several of the same ticket stack. On the sheet a ticket has a **Use** button like any item: pressing it plays the game for the whole table exactly as a purchase does, with no coins taken, and one ticket is used up. A ticket still works when its game is off the shelf or the shop is closed; a ticket whose game was deleted says so and stays in the pack. If the game refuses (a sold-out roll, the well's daily limit) or the prize can't be added, the ticket isn't used. **Refund** on its Pull log row gives the ticket back and takes back what it won. The roulette wheel and the auction are played in rounds, so they have no tickets.
+
 ### Crates from roll tables
 
 Already have loot tables? Right-click a table in the **Roll Tables** sidebar and choose **Make a crate**, or drop it on the Boxes tab. The crate keeps the table's own odds, so a 1 in 100 result stays 1 in 100, and nested tables are flattened. Type a price and press **Add to shelf**.

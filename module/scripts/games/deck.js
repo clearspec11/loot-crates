@@ -51,6 +51,7 @@ import { resultHTML } from "../views/revealcard.js";
 import { cardShell, oddsRibbon, oddsPills, shopReason, shortReason, draftBox } from "../views/boxcard.js";
 import { drawItem, grantData, crateLogRow } from "./crate.js";
 import { PullError, registerKind } from "./kinds.js";
+import { priceTag } from "./ticket.js";
 import { t, words } from "../core/i18n.js";
 
 export const CARD_KINDS = ["item", "coins", "loss", "effect", "blank"];
@@ -403,7 +404,7 @@ function head(reveal, { esc }) {
   return `${t("LOOTCRATES.Deck.Head", {
     who: `<span class="lc-reveal__who">${esc(reveal.actorName)}</span>`,
     crate: `<strong class="lc-reveal__crate">${esc(reveal.box.name)}</strong>`,
-    price: `<span class="lc-reveal__price">${esc(formatPrice(reveal.box.price))}</span>`,
+    price: `<span class="lc-reveal__price">${esc(priceTag(reveal))}</span>`,
   })}${again}`;
 }
 
@@ -484,7 +485,7 @@ function chatCard(reveal, { esc, itemLink }) {
   const text = tone === "effect" && reveal.text ? `<div class="lc-chat__text">${esc(reveal.text)}</div>` : "";
   return `
     <div class="loot-crates lc-chat lc-rarity-${esc(swatchOf(reveal))}">
-      <div class="lc-chat__head">${t("LOOTCRATES.Deck.ChatHead", { actor: esc(reveal.actorName), box: `<strong>${esc(reveal.box.name)}</strong>`, price: `<span class="lc-chat__price">${esc(formatPrice(reveal.box.price))}</span>` })}</div>
+      <div class="lc-chat__head">${t("LOOTCRATES.Deck.ChatHead", { actor: esc(reveal.actorName), box: `<strong>${esc(reveal.box.name)}</strong>`, price: `<span class="lc-chat__price">${esc(priceTag(reveal))}</span>` })}</div>
       <div class="lc-chat__item">
         ${art}
         <div>

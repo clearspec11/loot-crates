@@ -11,7 +11,8 @@
 */
 import { MODULE_ID, SETTINGS } from "./core/config.js";
 import { registerSettings, setStoreListener, registerIndexFields, getPools, getBoxes, getLog, getRounds, savePool, saveBox, entriesFromCompendium, entryFromItem, sweepAllPools } from "./foundry/store.js";
-import { registerSocket, requestPull, requestStake, isActiveGM, restCompleted, settleOwedRests } from "./foundry/socket.js";
+import { registerSocket, requestPull, requestStake, requestRedeem, isActiveGM, restCompleted, settleOwedRests } from "./foundry/socket.js";
+import { makeTicket, ticketUseHook } from "./foundry/tickets.js";
 import { registerKind, getKind, kindOf } from "./games/kinds.js";
 import { openShop, refreshShop, registerShopHooks } from "./foundry/shop.js";
 import { addDirectoryButtons } from "./views/route.js";
@@ -69,7 +70,7 @@ Hooks.once("ready", () => {
   registerSocket();
   const mod = game.modules.get(MODULE_ID);
   // registerKind adds a game of chance that runs on the crate's core (kinds.js).
-  if (mod) mod.api = { openShop, openManager, requestPull, performPull, showReveal, showReplay, draw, oddsTable, buildStrip, seededRng, getPools, getBoxes, getLog, savePool, saveBox, entriesFromCompendium, entryFromItem, registerKind, getKind, kindOf, openRound, closeRound, resolveRound, cancelRound, requestStake, onTable, setTableWindow, getRounds, openTable, openTableFor, makeCrateFromTable, addStarterCrates, openWelcome };
+  if (mod) mod.api = { openShop, openManager, requestPull, performPull, showReveal, showReplay, draw, oddsTable, buildStrip, seededRng, getPools, getBoxes, getLog, savePool, saveBox, entriesFromCompendium, entryFromItem, registerKind, getKind, kindOf, openRound, closeRound, resolveRound, cancelRound, requestStake, onTable, setTableWindow, getRounds, openTable, openTableFor, makeCrateFromTable, addStarterCrates, openWelcome, makeTicket, requestRedeem };
   // Flag dead pool entries once at load, so the shop's odds are honest before
   // anyone buys; each pull sweeps its own box again (socket.js).
   // A table round's open stakes don't outlive their window across a reload
@@ -120,6 +121,11 @@ Hooks.on("updateUser", (_user, change) => { if (game.ready && change && "role" i
 Hooks.on("dnd5e.restCompleted", (actor, result, config) => {
   try { restCompleted(actor, result, config); } catch (err) { console.error("loot-crates | counting a long rest failed", err); }
 });
+
+// A ticket's Use on any sheet (tickets.js): dnd5e's use is cancelled
+// before it consumes or posts anything, and the GM plays the ticket's game
+// (socket.js requestRedeem). Any other item's use goes on as ever.
+Hooks.on("dnd5e.preUseActivity", ticketUseHook(requestRedeem));
 
 // Purse and ownership changes show in the shop without reopening it.
 registerShopHooks(Hooks);

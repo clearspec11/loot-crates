@@ -17,6 +17,12 @@
                                                            itemUuids every item the
                                                            play granted, itemId and
                                                            itemUuid the first
+    { type: "redeem", requestId, actorId, itemId, userId } player -> GM: play the
+                                                           ticket itemId on that
+                                                           character (a sheet's Use,
+                                                           tickets.js); answered as a
+                                                           pull is, with "reveal" or
+                                                           "error"
     { type: "error", requestId, userId, message }          GM -> the buyer
     { type: "cancel", requestId, userId }                  the buyer -> GM, when
                                                            its wait timed out
@@ -100,6 +106,7 @@ import { stakeReason, stakesOf } from "../core/round.js";
 import { heard as tableHeard, closeStakes, watchTables } from "./table.js";
 import { showReveal } from "./reveal.js";
 import { postPullCard } from "./chat.js";
+import { ticketToRedeem } from "./tickets.js";
 import { t, onStrings } from "../core/i18n.js";
 
 export const GM_TIMEOUT_MS = 30000;
@@ -184,7 +191,7 @@ function settle(requestId, answer) {
 
 export function registerSocket() {
   game.socket.on(SOCKET, msg => {
-    if (msg.type === "pull" && isActiveGM()) return handlePull(msg);
+    if ((msg.type === "pull" || msg.type === "redeem") && isActiveGM()) return handlePull(msg);
     if (msg.type === "stake" && isActiveGM()) return handleStake(msg);
     if (msg.type === "staked") {
       if (msg.userId === game.user.id) settle(msg.requestId, p => p.resolve(msg));
@@ -216,6 +223,15 @@ export function requestPull({ boxId, actorId, price }, { onWait = null } = {}) {
   if (!game.users.activeGM) return Promise.reject(new PullError(t("LOOTCRATES.Error.NoGM")));
   const msg = { type: "pull", requestId: uid(), boxId, actorId, userId: game.user.id };
   if (price != null) msg.price = price;
+  return send(msg, handlePull, onWait);
+}
+
+// A ticket's Use (tickets.js ticketUseHook), the same way: the GM plays
+// ticket `itemId` on that character through the same queue and core as a
+// pull, spending one, and everyone sees the reveal.
+export function requestRedeem({ actorId, itemId }, { onWait = null } = {}) {
+  if (!game.users.activeGM) return Promise.reject(new PullError(t("LOOTCRATES.Ticket.NoGM")));
+  const msg = { type: "redeem", requestId: uid(), actorId, itemId, userId: game.user.id };
   return send(msg, handlePull, onWait);
 }
 
@@ -367,8 +383,9 @@ async function sweepBox(box) {
 async function recordPull({ msg, box, actor, out, log }) {
   const writes = [appendLog(log)];
   // A kind with no per-buyer state (nothing to count between plays) writes none.
-  if (out.state != null) writes.unshift(setActorState(msg.actorId, msg.boxId, out.state));
-  if (box.rules?.stock != null) writes.push(saveBox({ ...box, rules: { ...box.rules, stock: Math.max(0, box.rules.stock - 1) } }));
+  if (out.state != null) writes.unshift(setActorState(msg.actorId, box.id, out.state));
+  // A ticket was sold (or given) already: its play takes no stock.
+  if (box.rules?.stock != null && !log.redeem) writes.push(saveBox({ ...box, rules: { ...box.rules, stock: Math.max(0, box.rules.stock - 1) } }));
   const failed = (await Promise.allSettled(writes)).filter(r => r.status === "rejected");
   if (!failed.length) return;
   const got = out.result?.name ?? t("LOOTCRATES.Common.NothingWord");
@@ -398,14 +415,18 @@ async function doPull(msg, timer, sent, stopWatching) {
   let box;
   try {
     if (wasCancelled(msg)) return null;
-    const { actor, buyer } = guardBuyer(msg);
-    box = getBoxes()[msg.boxId];
+    // A redeem plays the ticket's game: the character's owner may use it
+    // with the shop closed or the game off the shelf (it is in the pack).
+    const redeem = msg.type === "redeem";
+    const { actor, buyer } = redeem ? guardOwner(msg) : guardBuyer(msg);
+    const ticket = redeem ? ticketToRedeem(actor, msg.itemId, getBoxes()) : null;
+    box = ticket ? ticket.box : getBoxes()[msg.boxId];
 
     if (box) await sweepBox(box);
     timer.mark("sweep");
     ackIfSlow(msg, timer, sent);
     if (wasCancelled(msg)) return null;
-    const state = getActorState(msg.actorId, msg.boxId);
+    const state = getActorState(msg.actorId, box?.id ?? msg.boxId);
     const onMissing = async entry => {
       try {
         await markMissing(entry.poolId, [entry.uuid], true);
@@ -417,7 +438,9 @@ async function doPull(msg, timer, sent, stopWatching) {
     // well's cap), read here inside the queue so two quick buys can't both
     // pass.
     const today = todayKey(actor.id);
-    const out = await performPull({ box, pools: getPools(), actor, state, onMissing, expectedPrice: msg.price, log: getLog(), today });
+    const out = await performPull({ box, pools: getPools(), actor, state, onMissing, expectedPrice: redeem ? undefined : msg.price, log: getLog(), today, ticket: ticket?.item ?? null });
+    // What the reveal and the chat card say in place of the price.
+    if (ticket) out.redeem = { itemName: ticket.row.itemName, paid: ticket.row.paid };
     const kind = getKind(out.kind);
     timer.mark("roll+grant");
     ackIfSlow(msg, timer, sent);
@@ -457,7 +480,7 @@ async function doPull(msg, timer, sent, stopWatching) {
     // it was bought on, which a limit per character per day counts
     // (limits.js); none in a world with no clock. itemId is the first
     // item, as rows from before several items read; itemColumns the rest.
-    const log = { id: logId, kind: out.kind, boxId: box.id, boxName: box.name, actorId: actor.id, actorName: actor.name, userId: msg.userId, itemId: out.itemId, ...itemColumns(out), price: out.price, payoutCp: out.payoutCp, ...(today ? { day: today } : {}), ...(kind.logRow?.(ctx) ?? {}) };
+    const log = { id: logId, kind: out.kind, boxId: box.id, boxName: box.name, actorId: actor.id, actorName: actor.name, userId: msg.userId, itemId: out.itemId, ...itemColumns(out), price: out.price, payoutCp: out.payoutCp, ...(today ? { day: today } : {}), ...(kind.logRow?.(ctx) ?? {}), ...(ticket ? { redeem: ticket.row } : {}) };
     await recordPull({ msg, box, actor, out, log });
     timer.mark("record");
     return reveal;
@@ -607,6 +630,15 @@ function guardBuyer(msg) {
   const buyer = game.users.get(msg.userId);
   if (!actor || !buyer || !actor.testUserPermission(buyer, "OWNER")) throw new PullError(t("LOOTCRATES.Error.NotOwner"));
   return { actor, buyer };
+}
+
+// A ticket's Use: the user owns the character (a GM owns every one). The
+// shop's switch is the shop's, not the pack's.
+function guardOwner(msg) {
+  const actor = game.actors.get(msg.actorId);
+  const user = game.users.get(msg.userId);
+  if (!actor || !user || !actor.testUserPermission(user, "OWNER")) throw new PullError(t("LOOTCRATES.Error.NotOwner"));
+  return { actor, buyer: user };
 }
 
 // A play that failed: the buyer is told in a plain sentence (a PullError's

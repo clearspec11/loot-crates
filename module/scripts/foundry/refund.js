@@ -19,6 +19,11 @@
   sheet goes, and each one already gone is named.
   The pull's chat card is marked refunded in the same queued write, so chat,
   the log and the sheet agree, and the card stops linking a deleted item.
+
+  A play made with a ticket (its row's `redeem`, socket.js) cost no coins,
+  so none come back for it: the ticket does (tickets.js returnTicket: one
+  more on its stack, or made again from the row), and what the play won is
+  taken back as any refund takes it. It took no stock, so it gives none.
 */
 import { settle, toCopper, formatPrice } from "../core/currency.js";
 import { getLog, updateLog, getBoxes, saveBox, enqueueWrite, getActorState, setActorState } from "./store.js";
@@ -28,6 +33,7 @@ import { t, listAnd } from "../core/i18n.js";
 // The crate registers itself when imported, so a row or record with no kind is found.
 import "../games/crate.js";
 import { findPullCard, isRefundedCard, refundedCardContent } from "../views/chatcard.js";
+import { returnTicket } from "./tickets.js";
 
 // What a refund of this row moves, in copper: the stake back, the payout
 // taken back, and coins the game took beyond the stake (a negative payout,
@@ -143,10 +149,24 @@ async function doRefund(rowId) {
   else if (items.length) await actor.deleteEmbeddedDocuments("Item", items.map(i => i.id));
   const removedItem = removedItems.length ? listAnd(removedItems) : null;
 
-  // A table stake (round.js) never took stock, so it gives none back.
+  // The ticket the play spent, back in the pack. The coins and the items
+  // are settled by now, so a failure is reported for the GM to fix (Make
+  // a ticket on the game's row), not thrown.
+  let ticketBack = null;
+  if (row.redeem) {
+    try {
+      ticketBack = await returnTicket(actor, row);
+    } catch (err) {
+      console.error(`loot-crates | could not give ${row.actorName}'s ${row.boxName} ticket back`, err);
+      globalThis.ui?.notifications?.error(t("LOOTCRATES.Ticket.ReturnFailed", { actor: row.actorName, box: row.boxName }));
+    }
+  }
+
+  // A table stake (round.js) never took stock, and nor did a ticket's
+  // play, so neither gives any back.
   let stock = null;
   // One back, never past the GM's number (limits.js).
-  if (box?.rules?.stock != null && !row.roundId) {
+  if (box?.rules?.stock != null && !row.roundId && !row.redeem) {
     stock = stockAfterRefund(box);
     await saveBox({ ...box, rules: { ...box.rules, stock } });
   }
@@ -169,7 +189,7 @@ async function doRefund(rowId) {
   }
 
   const card = await markPullCard({ ...row, refunded });
-  return { status: "refunded", row, purse, removedItem, removedItems, goneItems: gone, stock, state, card };
+  return { status: "refunded", row, purse, removedItem, removedItems, goneItems: gone, stock, state, card, ticketBack };
 }
 
 // Rewrites the card that announced this pull, once. The coins and the item

@@ -141,7 +141,12 @@
       "DoneReturned": "{price} returned to {name}.",
       "DoneReturnedRemoved": "{price} returned to {name} and {item} removed.",
       "DoneTaken": "{price} taken back from {name}.",
-      "DoneTakenRemoved": "{price} taken back from {name} and {item} removed."
+      "DoneTakenRemoved": "{price} taken back from {name} and {item} removed.",
+      "TicketBack": "Give {name} their {box} ticket back",
+      "TicketReturn": "Give {name} their {box} ticket back and return {price} to their purse",
+      "TicketTakeBack": "Give {name} their {box} ticket back, take back the {price} it won",
+      "DoneTicket": "{box} refunded for {name}; the ticket is back in their pack.",
+      "DoneTicketRemoved": "{box} refunded for {name}; the ticket is back in their pack and {item} removed."
     },
     "Editor": {
       "DropsNothingTick": "This box can drop nothing: tick a pool above.",
@@ -302,7 +307,9 @@
       "PriceAuction": "Opening bid at {name}",
       "PriceScratch": "Ticket price at {name}",
       "PriceCrate": "Price of {name}",
-      "TableDropHint": "Drop a roll table here to make a crate with its items and odds."
+      "TableDropHint": "Drop a roll table here to make a crate with its items and odds.",
+      "Ticket": "Make a ticket",
+      "TicketLabel": "Make a ticket for {name}"
     },
     "Kind": {
       "Crate": "Crate",
@@ -434,7 +441,10 @@
       "RefundBack": "{net} went back into their purse.",
       "RefundTaken": "{net} was taken back from their purse: the {won} won, less the {stake} stake.",
       "RefundCoinBack": "The coin had already come back, so nothing moved.",
-      "RefundHead": "{actor}'s {box} was refunded"
+      "RefundHead": "{actor}'s {box} was refunded",
+      "RefundTicketBack": "Their {box} ticket went back into their pack.",
+      "RefundTicketLost": "Their {box} ticket couldn't be given back; the GM will make them a new one.",
+      "RefundTicketWon": "The {won} won was taken back from their purse."
     },
     "Error": {
       "UnknownKind": "{name} is a kind of game ({id}) this client can't run.",
@@ -650,7 +660,9 @@
       "NoneInPools": "none in these pools",
       "MakeCrate": "Make a crate",
       "PrintRollAsk": "Print a new roll of {name}? {roll} still has {left}; they come off sale, and the new roll starts with every prize on the list.",
-      "RollPrinted": "{name}: {roll} is printed, {size} tickets on sale."
+      "RollPrinted": "{name}: {roll} is printed, {size} tickets on sale.",
+      "TicketMade": "A {name} ticket is in the Items sidebar, in the folder {folder}. Drag it onto a character's sheet, a loot sheet or a pool.",
+      "TicketFailed": "The ticket for {name} couldn't be made. The console says why."
     },
     "Game": {
       "EditBox": "Edit box",
@@ -910,7 +922,8 @@
       "PreviewNoPool": "The perfect-roll prize has no pool ticked, so it can never be won.",
       "PreviewNoItem": "The perfect-roll prize's pools have no item that can drop.",
       "GotText": "rolled {faces}: {verdict}",
-      "Title": "Dragon's Teeth"
+      "Title": "Dragon's Teeth",
+      "LostTicket": "Lost the ticket"
     },
     "Roulette": {
       "Colour": "Colour",
@@ -1240,6 +1253,25 @@
       "PanelsLabel": "The panels of {name}",
       "RevealAll": "Reveal all",
       "Help": "Hold the mouse button and rub the coin over the foil. Keyboard: the arrow keys move between panels, Space scratches one, R reveals the whole card."
+    },
+    "Ticket": {
+      "UseOpen": "Open",
+      "UseScratch": "Scratch",
+      "UseThrow": "Throw",
+      "UseRoll": "Roll",
+      "UseDraw": "Draw",
+      "Use": "Use",
+      "Description": "One play of {game}. Use it from the character sheet and the GM plays it for the whole table to watch. A stack plays one ticket at a time.",
+      "Folder": "Loot Crates tickets",
+      "WithTicket": "with a ticket",
+      "LogTag": "ticket",
+      "NoGM": "No GM is online to play the ticket, so it stays in your pack.",
+      "NotInPack": "That ticket is no longer in {actor}'s pack, so nothing was played.",
+      "GameGone": "This ticket's game is gone, so the ticket stays in your pack as a keepsake.",
+      "SpendFailed": "The ticket couldn't be used, so nothing was played.",
+      "GrantFailed": "The prize couldn't be added, so your ticket is back in your pack.",
+      "GrantAndRestoreFailed": "The prize couldn't be added and the ticket couldn't be put back. Ask the GM for a new ticket.",
+      "ReturnFailed": "Loot Crates: {actor}'s {box} was refunded, but the ticket couldn't be given back. Use Make a ticket on the game's row in the Boxes tab and give them the new one."
     }
   }
 }

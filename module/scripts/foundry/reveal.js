@@ -99,7 +99,7 @@
   holds the countdown while it plays and starts it over once it lands.
 */
 import { MODULE_ID, SETTINGS } from "../core/config.js";
-import { formatPrice } from "../core/currency.js";
+import { priceTag } from "../games/ticket.js";
 import { cascadeOffset, canSeePurse, freeSlot, CLOSE_GRACE_MS, replayReveal, replayTitle, replayWindowId, revealActionsHTML } from "../views/revealcard.js";
 import { REFUNDED_CLASS } from "../views/chatcard.js";
 import { oddsRibbon } from "../views/boxcard.js";
@@ -165,7 +165,7 @@ export function lingerDelay() {
 const crateHead = r => t("LOOTCRATES.Reveal.Head", {
   who: `<span class="lc-reveal__who">${esc(r.actorName)}</span>`,
   crate: `<strong class="lc-reveal__crate">${esc(r.box.name)}</strong>`,
-  price: `<span class="lc-reveal__price">${esc(formatPrice(r.box.price))}</span>`,
+  price: `<span class="lc-reveal__price">${esc(priceTag(r))}</span>`,
 });
 
 // Each reveal still spinning on this client, by the pull's logId (what its

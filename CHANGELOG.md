@@ -6,7 +6,7 @@ The newest numbered entry's version is the one in `module/module.json`, and its 
 
 ## Unreleased
 
-- Nothing yet.
+- Tickets you carry. **Make a ticket** on a game's row in the Boxes tab puts a ticket for that game in the Items sidebar (folder "Loot Crates tickets") to hand out: drag it onto a sheet, a loot sheet, a merchant or into a pool. On the character sheet it has a Use button like any item, and using it plays the game for the whole table with no coins taken and one ticket used up. Works for crates, the well, the dice, the deck and scratch tickets (not the wheel or the auction). The reveal and the chat card say "with a ticket" instead of a price, and a refund gives the ticket back.
 
 ## 1.4.0
 

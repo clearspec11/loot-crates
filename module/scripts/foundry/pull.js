@@ -26,6 +26,7 @@ import { settle, canAfford, formatPrice } from "../core/currency.js";
 import { limitState, limitRefusal } from "../core/limits.js";
 import { onShelf, shelfRefusal } from "../core/shelf.js";
 import { t } from "../core/i18n.js";
+import { spendTicket } from "./tickets.js";
 
 export { PullError } from "../games/kinds.js";
 export { sourceRaritiesOf };
@@ -97,16 +98,19 @@ export const PRICE_SKEW_MS = 5000;
   charge, `now` the moment the charged price is the kind's at (the roll
   reads it, so the deck's streak matches what was paid), and `priceNote`
   the buyer's line when the pressed price was the other side of a
-  boundary (else null).
+  boundary (else null). A `ticket` play (performPull) skips the shelf,
+  the stock and the price: it costs nothing, the ticket is its payment.
 */
-function guardPlay({ box, actor, state = {}, expectedPrice, log = [], today = null, bet }) {
+function guardPlay({ box, actor, state = {}, expectedPrice, log = [], today = null, bet, ticket = false }) {
   if (!box) throw new PullError(t("LOOTCRATES.Error.BoxGone"));
-  if (!onShelf(box)) throw new PullError(shelfRefusal(box));
+  if (!ticket && !onShelf(box)) throw new PullError(shelfRefusal(box));
   if (!actor) throw new PullError(t("LOOTCRATES.Error.NoActor"));
-  if (box.rules?.stock != null && box.rules.stock <= 0) throw new PullError(t("LOOTCRATES.Error.SoldOut", { name: box.name }));
+  if (!ticket && box.rules?.stock != null && box.rules.stock <= 0) throw new PullError(t("LOOTCRATES.Error.SoldOut", { name: box.name }));
   const kind = kindFor(box);
   const limit = limitState(box, { log, actorId: actor.id, today });
   if (limit?.reached) throw new PullError(limitRefusal(box, limit, actor.name));
+  // A ticket was paid for already (or handed out): the play costs nothing.
+  if (ticket) return { kind, price: 0, purse: { ...(actor.system?.currency ?? {}) }, now: Date.now(), priceNote: null };
   const priceAt = at => Number(kind.priceOf?.({ game: box, actor, state, log, today, now: at, bet }) ?? box.price);
   let now = Date.now();
   let price = priceAt(now);
@@ -151,8 +155,17 @@ export async function createGrants(actor, datas) {
   throw new Error(`the creation made ${created.length} of ${docs.length} items: another module's preCreateItem hook cancelled it`);
 }
 
-export async function performPull({ box, pools, actor, state = {}, rng = rollRng(), grant = true, onMissing = null, expectedPrice, log = [], today = null }) {
-  const { kind, price, purse, now, priceNote } = guardPlay({ box, actor, state, expectedPrice, log, today });
+/*
+  `ticket` (an Item on the actor, foundry/tickets.js) plays the game with a
+  ticket instead of coins: the guards are a purchase's but for the shelf
+  and the stock (a ticket is in the pack, already sold), the price is 0,
+  and the ticket is the payment: one is spent (spendTicket) before the
+  grant, as the coins are charged, and put back with any payout if the
+  grant fails. The kind's own guards (a sold-out scratch roll, the well's
+  daily cap) refuse in its roll, before anything is spent.
+*/
+export async function performPull({ box, pools, actor, state = {}, rng = rollRng(), grant = true, onMissing = null, expectedPrice, log = [], today = null, ticket = null }) {
+  const { kind, price, purse, now, priceNote } = guardPlay({ box, actor, state, expectedPrice, log, today, ticket: !!ticket });
   // A table game is played in rounds (table.js): its roll settles every
   // stake at once, so it is staked, never pulled.
   if (kind.table) throw new PullError(t("LOOTCRATES.Error.TableGame", { name: box.name }));
@@ -164,8 +177,12 @@ export async function performPull({ box, pools, actor, state = {}, rng = rollRng
   delete own.grant;
   delete own.grants;
   const payoutCp = Math.round(Number(payout) || 0);
-  const nextPurse = settle(purse, payoutCp - Math.round(price * 100));
+  const delta = payoutCp - Math.round(price * 100);
+  // A ticket's play that pays nothing moves no coins at all.
+  const nextPurse = ticket && !delta ? purse : settle(purse, delta);
   if (!nextPurse) throw new PullError(t("LOOTCRATES.Error.CantAfford", { actor: actor.name, name: box.name }));
+
+  if (ticket && grant) return { ...own, ...(await playTicket({ actor, ticket, purse, nextPurse, delta, datas, result })), result, payoutCp, price, priceNote, state: nextState, pools: rolledFrom ?? pools, kind: kind.id };
 
   let created = [];
   if (grant) {
@@ -202,6 +219,40 @@ export async function performPull({ box, pools, actor, state = {}, rng = rollRng
     pools: rolledFrom ?? pools,
     kind: kind.id,
   };
+}
+
+/*
+  A ticket's payment and grant: one ticket spent, any payout settled, the
+  items created; a failure at any step puts back what the steps before it
+  wrote (the coins, then the ticket), so the ticket is spent only when the
+  play goes through. Returns what performPull adds for a purchase: purse,
+  itemId, itemIds, itemNames.
+*/
+async function playTicket({ actor, ticket, purse, nextPurse, delta, datas, result }) {
+  let giveBack;
+  try {
+    giveBack = await spendTicket(actor, ticket);
+  } catch (err) {
+    console.error(`loot-crates | spending ${ticket?.name} on ${actor.name} failed; nothing was played`, err);
+    throw new PullError(t("LOOTCRATES.Ticket.SpendFailed"));
+  }
+  let paid = false;
+  let created = [];
+  try {
+    if (delta) { await actor.update({ "system.currency": nextPurse }); paid = true; }
+    if (datas.length) created = await createGrants(actor, datas);
+  } catch (err) {
+    console.error(`loot-crates | granting ${result?.name ?? datas.map(d => d.name).join(", ")} to ${actor.name} for ${ticket?.name} failed; putting the ticket back`, err);
+    try {
+      if (paid) await actor.update({ "system.currency": purse });
+      await giveBack();
+    } catch (restoreErr) {
+      console.error(`loot-crates | could not put ${ticket?.name} back on ${actor.name}; the GM must make it again`, restoreErr);
+      throw new PullError(t("LOOTCRATES.Ticket.GrantAndRestoreFailed"));
+    }
+    throw new PullError(t("LOOTCRATES.Ticket.GrantFailed"));
+  }
+  return { purse: nextPurse, itemId: created[0]?.id ?? null, itemIds: created.map(d => d.id), itemNames: created.map(d => d.name) };
 }
 
 /*

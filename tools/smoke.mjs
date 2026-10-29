@@ -580,6 +580,19 @@ function boxesProblems(narrow) {
     if ((copy.querySelector("i")?.getBoundingClientRect().width ?? 0) < 10) out.push(`${name}'s Copy has no icon`);
     const order = [...r.lastElementChild.querySelectorAll("[data-action]")].map(b => b.dataset.action).slice(-3).join("|");
     if (order !== "editBox|copyBox|deleteBox") out.push(`${name}'s row actions end ${order}`);
+    // A pulled game's row has Make a ticket in words, as Reshuffle is; the
+    // wheel's (a table game) has none.
+    const table = /Wheel/.test(r.querySelector(".lc-kind")?.textContent ?? "");
+    const ticket = r.querySelector('[data-action="makeTicket"]');
+    if (table && ticket) out.push(`${name} is a table game with a Make a ticket`);
+    if (!table && !ticket) out.push(`${name} has no Make a ticket`);
+    if (ticket) {
+      if (ticket.getAttribute("aria-label") !== `Make a ticket for ${name}`) out.push(`${name}'s Make a ticket is labelled "${ticket.getAttribute("aria-label")}"`);
+      const tr = ticket.getBoundingClientRect();
+      if (tr.width < 20 || tr.height < 20 || ticket.textContent.trim() !== "Make a ticket") out.push(`${name}'s Make a ticket is not visible`);
+      if (parseFloat(getComputedStyle(ticket).fontSize) < 11) out.push(`${name}'s Make a ticket is under 11px`);
+      if (tr.right > app.right + 1) out.push(`${name}'s Make a ticket is past the window's edge`);
+    }
   }
   return out;
 }

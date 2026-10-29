@@ -82,6 +82,7 @@ import { mountFoil } from "../views/foil.js";
 import { cardShell, shopReason, shortReason, draftBox } from "../views/boxcard.js";
 import { drawItem, grantData, crateLogRow } from "./crate.js";
 import { PullError, registerKind } from "./kinds.js";
+import { priceTag } from "./ticket.js";
 import { t, words, listAnd } from "../core/i18n.js";
 
 export const LAYOUTS = ["lucky", "match3"];
@@ -853,6 +854,7 @@ function snapshot(reveal) {
     card, outcome, payoutCp: Math.max(0, Math.round(Number(reveal.payoutCp) || 0)),
     ticket: cleanTicket(reveal.ticket),
     box: { name: String(reveal.box?.name ?? ""), price: Number(reveal.box?.price) || 0 },
+    ...(reveal.redeem ? { redeem: true } : {}),
     actorName: String(reveal.actorName ?? ""),
     result: outcome === "item" && r ? { name: String(r.name ?? ""), rarity: RARITIES.includes(r.rarity) ? r.rarity : "common", img: String(r.img ?? "") } : outcome === "coins" ? { name: String(r?.name ?? ""), outcome: "coins" } : null,
     ...(outcome === "item" && itemsWon(reveal).length > 1 ? { wonItems: cleanItems(itemsWon(reveal)) } : {}),
@@ -873,6 +875,7 @@ function fromSnapshot(s) {
     card, outcome, payoutCp: Math.max(0, Math.round(Number(s.payoutCp) || 0)),
     ticket: cleanTicket(s.ticket),
     box: { name: String(s.box?.name ?? ""), price: Number(s.box?.price) || 0 },
+    ...(s.redeem ? { redeem: {} } : {}),
     actorName: String(s.actorName ?? ""),
     result: outcome === "item" && r?.name ? { name: String(r.name), rarity: RARITIES.includes(r.rarity) ? r.rarity : "common", img: String(r.img ?? "") } : outcome === "coins" ? { name: String(r?.name ?? ""), outcome: "coins" } : null,
     ...(outcome === "item" && cleanItems(s.wonItems).length > 1 ? { wonItems: cleanItems(s.wonItems) } : {}),
@@ -932,7 +935,7 @@ function head(reveal, { esc }) {
   return t("LOOTCRATES.Scratch.Head", {
     who: `<span class="lc-reveal__who">${esc(reveal.actorName)}</span>`,
     crate: `<strong class="lc-reveal__crate">${esc(reveal.box.name)}</strong>`,
-    price: `<span class="lc-reveal__price">${esc(formatPrice(reveal.box.price))}</span>`,
+    price: `<span class="lc-reveal__price">${esc(priceTag(reveal))}</span>`,
   });
 }
 
@@ -1036,7 +1039,7 @@ function chatCard(reveal, { esc, itemLink }) {
   const line = items.length ? esc(listAnd([...new Set(items.map(i => RARITY_LABEL[i.rarity] ?? i.rarity ?? ""))])) : esc(outcome === "coins" ? coinsLine(reveal) : t("LOOTCRATES.Scratch.DudLine"));
   return `
     <div class="loot-crates lc-chat lc-rarity-${esc(swatch)}">
-      <div class="lc-chat__head">${t("LOOTCRATES.Scratch.ChatHead", { actor: esc(reveal.actorName), box: `<strong>${esc(reveal.box.name)}</strong>`, price: `<span class="lc-chat__price">${esc(formatPrice(reveal.box.price))}</span>` })}</div>
+      <div class="lc-chat__head">${t("LOOTCRATES.Scratch.ChatHead", { actor: esc(reveal.actorName), box: `<strong>${esc(reveal.box.name)}</strong>`, price: `<span class="lc-chat__price">${esc(priceTag(reveal))}</span>` })}</div>
       <div class="lc-chat__item">
         ${outcome === "item" && r.img ? `<img src="${esc(r.img)}" alt="">` : ""}${miniHTML(reveal.card)}
         <div>

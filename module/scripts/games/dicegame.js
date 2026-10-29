@@ -48,6 +48,7 @@ import { resultHTML } from "../views/revealcard.js";
 import { cardShell, oddsRibbon, oddsPills, shopReason, shortReason, draftBox } from "../views/boxcard.js";
 import { drawItem, grantData } from "./crate.js";
 import { PullError, registerKind } from "./kinds.js";
+import { priceTag } from "./ticket.js";
 import { t } from "../core/i18n.js";
 
 export const DICE_DEFAULTS = { price: 10, formula: "3d6", target: 12, multiplier: 3 };
@@ -210,7 +211,8 @@ export function verdictText({ total, target, win }) {
 export const facesText = faces => (faces ?? []).join(t("LOOTCRATES.Common.ListComma"));
 
 // What the coins did: "Won 30 gp" or "Lost 10 gp".
-export function moneyText({ win, payoutCp, price }) {
+export function moneyText({ win, payoutCp, price, ticket = false }) {
+  if (!win && ticket) return t("LOOTCRATES.Dice.LostTicket");
   return win ? t("LOOTCRATES.Dice.Won", { price: formatPrice((Number(payoutCp) || 0) / 100) }) : t("LOOTCRATES.Dice.Lost", { price: formatPrice(price) });
 }
 
@@ -392,7 +394,7 @@ function head(reveal, { esc }) {
     formula: esc(reveal.formula ?? ""),
     target: esc(reveal.target ?? 0),
     crate: `<strong class="lc-reveal__crate">${esc(reveal.box.name)}</strong>`,
-    price: `<span class="lc-reveal__price">${esc(formatPrice(reveal.box.price))}</span>`,
+    price: `<span class="lc-reveal__price">${esc(priceTag(reveal))}</span>`,
   });
 }
 
@@ -404,7 +406,7 @@ function head(reveal, { esc }) {
 */
 function result(reveal, { esc = String, canSee = false } = {}) {
   const faces = facesIn(reveal);
-  const lines = [t("LOOTCRATES.Dice.RolledOn", { faces: esc(facesText(faces)), formula: esc(reveal.formula ?? "") }), esc(moneyText({ win: reveal.win, payoutCp: reveal.payoutCp, price: reveal.box.price }))];
+  const lines = [t("LOOTCRATES.Dice.RolledOn", { faces: esc(facesText(faces)), formula: esc(reveal.formula ?? "") }), esc(moneyText({ win: reveal.win, payoutCp: reveal.payoutCp, price: reveal.box.price, ticket: !!reveal.redeem }))];
   if (canSee && reveal.purse) lines.push(`<span class="lc-reveal__gold">${t("LOOTCRATES.Dice.InPurse", { gold: esc(formatGold(reveal.purse)) })}</span>`);
   if (reveal.prize && reveal.result?.rarity) return resultHTML(reveal, { esc, canSee: false, extra: [t("LOOTCRATES.Dice.PerfectVerdict", { total: esc(reveal.total), verdict: esc(verdictText(reveal)) }), ...lines] });
   return `<div class="lc-reveal__quiet lc-dice__verdict" data-tooltip="${esc(reveal.formula ?? "")}: ${esc(facesText(faces))}">${esc(verdictText(reveal))}</div>`
@@ -419,7 +421,7 @@ function sting(reveal) {
 // A loss is quiet in the room; the buyer alone is told, in case the window
 // sits behind the shop. Not an error: the dragon won.
 function notice(reveal) {
-  return reveal.win ? null : t("LOOTCRATES.Dice.LossNotice", { name: reveal.box.name, verdict: verdictText(reveal), money: moneyText({ win: false, price: reveal.box.price }) });
+  return reveal.win ? null : t("LOOTCRATES.Dice.LossNotice", { name: reveal.box.name, verdict: verdictText(reveal), money: moneyText({ win: false, price: reveal.box.price, ticket: !!reveal.redeem }) });
 }
 
 // Only a win posts a card: the faces (so the roll is visibly fair) and the
@@ -435,7 +437,7 @@ function chatCard(reveal, { esc, itemLink }) {
   const line = prize ? `${esc(RARITY_LABEL[r.rarity] ?? r.rarity)} · ${t("LOOTCRATES.Dice.APerfect", { total: esc(reveal.total) })} · ${esc(moneyText(reveal))}` : esc(moneyText({ win: true, payoutCp: reveal.payoutCp }));
   return `
     <div class="loot-crates lc-chat lc-rarity-${esc(rarityOf(reveal))}">
-      <div class="lc-chat__head">${t("LOOTCRATES.Dice.ChatHead", { actor: esc(reveal.actorName), formula: esc(reveal.formula ?? ""), target: esc(reveal.target ?? 0), box: `<strong>${esc(reveal.box.name)}</strong>`, price: `<span class="lc-chat__price">${esc(formatPrice(reveal.box.price))}</span>` })}</div>
+      <div class="lc-chat__head">${t("LOOTCRATES.Dice.ChatHead", { actor: esc(reveal.actorName), formula: esc(reveal.formula ?? ""), target: esc(reveal.target ?? 0), box: `<strong>${esc(reveal.box.name)}</strong>`, price: `<span class="lc-chat__price">${esc(priceTag(reveal))}</span>` })}</div>
       <div class="lc-chat__item">
         ${dice}
         <div>

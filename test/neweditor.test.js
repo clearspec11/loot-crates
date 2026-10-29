@@ -407,7 +407,7 @@ describe("Copy", () => {
       expect(copy.getAttribute("data-tooltip")).toBe("Copy");
       const cell = copy.closest("td");
       const actions = [...cell.querySelectorAll("[data-action]")].map(b => b.getAttribute("data-action"));
-      expect(actions).toEqual(["toggleShelf", "editBox", "copyBox", "deleteBox"]);
+      expect(actions).toEqual(["toggleShelf", "makeTicket", "editBox", "copyBox", "deleteBox"]);
     }
   });
 

@@ -79,6 +79,8 @@
   Copy on a game's row opens the same editor on an unsaved copy of that
   game (newgame.js copyOf): every setting, none of its history, named
   "<name> (copy)" (then "(copy 2)" and on) for the GM to rename and reprice.
+  Make a ticket on a pulled game's row makes one ticket for it, an item in
+  the Items folder "Loot Crates tickets" (tickets.js).
   The Pull log folds a character's
   misses at one game for one day (a well's throws, a crate's "Nothing")
   into one line ("5 throws, nothing") whose Refund gives the newest back,
@@ -117,6 +119,7 @@ import { formatPrice, parsePrice, unreadablePrice } from "../core/currency.js";
 import { managerNavHTML, MANAGER_TABS, directoryMenuEntry } from "../views/route.js";
 import { describeRefund, refundPull } from "./refund.js";
 import { postRefundCard } from "./chat.js";
+import { makeTicket } from "./tickets.js";
 import { changeCount } from "../core/redraw.js";
 import { limitsFieldset, perCharacterFromForm, restocked, restockLine, stockAfterRefund, stockField, stockFromForm } from "../core/limits.js";
 import { byRest } from "../core/clock.js";
@@ -147,7 +150,7 @@ export class CrateManager extends ApplicationV2 {
       addPool: CrateManager.#addPool, editPool: CrateManager.#editPool, deletePool: CrateManager.#deletePool,
       bulkAdd: CrateManager.#bulkAdd, setUnsetRarity: CrateManager.#setUnsetRarity, removeEntry: CrateManager.#removeEntry, updateEntry: CrateManager.#updateEntry, relinkEntry: CrateManager.#relinkEntry,
       addBox: CrateManager.#addBox, addWell: CrateManager.#addWell, addDice: CrateManager.#addDice, addDeck: CrateManager.#addDeck, addWheel: CrateManager.#addWheel, addAuction: CrateManager.#addAuction, addScratch: CrateManager.#addScratch, crateFromPool: CrateManager.#crateFromPool,
-      editBox: CrateManager.#editBox, toggleShelf: CrateManager.#toggleShelf, copyBox: CrateManager.#copyBox, deleteBox: CrateManager.#deleteBox, reshuffle: CrateManager.#reshuffle, printRoll: CrateManager.#printRoll, openTable: CrateManager.#openTable,
+      editBox: CrateManager.#editBox, toggleShelf: CrateManager.#toggleShelf, copyBox: CrateManager.#copyBox, makeTicket: CrateManager.#makeTicket, deleteBox: CrateManager.#deleteBox, reshuffle: CrateManager.#reshuffle, printRoll: CrateManager.#printRoll, openTable: CrateManager.#openTable,
       refund: CrateManager.#refund, toggleShop: CrateManager.#toggleShop, openShop: CrateManager.#openShop, toggleMisses: CrateManager.#toggleMisses,
       filterChip: CrateManager.#filterChip, showMore: CrateManager.#showMore,
       starterCrates: CrateManager.#starterCrates,
@@ -779,6 +782,27 @@ export class CrateManager extends ApplicationV2 {
     return this.#openEditor(copyOf(box, { id: newId(), now: Date.now(), names: Object.values(getBoxes()).map(b => b.name) }), { isNew: true, copy: true });
   }
 
+  /*
+    Make a ticket on a pulled game's row: one ticket for that game as a
+    world Item in the Items folder "Loot Crates tickets" (tickets.js), for
+    the GM to drag to a sheet, a loot sheet, a merchant or a pool. The
+    tab's status line says where it went; focus stays on the button, so a
+    second press makes a second ticket.
+  */
+  static async #makeTicket(_e, target) {
+    const box = getBoxes()[target.dataset.box];
+    if (!box) return this.render();
+    try {
+      const { item, folder } = await makeTicket(box);
+      this.#announce(t("LOOTCRATES.Manager.TicketMade", { name: item.name, folder: folder?.name ?? t("LOOTCRATES.Ticket.Folder") }));
+      return item;
+    } catch (err) {
+      console.error(`loot-crates | making a ticket for ${box.name} failed`, err);
+      this.#announce(t("LOOTCRATES.Manager.TicketFailed", { name: box.name }));
+      return null;
+    }
+  }
+
   // The crate's editor; on a new draft nothing is written until Save.
   static async #editCrate(box, opts) {
     const { isNew } = opts;
@@ -1335,15 +1359,22 @@ export class CrateManager extends ApplicationV2 {
     // that paid more than the stake takes the difference back; a coin that
     // already came back (a well's coin return) moves nothing.
     const coins = plan.coins ?? Math.round(row.price * 100);
-    const money = coins > 0 ? t("LOOTCRATES.Refund.Return", { price: `<strong>${esc(formatPrice(coins / 100))}</strong>`, name: esc(actor.name) })
+    const coinsText = coins > 0 ? t("LOOTCRATES.Refund.Return", { price: `<strong>${esc(formatPrice(coins / 100))}</strong>`, name: esc(actor.name) })
       : coins < 0 ? t("LOOTCRATES.Refund.TakeBack", { price: `<strong>${esc(formatPrice(-coins / 100))}</strong>`, name: esc(actor.name) })
       : t("LOOTCRATES.Refund.CoinBack", { name: esc(actor.name) });
+    // A play made with a ticket gives the ticket back, and coins only for
+    // what it won (refund.js).
+    const ticketArgs = { name: esc(actor.name), box: `<strong>${esc(row.boxName)}</strong>`, price: `<strong>${esc(formatPrice(Math.abs(coins) / 100))}</strong>` };
+    const money = !row.redeem ? coinsText
+      : coins > 0 ? t("LOOTCRATES.Refund.TicketReturn", ticketArgs)
+      : coins < 0 ? t("LOOTCRATES.Refund.TicketTakeBack", ticketArgs)
+      : t("LOOTCRATES.Refund.TicketBack", ticketArgs);
     const strong = names => listAnd(names.map(n => `<strong>${esc(n)}</strong>`));
     const ask = items.length && gone.length ? t("LOOTCRATES.Refund.AskRemoveSomeGone", { money, item: strong(items.map(i => i.name)), gone: strong(gone) })
       : items.length ? t("LOOTCRATES.Refund.AskRemove", { money, item: strong(items.map(i => i.name)) })
       : gone.length > 1 ? t("LOOTCRATES.Refund.AskGoneSeveral", { money, items: strong(gone) })
       : gone.length ? t("LOOTCRATES.Refund.AskGone", { money, item: strong(gone) }) : t("LOOTCRATES.Refund.Ask", { money });
-    const stockBack = row.roundId ? null : stockAfterRefund(box);
+    const stockBack = row.roundId || row.redeem ? null : stockAfterRefund(box);
     const stockLine = stockBack != null ? ` ${t("LOOTCRATES.Refund.StockBack", { name: esc(box.name), count: stockBack })}` : "";
     // A throw that gave no item still counted toward the pity (row.before).
     const rules = box && (row.uuid || row.before) ? refundRulesLine({ actorName: actor.name, itemName: row.name, box, ...plan.state }) : "";
@@ -1357,11 +1388,12 @@ export class CrateManager extends ApplicationV2 {
     this.#focusRow = row.id;
     const done = await refundPull(row.id);
     if (done.status === "refunded") {
-      const keys = coins === 0 ? ["LOOTCRATES.Refund.DoneNoCoins", "LOOTCRATES.Refund.DoneNoCoinsRemoved"]
+      const keys = row.redeem ? ["LOOTCRATES.Refund.DoneTicket", "LOOTCRATES.Refund.DoneTicketRemoved"]
+        : coins === 0 ? ["LOOTCRATES.Refund.DoneNoCoins", "LOOTCRATES.Refund.DoneNoCoinsRemoved"]
         : coins > 0 ? ["LOOTCRATES.Refund.DoneReturned", "LOOTCRATES.Refund.DoneReturnedRemoved"]
         : ["LOOTCRATES.Refund.DoneTaken", "LOOTCRATES.Refund.DoneTakenRemoved"];
       ui.notifications.info(t(keys[done.removedItem ? 1 : 0], { box: row.boxName, name: actor.name, price: formatPrice(Math.abs(coins) / 100), item: done.removedItem }));
-      await postRefundCard({ row, actor, removedItem: done.removedItem, removedItems: done.removedItems, goneItems: done.goneItems });
+      await postRefundCard({ row, actor, removedItem: done.removedItem, removedItems: done.removedItems, goneItems: done.goneItems, ticketBack: done.ticketBack });
     } else if (done.status === "already") {
       ui.notifications.info(t("LOOTCRATES.Refund.Already"));
     } else {
