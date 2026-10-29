@@ -125,6 +125,13 @@ const untilActor = async (page, ticketId, pred, ms = 10000) => {
 };
 
 const logRows = (page, boxId) => page.evaluate(async ({ base, boxId }) => (await import(base + "scripts/foundry/store.js")).getLog().filter(r => r.boxId === boxId).map(r => ({ id: r.id, price: r.price, payoutCp: r.payoutCp, itemId: r.itemId ?? null, refunded: !!r.refunded, redeem: r.redeem ? { itemId: r.redeem.itemId, itemName: r.redeem.itemName, paid: r.redeem.paid } : null })), { base: MODULE_BASE, boxId });
+// The GM writes a play's row just after its reveal goes out, so a read
+// right after the ticket drops can come before it: wait for the row.
+const untilRows = async (page, boxId, n = 1, ms = 8000) => {
+  let rows = await logRows(page, boxId);
+  for (const t0 = Date.now(); rows.filter(r => r.redeem).length < n && Date.now() - t0 < ms;) { await page.waitForTimeout(100); rows = await logRows(page, boxId); }
+  return rows;
+};
 
 // The newest reveal window on a page: what its head says in place of a
 // price, and its text.
@@ -225,7 +232,7 @@ async function pressUse(page, itemId) {
     await pl.page.waitForSelector(".application.lc-reveal .lc-reveal__result", { timeout: 15000 }).catch(() => {});
     out.crateReveal = { player: await readReveal(pl.page), gm: await readReveal(gm.page) };
     if (shot) await pl.page.screenshot({ path: shot });
-    const crateRows = await logRows(gm.page, crateId);
+    const crateRows = await untilRows(gm.page, crateId);
     const chatAfter = await gm.page.evaluate(n => game.messages.contents.slice(n).map(m => ({ lc: !!m.flags?.["loot-crates"], dnd5e: !!m.flags?.dnd5e || m.type === "usage" || m.type === "item", text: m.content.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 160) })), chatBefore);
     out.useCrate = { before: { purseCp: before.purseCp, qty: before.qty }, after: { purseCp: usedCrate.purseCp, qty: usedCrate.qty, ms: usedCrate.ms }, rows: crateRows, chat: chatAfter };
     const prizeId = crateRows[0]?.itemId ?? null;
@@ -286,7 +293,7 @@ async function pressUse(page, itemId) {
     await reveal.locator(".lc-scratch--landed").waitFor({ timeout: 8000 }).catch(() => {});
     out.scratchLanded = await reveal.evaluate(rv => ({ landed: !!rv.querySelector(".lc-scratch--landed"), result: rv.querySelector(".lc-reveal__result")?.innerText.replace(/\s+/g, " ").trim() ?? null }));
     const sAfter = await untilActor(gm.page, scratchTicket, a => a.qty === null, 10000);
-    const scratchRows = await logRows(gm.page, scratchId);
+    const scratchRows = await untilRows(gm.page, scratchId);
     out.useScratch = { before: { qty: sBefore.qty, purseCp: sBefore.purseCp }, after: { qty: sAfter.qty, purseCp: sAfter.purseCp, ms: sAfter.ms }, rows: scratchRows };
 
     const cRow = crateRows[0];
