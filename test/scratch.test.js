@@ -20,7 +20,7 @@ vi.mock("../module/scripts/foundry/reveal.js", () => ({ showReveal: vi.fn(async 
 vi.mock("../module/scripts/foundry/sound.js", () => ({ playTick: vi.fn(), playSlow: vi.fn(), playReveal: vi.fn(), playPlop: vi.fn(), playPlink: vi.fn(), playCoinBack: vi.fn(), playBane: vi.fn(), playScratch: vi.fn(), playFoilTick: vi.fn() }));
 
 const scratch = await import("../module/scripts/games/scratch.js");
-const { SCRATCH, SCRATCH_DEFAULTS, SYMBOLS, THEMES, themeOf, prizesOf, rollOf, gridOf, bonusOf, layoutOf, rollState, ticketsSold, drawBag, rollReason, layCard, cardWins, cleanCard, splitsOf, luckyCount, rollOdds, rollPrizes, ribbonTotalText, oddsText, oneIn, prizeText, ticketsLeftText, scratchRulesText, scratchOddsHTML, nextRoll, draftScratch, scratchFieldsHTML, scratchPreview, scratchPreviewHTML, ticketHTML, miniHTML, shownState, prizeListHTML } = scratch;
+const { SCRATCH, SCRATCH_DEFAULTS, SYMBOLS, THEMES, MAX_PRIZES, rowParts, showsLeft, themeOf, prizesOf, rollOf, gridOf, bonusOf, layoutOf, rollState, ticketsSold, drawBag, rollReason, layCard, cardWins, cleanCard, splitsOf, luckyCount, rollOdds, rollPrizes, ribbonTotalText, oddsText, oneIn, prizeText, ticketsLeftText, scratchRulesText, scratchOddsHTML, nextRoll, draftScratch, scratchFieldsHTML, scratchPreview, scratchPreviewHTML, ticketHTML, miniHTML, shownState, prizeListHTML } = scratch;
 const { getKind, gotText } = await import("../module/scripts/games/kinds.js");
 const { performPull, PullError } = await import("../module/scripts/foundry/pull.js");
 const { registerSocket } = await import("../module/scripts/foundry/socket.js");
@@ -273,7 +273,7 @@ describe("the honest card", () => {
 
   it("dresses a dud on a roll with no prizes in amounts of the ticket's price, never a match", () => {
     const card = layCard({ price: 2, layout: "lucky", roll: { size: 10, prizes: [] } }, { kind: "dud" }, seededRng(3));
-    expect(cardWins(card)).toEqual({ cp: 0, item: null, winners: [], bonus: false });
+    expect(cardWins(card)).toEqual({ cp: 0, items: [], item: null, winners: [], bonus: false });
     for (const p of card.panels) expect([2, 4, 10]).toContain(p.prize.gp);
   });
 });
@@ -296,7 +296,7 @@ describe("the readout", () => {
   it("says what the editor's draft would print, and what would keep a ticket from being sold", () => {
     const values = { price: "5 gp", layout: "lucky", cols: "4", rows: "3", bonusOn: false, bonusGp: "25", size: "10", prizes: ["a", "b", "c"], "z.a.count": "1", "z.a.what": "item.legendary", "z.b.count": "12", "z.b.what": "gp", "z.b.gp": "5", "z.c.count": "2", "z.c.what": "bonus", "pool.p": true, "share.p": "1" };
     const draft = draftScratch(GAME, values, ["p"]);
-    expect(draft).toMatchObject({ kind: "scratch", price: 5, layout: "lucky", grid: { cols: 4, rows: 3 }, bonus: { on: false, gp: 25 }, theme: "hoard", roll: { id: 1, size: 10, prizes: [{ count: 1, item: { rarity: "legendary" } }, { count: 12, gp: 5 }, { count: 2, bonus: true }] } });
+    expect(draft).toMatchObject({ kind: "scratch", price: 5, layout: "lucky", grid: { cols: 4, rows: 3 }, bonus: { on: false, gp: 25 }, theme: "hoard", roll: { id: 1, size: 10, prizes: [{ count: 1, parts: [{ item: { rarity: "legendary" } }] }, { count: 12, parts: [{ gp: 5 }] }, { count: 2, parts: [{ bonus: true }] }] } });
     const preview = scratchPreview(draft, POOLS);
     expect(preview.notes.map(n => n.text)).toEqual([
       "The prizes need 13 tickets, more than 10: the roll is printed at 13.",
@@ -528,6 +528,317 @@ describe("the words", () => {
     expect(ticketsLeftText(1, 1)).toBe("1 of 1 ticket left");
     expect(prizeText({ kind: "bonus", gp: 25 })).toBe("Bonus, 25 gp");
     expect(RARITIES.every(r => prizeText({ kind: "item", rarity: r }).endsWith(" item"))).toBe(true);
+  });
+});
+
+/*
+  Prize lines (round 28, B2): a ticket wins one line of the printed roll,
+  and a line can pay several parts at once, as real games print "$25 +
+  $10" or "$50 + bonus": an item and coins and the gem, or two items. The
+  draw stays one line per ticket, so a ticket that pays twice is exactly
+  as rare as the GM printed it.
+*/
+describe("prize lines: tickets that pay like real ones", () => {
+  // A roll of 6: one "Rare item + 5 gp + the gem (10 gp)", one "Rare item
+  // + Uncommon item", two of 10 gp, two duds.
+  const LINES = { ...GAME, id: "lines", name: "Lines Ticket", bonus: { on: true, gp: 10 }, roll: { id: 1, size: 6, prizes: [
+    { count: 1, parts: [{ gp: 5 }, { item: { rarity: "rare" } }, { bonus: true }] },
+    { count: 1, parts: [{ item: { rarity: "uncommon" } }, { item: { rarity: "rare" } }] },
+    { count: 2, gp: 10 },
+  ] } };
+  const COMBO = "item.rare+gp.5+bonus", PAIR = "item.rare+item.uncommon";
+  // An actor that creates every item of one creation, as Foundry does.
+  const actorMany = (currency = { pp: 0, gp: 100, ep: 0, sp: 0, cp: 0 }) => {
+    const actor = actorOf(currency);
+    actor.creations = [];
+    actor.createEmbeddedDocuments = async (_type, datas) => {
+      await tick();
+      actor.creations.push(datas.length);
+      return datas.map(data => {
+        const id = `item${actor.items.size + 1}`;
+        const item = { id, name: data.name, flags: data.flags, async delete() { await tick(); actor.items.delete(id); } };
+        actor.items.set(id, item);
+        return item;
+      });
+    };
+    actor.deleteEmbeddedDocuments = async (_type, ids) => { await tick(); for (const id of ids) actor.items.delete(id); };
+    return actor;
+  };
+
+  it("reads a row from before lines as a line of its one part, keeping its key, and never writes it back", () => {
+    const legacy = { layout: "lucky", bonus: { on: true, gp: 25 }, roll: { id: 1, size: 10, prizes: [{ count: 2, gp: 10 }, { count: 1, item: { rarity: "rare" } }, { count: 3, bonus: true }] } };
+    const before = structuredClone(legacy);
+    expect(rowParts({ count: 2, gp: 10 })).toEqual([{ gp: 10 }]);
+    expect(rowParts({ count: 1, item: { rarity: "rare" } })).toEqual([{ item: { rarity: "rare" } }]);
+    expect(rowParts({ count: 3, bonus: true })).toEqual([{ bonus: true }]);
+    const lines = prizesOf(legacy);
+    expect(lines.map(l => l.key)).toEqual(["item.rare", "gp.10", "bonus"]);
+    expect(lines[1]).toMatchObject({ key: "gp.10", kind: "gp", gp: 10, count: 2, parts: [{ kind: "gp", gp: 10 }], items: [] });
+    expect(lines[0]).toMatchObject({ kind: "item", rarity: "rare", items: ["rare"], gp: 0 });
+    expect(lines[2]).toMatchObject({ kind: "bonus", gp: 25 });
+    // The same rows written as lines read the same.
+    expect(prizesOf({ ...legacy, roll: { ...legacy.roll, prizes: [{ count: 2, parts: [{ gp: 10 }] }, { count: 1, parts: [{ item: { rarity: "rare" } }] }, { count: 3, parts: [{ bonus: true }] }] } })).toEqual(lines);
+    // Reading changed nothing on the record, and an old row of the log still counts against its line.
+    expect(legacy).toEqual(before);
+    expect(rollState({ ...legacy, id: "fortune" }, [row({ tier: "gp.10" })]).prizes.find(p => p.key === "gp.10").left).toBe(1);
+  });
+
+  it("names a line by its parts best first, merges lines that pay the same, and ranks lines by their best item, then items, then coins", () => {
+    const lines = prizesOf(LINES);
+    expect(lines.map(l => `${l.key} x${l.count}`)).toEqual([`${PAIR} x1`, `${COMBO} x1`, "gp.10 x2"]);
+    expect(lines[1]).toMatchObject({ kind: "line", items: ["rare"], gp: 15, rarity: "rare" });
+    expect(lines[0]).toMatchObject({ kind: "line", items: ["rare", "uncommon"], gp: 0 });
+    expect(lines.map(prizeText)).toEqual(["Rare item + Uncommon item", "Rare item + 5 gp + the gem (10 gp)", "10 gp"]);
+    // The same parts in another order are the same line.
+    const twice = { ...LINES, roll: { ...LINES.roll, prizes: [...LINES.roll.prizes, { count: 2, parts: [{ bonus: true }, { item: { rarity: "rare" } }, { gp: 5 }] }] } };
+    expect(prizesOf(twice).find(l => l.key === COMBO).count).toBe(3);
+    // The gem with the bonus spot off keeps its whole line out; a coin part of nothing is dropped.
+    expect(prizesOf({ ...LINES, bonus: { on: false, gp: 10 } }).map(l => l.key)).toEqual([PAIR, "gp.10"]);
+    expect(prizesOf({ roll: { prizes: [{ count: 1, parts: [{ gp: 0 }, { item: { rarity: "rare" } }] }] } }).map(l => l.key)).toEqual(["item.rare"]);
+    expect(prizesOf({ roll: { prizes: [{ count: 1, parts: [{ gp: 5 }, { item: { rarity: "mythic" } }] }] } })).toEqual([]);
+  });
+
+  it("match 3: each part is a three of a kind of its own, so a line of two the same or more sets than the grid holds is left out, and the editor says why with Save off", () => {
+    const m3 = { ...MATCH3, roll: { id: 1, size: 20, prizes: [{ count: 1, parts: [{ item: { rarity: "uncommon" } }, { gp: 5 }] }, { count: 1, parts: [{ gp: 5 }, { gp: 5 }] }, { count: 2, parts: [{ gp: 1 }, { gp: 5 }, { gp: 2 }] }, { count: 4, gp: 1 }] } };
+    expect(prizesOf(m3).map(l => l.key)).toEqual(["item.uncommon+gp.5", "gp.1"]);
+    const preview = scratchPreview(m3, POOLS);
+    expect(preview.refused).toBe(true);
+    expect(preview.notes.map(n => n.text)).toEqual(expect.arrayContaining([
+      "Prize 2 pays two parts the same, which a match 3 card can't tell apart. Make them one part.",
+      "Prize 3 needs 3 sets of three, more than a 3 × 2 card has room for. Add panels or take a part off.",
+      "Save is off until every prize fits the card.",
+    ]));
+    // A card with room shows the three-part line; lucky numbers show any line.
+    expect(prizesOf({ ...m3, grid: { cols: 3, rows: 3 } }).map(l => l.key)).toContain("gp.5+gp.2+gp.1");
+    expect(scratchPreview({ ...m3, layout: "lucky" }, POOLS).refused).toBe(false);
+    expect(scratchPreview(MATCH3, POOLS).refused).toBe(false);
+    // The key has a symbol for MAX_PRIZES prizes: a line that needs more is left out, and named.
+    const many = { ...MATCH3, grid: { cols: 5, rows: 4 }, roll: { id: 1, size: 50, prizes: [{ count: 1, parts: [{ gp: 9 }] }, { count: 1, parts: [{ gp: 1 }, { gp: 2 }, { gp: 3 }, { gp: 4 }] }, { count: 1, parts: [{ gp: 5 }, { gp: 6 }, { gp: 7 }, { gp: 8 }] }] } };
+    expect(MAX_PRIZES).toBe(8);
+    expect(prizesOf(many).map(l => l.key)).toEqual(["gp.8+gp.7+gp.6+gp.5", "gp.4+gp.3+gp.2+gp.1"]);
+    expect(scratchPreview(many, POOLS).notes.map(n => n.text)).toContain("A match 3 card has symbols for 8 different prizes, and prize 1 needs more.");
+  });
+
+  it("thousands of seeded tickets of both layouts: every part of a combination line reads back from the card exactly, and the honesty rules hold", () => {
+    const luckyLines = [
+      [{ kind: "gp", gp: 5 }, { kind: "item", rarity: "rare", name: "Flame Tongue" }, { kind: "bonus" }],
+      [{ kind: "item", rarity: "rare", name: "Flame Tongue" }, { kind: "item", rarity: "uncommon", name: "Lucky Coin" }],
+      [{ kind: "gp", gp: 25 }, { kind: "gp", gp: 10 }],
+      [{ kind: "gp", gp: 5 }, { kind: "gp", gp: 5 }, { kind: "item", rarity: "rare" }, { kind: "bonus" }],
+      [{ kind: "gp", gp: 10 }, { kind: "bonus" }],
+    ];
+    const game0 = { price: 5, layout: "lucky", bonus: { on: true, gp: 10 }, roll: { size: 100, prizes: [{ count: 1, parts: [{ gp: 5 }, { item: { rarity: "rare" } }, { bonus: true }] }, { count: 5, gp: 25 }, { count: 10, gp: 10 }, { count: 1, item: { rarity: "uncommon" } }] } };
+    let shared = 0;
+    for (let seed = 1; seed <= 2000; seed++) {
+      const rng = seededRng(seed);
+      const grid = [{ cols: 4, rows: 3 }, { cols: 3, rows: 3 }, { cols: 6, rows: 5 }, { cols: 2, rows: 2 }][seed % 4];
+      const game = { ...game0, grid };
+      const parts = luckyLines[seed % luckyLines.length];
+      const card = layCard(game, { kind: "line", parts }, rng);
+      const read = cardWins(card);
+      const cells = grid.cols * grid.rows;
+      const shown = parts.filter(p => p.kind !== "bonus");
+      expect(read.cp).toBe(parts.reduce((n, p) => n + (p.kind === "gp" ? p.gp * 100 : p.kind === "bonus" ? 1000 : 0), 0));
+      expect(read.items.map(i => i.item).sort()).toEqual(shown.filter(p => p.kind === "item").map(p => p.rarity).sort());
+      expect(read.winners).toHaveLength(shown.length);
+      expect(read.bonus).toBe(parts.some(p => p.kind === "bonus"));
+      // Each winning panel shows its own part; an item panel names its item.
+      for (const p of shown.filter(q => q.name)) expect(read.items.some(i => i.name === p.name)).toBe(true);
+      // Losing panels: never a lucky number, never two the same, never a winner's number.
+      const losing = card.panels.filter((_, i) => !read.winners.includes(i)).map(p => p.n);
+      expect(new Set(losing).size).toBe(losing.length);
+      for (const n of losing) expect(card.lucky).not.toContain(n);
+      // Winners each under a lucky number of their own, unless the card has fewer lucky numbers than wins.
+      const winNums = read.winners.map(i => card.panels[i].n);
+      if (shown.length <= card.lucky.length) expect(new Set(winNums).size).toBe(winNums.length);
+      else shared++;
+      expect(card.panels).toHaveLength(cells);
+    }
+    expect(shared).toBeGreaterThan(0);
+
+    const m3game = { price: 1, layout: "match3", roll: { size: 50, prizes: [{ count: 1, parts: [{ item: { rarity: "uncommon" } }, { gp: 5 }] }, { count: 1, parts: [{ gp: 1 }, { gp: 2 }, { gp: 5 }] }, { count: 10, gp: 1 }] } };
+    const m3Lines = [[{ kind: "item", rarity: "uncommon", name: "Lucky Coin" }, { kind: "gp", gp: 5 }], [{ kind: "gp", gp: 1 }, { kind: "gp", gp: 2 }, { kind: "gp", gp: 5 }]];
+    for (let seed = 1; seed <= 2000; seed++) {
+      const rng = seededRng(seed);
+      const parts = m3Lines[seed % 2];
+      const grid = parts.length === 3 ? [{ cols: 3, rows: 3 }, { cols: 5, rows: 4 }][seed % 4 >> 1] : [{ cols: 3, rows: 2 }, { cols: 4, rows: 3 }][seed % 4 >> 1];
+      const card = layCard({ ...m3game, grid }, { kind: "line", parts }, rng);
+      const read = cardWins(card);
+      expect(read.cp).toBe(parts.reduce((n, p) => n + (p.kind === "gp" ? p.gp * 100 : 0), 0));
+      expect(read.items.map(i => i.item)).toEqual(parts.filter(p => p.kind === "item").map(p => p.rarity));
+      const counts = new Map();
+      for (const p of card.panels) counts.set(p.symbol, (counts.get(p.symbol) ?? 0) + 1);
+      const triples = [...counts].filter(([, n]) => n >= 3);
+      expect(triples).toHaveLength(parts.length);
+      for (const [, n] of triples) expect(n).toBe(3);
+      expect(read.winners).toHaveLength(parts.length * 3);
+    }
+  });
+
+  it("the readout counts lines: 1 in N wins and the top prize stay true, and all prizes X or more compares each line's total", () => {
+    const roll = rollOf(LINES);
+    expect(oddsText(rollOdds(roll.prizes, roll.size, 5))).toBe("1 in 1.5 tickets wins, the top prize (Rare item + Uncommon item) 1 in 6, all prizes 10 gp or more");
+    // Two 3 gp parts make a 6 gp line: over a 5 gp ticket, though each part is under it.
+    const pairs = prizesOf({ roll: { prizes: [{ count: 4, parts: [{ gp: 3 }, { gp: 3 }] }, { count: 2, gp: 8 }] } });
+    expect(rollOdds(pairs, 20, 5)).toMatchObject({ wins: 6, oneIn: "3.3", floor: 6 });
+    expect(rollOdds(prizesOf({ roll: { prizes: [{ count: 4, parts: [{ gp: 3 }, { gp: 1 }] }] } }), 20, 5).floor).toBeNull();
+    // The ribbon: the top line in full, and every coin, gem and item the roll pays.
+    expect(rollPrizes(LINES)).toEqual({ top: { parts: [{ item: "rare" }, { item: "uncommon" }] }, gp: 35, items: 3, floor: 10 });
+    const card = layCard(LINES, { kind: "dud" }, seededRng(1));
+    expect(ticketHTML({ card, box: { name: "Lines Ticket" } }, { esc })).toContain('<div class="lc-scratch__ribbon"><span>Top prize</span><strong>Rare item + Uncommon item</strong><span>35 gp and 3 items in prizes in this roll</span></div>');
+    expect(cleanCard(card).prizes.top).toEqual({ parts: [{ item: "rare" }, { item: "uncommon" }] });
+    expect(cleanCard({ ...card, prizes: { ...card.prizes, top: { parts: [{ item: "mythic" }] } } }).prizes.top).toBeNull();
+    // The shop's rows and the Boxes pills name each line in full.
+    expect(prizeListHTML(rollState(LINES, []), esc)).toContain("Rare item + 5 gp + the gem (10 gp)");
+    expect(scratchOddsHTML(LINES, [])).toContain(`<span class="lc-odd lc-odd--wrap lc-rarity-rare">Rare item + Uncommon item 1/1</span>`);
+  });
+
+  it("deals every line of a whole roll exactly its count, pays a line's coins and gem in one settle, and grants a line's two items in one creation", async () => {
+    const twoPools = { p: { ...POOLS.p } };
+    for (const seed of [1, 2, 3]) {
+      const rng = seededRng(seed);
+      const actor = actorMany({ gp: 1000 });
+      const log = [];
+      const outs = [];
+      for (let i = 0; i < 6; i++) {
+        const out = await performPull({ box: LINES, pools: twoPools, actor, rng, log });
+        outs.push(out);
+        log.unshift({ id: `r${i}`, kind: "scratch", boxId: LINES.id, actorId: actor.id, ...SCRATCH.logRow({ game: LINES, state: {}, out }) });
+      }
+      const counts = {};
+      for (const r of log) counts[r.tier] = (counts[r.tier] ?? 0) + 1;
+      expect(counts).toEqual({ [PAIR]: 1, [COMBO]: 1, "gp.10": 2, dud: 2 });
+      const combo = outs.find(o => o.ticket.tier === COMBO);
+      expect(combo).toMatchObject({ outcome: "item", payoutCp: 1500, result: { name: "Flame Tongue", rarity: "rare" }, wonItems: [{ name: "Flame Tongue", rarity: "rare" }] });
+      expect(combo.itemIds).toHaveLength(1);
+      expect(cardWins(combo.card)).toMatchObject({ cp: 1500, bonus: true, items: [{ item: "rare", name: "Flame Tongue" }] });
+      const pair = outs.find(o => o.ticket.tier === PAIR);
+      expect(pair.itemIds).toHaveLength(2);
+      expect(pair.itemNames).toEqual(["Flame Tongue", "Lucky Coin"]);
+      expect(pair.wonItems.map(i => i.rarity)).toEqual(["rare", "uncommon"]);
+      expect(pair.payoutCp).toBe(0);
+      expect(cardWins(pair.card).items.map(i => i.item)).toEqual(expect.arrayContaining(["rare", "uncommon"]));
+      // Never broadcast: the Item data.
+      for (const o of outs) { expect(o).not.toHaveProperty("grant"); expect(o).not.toHaveProperty("grants"); }
+      // Three items in two creations, the pair's in one.
+      expect(actor.creations.sort()).toEqual([1, 2]);
+      expect(actor.items.size).toBe(3);
+      expect(outs.reduce((n, o) => n + o.payoutCp, 0)).toBe(1500 + 2000);
+      expect(toCopper(actor.system.currency)).toBe(100000 - 6 * 500 + 3500);
+      expect(gotText(SCRATCH, combo)).toBe("won Flame Tongue and 15 gp");
+      expect(gotText(SCRATCH, pair)).toBe("won Flame Tongue and Lucky Coin");
+    }
+  });
+
+  it("the socket path logs a line's items on one row, the reveal and the chat card name every part, and one refund takes them all back", async () => {
+    const world = makeWorld({ actor: actorMany({ pp: 0, gp: 500, ep: 0, sp: 0, cp: 0 }) });
+    await world.game.settings.set("loot-crates", "boxes", { lines: LINES });
+    await world.game.settings.set("loot-crates", "pools", POOLS);
+    for (let i = 0; i < 6; i++) await buyOnce(world, 40 + i, { requestId: `l${i}`, boxId: "lines" });
+    const reveals = world.emitted.filter(m => m.type === "reveal");
+    expect(reveals).toHaveLength(6);
+    const log = getLog();
+    const pairRow = log.find(r => r.tier === PAIR);
+    const comboRow = log.find(r => r.tier === COMBO);
+    expect(pairRow).toMatchObject({ name: "Flame Tongue", itemNames: ["Flame Tongue", "Lucky Coin"] });
+    expect(pairRow.itemIds).toHaveLength(2);
+    expect(comboRow).toMatchObject({ name: "Flame Tongue", rarity: "rare", payoutCp: 1500 });
+    for (const r of reveals) expect(cardWins(r.card).cp).toBe(log.find(l => l.id === r.logId).payoutCp);
+    // The reveal: every item by name, the coins into the purse.
+    const pairReveal = reveals.find(r => r.ticket.tier === PAIR);
+    const comboReveal = reveals.find(r => r.ticket.tier === COMBO);
+    expect(pairReveal.itemUuids).toHaveLength(2);
+    for (const r of reveals) { expect(r).not.toHaveProperty("grant"); expect(r).not.toHaveProperty("grants"); }
+    const said = SCRATCH.reveal.result(pairReveal, { esc, canSee: true });
+    expect(said).toContain(`<div class="lc-reveal__name">Flame Tongue and Lucky Coin</div>`);
+    expect(said).toContain(`<div class="lc-reveal__rarity">Rare and Uncommon</div>`);
+    const comboSaid = SCRATCH.reveal.result(comboReveal, { esc, canSee: true });
+    expect(comboSaid).toContain(`<div class="lc-reveal__name">Flame Tongue</div>`);
+    expect(comboSaid).toContain("15 gp into Tam's purse");
+    expect(comboSaid).toContain("Added to Tam's inventory");
+    // The chat card: each item linked, the coins after.
+    const cards = globalThis.ChatMessage.create.mock.calls.map(c => c[0].content);
+    const pairCard = cards[reveals.indexOf(pairReveal)];
+    const comboCard = cards[reveals.indexOf(comboReveal)];
+    for (const uuid of pairReveal.itemUuids) expect(pairCard).toContain(uuid);
+    expect(comboCard).toContain(comboReveal.itemUuid);
+    expect(comboCard).toMatch(/Flame Tongue.*and 15 gp/s);
+    // Watch again keeps every item, display only.
+    const snap = SCRATCH.reveal.snapshot(pairReveal);
+    expect(snap.wonItems.map(i => i.name)).toEqual(["Flame Tongue", "Lucky Coin"]);
+    expect(JSON.stringify(snap)).not.toContain("Item.");
+    expect(SCRATCH.reveal.fromSnapshot(JSON.parse(JSON.stringify(snap))).wonItems).toEqual(snap.wonItems);
+    // One refund of the pair takes both items back and puts the line back in the roll.
+    const before = world.actor.items.size;
+    const done = await refundPull(pairRow.id);
+    expect(done).toMatchObject({ status: "refunded", removedItems: ["Flame Tongue", "Lucky Coin"] });
+    expect(world.actor.items.size).toBe(before - 2);
+    // The combo's refund removes its item and takes its coins back: the stake back less 15 gp.
+    const purse = toCopper(world.actor.system.currency);
+    expect((await refundPull(comboRow.id)).status).toBe("refunded");
+    expect(toCopper(world.actor.system.currency)).toBe(purse + 500 - 1500);
+    expect(world.actor.items.size).toBe(before - 3);
+    const st = rollState(LINES, getLog());
+    expect(st.prizes.find(p => p.key === PAIR).left).toBe(1);
+    expect(st.prizes.find(p => p.key === COMBO).left).toBe(1);
+  });
+
+  it("a GM can hide what is left from players: a player's card keeps the price, the top prize and the guarantee; the GM's card and Boxes row show everything and say it is hidden", async () => {
+    const hidden = { ...GAME, showLeft: false };
+    expect([showsLeft(GAME), showsLeft(hidden), showsLeft({ showLeft: true })]).toEqual([true, false, true]);
+    const log = [row({ tier: "gp.100" }), row({ tier: "gp.100" }), row({ tier: "dud" })];
+    const ctx = { esc, purse: { gp: 50 }, hasActor: true, actorId: "a1", log, open: true, gmOnline: true };
+    const player = SCRATCH.shop.card(hidden, POOLS, { ...ctx, isGM: false });
+    for (const gone of ["tickets left", "0 of 2", "lc-scratch__prizes", "tickets wins", "Players don't see"]) expect(player).not.toContain(gone);
+    expect(player).toContain(`<div class="lc-box__rule">Top prize: Rare item</div>`);
+    expect(player).toContain(`<div class="lc-box__rule">All prizes 5 gp or more</div>`);
+    expect(player).toContain("Buy a ticket for 5 gp");
+    expect(player).toContain("lc-rarity-rare");
+    const gm = SCRATCH.shop.card(hidden, POOLS, { ...ctx, isGM: true });
+    expect(gm).toContain("97 of 100 tickets left");
+    expect(gm).toContain("0 of 2");
+    expect(gm).toContain("1 in 2.4 tickets wins");
+    expect(gm).toContain("Players don't see what is left in the roll");
+    // With the switch on (the default) a player sees it all, and no note.
+    const shown = SCRATCH.shop.card(GAME, POOLS, { ...ctx, isGM: false });
+    expect(shown).toContain("97 of 100 tickets left");
+    expect(shown).not.toContain("Players don't see");
+    // Sold out still says so; the counts still don't show.
+    const allSold = Array.from({ length: 6 }, (_, i) => row({ boxId: "small", tier: ["item.rare", "gp.10", "gp.10", "bonus", "dud", "dud"][i] }));
+    const soldOut = SCRATCH.shop.card({ ...SMALL, showLeft: false }, POOLS, { ...ctx, log: allSold, isGM: false });
+    expect(soldOut).toContain("Roll 1 is sold out");
+    expect(soldOut).toContain(`aria-disabled="true"`);
+    expect(soldOut).not.toContain("of 1");
+    expect(scratchRulesText(hidden, log)).toBe("Lucky numbers 4 × 3, bonus 25 gp, Roll 1: 97 of 100 tickets left, hidden from players");
+    // The ticket and the reveal say no counts either: the roll by name alone.
+    const out = await performPull({ box: { ...SMALL, showLeft: false }, pools: POOLS, actor: actorOf(), rng: seededRng(5), log: [] });
+    expect(out.ticket).toMatchObject({ rollId: 1, no: 1, size: 6, hidden: true });
+    const rv = { kind: "scratch", actorName: "Tam", box: { id: "small", name: "Small Ticket", price: 5 }, ...out };
+    expect(ticketHTML(rv, { esc })).toContain(`<span class="lc-scratch__roll">Roll 1</span>`);
+    expect(SCRATCH.reveal.result(rv, { esc, canSee: true })).not.toContain("tickets left");
+    expect(SCRATCH.reveal.fromSnapshot(SCRATCH.reveal.snapshot(rv)).ticket.hidden).toBe(true);
+    // The editor: the switch, on by default; the draft keeps the GM's pick, or the game's when the form has none.
+    expect(scratchFieldsHTML(GAME, { esc })).toMatch(/<input type="checkbox" name="showLeft" checked[^>]*> Players see what is left in the roll/);
+    expect(scratchFieldsHTML(hidden, { esc })).toMatch(/<input type="checkbox" name="showLeft" aria-describedby/);
+    const values = { price: "5 gp", layout: "lucky", cols: "4", rows: "3", bonusOn: true, bonusGp: "25", size: "100", prizes: [] };
+    expect(draftScratch(GAME, { ...values, showLeft: false }, []).showLeft).toBe(false);
+    expect(draftScratch(hidden, { ...values, showLeft: true }, []).showLeft).toBe(true);
+    expect(draftScratch(hidden, values, []).showLeft).toBe(false);
+  });
+
+  it("the editor writes a row of several parts as one line, and a form from before lines as a line of one", () => {
+    const values = { price: "5 gp", layout: "lucky", cols: "4", rows: "3", bonusOn: true, bonusGp: "10", size: "6", prizes: ["a", "b"],
+      "z.a.count": "1", "z.a.parts": ["x", "y", "z"], "z.a.x.what": "item.rare", "z.a.y.what": "gp", "z.a.y.gp": "5", "z.a.z.what": "bonus",
+      "z.b.count": "2", "z.b.what": "gp", "z.b.gp": "10" };
+    expect(draftScratch(GAME, values, []).roll.prizes).toEqual([{ count: 1, parts: [{ item: { rarity: "rare" } }, { gp: 5 }, { bonus: true }] }, { count: 2, parts: [{ gp: 10 }] }]);
+    const html = scratchFieldsHTML(LINES, { esc });
+    // The combination row: three parts, each named by its number in the line, each removable; Add a part under them.
+    expect(html).toContain(`aria-label="What part 2 of prize 1 is"`);
+    expect(html).toContain(`aria-label="Remove part 3 of prize 1"`);
+    expect(html).toContain(`aria-label="Add a part to prize 1"`);
+    // A row from before lines: one part, named as the prize, no part remove shown.
+    expect(html).toContain(`aria-label="What prize 3 is"`);
+    expect(html).toMatch(/class="lc-prize-part__remove" hidden aria-label="Remove part 1 of prize 3"/);
   });
 });
 

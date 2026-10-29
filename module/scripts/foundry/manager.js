@@ -1047,13 +1047,15 @@ export class CrateManager extends ApplicationV2 {
   /*
     The scratch ticket's editor (scratch.js): the price of a ticket, the
     layout (lucky numbers or match 3) and its grid, the bonus spot, the
-    roll's size and its prize list as rows of count x prize (coins, an
-    item at a rarity from the pools, or the bonus spot), with Add prize
-    and a remove on each; the readout beside it says the odds of the roll
-    as printed and what would keep a ticket from being sold; then the
-    pools the item prizes draw from. Saving keeps the roll's id: Print a
-    new roll on the Boxes tab starts a fresh one. Nothing is written
-    until Save.
+    roll's size, whether players see what is left in it, and its prize
+    list as rows of count x prize line (one or more parts: coins, an item
+    at a rarity from the pools, the bonus spot's gem), with Add prize, Add
+    a part and a remove on each; the readout beside it says the odds of
+    the roll as printed and what would keep a ticket from being sold, and
+    Save stays off while a line can't be shown on the card (scratch.js
+    scratchPreview refused); then the pools the item prizes draw from.
+    Saving keeps the roll's id: Print a new roll on the Boxes tab starts
+    a fresh one. Nothing is written until Save.
   */
   static async #editScratch(box, opts) {
     const { isNew } = opts;
@@ -1075,8 +1077,11 @@ export class CrateManager extends ApplicationV2 {
       onForm: form => {
         wireShelf(form, isNew);
         wirePrice(form);
+        const ok = form.querySelector('button[data-action="ok"]') ?? form.closest(".application, dialog")?.querySelector('button[data-action="ok"]');
         const paint = liveOdds(form, box, poolIds, (draft, live) => {
           const preview = scratchPreview(draft, live);
+          // Off while a line can't be shown, or while the price can't be read (wirePrice).
+          if (ok) ok.disabled = preview.refused || form.querySelector("input[data-price-field]")?.getAttribute("aria-invalid") === "true";
           return { html: scratchPreviewHTML(preview, esc), summary: scratchSummary(preview), held: preview.held };
         }, draftScratch);
         wireScratchEditor(form, { newId: () => foundry.utils.randomID(8), paint });
@@ -1097,6 +1102,7 @@ export class CrateManager extends ApplicationV2 {
       grid: draft.grid,
       bonus: draft.bonus,
       theme: draft.theme,
+      showLeft: draft.showLeft,
       // The roll as it is now (Print a new roll may have moved it on while
       // the dialog was open), with the GM's size and prizes.
       roll: { ...(fresh.roll ?? {}), size: draft.roll.size, prizes: draft.roll.prizes },

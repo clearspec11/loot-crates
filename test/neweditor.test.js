@@ -277,8 +277,57 @@ describe("New then Save", () => {
     await settle();
     const made = Object.values(store.getBoxes()).find(b => b.kind === "scratch");
     expect(made).toMatchObject({ kind: "scratch", name: "Fortune Ticket", price: 5, layout: "match3", grid: { cols: 3, rows: 2 }, pools: [{ id: "p", share: 1 }], roll: { id: 1, size: 50 } });
-    expect(made.roll.prizes).toEqual([{ count: 1, item: { rarity: "rare" } }, { count: 2, gp: 100 }, { count: 5, gp: 25 }, { count: 12, gp: 10 }, { count: 20, gp: 5 }, { count: 10, gp: 1 }]);
+    // Written as prize lines, each of one part here.
+    expect(made.roll.prizes).toEqual([{ count: 1, parts: [{ item: { rarity: "rare" } }] }, { count: 2, parts: [{ gp: 100 }] }, { count: 5, parts: [{ gp: 25 }] }, { count: 12, parts: [{ gp: 10 }] }, { count: 20, parts: [{ gp: 5 }] }, { count: 10, parts: [{ gp: 1 }] }]);
     expect(status(app).textContent).toBe("Fortune Ticket is on the shelf at 5 gp.");
+  });
+
+  it("addScratch: Add a part makes a prize line pay several parts at once, and the switch hides what is left from players", async () => {
+    const app = await manager();
+    const pending = act(app, "addScratch");
+    await settle(2);
+    const form = dialog.form;
+    const readout = () => form.querySelector(".lc-scratch-form__readout").textContent;
+    field("name").value = "Combo Ticket";
+    field("pool.p").checked = true;
+    // The first row, the Rare item: Add a part twice, coins of 25 then the gem.
+    const first = form.querySelectorAll(".lc-prize-row")[0];
+    const and = first.querySelector(".lc-prize-row__and");
+    expect(and.getAttribute("aria-label")).toBe("Add a part to prize 1");
+    expect(first.querySelector(".lc-prize-part__remove").hidden).toBe(true);
+    form.dispatchEvent({ type: "click", target: and });
+    let parts = first.querySelectorAll(".lc-prize-part");
+    expect(parts).toHaveLength(2);
+    expect(focused() === parts[1].querySelector(".lc-prize-row__what")).toBe(true);
+    expect(parts.map(p => p.querySelector(".lc-prize-row__what").getAttribute("aria-label"))).toEqual(["What part 1 of prize 1 is", "What part 2 of prize 1 is"]);
+    expect(parts.every(p => p.querySelector(".lc-prize-part__remove").hidden === false)).toBe(true);
+    parts[1].querySelector(".lc-prize-row__gp").value = "25";
+    form.dispatchEvent({ type: "click", target: and });
+    parts = first.querySelectorAll(".lc-prize-part");
+    const gem = parts[2].querySelector(".lc-prize-row__what");
+    gem.value = "bonus";
+    form.dispatchEvent({ type: "change", target: gem });
+    expect(parts[2].dataset.what).toBe("bonus");
+    form.dispatchEvent({ type: "input" });
+    expect(readout()).toBe("1 in 2.3 tickets wins, the top prize (Rare item + 25 gp + the gem (25 gp)) 1 in 100, all prizes 5 gp or more");
+    // A part's remove takes it, focus to the part before; the line keeps the rest.
+    form.dispatchEvent({ type: "click", target: parts[2].querySelector(".lc-prize-part__remove") });
+    expect(first.querySelectorAll(".lc-prize-part")).toHaveLength(2);
+    expect(focused() === parts[1].querySelector(".lc-prize-row__what")).toBe(true);
+    form.dispatchEvent({ type: "click", target: and });
+    const again = first.querySelectorAll(".lc-prize-part")[2].querySelector(".lc-prize-row__what");
+    again.value = "bonus";
+    form.dispatchEvent({ type: "change", target: again });
+    // Players don't see what is left.
+    expect(field("showLeft").checked).toBe(true);
+    field("showLeft").checked = false;
+    dialog.save();
+    await pending;
+    await settle();
+    const made = Object.values(store.getBoxes()).find(b => b.name === "Combo Ticket");
+    expect(made.showLeft).toBe(false);
+    expect(made.roll.prizes[0]).toEqual({ count: 1, parts: [{ item: { rarity: "rare" } }, { gp: 25 }, { bonus: true }] });
+    expect(made.roll.prizes).toHaveLength(6);
   });
 
   it("printRoll: a sold-out roll is printed again at once; one with tickets left asks first, naming them, and Cancel prints nothing", async () => {

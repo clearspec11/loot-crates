@@ -1615,16 +1615,32 @@
 /* The editor: the prize list as rows (how many, what, the gold for coins,
    remove), the readout over the duds and notes. */
 .loot-crates .lc-form .lc-prizes__rows { display: grid; gap: 6px; }
+/* A row is a prize line: its count, its parts (each a choice, a gold
+   field and a remove, on the header's Prize and Gold columns), Add a
+   part under them, and the row's remove. */
 .loot-crates .lc-form .lc-prize-row, .loot-crates .lc-form .lc-prizes__head {
-  display: grid; grid-template-columns: 4.6em minmax(8em, 1fr) 5.2em 30px; gap: 6px; align-items: center;
+  display: grid; grid-template-columns: 4.2em minmax(7em, 1fr) 4.8em 28px 30px; gap: 6px; align-items: start;
 }
 .loot-crates .lc-form .lc-prize-row { padding: 4px 0; border-top: 1px solid var(--lc-rule-soft); }
+.loot-crates .lc-form .lc-prize-row__parts { grid-column: 2 / 5; display: grid; gap: 4px; min-width: 0; }
+.loot-crates .lc-form .lc-prize-part { display: grid; grid-template-columns: minmax(7em, 1fr) 4.8em 28px; gap: 6px; align-items: center; }
+.loot-crates .lc-form .lc-prize-part:not([data-what="gp"]) .lc-prize-row__gp { visibility: hidden; }
+.loot-crates .lc-form .lc-prize-part .lc-prize-part__remove { grid-column: 3; min-width: 28px; padding: 0; }
+.loot-crates .lc-form .lc-prize-part .lc-prize-part__remove[hidden] { display: none; }
+/* Add a part is the row's quiet second action: gold words, no box, so six
+   rows of it don't outweigh the fields. */
+.loot-crates .lc-form .lc-prize-row__and { justify-self: start; width: auto; min-height: 0; padding: 0 4px; border: 0; background: none; box-shadow: none; font-size: 12px; line-height: 20px; color: var(--lc-gold-ink); }
+.loot-crates .lc-form .lc-prize-row__and:hover:not([aria-disabled="true"]) { text-decoration: underline; background: none; }
+.loot-crates .lc-form .lc-prize-row__and i { font-size: 11px; }
+.loot-crates .lc-form .lc-prize-row__and[aria-disabled="true"] { opacity: .55; cursor: default; }
+.loot-crates .lc-form .lc-prize-row > .lc-prize-row__remove { grid-column: 5; }
 .loot-crates .lc-form .lc-prizes__head { padding: 4px 0 2px; font-family: var(--lc-label); font-size: 11px; font-weight: 700; letter-spacing: .03em; color: var(--lc-gold-ink); }
 .loot-crates .lc-form .lc-prizes__rows:empty { display: none; }
 .loot-crates .lc-form .lc-prize-row input[type=number] { width: 100%; }
 .loot-crates .lc-form .lc-prize-row .lc-prize-row__remove { min-width: 30px; padding: 0; }
-.loot-crates .lc-form .lc-prize-row:not([data-what="gp"]) .lc-prize-row__gp { visibility: hidden; }
 .loot-crates .lc-form .lc-prizes__foot { margin-top: 6px; }
+.loot-crates .lc-form .lc-scratch-form__left { margin: 8px 0 6px; }
+.loot-crates .lc-form .lc-scratch-form__left .lc-form__hint { margin: 2px 0 0; }
 .loot-crates .lc-form .lc-prizes__add[aria-disabled="true"] { opacity: .55; cursor: default; }
 .loot-crates .lc-form .lc-scratch-form__bonus input[type=number], .loot-crates .lc-form .lc-scratch-form__layout input[type=number] { width: 4.4em; }
 .loot-crates .lc-scratch-form__readout { margin: 0; font-family: var(--lc-slab); font-size: 14px; font-weight: 700; line-height: 1.35; color: var(--lc-ink); }
