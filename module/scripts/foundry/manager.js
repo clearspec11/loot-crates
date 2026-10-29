@@ -124,7 +124,7 @@ import { onShelf, shelfRules, shelfFieldHTML, shelfNotice } from "../core/shelf.
 import { starterPresent, hasStarter, starterAgainText, starterNotice, starterCallHTML, STARTER_LABEL } from "../views/starter.js";
 import { addStarterSet } from "./starterbuild.js";
 import { poolsFieldset, poolPicks, syncShares, pityRow, stakeRow, betRangeRow, dragonRow, CARD_FIELDS, renumberCards, oddsModeFieldset, tableNoteHTML, nothingRow } from "../views/editorfields.js";
-import { t } from "../core/i18n.js";
+import { t, listAnd } from "../core/i18n.js";
 
 const { ApplicationV2, DialogV2 } = foundry.applications.api;
 const esc = s => foundry.utils.escapeHTML(String(s ?? ""));
@@ -1047,13 +1047,15 @@ export class CrateManager extends ApplicationV2 {
   /*
     The scratch ticket's editor (scratch.js): the price of a ticket, the
     layout (lucky numbers or match 3) and its grid, the bonus spot, the
-    roll's size and its prize list as rows of count x prize (coins, an
-    item at a rarity from the pools, or the bonus spot), with Add prize
-    and a remove on each; the readout beside it says the odds of the roll
-    as printed and what would keep a ticket from being sold; then the
-    pools the item prizes draw from. Saving keeps the roll's id: Print a
-    new roll on the Boxes tab starts a fresh one. Nothing is written
-    until Save.
+    roll's size, whether players see what is left in it, and its prize
+    list as rows of count x prize line (one or more parts: coins, an item
+    at a rarity from the pools, the bonus spot's gem), with Add prize, Add
+    a part and a remove on each; the readout beside it says the odds of
+    the roll as printed and what would keep a ticket from being sold, and
+    Save stays off while a line can't be shown on the card (scratch.js
+    scratchPreview refused); then the pools the item prizes draw from.
+    Saving keeps the roll's id: Print a new roll on the Boxes tab starts
+    a fresh one. Nothing is written until Save.
   */
   static async #editScratch(box, opts) {
     const { isNew } = opts;
@@ -1075,8 +1077,11 @@ export class CrateManager extends ApplicationV2 {
       onForm: form => {
         wireShelf(form, isNew);
         wirePrice(form);
+        const ok = form.querySelector('button[data-action="ok"]') ?? form.closest(".application, dialog")?.querySelector('button[data-action="ok"]');
         const paint = liveOdds(form, box, poolIds, (draft, live) => {
           const preview = scratchPreview(draft, live);
+          // Off while a line can't be shown, or while the price can't be read (wirePrice).
+          if (ok) ok.disabled = preview.refused || form.querySelector("input[data-price-field]")?.getAttribute("aria-invalid") === "true";
           return { html: scratchPreviewHTML(preview, esc), summary: scratchSummary(preview), held: preview.held };
         }, draftScratch);
         wireScratchEditor(form, { newId: () => foundry.utils.randomID(8), paint });
@@ -1097,6 +1102,7 @@ export class CrateManager extends ApplicationV2 {
       grid: draft.grid,
       bonus: draft.bonus,
       theme: draft.theme,
+      showLeft: draft.showLeft,
       // The roll as it is now (Print a new roll may have moved it on while
       // the dialog was open), with the GM's size and prizes.
       roll: { ...(fresh.roll ?? {}), size: draft.roll.size, prizes: draft.roll.prizes },
@@ -1320,7 +1326,11 @@ export class CrateManager extends ApplicationV2 {
       return target.focus?.();
     }
     if (plan.status !== "ready") return ui.notifications.warn(plan.message);
-    const { row, actor, item, box } = plan;
+    const { row, actor, box } = plan;
+    // Every item the play granted: the ones still there are removed, each
+    // one already gone is named (refund.js grantedItems).
+    const items = plan.items ?? (plan.item ? [plan.item] : []);
+    const gone = plan.gone ?? [];
     // A game that paid coins out gives the stake back less the payout; one
     // that paid more than the stake takes the difference back; a coin that
     // already came back (a well's coin return) moves nothing.
@@ -1328,8 +1338,11 @@ export class CrateManager extends ApplicationV2 {
     const money = coins > 0 ? t("LOOTCRATES.Refund.Return", { price: `<strong>${esc(formatPrice(coins / 100))}</strong>`, name: esc(actor.name) })
       : coins < 0 ? t("LOOTCRATES.Refund.TakeBack", { price: `<strong>${esc(formatPrice(-coins / 100))}</strong>`, name: esc(actor.name) })
       : t("LOOTCRATES.Refund.CoinBack", { name: esc(actor.name) });
-    const ask = item ? t("LOOTCRATES.Refund.AskRemove", { money, item: `<strong>${esc(item.name)}</strong>` })
-      : row.itemId ? t("LOOTCRATES.Refund.AskGone", { money, item: `<strong>${esc(row.name)}</strong>` }) : t("LOOTCRATES.Refund.Ask", { money });
+    const strong = names => listAnd(names.map(n => `<strong>${esc(n)}</strong>`));
+    const ask = items.length && gone.length ? t("LOOTCRATES.Refund.AskRemoveSomeGone", { money, item: strong(items.map(i => i.name)), gone: strong(gone) })
+      : items.length ? t("LOOTCRATES.Refund.AskRemove", { money, item: strong(items.map(i => i.name)) })
+      : gone.length > 1 ? t("LOOTCRATES.Refund.AskGoneSeveral", { money, items: strong(gone) })
+      : gone.length ? t("LOOTCRATES.Refund.AskGone", { money, item: strong(gone) }) : t("LOOTCRATES.Refund.Ask", { money });
     const stockBack = row.roundId ? null : stockAfterRefund(box);
     const stockLine = stockBack != null ? ` ${t("LOOTCRATES.Refund.StockBack", { name: esc(box.name), count: stockBack })}` : "";
     // A throw that gave no item still counted toward the pity (row.before).
@@ -1348,7 +1361,7 @@ export class CrateManager extends ApplicationV2 {
         : coins > 0 ? ["LOOTCRATES.Refund.DoneReturned", "LOOTCRATES.Refund.DoneReturnedRemoved"]
         : ["LOOTCRATES.Refund.DoneTaken", "LOOTCRATES.Refund.DoneTakenRemoved"];
       ui.notifications.info(t(keys[done.removedItem ? 1 : 0], { box: row.boxName, name: actor.name, price: formatPrice(Math.abs(coins) / 100), item: done.removedItem }));
-      await postRefundCard({ row, actor, removedItem: done.removedItem });
+      await postRefundCard({ row, actor, removedItem: done.removedItem, removedItems: done.removedItems, goneItems: done.goneItems });
     } else if (done.status === "already") {
       ui.notifications.info(t("LOOTCRATES.Refund.Already"));
     } else {

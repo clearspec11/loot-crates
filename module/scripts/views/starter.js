@@ -176,11 +176,11 @@ export const STARTER_GAMES = [
   { key: "auction", kind: "auction", name: "Hoard chest auction", price: 300, lot: "chest", auction: { increment: 25, reserve: 0, gavelSec: 20, house: { count: 1, budget: 600, chance: 25 } } },
   {
     key: "scratchie", kind: "scratch", name: "Market scratchie", price: 1, pools: [["potions", 1]],
-    scratch: { layout: "match3", grid: { cols: 3, rows: 2 }, bonus: { on: false, gp: 25 }, theme: "fey", roll: { id: 1, size: 50, prizes: [{ count: 1, item: { rarity: "uncommon" } }, { count: 4, gp: 5 }, { count: 10, gp: 1 }] } },
+    scratch: { layout: "match3", grid: { cols: 3, rows: 2 }, bonus: { on: false, gp: 25 }, theme: "fey", roll: { id: 1, size: 50, prizes: [{ count: 1, parts: [{ item: { rarity: "uncommon" } }] }, { count: 4, parts: [{ gp: 5 }] }, { count: 10, parts: [{ gp: 1 }] }] } },
   },
   {
     key: "fortune", kind: "scratch", name: "Fortune ticket", price: 10, pools: [["trinkets", 1]],
-    scratch: { layout: "lucky", grid: { cols: 4, rows: 3 }, bonus: { on: true, gp: 25 }, theme: "hoard", roll: { id: 1, size: 100, prizes: [{ count: 1, item: { rarity: "rare" } }, { count: 2, gp: 100 }, { count: 5, gp: 25 }, { count: 12, gp: 10 }, { count: 20, gp: 5 }, { count: 3, bonus: true }] } },
+    scratch: { layout: "lucky", grid: { cols: 4, rows: 3 }, bonus: { on: true, gp: 25 }, theme: "hoard", roll: { id: 1, size: 100, prizes: [{ count: 1, parts: [{ item: { rarity: "rare" } }] }, { count: 2, parts: [{ gp: 100 }] }, { count: 5, parts: [{ gp: 25 }] }, { count: 12, parts: [{ gp: 10 }] }, { count: 20, parts: [{ gp: 5 }] }, { count: 3, parts: [{ bonus: true }] }] } },
   },
 ];
 

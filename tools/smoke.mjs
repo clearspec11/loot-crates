@@ -189,6 +189,10 @@ const STATES = [
   // The Boxes tab with its row: the prizes left as pills, the roll in the
   // rules, Print a new roll on a line of its own over the icons.
   ["shop-scratch", "state=shop&scratch=1"],
+  // The same ticket with "Players see what is left in the roll" off, as a
+  // player's shop shows it: the price, the top prize and the guarantee, as
+  // a printed ticket says them, and no tickets left, prizes left or odds.
+  ["shop-scratch-hidden", "state=shop&scratch=hidden"],
   ["shop-scratch-soldout", "state=shop&scratch=soldout"],
   ["editor-scratch", "state=editor&scratch=1"],
   ["manager-boxes-scratch", "state=manager&tab=boxes&scratch=1"],
@@ -215,6 +219,11 @@ const STATES = [
   ["scratch-match3-won", "state=scratch&layout=match3&outcome=coins&buyer=1&duration=0"],
   ["scratch-spectator", "state=scratch&phase=sweep&duration=8000"],
   ["scratch-theme-fey", "state=scratch&outcome=coins&buyer=1&duration=0&ticket=fey"],
+  // A prize line that pays three ways at once (the Rare item, 25 gp and
+  // the gem): the item and the coins each lit on a panel of their own, the
+  // gem in the bonus spot, the ribbon naming the line in full, and the
+  // result naming the item with the coins going into the purse.
+  ["scratch-combo", "state=scratch&outcome=combo&buyer=1&duration=0"],
   ["manager-empty", "state=manager&empty=1"],
   ["manager-boxes-empty", "state=manager&tab=boxes&empty=1"],
   ["manager-boxes-starter", "state=manager&tab=boxes&starter=1"],
@@ -1494,7 +1503,12 @@ function scratchCardProblems(mode) {
   const text = card.innerText.replace(/\s+/g, " ");
   const buy = card.querySelector(".lc-box__buy");
   const rows = [...card.querySelectorAll(".lc-scratch__tier")];
-  if (mode === "left") {
+  if (mode === "hidden") {
+    for (const bit of ["Top prize: Rare item", "All prizes 5 gp or more"]) if (!text.includes(bit)) out.push(`the hidden scratch card doesn't say "${bit}"`);
+    for (const bit of ["tickets left", "tickets wins", "of 100", "of 2", "Players don't see"]) if (text.includes(bit)) out.push(`a player's hidden scratch card says "${bit}"`);
+    if (rows.length || card.querySelector(".lc-scratch__prizes")) out.push("a player's hidden scratch card lists the prizes left");
+    if (buy?.getAttribute("aria-disabled") === "true" || !/Buy a ticket for 5 gp$/.test(buy?.textContent.trim() ?? "")) out.push(`the hidden scratch Buy reads "${buy?.textContent.trim()}"`);
+  } else if (mode === "left") {
     for (const bit of ["57 of 100 tickets left", "Rare item", "1 of 1", "0 of 2", "14 of 20", "1 in 2 tickets wins, the top prize (Rare item) 1 in 57, all prizes 5 gp or more"]) if (!text.includes(bit)) out.push(`the scratch card doesn't say "${bit}"`);
     if (rows.length !== 6) out.push(`expected 6 prize rows, got ${rows.length}`);
     const gone = card.querySelectorAll(".lc-scratch__tier--gone s");
@@ -1552,6 +1566,27 @@ async function scratchEditorProblems() {
     added.querySelector(".lc-prize-row__remove").click();
     if (rows().length !== 6 || readout() !== "1 in 2.3 tickets wins, the top prize (Rare item) 1 in 100, all prizes 5 gp or more") out.push("removing the added row didn't put the readout back");
   }
+  // Add a part: the Rare item's row pays 25 gp too; the part's choice is
+  // focused, the line's parts are named by number, and its remove puts it back.
+  const first = rows()[0];
+  const and = first.querySelector(".lc-prize-row__and");
+  if (!and || and.textContent.trim() !== "Add a part" || and.getAttribute("aria-label") !== "Add a part to prize 1") out.push(`the first row's Add a part reads "${and?.textContent.trim()}"`);
+  else {
+    if (getComputedStyle(first.querySelector(".lc-prize-part__remove")).display !== "none") out.push("a line of one part shows a part remove");
+    and.click();
+    const parts = [...first.querySelectorAll(".lc-prize-part")];
+    if (parts.length !== 2 || document.activeElement !== parts[1].querySelector(".lc-prize-row__what")) out.push("Add a part didn't add a part with its choice focused");
+    else {
+      if (parts[1].querySelector(".lc-prize-row__what").getAttribute("aria-label") !== "What part 2 of prize 1 is") out.push(`the new part is named "${parts[1].querySelector(".lc-prize-row__what").getAttribute("aria-label")}"`);
+      parts[1].querySelector(".lc-prize-row__gp").value = "25";
+      parts[1].querySelector(".lc-prize-row__gp").dispatchEvent(new Event("input", { bubbles: true }));
+      if (readout() !== "1 in 2.3 tickets wins, the top prize (Rare item + 25 gp) 1 in 100, all prizes 5 gp or more") out.push(`after Add a part the readout reads "${readout()}"`);
+      parts[1].querySelector(".lc-prize-part__remove").click();
+      if (first.querySelectorAll(".lc-prize-part").length !== 1 || readout() !== "1 in 2.3 tickets wins, the top prize (Rare item) 1 in 100, all prizes 5 gp or more") out.push("removing the part didn't put the line back");
+    }
+  }
+  const left = form.querySelector('input[name="showLeft"]');
+  if (!left?.checked || !/Players see what is left in the roll/.test(left.closest("label")?.textContent ?? "")) out.push("no \"Players see what is left in the roll\" switch, on");
   const small = [...form.querySelectorAll("*")].filter(el => [...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim()) && parseFloat(getComputedStyle(el).fontSize) < 11);
   if (small.length) out.push(`${small.length} texts under 11px, e.g. "${small[0].textContent.trim().slice(0, 30)}"`);
   const fr = form.getBoundingClientRect();
@@ -1771,7 +1806,8 @@ function scratchPrintProblems(mode) {
   if (!ribbon) out.push("no ribbon");
   else if (!/^Top prize/.test(ribbonText) || !/in prizes in this roll$/.test(ribbonText)) out.push(`the ribbon reads "${ribbonText}"`);
   else if (getComputedStyle(ribbon).clipPath === "none") out.push("the ribbon has no chevron ends");
-  if (!match3 && ribbonText !== "Top prize Rare item 620 gp and 1 item in prizes in this roll") out.push(`the Fortune Ticket's ribbon reads "${ribbonText}"`);
+  const wantRibbon = mode === "combo" ? "Top prize Rare item + 25 gp + the gem (25 gp) 670 gp and 1 item in prizes in this roll" : "Top prize Rare item 620 gp and 1 item in prizes in this roll";
+  if (!match3 && ribbonText !== wantRibbon) out.push(`the Fortune Ticket's ribbon reads "${ribbonText}"`);
   const caps = [...ticket.querySelectorAll(".lc-scratch__cap")].map(words);
   const wantCaps = match3 ? ["Three the same win that prize", "Your numbers"] : ["Lucky numbers Match any of yours to win its prize", "Your numbers Wins add up"];
   if (caps.join("|") !== wantCaps.join("|")) out.push(`the caption strips read ${caps.join(", ")}`);
@@ -1915,7 +1951,7 @@ function scratchRevealProblems(mode) {
     if (tools) out.push("the table's view has the buyer's tools");
     if (ticket.dataset.buyer) out.push("the table's card takes the pointer");
   }
-  if (["won", "dud", "item", "match3"].includes(mode)) {
+  if (["won", "dud", "item", "match3", "combo"].includes(mode)) {
     if (!document.body.dataset.landed) out.push("the card never landed");
     if (open.length !== panels.length) out.push(`${open.length} of ${panels.length} panels open once landed`);
     if (ticket.classList.contains("lc-scratch__ticket--covered") || !ticket.classList.contains("lc-scratch__ticket--open")) out.push("the landed ticket is still covered");
@@ -1929,6 +1965,16 @@ function scratchRevealProblems(mode) {
     if (mode === "dud" && (lit.length || !/^A dud/.test(text))) out.push(`a dud lit ${lit.length} panels and reads "${text}"`);
     if (mode === "item" && (lit.length !== 1 || ![...lit[0].classList].some(c => c.startsWith("lc-rarity-")) || !shown(document.querySelector(".lc-reveal__open")))) out.push("the item's panel isn't lit with its rarity, or no Open item");
     if (mode === "match3" && (lit.length !== 3 || new Set(lit.map(p => p.querySelector("[data-symbol]")?.dataset.symbol)).size !== 1)) out.push(`a match 3 win lit ${lit.length} panels`);
+    if (mode === "combo") {
+      // Three parts, three lit: the item's panel with its rarity, the 25 gp panel, the gem's spot.
+      const item = lit.filter(p => [...p.classList].some(c => c.startsWith("lc-rarity-")));
+      const coins = lit.filter(p => p.dataset.panel !== "bonus" && !item.includes(p));
+      if (lit.length !== 3 || item.length !== 1 || coins.length !== 1 || !lit.some(p => p.dataset.panel === "bonus")) out.push(`a combination line lit ${lit.length} panels (${item.length} item, ${coins.length} coin)`);
+      if (coins[0] && coins[0].querySelector(".lc-scratch__prize")?.textContent.trim() !== "25 gp") out.push(`the combination's coin panel shows "${coins[0].querySelector(".lc-scratch__prize")?.textContent.trim()}"`);
+      if (item[0] && coins[0] && item[0].querySelector(".lc-scratch__num")?.textContent === coins[0].querySelector(".lc-scratch__num")?.textContent) out.push("the item and the coins share a lucky number");
+      if (!/50 gp into Tam Thornwick's purse/.test(text) || !/inventory/.test(text)) out.push(`a combination line reads "${text}"`);
+      if (!shown(document.querySelector(".lc-reveal__open"))) out.push("no Open item for the combination's item");
+    }
   }
   const small = [...document.querySelectorAll(".lc-scratch *, .lc-reveal__result *")].filter(el => el.childElementCount === 0 && el.textContent.trim() && parseFloat(getComputedStyle(el).fontSize) < 11);
   if (small.length) out.push(`${small.length} texts under 11px in the scratch, e.g. "${small[0].textContent.trim().slice(0, 30)}"`);
@@ -2177,7 +2223,7 @@ try {
         problems0.push(...await page.evaluate(shelfShopProblems, name === "shop-shelf"));
         problems0.push(...await page.evaluate(tableCardProblems, name === "shop-table"));
         problems0.push(...await page.evaluate(auctionCardProblems, name === "shop-auction"));
-        problems0.push(...await page.evaluate(scratchCardProblems, { "shop-scratch": "left", "shop-scratch-soldout": "soldout" }[name] ?? null));
+        problems0.push(...await page.evaluate(scratchCardProblems, { "shop-scratch": "left", "shop-scratch-hidden": "hidden", "shop-scratch-soldout": "soldout" }[name] ?? null));
       }
       else if (name.startsWith("welcome")) problems0.push(...await page.evaluate(welcomeProblems, { view: name === "welcome-news" ? "news" : "welcome", empty: name === "welcome-empty" }));
       else if (name === "box-limits") {
@@ -2194,7 +2240,7 @@ try {
       else if (name === "drop-preview") problems0.push(...await page.evaluate(dropPreviewProblems));
       else if (name === "landed-nothing") problems0.push(...await page.evaluate(nothingRevealProblems));
       else if (name.startsWith("scratch")) {
-        const mode = { "scratch-unscratched": "covered", "scratch-half": "half", "scratch-won": "won", "scratch-dud": "dud", "scratch-item": "item", "scratch-match3-won": "match3", "scratch-spectator": "spectator", "scratch-theme-fey": "fey" }[name];
+        const mode = { "scratch-unscratched": "covered", "scratch-half": "half", "scratch-won": "won", "scratch-dud": "dud", "scratch-item": "item", "scratch-match3-won": "match3", "scratch-spectator": "spectator", "scratch-theme-fey": "fey", "scratch-combo": "combo" }[name];
         problems0.push(...await page.evaluate(scratchPrintProblems, mode), ...await page.evaluate(scratchRevealProblems, mode));
       }
       else if (name.startsWith("linger")) {

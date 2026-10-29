@@ -175,7 +175,8 @@ const crateHead = r => t("LOOTCRATES.Reveal.Head", {
 const spinning = new Map();
 
 // Pulls whose result this client is still holding back (spinning here), by
-// requestId: { actorId, boxId, itemId, stateBefore }. Insertion order is the
+// requestId: { actorId, boxId, itemId, itemIds, stateBefore } (itemIds every
+// item the pull granted, itemId the first). Insertion order is the
 // order the reveals arrived, so the oldest hold for a box comes first.
 const held = new Map();
 // Items created by a pull whose reveal hasn't arrived yet: itemId -> timer.
@@ -193,7 +194,7 @@ const safeId = id => typeof id === "string" && /^[A-Za-z0-9]+$/.test(id);
 // The item ids hidden on this client right now.
 export function sealedItemIds() {
   const ids = new Set(preSealed.keys());
-  for (const h of held.values()) if (h.itemId) ids.add(h.itemId);
+  for (const h of held.values()) for (const id of h.itemIds) ids.add(id);
   return [...ids].filter(safeId);
 }
 
@@ -277,7 +278,7 @@ export function preSealItem(item) {
   const id = item?.id;
   if (!marks?.boxId || !safeId(id) || item.parent?.documentName !== "Actor") return;
   if (!(Math.abs(Date.now() - (Number(marks.at) || 0)) < FRESH_PULL_MS)) return;
-  if (preSealed.has(id) || [...held.values()].some(h => h.itemId === id)) return;
+  if (preSealed.has(id) || [...held.values()].some(h => h.itemIds.includes(id))) return;
   preSealed.set(id, setTimeout(() => {
     preSealed.delete(id);
     syncSealStyle();
@@ -289,11 +290,15 @@ function hold(reveal, landed) {
   const key = reveal.requestId ?? reveal.logId ?? reveal.itemId;
   if (!key || reveal.replay) return;
   const itemId = reveal.itemId ?? null;
-  if (itemId && preSealed.has(itemId)) {
-    clearTimeout(preSealed.get(itemId));
-    preSealed.delete(itemId);
+  // Every item the pull granted stays hidden until it lands (a reveal from
+  // before several items names only itemId).
+  const itemIds = [...new Set([...(Array.isArray(reveal.itemIds) ? reveal.itemIds : []), ...(itemId ? [itemId] : [])])];
+  for (const id of itemIds) {
+    if (!preSealed.has(id)) continue;
+    clearTimeout(preSealed.get(id));
+    preSealed.delete(id);
   }
-  const entry = { actorId: reveal.actorId ?? null, boxId: reveal.box?.id ?? null, itemId, stateBefore: reveal.stateBefore ?? null, table: !!reveal.table };
+  const entry = { actorId: reveal.actorId ?? null, boxId: reveal.box?.id ?? null, itemId, itemIds, stateBefore: reveal.stateBefore ?? null, table: !!reveal.table };
   held.set(key, entry);
   syncSealStyle();
   landed.then(() => {

@@ -61,7 +61,7 @@ import { SOCKET } from "../core/config.js";
 import { getBoxes, getPools, getLog, getRounds, saveRound, saveRounds, updateLogRows, appendLog, enqueueWrite, newId } from "./store.js";
 import { getKind, kindFor, PullError } from "../games/kinds.js";
 import { settle } from "../core/currency.js";
-import { rollRng, resolveSource } from "./pull.js";
+import { rollRng, resolveSource, createGrants } from "./pull.js";
 import { newRound, liveRoundOf, openStakesOf, stakesOf, staleStakes, staleAt, nextStaleAt, stakeReason, planResolve, coinsByActor, rowPatch, tableDue, orphanRounds, STATUS } from "../core/round.js";
 import { onShelf, shelfRoundRefusal } from "../core/shelf.js";
 // reveal.js imports socket.js, which imports this file; each side reaches
@@ -165,7 +165,10 @@ export async function closeStakes(lines, now = Date.now()) {
     if (l.action !== "settle" || !l.grant) continue;
     const actor = game.actors.get(l.row.actorId);
     try {
-      const [created] = actor ? await actor.createEmbeddedDocuments("Item", [l.grant]) : [];
+      // One creation through the core's grant (pull.js createGrants): a
+      // Plutonium item lands without the importer's prompt, and one
+      // another module's hook cancels counts as not added.
+      const [created] = actor ? await createGrants(actor, [l.grant]) : [];
       l.itemId = created?.id ?? null;
     } catch (err) {
       console.error(`loot-crates | granting ${l.result?.name ?? "the item"} to ${l.row.actorName} at the spin failed; ${l.refundOnFail ? "the stake is refunded" : "the stake is paid in coins only"}`, err);

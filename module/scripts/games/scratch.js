@@ -1,11 +1,15 @@
 /*
   Scratch tickets: the seventh kind of game (kinds.js, VIB-188), a printed
-  roll of tickets with a fixed prize list. The GM prints N tickets with so
-  many of each prize (coins, an item at a rarity from the pools, or the
-  bonus spot's coins), the rest duds; each Buy draws one ticket from what
-  is left of the roll, without replacement, and the shop shows the
-  tickets and prizes still in it. Sold out is a real state, and the GM's
-  Print a new roll starts the next.
+  roll of tickets with a fixed prize structure. The GM prints N tickets
+  with so many of each prize line, the rest duds. A line is what one
+  ticket wins, as real games print them: one part (coins, an item at a
+  rarity from the pools, or the bonus spot's gem) or several at once
+  ("Flame Tongue + 25 gp + the gem", two items). Each Buy draws one
+  ticket from what is left of the roll, without replacement, so a ticket
+  that pays twice is exactly as rare as the GM printed it; the shop shows
+  the tickets and prizes still in it, unless the GM hides what is left
+  from players (showsLeft). Sold out is a real state, and the GM's Print
+  a new roll starts the next.
 
   - Nothing is stored for the roll beyond its definition and its id: the
     tickets sold are the unrefunded log rows at this game for this roll
@@ -26,13 +30,18 @@
     the same, a number matches a lucky number only where a win was
     decided, the bonus mark shows only on a bonus ticket; on a match 3
     card three of a symbol appear only where a win was decided, and every
-    other symbol at most twice. cardWins reads a card's wins back from
-    its layout alone, and the tests hold it to the decided payout.
-  - One item per ticket at most (the core's one grant), resolved from the
-    pools at the prize's rarity the crate's way (crate.js drawItem,
-    grantData); coins through the core's one settle() (payoutCp). An item
-    prize the ticked pools can't give is left in the roll and not drawn
-    until they can, so a ticket never promises what it can't hand over.
+    other symbol at most twice. Every part of a line is laid out: each
+    coin and item part on a winning panel of its own (under a lucky
+    number of its own; a match 3 card's three of a kind of its own
+    symbol), the gem in the bonus spot. cardWins reads a card's wins back
+    from its layout alone, and the tests hold it to the decided line.
+  - Each item of a line is resolved from the pools at its rarity the
+    crate's way (crate.js drawItem, grantData) and granted in the core's
+    one creation (`grants`), logged on one row and refunded together;
+    coins and the gem through the core's one settle() (payoutCp). A line
+    whose items the ticked pools can't give is left in the roll and not
+    drawn until they can, so a ticket never promises what it can't hand
+    over.
   - The reveal is the scratch (mountScratch, the foil in views/foil.js):
     the buyer rubs the foil off with a coin, panel by panel, and everyone
     else watches the same coin scratch the card by itself; the card lands
@@ -54,9 +63,12 @@
 
   Record: { kind: "scratch", price, pools, weights, layout: "lucky" |
   "match3", grid: { cols, rows }, bonus: { on, gp } (lucky only), theme
-  (THEMES, "hoard" when unset), roll: { id, size, prizes: [{ count, gp }
-  | { count, item: { rarity } } | { count, bonus: true }] }, rules }. A
-  roll's duds are its size less its prizes.
+  (THEMES, "hoard" when unset), showLeft (false hides what is left from
+  players), roll: { id, size, prizes: [{ count, parts: [{ gp } | { item:
+  { rarity } } | { bonus: true }, ...] }] }, rules }; a prize row from
+  before lines ({ count, gp } | { count, item } | { count, bonus }) reads
+  as a line of its one part (rowParts). A roll's duds are its size less
+  its prizes.
 
   No Foundry globals: the core passes the log, the pools and the rng, so
   Vitest runs the ledger, the draw and the card as they are.
@@ -70,7 +82,7 @@ import { mountFoil } from "../views/foil.js";
 import { cardShell, shopReason, shortReason, draftBox } from "../views/boxcard.js";
 import { drawItem, grantData, crateLogRow } from "./crate.js";
 import { PullError, registerKind } from "./kinds.js";
-import { t, words } from "../core/i18n.js";
+import { t, words, listAnd } from "../core/i18n.js";
 
 export const LAYOUTS = ["lucky", "match3"];
 export const LAYOUT_LABEL = words({ lucky: "LOOTCRATES.Scratch.LayoutLucky", match3: "LOOTCRATES.Scratch.LayoutMatch3" });
@@ -104,7 +116,7 @@ export const themeOf = game => (THEMES.includes(game?.theme) ? game.theme : "hoa
 */
 export const SCRATCH_DEFAULTS = {
   price: 5, layout: "lucky", bonusGp: 25, size: 100, theme: "hoard",
-  prizes: [{ count: 1, item: { rarity: "rare" } }, { count: 2, gp: 100 }, { count: 5, gp: 25 }, { count: 12, gp: 10 }, { count: 20, gp: 5 }, { count: 3, bonus: true }],
+  prizes: [{ count: 1, parts: [{ item: { rarity: "rare" } }] }, { count: 2, parts: [{ gp: 100 }] }, { count: 5, parts: [{ gp: 25 }] }, { count: 12, parts: [{ gp: 10 }] }, { count: 20, parts: [{ gp: 5 }] }, { count: 3, parts: [{ bonus: true }] }],
 };
 
 const clampInt = (v, [lo, hi], fallback) => {
@@ -116,6 +128,11 @@ const toGp = v => Math.round(Math.max(0, Number(v) || 0) * 100) / 100;
 /* ---------- The record ---------- */
 
 export const layoutOf = game => (LAYOUTS.includes(game?.layout) ? game.layout : "lucky");
+
+// Whether players see what is left in the roll (the editor's switch, on
+// unless the GM turned it off): the tickets left, the prizes left and the
+// odds of what is left. The GM always sees them.
+export const showsLeft = game => game?.showLeft !== false;
 
 // The grid, inside its layout's limits, never fewer than three panels.
 export function gridOf(game) {
@@ -133,30 +150,105 @@ export function bonusOf(game) {
   return { on: layoutOf(game) === "lucky" && !!game?.bonus?.on && gp > 0, gp };
 }
 
+// A prize line pays at most this many parts (an item, coins, the gem...).
+export const MAX_PARTS = 4;
+
 /*
-  The prize list in one shape, merged by prize and best first (items by
-  rarity, then coins by amount, then the bonus spot): [{ key, kind: "item"
-  | "gp" | "bonus", rarity?, gp?, count }]. A row of 0 tickets, an item
-  at no rarity, coins of nothing, or a bonus with no bonus spot is left
-  out; past MAX_PRIZES rows the rest are too.
+  A prize row's parts as written: a row is a prize line, { count, parts:
+  [{ gp } | { item: { rarity } } | { bonus: true }, ...] }, and one ticket
+  of it wins every part. A row from before lines ({ count, gp } | { count,
+  item } | { count, bonus }) reads as a line of its one part, and is
+  written back as a line only when the GM saves the editor.
+*/
+export function rowParts(row) {
+  if (!row) return [];
+  if (Array.isArray(row.parts)) return row.parts.slice(0, MAX_PARTS);
+  if (row.bonus) return [{ bonus: true }];
+  if (row.item) return [{ item: row.item }];
+  return [{ gp: row.gp }];
+}
+
+// One part in the shape the roll reads, or null for a part of nothing
+// (coins of 0), or false for one the game can't pay (an item at no
+// rarity, the gem with no bonus spot), which keeps its whole line out.
+function partOf(p, bonus) {
+  if (p?.bonus) return bonus.on ? { key: "bonus", kind: "bonus", gp: bonus.gp } : false;
+  if (p?.item) return RARITIES.includes(p.item.rarity) ? { key: `item.${p.item.rarity}`, kind: "item", rarity: p.item.rarity } : false;
+  return toGp(p?.gp) > 0 ? { key: `gp.${toGp(p.gp)}`, kind: "gp", gp: toGp(p.gp) } : null;
+}
+
+// Best first: items by rarity, then coins by amount, then the gem.
+const partRank = p => (p.kind === "item" ? 2e9 + rarityRank(p.rarity) : p.kind === "gp" ? p.gp : -1);
+const byPart = (a, b) => partRank(b) - partRank(a);
+
+/*
+  A row as a prize line: { key, kind, count, parts, items, gp, rarity? },
+  or null when it pays nothing or can't be paid. `parts` are best first
+  and `key` names them ("gp.25", "item.rare+gp.25+bonus"), so a line of
+  one part keeps the key its tier always had and old log rows still
+  count. `kind` is the part's kind on a line of one part, else "line";
+  `items` the rarities of its items, `gp` its coins with the gem's added.
+*/
+export function lineOf(row, bonus) {
+  const count = Math.max(0, Math.floor(Number(row?.count) || 0));
+  if (!count) return null;
+  const read = rowParts(row).map(p => partOf(p, bonus));
+  if (read.includes(false)) return null;
+  const parts = read.filter(Boolean).sort(byPart);
+  if (!parts.length) return null;
+  const items = parts.filter(p => p.kind === "item").map(p => p.rarity);
+  const gp = Math.round(parts.filter(p => p.kind !== "item").reduce((n, p) => n + p.gp, 0) * 100) / 100;
+  return { key: parts.map(p => p.key).join("+"), kind: parts.length === 1 ? parts[0].kind : "line", count, parts, items, gp, ...(items.length ? { rarity: items[0] } : {}) };
+}
+
+// Lines best first: the best item, then more items, then the coins (a
+// line of the gem alone last, as the bonus tier always was).
+const lineRank = l => (l.kind === "bonus" ? -1 : l.gp);
+const byLine = (a, b) => (b.items.length ? 1 + rarityRank(b.items[0]) : 0) - (a.items.length ? 1 + rarityRank(a.items[0]) : 0) || b.items.length - a.items.length || lineRank(b) - lineRank(a);
+
+/*
+  Why the card can't show a line, or "". Lucky numbers put each coin and
+  item part on a panel of its own, so a line needs a panel a part (a 3 x 1
+  card has three, and a line can pay four). Match 3 makes each part a
+  three of a kind of its own symbol, so two parts the same can't be told
+  apart, and the card needs room for three panels a part.
+*/
+export function lineMisfit(line, game) {
+  const paying = line.parts.filter(p => p.kind !== "bonus");
+  const { cols, rows } = gridOf(game);
+  if (layoutOf(game) !== "match3") return paying.length > cols * rows ? "panels" : "";
+  if (new Set(paying.map(p => p.key)).size < paying.length) return "twins";
+  return paying.length * 3 > cols * rows ? "room" : "";
+}
+
+/*
+  The prize list as prize lines, merged by what they pay and best first:
+  [{ key, kind: "item" | "gp" | "bonus" | "line", count, parts, items,
+  gp, rarity? }]. A row of 0 tickets, a line paying nothing, an item at no
+  rarity, the gem with no bonus spot, or a line the card can't show
+  (lineMisfit) is left out; past MAX_PRIZES lines the rest are, and on a
+  match 3 card any line whose parts would need more symbols than the key
+  has room for (MAX_PRIZES).
 */
 export function prizesOf(game) {
   const bonus = bonusOf(game);
   const by = new Map();
-  for (const p of game?.roll?.prizes ?? []) {
-    const count = Math.max(0, Math.floor(Number(p?.count) || 0));
-    if (!count) continue;
-    let tier = null;
-    if (p.bonus) { if (bonus.on) tier = { key: "bonus", kind: "bonus", gp: bonus.gp }; }
-    else if (p.item) { if (RARITIES.includes(p.item.rarity)) tier = { key: `item.${p.item.rarity}`, kind: "item", rarity: p.item.rarity }; }
-    else if (toGp(p.gp) > 0) tier = { key: `gp.${toGp(p.gp)}`, kind: "gp", gp: toGp(p.gp) };
-    if (!tier) continue;
-    const had = by.get(tier.key);
-    if (had) had.count += count;
-    else by.set(tier.key, { ...tier, count });
+  for (const row of game?.roll?.prizes ?? []) {
+    const line = lineOf(row, bonus);
+    if (!line || lineMisfit(line, game)) continue;
+    const had = by.get(line.key);
+    if (had) had.count += line.count;
+    else by.set(line.key, line);
   }
-  const rank = p => (p.kind === "item" ? 2e9 + rarityRank(p.rarity) : p.kind === "gp" ? p.gp : -1);
-  return [...by.values()].sort((a, b) => rank(b) - rank(a)).slice(0, MAX_PRIZES);
+  const lines = [...by.values()].sort(byLine);
+  if (layoutOf(game) !== "match3") return lines.slice(0, MAX_PRIZES);
+  const keys = new Set();
+  return lines.filter(l => {
+    const more = l.parts.filter(p => !keys.has(p.key));
+    if (keys.size + more.length > MAX_PRIZES) return false;
+    for (const p of more) keys.add(p.key);
+    return true;
+  }).slice(0, MAX_PRIZES);
 }
 
 // The roll as printed: { id, size, prizes, duds }. Its size is never less
@@ -200,10 +292,10 @@ export function poolRarities(game, pools = {}) {
 
 /*
   The tickets one Buy can be drawn from, as weights by what is left of
-  each: every prize still in the roll that can be handed over (an item
-  prize only while the pools hold an item at its rarity), and the duds.
-  `blocked` counts the tickets left whose item prize the pools can't
-  give, which wait in the roll.
+  each: every prize line still in the roll that can be handed over (a
+  line with items only while the pools hold an item at each of their
+  rarities), and the duds. `blocked` counts the tickets left whose items
+  the pools can't give, which wait in the roll.
 */
 export function drawBag(game, pools, log = []) {
   const st = rollState(game, log);
@@ -212,7 +304,7 @@ export function drawBag(game, pools, log = []) {
   let blocked = 0;
   for (const p of st.prizes) {
     if (!p.left) continue;
-    if (p.kind === "item" && !held.has(p.rarity)) { blocked += p.left; continue; }
+    if (p.items.some(r => !held.has(r))) { blocked += p.left; continue; }
     bag.push({ ...p, weight: p.left });
   }
   if (st.duds.left) bag.push({ key: "dud", kind: "dud", weight: st.duds.left, left: st.duds.left });
@@ -230,13 +322,23 @@ export function rollReason(game, pools, log = []) {
 
 /* ---------- The words for a prize and the odds ---------- */
 
-// "25 gp", "Rare item", "Bonus, 25 gp".
-export function prizeText(p) {
+// One part's words: "25 gp", "Rare item", and the gem "Bonus, 25 gp" on
+// its own or "the gem (25 gp)" beside other parts.
+const partText = (p, alone = true) => {
   if (p.kind === "item") return t("LOOTCRATES.Scratch.ItemPrize", { rarity: RARITY_LABEL[p.rarity] ?? p.rarity });
-  if (p.kind === "bonus") return t("LOOTCRATES.Scratch.BonusPrize", { price: formatPrice(p.gp) });
+  if (p.kind === "bonus") return t(alone ? "LOOTCRATES.Scratch.BonusPrize" : "LOOTCRATES.Scratch.GemPart", { price: formatPrice(p.gp) });
   return formatPrice(p.gp);
+};
+
+// A prize line's words: "25 gp", "Rare item", "Bonus, 25 gp", or its
+// parts joined, "Rare item + 25 gp + the gem (25 gp)".
+export function prizeText(p) {
+  const parts = p.parts ?? [p];
+  return parts.map(q => partText(q, parts.length === 1)).join(t("LOOTCRATES.Scratch.Plus"));
 }
-const prizeSwatch = p => (p.kind === "item" ? p.rarity : "coin");
+// A line's colour: its best item's rarity, else the coin.
+const prizeSwatch = p => (p.items?.[0] ?? (p.kind === "item" ? p.rarity : "coin"));
+const hasItem = p => (p.items ? p.items.length > 0 : p.kind === "item");
 
 // "4.2", "100": one in how many, a decimal under ten.
 export function oneIn(total, n) {
@@ -248,16 +350,17 @@ export function oneIn(total, n) {
 /*
   The odds of a set of tickets, as the editor (the whole roll as printed)
   and the shop (what is left of it) say them: { tickets, wins, oneIn,
-  top, topOneIn, floor }. `top` is the best prize with any left (an item
-  over coins); `floor` the least coins any win pays, when every prize
-  pays at least the ticket's price (an item counts as more), else null.
+  top, topOneIn, floor }. A ticket wins one line, so `wins` counts lines.
+  `top` is the best line with any left (an item over coins); `floor` the
+  least coins any winning line pays in all, when every line pays at least
+  the ticket's price (a line with an item counts as more), else null.
 */
 export function rollOdds(prizes, tickets, price = 0) {
   const live = prizes.filter(p => (p.left ?? p.count) > 0);
   const n = p => p.left ?? p.count;
   const wins = live.reduce((s, p) => s + n(p), 0);
   const top = live[0] ?? null;
-  const coins = live.filter(p => p.kind !== "item").map(p => p.gp);
+  const coins = live.filter(p => !hasItem(p)).map(p => p.gp);
   const least = coins.length ? Math.min(...coins) : null;
   const floor = live.length && (least == null || least >= price) ? least : null;
   return { tickets, wins, oneIn: oneIn(tickets, wins), top, topOneIn: top ? oneIn(tickets, n(top)) : null, floor };
@@ -311,11 +414,25 @@ export function splitsOf(gp, coinValues) {
 const SPLIT_CHANCE = 0.4;
 
 /*
+  The parts a decided ticket won, whatever shape `win` came in: a prize
+  line { kind: "line", parts: [{ kind: "gp", gp } | { kind: "item",
+  rarity, name?, img? } | { kind: "bonus" }] }, or one prize as it always
+  was: { kind: "dud" } | { kind: "gp", gp } | { kind: "bonus" } | { kind:
+  "item", rarity, name, img }.
+*/
+export function winParts(win) {
+  if (!win || win.kind === "dud") return [];
+  if (win.kind === "line") return (win.parts ?? []).filter(p => ["gp", "item", "bonus"].includes(p?.kind));
+  return [win];
+}
+
+/*
   The card for a decided ticket, laid out with `rng` (the roll's, so it is
   the GM's alone and every client is sent the result). `win` is what the
-  ticket won: { kind: "dud" } | { kind: "gp", gp } | { kind: "bonus" } |
-  { kind: "item", rarity, name, img }. The roll's own prizes dress the
-  losing panels, so a dud looks like the tickets around it.
+  ticket won (winParts): every part of its line is laid out, each coin
+  and item part on a winning panel of its own, the gem in the bonus spot.
+  The roll's own prizes dress the losing panels, so a dud looks like the
+  tickets around it.
 
   Lucky numbers: { layout: "lucky", cols, rows, lucky: [n], panels: [{ n,
   prize: { gp } | { item: rarity, name?, img? } }], bonus: { gp, win } or
@@ -329,24 +446,30 @@ export function layCard(game, win, rng = Math.random) {
   const { cols, rows } = gridOf(game);
   const cells = cols * rows;
   const prizes = prizesOf(game);
-  const coinValues = prizes.filter(p => p.kind === "gp").map(p => p.gp);
-  const itemRarities = prizes.filter(p => p.kind === "item").map(p => p.rarity);
-  const card = layoutOf(game) === "match3" ? layMatch3(win, { cols, rows, cells, prizes, coinValues, rng }) : layLucky(game, win, { cols, rows, cells, coinValues, itemRarities, rng });
+  const parts = prizes.flatMap(l => l.parts);
+  const coinValues = [...new Set(parts.filter(p => p.kind === "gp").map(p => p.gp))];
+  const itemRarities = [...new Set(parts.filter(p => p.kind === "item").map(p => p.rarity))];
+  const won = winParts(win);
+  const card = layoutOf(game) === "match3" ? layMatch3(won, { cols, rows, cells, prizes, rng }) : layLucky(game, won, { cols, rows, cells, coinValues, itemRarities, rng });
   return { ...card, theme: themeOf(game), prizes: rollPrizes(game) };
 }
 
 /*
   What the ticket prints of its roll: { top: { gp } | { item: rarity } |
-  null (the best prize), gp (every coin prize and bonus in the roll, added
-  up), items (the item prizes), floor (the least any win pays, when every
-  prize pays the ticket's price or more, else null) }.
+  { parts: [{ gp } | { item: rarity } | { bonus: gp }] } (a line of
+  several) | null (the best prize), gp (every coin and gem the roll pays,
+  added up), items (the items it pays), floor (the least any win pays,
+  when every prize pays the ticket's price or more, else null) }.
 */
 export function rollPrizes(game) {
   const roll = rollOf(game);
   const top = roll.prizes[0] ?? null;
-  const gp = Math.round(roll.prizes.filter(p => p.kind !== "item").reduce((n, p) => n + p.gp * p.count, 0) * 100) / 100;
-  const items = roll.prizes.filter(p => p.kind === "item").reduce((n, p) => n + p.count, 0);
-  return { top: top ? (top.kind === "item" ? { item: top.rarity } : { gp: top.gp }) : null, gp, items, floor: rollOdds(roll.prizes, roll.size, Number(game?.price) || 0).floor };
+  const gp = Math.round(roll.prizes.reduce((n, p) => n + p.gp * p.count, 0) * 100) / 100;
+  const items = roll.prizes.reduce((n, p) => n + p.items.length * p.count, 0);
+  const printed = !top ? null
+    : top.parts.length > 1 ? { parts: top.parts.map(p => (p.kind === "item" ? { item: p.rarity } : p.kind === "bonus" ? { bonus: p.gp } : { gp: p.gp })) }
+    : top.kind === "item" ? { item: top.rarity } : { gp: top.gp };
+  return { top: printed, gp, items, floor: rollOdds(roll.prizes, roll.size, Number(game?.price) || 0).floor };
 }
 
 // "620 gp and 1 item in prizes in this roll": the ribbon's second line, or "" on a roll with none.
@@ -359,18 +482,22 @@ export function ribbonTotalText(prizes) {
   return "";
 }
 
-function layLucky(game, win, { cols, rows, cells, coinValues, itemRarities, rng }) {
+function layLucky(game, won, { cols, rows, cells, coinValues, itemRarities, rng }) {
   const nLucky = luckyCount(cells);
   const all = shuffle(Array.from({ length: numberRange(cells) }, (_, i) => i + 1), rng);
   const lucky = all.slice(0, nLucky);
   const others = all.slice(nLucky);
-  // The winning panels: the coins (one panel, or two that add up), or the item.
-  let wins = [];
-  if (win.kind === "gp") {
-    const splits = cells >= 2 ? splitsOf(win.gp, coinValues) : [];
-    wins = splits.length && rng() < SPLIT_CHANCE ? pickOne(splits, rng).map(gp => ({ gp })) : [{ gp: win.gp }];
-  } else if (win.kind === "item") wins = [{ item: win.rarity, name: win.name ?? "", img: win.img ?? "" }];
+  // The winning panels: a coin prize alone on one panel or split across
+  // two that add up; every other part on a panel of its own.
+  const shown = won.filter(p => p.kind !== "bonus");
+  let wins;
+  if (won.length === 1 && won[0].kind === "gp") {
+    const splits = cells >= 2 ? splitsOf(won[0].gp, coinValues) : [];
+    wins = splits.length && rng() < SPLIT_CHANCE ? pickOne(splits, rng).map(gp => ({ gp })) : [{ gp: won[0].gp }];
+  } else wins = shown.map(p => (p.kind === "gp" ? { gp: p.gp } : { item: p.rarity, name: p.name ?? "", img: p.img ?? "" }));
   const at = shuffle(Array.from({ length: cells }, (_, i) => i), rng).slice(0, wins.length);
+  // Each win under a lucky number of its own; only a line with more wins
+  // than the card has lucky numbers shares one.
   const luckyFor = shuffle(lucky, rng);
   // What a losing panel shows: one of the roll's own prizes, or, on a roll
   // with none, a few times the ticket's price.
@@ -380,27 +507,36 @@ function layLucky(game, win, { cols, rows, cells, coinValues, itemRarities, rng 
   let k = 0;
   const panels = Array.from({ length: cells }, (_, i) => {
     const w = at.indexOf(i);
-    if (w >= 0) return { n: luckyFor[w], prize: wins[w] };
+    if (w >= 0) return { n: luckyFor[w % luckyFor.length], prize: wins[w] };
     return { n: others[k++], prize: { ...pickOne(fill, rng) } };
   });
   const bonus = bonusOf(game);
-  return { layout: "lucky", cols, rows, lucky, panels, bonus: bonus.on ? { gp: bonus.gp, win: win.kind === "bonus" } : null };
+  return { layout: "lucky", cols, rows, lucky, panels, bonus: bonus.on ? { gp: bonus.gp, win: won.some(p => p.kind === "bonus") } : null };
 }
 
-function layMatch3(win, { cols, rows, cells, prizes, rng }) {
-  // Each prize a symbol, best first; the symbols left over pay nothing.
-  const paying = prizes.filter(p => p.kind !== "bonus");
-  const key = paying.map((p, i) => ({ symbol: SYMBOLS[i], prize: p.kind === "item" ? { item: p.rarity } : { gp: p.gp } }));
+// The match 3 card's key: every coin amount and item rarity the roll's
+// lines pay, best first, a symbol each; the symbols left over pay nothing.
+export function keyOf(prizes) {
+  const seen = new Map();
+  for (const line of prizes) for (const p of line.parts) if (p.kind !== "bonus" && !seen.has(p.key)) seen.set(p.key, p);
+  return [...seen.values()].sort(byPart).slice(0, MAX_PRIZES).map((p, i) => ({ symbol: SYMBOLS[i], prize: p.kind === "item" ? { item: p.rarity } : { gp: p.gp } }));
+}
+
+function layMatch3(won, { cols, rows, cells, prizes, rng }) {
+  const key = keyOf(prizes);
   const symbolFor = w => key.find(k => (w.kind === "item" ? k.prize.item === w.rarity : k.prize.gp === w.gp))?.symbol;
-  // The triples this ticket shows: one for its prize, or two coin prizes
-  // that add up to it on a card with room for both.
+  // The triples this ticket shows: one for each part of its line, or, for
+  // a coin prize alone, two coin prizes that add up to it on a card with
+  // room for both.
+  const paying = won.filter(p => p.kind === "gp" || p.kind === "item");
   let triples = [];
-  if (win.kind === "gp" || win.kind === "item") {
-    const own = symbolFor(win);
-    const splits = win.kind === "gp" && cells >= 6 ? splitsOf(win.gp, key.filter(k => k.prize.gp).map(k => k.prize.gp)).filter(([a, b]) => a !== b) : [];
+  if (paying.length === 1) {
+    const [w] = paying;
+    const own = symbolFor(w);
+    const splits = won.length === 1 && w.kind === "gp" && cells >= 6 ? splitsOf(w.gp, key.filter(k => k.prize.gp).map(k => k.prize.gp)).filter(([a, b]) => a !== b) : [];
     if (splits.length && rng() < SPLIT_CHANCE) triples = pickOne(splits, rng).map(gp => symbolFor({ kind: "gp", gp }));
     else if (own) triples = [own];
-  }
+  } else triples = paying.map(symbolFor).filter(Boolean);
   const panels = [];
   for (const s of triples) panels.push(s, s, s);
   // Every other symbol at most twice, drawn at random to fill the card.
@@ -411,11 +547,12 @@ function layMatch3(win, { cols, rows, cells, prizes, rng }) {
 
 /*
   What a card wins, read from its layout alone, as a player reads it:
-  { cp (the coins, summed), item (the winning item panel's prize, or
+  { cp (the coins, summed, the gem's included), items (each winning item
+  panel's prize, or each matched item symbol's), item (the first, or
   null), winners (the panels that win), bonus (the bonus spot won) }.
 */
 export function cardWins(card) {
-  const out = { cp: 0, item: null, winners: [], bonus: false };
+  const out = { cp: 0, items: [], item: null, winners: [], bonus: false };
   if (!card) return out;
   if (card.layout === "match3") {
     const counts = new Map();
@@ -423,19 +560,21 @@ export function cardWins(card) {
     for (const k of card.key ?? []) {
       if ((counts.get(k.symbol) ?? 0) < 3) continue;
       card.panels.forEach((p, i) => { if (p.symbol === k.symbol) out.winners.push(i); });
-      if (k.prize.item) out.item = { item: k.prize.item };
+      if (k.prize.item) out.items.push({ item: k.prize.item });
       else out.cp += Math.round(k.prize.gp * 100);
     }
     out.winners.sort((a, b) => a - b);
+    out.item = out.items[0] ?? null;
     return out;
   }
   card.panels.forEach((p, i) => {
     if (!card.lucky.includes(p.n)) return;
     out.winners.push(i);
-    if (p.prize.item) out.item = p.prize;
+    if (p.prize.item) out.items.push(p.prize);
     else out.cp += Math.round((p.prize.gp ?? 0) * 100);
   });
   if (card.bonus?.win) { out.bonus = true; out.cp += Math.round(card.bonus.gp * 100); }
+  out.item = out.items[0] ?? null;
   return out;
 }
 
@@ -444,34 +583,52 @@ export function cardWins(card) {
 /*
   The draw, on the GM, before anything is charged: the roll's state from
   the log as it stands inside the write queue, one ticket drawn from what
-  is left by weight (each prize as many times as it has tickets left, the
-  duds as many), then the card laid out for it. An item prize is drawn
-  from the pools at its rarity the crate's way (missing sources reported
-  and passed over); the ticket's coins are paid through the core's
-  settle(). The ticket's place in the roll and what was left before it
-  ride into the reveal and the row.
+  is left by weight (each prize line as many times as it has tickets
+  left, the duds as many), then the card laid out for it. A line wins
+  every one of its parts: each item drawn from the pools at its rarity
+  the crate's way (missing sources reported and passed over) and granted
+  in the core's one creation (`grants` when there are several), the coins
+  and the gem added up into the one settle(). The ticket's place in the
+  roll and what was left before it ride into the reveal and the row; a
+  game whose players don't see what is left (showsLeft) marks the ticket
+  so the reveal says no counts.
 */
 async function roll(ctx) {
   const { game, rng, log = [] } = ctx;
   const { state, bag } = drawBag(game, ctx.pools, log);
   if (state.soldOut) throw new PullError(t("LOOTCRATES.Scratch.SoldOutError", { name: game.name }));
   if (!bag.length) throw new PullError(t("LOOTCRATES.Scratch.WaitingError", { name: game.name }));
-  const tier = weightedPick(bag, p => p.weight, rng) ?? bag[0];
-  const ticket = { rollId: state.id, tier: tier.key, no: state.sold + 1, size: state.size };
+  const line = weightedPick(bag, p => p.weight, rng) ?? bag[0];
+  const ticket = { rollId: state.id, tier: line.key, no: state.sold + 1, size: state.size, ...(showsLeft(game) ? {} : { hidden: true }) };
   const common = { ticket, left: leftOf(state), grant: null };
-  if (tier.kind === "item") {
-    const only = { ...game, weights: Object.fromEntries(RARITIES.map(r => [r, r === tier.rarity ? 1 : 0])), rules: {} };
-    const { result, source, pools } = await drawItem({ ...ctx, game: only, state: {} });
-    if (!result || result.rarity !== tier.rarity) throw new PullError(t("LOOTCRATES.Scratch.WaitingError", { name: game.name }));
-    const granted = grantData(source, { ...result, pity: false }, game);
-    const card = layCard(game, { kind: "item", rarity: tier.rarity, name: granted.result.name, img: granted.result.img }, rng);
-    return { ...common, ...granted, outcome: "item", card, pools };
+  if (line.kind === "dud") return { ...common, outcome: "nothing", card: layCard(game, { kind: "dud" }, rng), result: null };
+  let pools = ctx.pools;
+  const granted = [];
+  for (const rarity of line.items) {
+    const only = { ...game, weights: Object.fromEntries(RARITIES.map(r => [r, r === rarity ? 1 : 0])), rules: {} };
+    const drawn = await drawItem({ ...ctx, pools, game: only, state: {} });
+    if (!drawn.result || drawn.result.rarity !== rarity) throw new PullError(t("LOOTCRATES.Scratch.WaitingError", { name: game.name }));
+    pools = drawn.pools;
+    granted.push(grantData(drawn.source, { ...drawn.result, pity: false }, game));
   }
-  if (tier.kind === "gp" || tier.kind === "bonus") {
-    const card = layCard(game, tier.kind === "bonus" ? { kind: "bonus" } : { kind: "gp", gp: tier.gp }, rng);
-    return { ...common, outcome: "coins", card, result: { name: formatPrice(tier.gp), outcome: "coins" }, payoutCp: Math.round(tier.gp * 100) };
+  // The line's parts as won, each item named for its panel.
+  let next = 0;
+  const parts = line.parts.map(p => {
+    if (p.kind !== "item") return p.kind === "gp" ? { kind: "gp", gp: p.gp } : { kind: "bonus" };
+    const r = granted[next++].result;
+    return { kind: "item", rarity: p.rarity, name: r.name, img: r.img };
+  });
+  const card = layCard(game, { kind: "line", parts }, rng);
+  const payoutCp = Math.round(line.gp * 100);
+  if (granted.length) {
+    const wonItems = granted.map(g => ({ uuid: g.result.uuid, name: g.result.name, img: g.result.img, rarity: g.result.rarity }));
+    return {
+      ...common, ...granted[0], outcome: "item", card, pools, wonItems,
+      ...(granted.length > 1 ? { grants: granted.map(g => g.grant) } : {}),
+      ...(payoutCp ? { payoutCp } : {}),
+    };
   }
-  return { ...common, outcome: "nothing", card: layCard(game, { kind: "dud" }, rng), result: null };
+  return { ...common, outcome: "coins", card, result: { name: formatPrice(line.gp), outcome: "coins" }, payoutCp };
 }
 
 // What the shop shows of a roll: its counts as they stood, by tier key.
@@ -479,11 +636,14 @@ const leftOf = st => ({ rollId: st.id, size: st.size, left: st.left, prizes: Obj
 
 // The row: the roll and the tier it took (what rollState counts), the
 // winning panels, and for an item the crate's columns so the one refund
-// finds and removes it. A dud is the core's miss (the Pull log folds them).
+// finds and removes it; a line of several items is named by them all
+// ("Flame Tongue and Lucky Coin"), so the Pull log says what was won.
+// A dud is the core's miss (the Pull log folds them).
 function logRow(ctx) {
   const { out } = ctx;
   const base = { rollId: out.ticket.rollId, tier: out.ticket.tier, ticketNo: out.ticket.no, winners: cardWins(out.card).winners };
-  if (out.outcome === "item") return { ...base, ...crateLogRow(ctx) };
+  const names = itemsWon(out).map(i => i.name);
+  if (out.outcome === "item") return { ...base, ...crateLogRow(ctx), ...(names.length > 1 ? { name: listAnd(names) } : {}) };
   if (out.outcome === "coins") return { ...base, outcome: "coins", swatch: "coin", name: out.result.name };
   return { ...base, outcome: "nothing", swatch: "none", name: t("LOOTCRATES.Scratch.Dud") };
 }
@@ -495,9 +655,16 @@ function revealExtra({ state = {}, out }) {
   return { card: out.card, ticket: out.ticket, stateBefore: { ...state, scratch: out.left } };
 }
 
-// "won 25 gp", "won Sling +2", "scratched a dud": the late-cancel line.
+// The items a ticket won, { name, rarity, img, uuid? } each: a line's
+// several, or the one item a ticket from before lines names.
+export const itemsWon = r => (Array.isArray(r?.wonItems) && r.wonItems.length ? r.wonItems : r?.outcome === "item" && r.result?.name ? [r.result] : []);
+
+// "won 25 gp", "won Sling +2", "won Flame Tongue and 25 gp", "scratched a
+// dud": the late-cancel line.
 function gotText(out) {
-  if (out?.outcome === "item" && out.result?.name) return t("LOOTCRATES.Scratch.GotItem", { name: out.result.name });
+  const names = itemsWon(out).map(i => i.name);
+  const cp = Math.max(0, Math.round(Number(out?.payoutCp) || 0));
+  if (out?.outcome === "item" && names.length) return t("LOOTCRATES.Scratch.GotItem", { name: listAnd([...names, ...(cp ? [formatPrice(cp / 100)] : [])]) });
   if (out?.outcome === "coins") return t("LOOTCRATES.Scratch.GotCoins", { price: formatPrice((out.payoutCp ?? 0) / 100) });
   return t("LOOTCRATES.Scratch.GotDud");
 }
@@ -505,7 +672,12 @@ function gotText(out) {
 /* ---------- The ticket as markup ---------- */
 
 const symbolText = s => SYMBOL_LABEL[s] ?? s;
-const panelPrizeText = prize => (prize?.item ? (prize.name || t("LOOTCRATES.Scratch.ItemPrize", { rarity: RARITY_LABEL[prize.item] ?? prize.item })) : formatPrice(prize?.gp ?? 0));
+// A panel's prize, or the ribbon's top prize: an item by name (or its
+// rarity), coins, or a line of several joined ("Rare item + 25 gp + the gem (25 gp)").
+const panelPrizeText = prize => {
+  if (Array.isArray(prize?.parts)) return prize.parts.map(p => (p.bonus != null ? t("LOOTCRATES.Scratch.GemPart", { price: formatPrice(p.bonus) }) : panelPrizeText(p))).join(t("LOOTCRATES.Scratch.Plus"));
+  return prize?.item ? (prize.name || t("LOOTCRATES.Scratch.ItemPrize", { rarity: RARITY_LABEL[prize.item] ?? prize.item })) : formatPrice(prize?.gp ?? 0);
+};
 
 // The band's emblems, the mockup's: a d20 on the left, a potion flask on
 // the right, gold with a dark outline (the flask's draught in the ticket's
@@ -533,7 +705,9 @@ export function ticketHTML(reveal, { esc = s => String(s ?? "") } = {}) {
   const won = cardWins(card);
   const win = new Set(won.winners);
   const prizes = card.prizes ?? (card.layout === "match3" && card.key?.[0] ? { top: card.key[0].prize, gp: 0, items: 0, floor: null } : null);
-  const rollLine = reveal.ticket ? t("LOOTCRATES.Scratch.TicketOf", { roll: rollName(reveal.ticket.rollId), no: reveal.ticket.no, size: reveal.ticket.size }) : "";
+  // A game whose players don't see what is left prints the roll's name
+  // alone: "ticket 44 of 100" would tell them.
+  const rollLine = !reveal.ticket ? "" : reveal.ticket.hidden ? rollName(reveal.ticket.rollId) : t("LOOTCRATES.Scratch.TicketOf", { roll: rollName(reveal.ticket.rollId), no: reveal.ticket.no, size: reveal.ticket.size });
   const grid = `style="--lc-cols:${Number(card.cols) || 1}"`;
   const cap = (a, b) => `<div class="lc-scratch__cap"><span>${a}</span>${b ? `<span>${b}</span>` : ""}</div>`;
   let body;
@@ -681,8 +855,12 @@ function snapshot(reveal) {
     box: { name: String(reveal.box?.name ?? ""), price: Number(reveal.box?.price) || 0 },
     actorName: String(reveal.actorName ?? ""),
     result: outcome === "item" && r ? { name: String(r.name ?? ""), rarity: RARITIES.includes(r.rarity) ? r.rarity : "common", img: String(r.img ?? "") } : outcome === "coins" ? { name: String(r?.name ?? ""), outcome: "coins" } : null,
+    ...(outcome === "item" && itemsWon(reveal).length > 1 ? { wonItems: cleanItems(itemsWon(reveal)) } : {}),
   };
 }
+
+// A line's items as a replay keeps them: name, rarity and art, no uuid.
+const cleanItems = list => (Array.isArray(list) ? list.slice(0, MAX_PARTS) : []).filter(i => i?.name).map(i => ({ name: String(i.name), rarity: RARITIES.includes(i.rarity) ? i.rarity : "common", img: String(i.img ?? "") }));
 
 // The reveal a replay plays from a stored snapshot (anything can be in a
 // message's flags), or null when it can't be played.
@@ -697,11 +875,12 @@ function fromSnapshot(s) {
     box: { name: String(s.box?.name ?? ""), price: Number(s.box?.price) || 0 },
     actorName: String(s.actorName ?? ""),
     result: outcome === "item" && r?.name ? { name: String(r.name), rarity: RARITIES.includes(r.rarity) ? r.rarity : "common", img: String(r.img ?? "") } : outcome === "coins" ? { name: String(r?.name ?? ""), outcome: "coins" } : null,
+    ...(outcome === "item" && cleanItems(s.wonItems).length > 1 ? { wonItems: cleanItems(s.wonItems) } : {}),
   };
 }
 
 const int = (v, lo, hi) => (Number.isInteger(v) && v >= lo && v <= hi ? v : null);
-const cleanTicket = tk => (tk && int(tk.rollId, 1, 1e9) && int(tk.no, 1, 1e9) && int(tk.size, 1, 1e9) ? { rollId: tk.rollId, no: tk.no, size: tk.size } : null);
+const cleanTicket = tk => (tk && int(tk.rollId, 1, 1e9) && int(tk.no, 1, 1e9) && int(tk.size, 1, 1e9) ? { rollId: tk.rollId, no: tk.no, size: tk.size, ...(tk.hidden ? { hidden: true } : {}) } : null);
 const cleanPrize = p => (p?.item ? (RARITIES.includes(p.item) ? { item: p.item, ...(p.name ? { name: String(p.name) } : {}), ...(p.img ? { img: String(p.img) } : {}) } : null) : Number.isFinite(p?.gp) && p.gp >= 0 ? { gp: p.gp } : null);
 
 /*
@@ -736,8 +915,15 @@ export function cleanCard(card) {
 
 // The ribbon's facts as rollPrizes makes them, each checked, a doubtful one emptied.
 const gpOf = v => (Number.isFinite(v) && v >= 0 ? v : 0);
+const cleanTop = top => {
+  if (Array.isArray(top?.parts)) {
+    const parts = top.parts.slice(0, MAX_PARTS).map(p => (p?.bonus != null ? (Number.isFinite(p.bonus) && p.bonus >= 0 ? { bonus: p.bonus } : null) : cleanTop(p)));
+    return parts.length && !parts.some(p => !p) ? { parts } : null;
+  }
+  return top?.item ? (RARITIES.includes(top.item) ? { item: top.item } : null) : Number.isFinite(top?.gp) && top.gp >= 0 ? { gp: top.gp } : null;
+};
 const cleanPrizes = p => ({
-  top: p?.top?.item ? (RARITIES.includes(p.top.item) ? { item: p.top.item } : null) : Number.isFinite(p?.top?.gp) && p.top.gp >= 0 ? { gp: p.top.gp } : null,
+  top: cleanTop(p?.top),
   gp: gpOf(p?.gp), items: Math.max(0, Math.floor(Number(p?.items) || 0)), floor: Number.isFinite(p?.floor) && p.floor >= 0 ? p.floor : null,
 });
 
@@ -754,9 +940,10 @@ function head(reveal, { esc }) {
 // A win is counted once: on lucky numbers each matching panel is one (a
 // split prize is two), on a match 3 card the three panels of a symbol are
 // one match, so three gems read "Won 5 gp", never "across 3 panels".
+// A line that pays an item too counts only its coin panels here.
 const coinsLine = reveal => {
   const card = reveal.card;
-  const winners = cardWins(card).winners;
+  const winners = cardWins(card).winners.filter(i => (card.layout === "match3" ? card.key?.find(k => k.symbol === card.panels[i]?.symbol)?.prize.gp != null : !card.panels[i]?.prize?.item));
   const price = formatPrice((reveal.payoutCp ?? 0) / 100);
   if (card?.layout === "match3") {
     const matches = new Set(winners.map(i => card.panels[i]?.symbol)).size;
@@ -764,20 +951,36 @@ const coinsLine = reveal => {
   }
   return winners.length > 1 ? t("LOOTCRATES.Scratch.WonAcross", { price, count: winners.length }) : t("LOOTCRATES.Scratch.Won", { price });
 };
-const leftAfter = reveal => (reveal.ticket ? ticketsLeftText(Math.max(0, reveal.ticket.size - reveal.ticket.no), reveal.ticket.size) : "");
+const leftAfter = reveal => (reveal.ticket && !reveal.ticket.hidden ? ticketsLeftText(Math.max(0, reveal.ticket.size - reveal.ticket.no), reveal.ticket.size) : "");
+const intoPurse = (reveal, esc) => t("LOOTCRATES.Scratch.IntoPurse", { price: esc(formatPrice((reveal.payoutCp ?? 0) / 100)), name: esc(reveal.actorName) });
 
 /*
   What the window says once the card is open, into its live region: an
-  item the crate's way; coins as a line with where they went; a dud as a
-  quiet line. The buyer and GMs see the gold left; everyone the tickets
-  left in the roll (the roll's state, not the purse's).
+  item the crate's way; a line of several, every item it won by name with
+  their rarities and the coins it paid into the purse; coins as a line
+  with where they went; a dud as a quiet line. The buyer and GMs see the
+  gold left; everyone the tickets left in the roll (the roll's state, not
+  the purse's), unless the GM hides what is left from players.
 */
 function result(reveal, { esc = String, canSee = false } = {}) {
   const outcome = outcomeOf(reveal);
   const left = leftAfter(reveal) ? [esc(leftAfter(reveal))] : [];
-  if (outcome === "item" && reveal.result?.rarity) return resultHTML(reveal, { esc, canSee, extra: left });
+  const items = itemsWon(reveal);
+  const coins = (reveal.payoutCp ?? 0) > 0;
+  if (outcome === "item" && reveal.result?.rarity && items.length <= 1 && !coins) return resultHTML(reveal, { esc, canSee, extra: left });
+  if (outcome === "item" && items.length) {
+    const where = [];
+    if (reveal.itemUuid) where.push(t("LOOTCRATES.Reveal.AddedTo", { name: esc(reveal.actorName) }));
+    if (coins) where.push(intoPurse(reveal, esc));
+    if (canSee && reveal.purse) where.push(`<span class="lc-reveal__gold">${t("LOOTCRATES.Reveal.GoldLeft", { gold: esc(formatGold(reveal.purse)) })}</span>`);
+    where.push(...left);
+    const rarities = [...new Set(items.map(i => RARITY_LABEL[i.rarity] ?? i.rarity))];
+    return `<div class="lc-reveal__name">${esc(listAnd(items.map(i => i.name)))}</div>`
+      + `<div class="lc-reveal__rarity">${esc(listAnd(rarities))}</div>`
+      + (where.length ? `<div class="lc-reveal__where">${where.join(" · ")}</div>` : "");
+  }
   const where = [];
-  if (outcome === "coins") where.push(t("LOOTCRATES.Scratch.IntoPurse", { price: esc(formatPrice((reveal.payoutCp ?? 0) / 100)), name: esc(reveal.actorName) }));
+  if (outcome === "coins") where.push(intoPurse(reveal, esc));
   if (canSee && reveal.purse) where.push(`<span class="lc-reveal__gold">${t("LOOTCRATES.Reveal.GoldLeft", { gold: esc(formatGold(reveal.purse)) })}</span>`);
   where.push(...left);
   return `<div class="lc-reveal__quiet">${esc(outcome === "coins" ? coinsLine(reveal) : t("LOOTCRATES.Scratch.DudLine"))}</div>`
@@ -818,14 +1021,19 @@ function again(reveal, { game = null, log = [], pools = {}, purse = {}, open = t
   Every ticket posts a card, a dud too (a dud is still a ticket, and the
   card turning up tells nobody anything). Its words sit in the block the
   core seals until this client's card is open: the small card with the
-  winning panels marked, and what it paid.
+  winning panels marked, and what it paid: a line of several names each
+  item it won, each linked to the copy on the sheet, and the coins.
 */
 function chatCard(reveal, { esc, itemLink }) {
   const outcome = outcomeOf(reveal);
   const r = reveal.result ?? {};
   const swatch = outcome === "item" ? r.rarity ?? "common" : outcome === "coins" ? "coin" : "none";
-  const name = outcome === "item" ? itemLink(reveal.itemUuid ?? r.uuid, r.name) : esc(outcome === "coins" ? formatPrice((reveal.payoutCp ?? 0) / 100) : t("LOOTCRATES.Scratch.Dud"));
-  const line = outcome === "item" ? esc(RARITY_LABEL[r.rarity] ?? r.rarity ?? "") : esc(outcome === "coins" ? coinsLine(reveal) : t("LOOTCRATES.Scratch.DudLine"));
+  const items = outcome === "item" ? itemsWon(reveal) : [];
+  const uuids = Array.isArray(reveal.itemUuids) ? reveal.itemUuids : [];
+  const coins = (reveal.payoutCp ?? 0) > 0 ? [esc(formatPrice(reveal.payoutCp / 100))] : [];
+  const name = items.length ? listAnd([...items.map((i, k) => itemLink(uuids[k] ?? (k === 0 ? reveal.itemUuid ?? r.uuid : i.uuid), i.name)), ...coins])
+    : esc(outcome === "coins" ? formatPrice((reveal.payoutCp ?? 0) / 100) : t("LOOTCRATES.Scratch.Dud"));
+  const line = items.length ? esc(listAnd([...new Set(items.map(i => RARITY_LABEL[i.rarity] ?? i.rarity ?? ""))])) : esc(outcome === "coins" ? coinsLine(reveal) : t("LOOTCRATES.Scratch.DudLine"));
   return `
     <div class="loot-crates lc-chat lc-rarity-${esc(swatch)}">
       <div class="lc-chat__head">${t("LOOTCRATES.Scratch.ChatHead", { actor: esc(reveal.actorName), box: `<strong>${esc(reveal.box.name)}</strong>`, price: `<span class="lc-chat__price">${esc(formatPrice(reveal.box.price))}</span>` })}</div>
@@ -877,18 +1085,38 @@ function scratchState(game, pools, ctx) {
   return rollReason(game, pools, ctx.log ?? []);
 }
 
+/*
+  The shop's card. While players see what is left (showsLeft), and always
+  for a GM: the tickets left, a row per prize line with what is left of
+  it, and the odds of what is left. With the switch off a player's card
+  says only what a printed ticket says, the top prize of the roll as
+  printed and its guarantee, and the GM's says what players don't see.
+*/
 function card(game, pools, ctx) {
   const esc = ctx.esc ?? (s => String(s ?? ""));
   const st = shownState(game, ctx);
   const odds = rollOdds(st.prizes, st.left, Number(game.price) || 0);
   const reason = scratchState(game, pools, ctx) || shortReason(game, ctx);
+  const label = t("LOOTCRATES.Scratch.BuyFor", { price: esc(formatPrice(game.price)) });
+  const soldOutLine = `<div class="lc-box__stock">${esc(t("LOOTCRATES.Scratch.RollSoldOut", { roll: rollName(st.id) }))}</div>`;
+  if (!showsLeft(game) && !ctx.isGM) {
+    const printed = rollPrizes(game);
+    const first = rollOf(game).prizes[0];
+    const middle = [
+      st.soldOut ? soldOutLine : "",
+      printed.top ? `<div class="lc-box__rule">${esc(t("LOOTCRATES.Scratch.TopPrizeLine", { prize: panelPrizeText(printed.top) }))}</div>` : "",
+      printed.floor != null ? `<div class="lc-box__rule">${esc(t("LOOTCRATES.Scratch.Guarantee", { price: formatPrice(printed.floor) }))}</div>` : "",
+    ].filter(Boolean);
+    return cardShell(game, ctx, { rarityClass: first?.items.length ? `lc-rarity-${first.items[0]}` : "lc-box--scratch", art: TICKET_ART, middle, reason, label });
+  }
   const top = odds.top;
   const middle = [
-    `<div class="lc-box__stock">${esc(st.soldOut ? t("LOOTCRATES.Scratch.RollSoldOut", { roll: rollName(st.id) }) : ticketsLeftText(st.left, st.size))}</div>`,
+    st.soldOut ? soldOutLine : `<div class="lc-box__stock">${esc(ticketsLeftText(st.left, st.size))}</div>`,
     prizeListHTML(st, esc),
     !st.soldOut ? `<div class="lc-box__rule">${esc(oddsText(odds))}</div>` : "",
+    showsLeft(game) ? "" : `<div class="lc-box__rule lc-scratch__unseen">${esc(t("LOOTCRATES.Scratch.LeftHidden"))}</div>`,
   ].filter(Boolean);
-  return cardShell(game, ctx, { rarityClass: top?.kind === "item" ? `lc-rarity-${top.rarity}` : "lc-box--scratch", art: TICKET_ART, middle, reason, label: t("LOOTCRATES.Scratch.BuyFor", { price: esc(formatPrice(game.price)) }) });
+  return cardShell(game, ctx, { rarityClass: top?.items?.length ? `lc-rarity-${top.items[0]}` : "lc-box--scratch", art: TICKET_ART, middle, reason, label });
 }
 
 const reason = (game, pools, ctx) => scratchState(game, pools, ctx) || shopReason(ctx) || shortReason(game, ctx);
@@ -904,6 +1132,7 @@ export function scratchRulesText(game, log = []) {
     t("LOOTCRATES.Scratch.RuleLayout", { layout: LAYOUT_LABEL[layoutOf(game)], cols, rows }),
     bonus.on ? t("LOOTCRATES.Scratch.RuleBonus", { price: formatPrice(bonus.gp) }) : "",
     st.soldOut ? t("LOOTCRATES.Scratch.RollSoldOut", { roll: rollName(st.id) }) : t("LOOTCRATES.Scratch.RuleRoll", { roll: rollName(st.id), left: ticketsLeftText(st.left, st.size) }),
+    showsLeft(game) ? "" : t("LOOTCRATES.Scratch.RuleHidden"),
   ].filter(Boolean).join(", ");
 }
 
@@ -922,23 +1151,51 @@ export const nextRoll = game => ({ ...(game.roll ?? {}), id: rollOf(game).id + 1
 
 /* ---------- The editor ---------- */
 
-// What a prize row's choice is: coins, an item at a rarity, or the bonus spot.
-const whatOf = p => (p.bonus ? "bonus" : p.item ? `item.${p.item.rarity}` : "gp");
+// What a part's choice is: coins, an item at a rarity, or the bonus spot.
+const whatOf = p => (p?.bonus ? "bonus" : p?.item ? `item.${p.item.rarity}` : "gp");
+const whatClass = what => (what.startsWith("item.") ? "item" : what);
+// A prize's fields, named by its number; on a line of several parts, by
+// the part's number in it too.
 export const PRIZE_FIELDS = {
   count: n => t("LOOTCRATES.Scratch.PrizeCount", { n }),
-  what: n => t("LOOTCRATES.Scratch.PrizeWhat", { n }),
-  gp: n => t("LOOTCRATES.Scratch.PrizeGp", { n }),
+  what: (n, k = 0) => (k ? t("LOOTCRATES.Scratch.PartWhat", { n, k }) : t("LOOTCRATES.Scratch.PrizeWhat", { n })),
+  gp: (n, k = 0) => (k ? t("LOOTCRATES.Scratch.PartGp", { n, k }) : t("LOOTCRATES.Scratch.PrizeGp", { n })),
 };
 
-// One row of the prize list: "[12] tickets win [Coins] [10] gp", remove.
-export function prizeRowHTML(p, n, id, esc = s => String(s ?? "")) {
-  const what = whatOf(p);
+/*
+  One part of prize n: [Coins | Rare item | The bonus spot] [10] gp, and
+  its remove while the line has more than one. `k` is the part's number
+  when the line has several, else 0.
+*/
+export function prizePartHTML(part, n, k, id, pid, esc = s => String(s ?? "")) {
+  const what = whatOf(part);
   const options = [["gp", t("LOOTCRATES.Scratch.WhatCoins")], ...RARITIES.map(r => [`item.${r}`, t("LOOTCRATES.Scratch.ItemPrize", { rarity: RARITY_LABEL[r] })]), ["bonus", t("LOOTCRATES.Scratch.WhatBonus")]];
-  return `<div class="lc-prize-row" data-prize="${esc(id)}" data-what="${esc(what.startsWith("item.") ? "item" : what)}">
+  return `<div class="lc-prize-part" data-part="${esc(pid)}" data-what="${esc(whatClass(what))}">
+        <input type="hidden" name="z.${esc(id)}.parts" value="${esc(pid)}">
+        <select class="lc-prize-row__what" name="z.${esc(id)}.${esc(pid)}.what" aria-label="${esc(PRIZE_FIELDS.what(n, k))}">${options.map(([v, l]) => `<option value="${v}"${v === what ? " selected" : ""}>${esc(l)}</option>`).join("")}</select>
+        <input class="lc-prize-row__gp" name="z.${esc(id)}.${esc(pid)}.gp" type="number" min="0" step="1" value="${esc(part?.gp ?? "")}" placeholder="${t("LOOTCRATES.Manager.GpPlaceholder")}" aria-label="${esc(PRIZE_FIELDS.gp(n, k))}">
+        <button type="button" class="lc-prize-part__remove"${k ? "" : " hidden"} aria-label="${esc(t("LOOTCRATES.Scratch.RemovePart", { n, k: k || 1 }))}" data-tooltip="${t("LOOTCRATES.Pools.Remove")}"><i class="fas fa-minus" inert></i></button>
+      </div>`;
+}
+
+/*
+  One row of the prize list, a prize line: "[1] tickets win [Rare item]
+  + [Coins] [25] gp + [The bonus spot]", Add a part under its parts (up to
+  MAX_PARTS), and its remove. `p` is the row as stored, a line or a row
+  from before lines.
+*/
+export function prizeRowHTML(p, n, id, esc = s => String(s ?? "")) {
+  const parts = rowParts(p);
+  const list = parts.length ? parts : [{ gp: "" }];
+  const many = list.length > 1;
+  const full = list.length >= MAX_PARTS;
+  return `<div class="lc-prize-row" data-prize="${esc(id)}">
       <input type="hidden" name="prizes" value="${esc(id)}">
-      <input class="lc-prize-row__count" name="z.${esc(id)}.count" type="number" min="0" step="1" value="${esc(p.count ?? 1)}" aria-label="${esc(PRIZE_FIELDS.count(n))}">
-      <select class="lc-prize-row__what" name="z.${esc(id)}.what" aria-label="${esc(PRIZE_FIELDS.what(n))}">${options.map(([v, l]) => `<option value="${v}"${v === what ? " selected" : ""}>${esc(l)}</option>`).join("")}</select>
-      <input class="lc-prize-row__gp" name="z.${esc(id)}.gp" type="number" min="0" step="1" value="${esc(p.gp ?? "")}" placeholder="${t("LOOTCRATES.Manager.GpPlaceholder")}" aria-label="${esc(PRIZE_FIELDS.gp(n))}">
+      <input class="lc-prize-row__count" name="z.${esc(id)}.count" type="number" min="0" step="1" value="${esc(p?.count ?? 1)}" aria-label="${esc(PRIZE_FIELDS.count(n))}">
+      <div class="lc-prize-row__parts">
+        ${list.map((part, i) => prizePartHTML(part, n, many ? i + 1 : 0, id, `${id}q${i}`, esc)).join("")}
+        <button type="button" class="lc-prize-row__and" aria-label="${esc(t("LOOTCRATES.Scratch.AddPartTo", { n }))}"${full ? ` aria-disabled="true" title="${esc(t("LOOTCRATES.Scratch.PartsFull", { max: MAX_PARTS }))}"` : ""}><i class="fas fa-plus" inert></i> ${t("LOOTCRATES.Scratch.AddPart")}</button>
+      </div>
       <button type="button" class="lc-prize-row__remove" aria-label="${esc(t("LOOTCRATES.Scratch.RemovePrize", { n }))}" data-tooltip="${t("LOOTCRATES.Pools.Remove")}"><i class="fas fa-xmark" inert></i></button>
     </div>`;
 }
@@ -972,6 +1229,8 @@ export function scratchFieldsHTML(game, { esc = s => String(s ?? ""), sold = 0 }
       <fieldset class="lc-prizes"><legend>${t("LOOTCRATES.Scratch.RollLegend")}</legend>
         <label class="lc-row">${t("LOOTCRATES.Scratch.RollSize", { input: `<input name="size" type="number" min="1" step="1" value="${esc(rollOf(game).size)}">` })}</label>
         ${sold ? `<p class="lc-form__hint">${t("LOOTCRATES.Scratch.LiveRoll", { roll: rollName(rollOf(game).id), sold })}</p>` : ""}
+        <div class="lc-scratch-form__left"><label class="lc-field"><input type="checkbox" name="showLeft"${showsLeft(game) ? " checked" : ""} aria-describedby="lc-left-${id}"> ${t("LOOTCRATES.Scratch.ShowLeftField")}</label>
+          <p class="lc-form__hint" id="lc-left-${id}">${t("LOOTCRATES.Scratch.ShowLeftHint")}</p></div>
         <div class="lc-prizes__head" aria-hidden="true"><span>${t("LOOTCRATES.Scratch.HeadTickets")}</span><span>${t("LOOTCRATES.Scratch.HeadPrize")}</span><span>${t("LOOTCRATES.Manager.GoldHead")}</span><span></span></div>
         <div class="lc-prizes__rows">${(roll.prizes ?? []).map((p, i) => prizeRowHTML(p, i + 1, `p${i}`, esc)).join("")}</div>
         <div class="lc-prizes__foot"><button type="button" class="lc-prizes__add"><i class="fas fa-plus"></i> ${t("LOOTCRATES.Scratch.AddPrize")}</button></div>
@@ -979,17 +1238,30 @@ export function scratchFieldsHTML(game, { esc = s => String(s ?? ""), sold = 0 }
       </fieldset>`;
 }
 
-// The editor's values as a record: the layout, the grid, the bonus spot, the theme and the roll.
+// A part as the editor's fields say it: the gem, an item at a rarity, or coins.
+const partFrom = (what, gp) => {
+  const w = String(what ?? "gp");
+  if (w === "bonus") return { bonus: true };
+  if (w.startsWith("item.")) return { item: { rarity: w.slice(5) } };
+  return { gp: toGp(gp) };
+};
+
+/*
+  The editor's values as a record: the layout, the grid, the bonus spot,
+  the theme, whether players see what is left, and the roll, its rows
+  written as prize lines ({ count, parts }). A row's parts are named by
+  z.<row>.parts; a form from before lines (z.<row>.what, z.<row>.gp)
+  reads as a line of one part.
+*/
 export function draftScratch(game, values, poolIds) {
   const layout = LAYOUTS.includes(values.layout) ? values.layout : layoutOf(game);
   const theme = THEMES.includes(values.theme) ? values.theme : themeOf(game);
   const ids = [].concat(values.prizes ?? []).map(String).filter(Boolean);
   const prizes = ids.map(id => {
-    const what = String(values[`z.${id}.what`] ?? "gp");
     const count = Math.max(0, Math.floor(Number(values[`z.${id}.count`]) || 0));
-    if (what === "bonus") return { count, bonus: true };
-    if (what.startsWith("item.")) return { count, item: { rarity: what.slice(5) } };
-    return { count, gp: toGp(values[`z.${id}.gp`]) };
+    const pids = [].concat(values[`z.${id}.parts`] ?? []).map(String).filter(Boolean).slice(0, MAX_PARTS);
+    const parts = pids.length ? pids.map(pid => partFrom(values[`z.${id}.${pid}.what`], values[`z.${id}.${pid}.gp`])) : [partFrom(values[`z.${id}.what`], values[`z.${id}.gp`])];
+    return { count, parts };
   });
   const on = v => v === true || v === "on";
   const grid = gridOf({ layout, grid: { cols: values.cols, rows: values.rows } });
@@ -999,6 +1271,7 @@ export function draftScratch(game, values, poolIds) {
     price: parsePrice(values.price) ?? Math.max(0, Number(values.price) || 0),
     layout, grid, theme,
     bonus: { on: on(values.bonusOn), gp: toGp(values.bonusGp) },
+    showLeft: "showLeft" in values ? on(values.showLeft) : showsLeft(game),
     roll: { ...(game.roll ?? {}), id: rollOf(game).id, size: Math.max(0, Math.floor(Number(values.size) || 0)), prizes },
   };
 }
@@ -1008,7 +1281,12 @@ export function draftScratch(game, values, poolIds) {
   ("1 in 2.3 tickets wins, the top prize (Rare item) 1 in 100, all prizes
   5 gp or more"), the duds, and what would stop a ticket being sold: more
   prizes than tickets (the roll grows to fit), an item prize with no pool
-  ticked or none at its rarity, a bonus prize with no bonus spot.
+  ticked or none at its rarity, a bonus prize with no bonus spot. A line
+  the card can't show (more winning parts than a lucky numbers card has
+  panels; a match 3 card: two parts the same, no room for a three of a
+  kind a part, more prizes than its key has symbols) is named
+  by its number and `refused` is true: the editor keeps Save off until it
+  fits, so no roll is printed that a card would show wrong.
 */
 export function scratchPreview(game, pools = {}) {
   const roll = rollOf(game);
@@ -1016,12 +1294,31 @@ export function scratchPreview(game, pools = {}) {
   const notes = [];
   const asked = Math.max(0, Math.floor(Number(game?.roll?.size) || 0));
   if (roll.size > asked) notes.push({ text: t("LOOTCRATES.Scratch.RollGrows", { count: roll.size, size: asked }) });
-  const items = roll.prizes.filter(p => p.kind === "item");
+  const rarities = [...new Set(roll.prizes.flatMap(p => p.items))];
   const held = poolRarities(game, pools);
-  if (items.length && !game.pools?.length) notes.push({ text: t("LOOTCRATES.Scratch.NoPool"), warn: true });
-  else for (const p of items) if (!held.has(p.rarity)) notes.push({ text: t("LOOTCRATES.Scratch.NoneAtRarity", { rarity: RARITY_LABEL[p.rarity] ?? p.rarity }), warn: true });
-  if ((game?.roll?.prizes ?? []).some(p => p?.bonus && Number(p.count) > 0) && !bonusOf(game).on) notes.push({ text: t("LOOTCRATES.Scratch.BonusOff"), warn: true });
-  return { roll, odds, notes, held };
+  if (rarities.length && !game.pools?.length) notes.push({ text: t("LOOTCRATES.Scratch.NoPool"), warn: true });
+  else for (const r of rarities) if (!held.has(r)) notes.push({ text: t("LOOTCRATES.Scratch.NoneAtRarity", { rarity: RARITY_LABEL[r] ?? r }), warn: true });
+  const rows = game?.roll?.prizes ?? [];
+  if (rows.some(p => Number(p?.count) > 0 && rowParts(p).some(q => q?.bonus)) && !bonusOf(game).on) notes.push({ text: t("LOOTCRATES.Scratch.BonusOff"), warn: true });
+  const misfits = [];
+  const match3 = layoutOf(game) === "match3";
+  const { cols, rows: down } = gridOf(game);
+  // The lines the roll prints; one that fits the card but isn't among
+  // them is past what the match 3 key has symbols for.
+  const kept = new Set(roll.prizes.map(l => l.key));
+  rows.forEach((row, i) => {
+    const line = lineOf(row, bonusOf(game));
+    if (!line) return;
+    const why = lineMisfit(line, game);
+    const count = line.parts.filter(p => p.kind !== "bonus").length;
+    if (why === "panels") misfits.push(t("LOOTCRATES.Scratch.LineNoPanels", { n: i + 1, count, cols, rows: down }));
+    else if (why === "twins") misfits.push(t("LOOTCRATES.Scratch.LineTwins", { n: i + 1 }));
+    else if (why === "room") misfits.push(t("LOOTCRATES.Scratch.LineNoRoom", { n: i + 1, count, cols, rows: down }));
+    else if (match3 && !kept.has(line.key)) misfits.push(t("LOOTCRATES.Scratch.KeyFull", { n: i + 1, max: MAX_PRIZES }));
+  });
+  for (const text of misfits) notes.push({ text, warn: true });
+  if (misfits.length) notes.push({ text: t("LOOTCRATES.Scratch.SaveOff"), warn: true });
+  return { roll, odds, notes, held, refused: misfits.length > 0 };
 }
 
 export function scratchPreviewHTML(preview, esc = s => String(s ?? "")) {
@@ -1036,33 +1333,73 @@ export const scratchSummary = preview => [oddsText(preview.odds), ...preview.not
   The editor's moving parts, plain DOM so the harness wires the same:
   Add prize puts a row at the foot (its count focused; no more than
   MAX_PRIZES, the button off with the reason), a row's remove takes it
-  (focus to the next row, else Add prize) and renumbers the rest, a row's
+  (focus to the next row, else Add prize) and renumbers the rest; a row's
+  Add a part puts another part on its line (its choice focused; no more
+  than MAX_PARTS), a part's remove takes it (focus to the part before,
+  else Add a part), and a line of one part has no part remove; a part's
   choice shows its gold field only for coins, and the layout shows the
   bonus spot for lucky numbers only and moves a grid still at the other
-  layout's default to its own. `newId()` names a new row; `paint()`
-  redraws the readout.
+  layout's default to its own. `newId()` names a new row or part;
+  `paint()` redraws the readout.
 */
 export function wireScratchEditor(form, { newId, paint = () => {} } = {}) {
   const rows = form.querySelector(".lc-prizes__rows");
   const add = form.querySelector(".lc-prizes__add");
   if (!rows || !add) return;
+  const off = (btn, full, why) => {
+    if (full) { btn.setAttribute("aria-disabled", "true"); btn.title = why; }
+    else { btn.removeAttribute("aria-disabled"); btn.removeAttribute("title"); }
+  };
   const renumber = () => {
     [...rows.children].forEach((row, i) => {
-      for (const key of Object.keys(PRIZE_FIELDS)) row.querySelector(`.lc-prize-row__${key}`)?.setAttribute("aria-label", PRIZE_FIELDS[key](i + 1));
-      row.querySelector(".lc-prize-row__remove")?.setAttribute("aria-label", t("LOOTCRATES.Scratch.RemovePrize", { n: i + 1 }));
+      const n = i + 1;
+      row.querySelector(".lc-prize-row__count")?.setAttribute("aria-label", PRIZE_FIELDS.count(n));
+      row.querySelector(".lc-prize-row__remove")?.setAttribute("aria-label", t("LOOTCRATES.Scratch.RemovePrize", { n }));
+      const parts = [...row.querySelectorAll(".lc-prize-part")];
+      parts.forEach((part, j) => {
+        const k = parts.length > 1 ? j + 1 : 0;
+        part.querySelector(".lc-prize-row__what")?.setAttribute("aria-label", PRIZE_FIELDS.what(n, k));
+        part.querySelector(".lc-prize-row__gp")?.setAttribute("aria-label", PRIZE_FIELDS.gp(n, k));
+        const remove = part.querySelector(".lc-prize-part__remove");
+        if (remove) { remove.hidden = !k; remove.setAttribute("aria-label", t("LOOTCRATES.Scratch.RemovePart", { n, k: k || 1 })); }
+      });
+      const and = row.querySelector(".lc-prize-row__and");
+      if (and) { and.setAttribute("aria-label", t("LOOTCRATES.Scratch.AddPartTo", { n })); off(and, parts.length >= MAX_PARTS, t("LOOTCRATES.Scratch.PartsFull", { max: MAX_PARTS })); }
     });
-    const full = rows.childElementCount >= MAX_PRIZES;
-    if (full) { add.setAttribute("aria-disabled", "true"); add.title = t("LOOTCRATES.Scratch.PrizesFull", { max: MAX_PRIZES }); }
-    else { add.removeAttribute("aria-disabled"); add.removeAttribute("title"); }
+    off(add, rows.childElementCount >= MAX_PRIZES, t("LOOTCRATES.Scratch.PrizesFull", { max: MAX_PRIZES }));
   };
   add.addEventListener("click", () => {
     if (rows.childElementCount >= MAX_PRIZES) return;
-    rows.insertAdjacentHTML("beforeend", prizeRowHTML({ count: 1, gp: "" }, rows.childElementCount + 1, newId()));
+    const id = newId();
+    rows.insertAdjacentHTML("beforeend", prizeRowHTML({ count: 1, parts: [{ gp: "" }] }, rows.childElementCount + 1, id));
     rows.lastElementChild.querySelector(".lc-prize-row__count")?.focus();
     renumber();
     paint();
   });
   form.addEventListener("click", e => {
+    const and = e.target.closest?.(".lc-prize-row__and");
+    if (and) {
+      const row = and.closest(".lc-prize-row");
+      if (!row || and.getAttribute("aria-disabled") === "true") return;
+      const n = [...rows.children].indexOf(row) + 1;
+      and.insertAdjacentHTML("beforebegin", prizePartHTML({ gp: "" }, n, 0, row.dataset.prize, newId()));
+      renumber();
+      and.previousElementSibling?.querySelector(".lc-prize-row__what")?.focus();
+      paint();
+      return;
+    }
+    const drop = e.target.closest?.(".lc-prize-part__remove");
+    if (drop) {
+      const part = drop.closest(".lc-prize-part");
+      const row = part?.closest(".lc-prize-row");
+      if (!part || !row || row.querySelectorAll(".lc-prize-part").length < 2) return;
+      const next = part.previousElementSibling ?? part.nextElementSibling;
+      part.remove();
+      renumber();
+      (next?.classList.contains("lc-prize-part") ? next.querySelector(".lc-prize-row__what") : row.querySelector(".lc-prize-row__and"))?.focus();
+      paint();
+      return;
+    }
     const btn = e.target.closest?.(".lc-prize-row__remove");
     if (!btn) return;
     const row = btn.closest(".lc-prize-row");
@@ -1074,7 +1411,7 @@ export function wireScratchEditor(form, { newId, paint = () => {} } = {}) {
   });
   form.addEventListener("change", e => {
     const what = e.target.closest?.(".lc-prize-row__what");
-    if (what) what.closest(".lc-prize-row").dataset.what = what.value.startsWith("item.") ? "item" : what.value;
+    if (what) what.closest(".lc-prize-part").dataset.what = whatClass(what.value);
     if (e.target.matches?.('input[name="layout"]')) {
       const layout = e.target.value;
       const bonus = form.querySelector(".lc-scratch-form__bonus");

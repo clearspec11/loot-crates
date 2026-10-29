@@ -8,6 +8,18 @@ The newest numbered entry's version is the one in `module/module.json`, and its 
 
 - Nothing yet.
 
+## 1.4.0
+
+Prizes like real tickets.
+
+- Scratch tickets pay like real ones. A prize on the list can now be a combination, printed so many times like any other prize: "1 ticket: a rare item + 25 gp + the gem", or "2 tickets: a rare item + an uncommon item". Press Add a part on a prize row to add coins, an item at a rarity or the bonus spot's gem to it. A ticket still wins one prize from the roll, so a ticket that pays twice is exactly as rare as you printed it, and the editor's odds still count tickets ("1 in 2.3 tickets wins"). "All prizes 5 gp or more" now counts what a whole prize pays. Prize lists you already have work as before, and are saved in the new form the next time you save the ticket.
+- Each part of a combination has its own winning panel on the card: the item under one matching number, the coins under another, the gem in the bonus spot (on match 3, a three of a kind each). A card never shows a win that wasn't decided. The editor turns Save off, and says why, for a prize the card can't show: more winning parts than a lucky numbers card has panels, or on match 3 two parts the same or more sets of three than the grid has room for.
+- The items of one ticket arrive together, are logged on one Pull log row and come back off the sheet together on a refund, which also takes back the coins. The reveal, the chat card (each item linked) and the ticket's ribbon name every part.
+- New per-ticket switch, Players see what is left in the roll, on by default. Turn it off and players' shop cards and the reveal no longer show the tickets left, the prizes left or the odds of what is left: they see the price, the top prize and the guarantee, as a printed ticket does. You still see everything in the manager and in your own shop, which says the counts are hidden from players.
+- Items imported with Plutonium now arrive from any game with no "Use Importer?" prompt. Before, that prompt appeared on the GM's screen mid-spin naming the prize, and the item could be lost while the player was still charged.
+- If another module stops a won item from being created, the play now counts as failed and the coins go back, instead of charging for nothing.
+- Known limit: with the switch off, the counts are hidden on screen but still sent to every player's browser, so a determined player could read them in the browser's developer tools.
+
 ## 1.3.0
 
 Scratch tickets.

@@ -40,6 +40,14 @@
                     result    what was won, { name, img, rarity?, ... }, or
                               null for nothing (a miss)
                     grant     Item data to create on the actor, or null
+                    grants    several items for one play, [itemData, ...]
+                              (a scratch line that pays two items): when
+                              present it stands in for `grant`. One play's
+                              items are one creation, one log row
+                              (itemIds) and one refund; the core marks
+                              each with Plutonium's opt-out (readyToGrant)
+                              and treats a creation that makes fewer than
+                              asked as a failed grant
                     payoutCp  coins paid out, in copper (none when absent);
                               negative for coins the game takes beyond the
                               stake (the deck's bane), settled in the same
@@ -51,8 +59,8 @@
                   Throws a PullError for anything the buyer should be told.
     logRow(ctx)   the fields this kind adds to the pull log row, from
                   { game, state, out }; the core writes id, kind, boxId,
-                  boxName, actorId, actorName, userId, itemId, price and
-                  payoutCp.
+                  boxName, actorId, actorName, userId, itemId (the
+                  first item), itemIds (every item), price and payoutCp.
     revealExtra(ctx) the fields this kind adds to the reveal broadcast,
                   from the same ctx (the crate: its odds ribbon and the
                   buyer's state before the pull, which the shop holds).
@@ -214,6 +222,29 @@ export function gotText(kind, out) {
 }
 
 export const kindIds = () => [...kinds.keys()];
+
+// The Item data a roll asks the core to create: `grants` when the kind
+// gave several, else its one `grant`, else none.
+export function grantsOf(out) {
+  if (Array.isArray(out?.grants) && out.grants.length) return out.grants.filter(Boolean);
+  return out?.grant ? [out.grant] : [];
+}
+
+/*
+  Item data as the core creates it, whatever kind built it. An item
+  Plutonium imported carries flags.plutonium.propDroppable, and Plutonium's
+  preCreateItem hook cancels its creation on an actor and opens "Use
+  Importer?" naming it, unless it is marked isStandardDragDrop, which is
+  what Plutonium itself sets when it creates the item on its second pass.
+  Marked here, the grant lands as an ordinary item with its other Plutonium
+  flags kept, and no prompt names the prize before the seal lifts. A copy:
+  the kind's data is left as it was.
+*/
+export function readyToGrant(data) {
+  const plutonium = data?.flags?.plutonium;
+  if (!plutonium?.propDroppable || plutonium.isStandardDragDrop) return data;
+  return { ...data, flags: { ...data.flags, plutonium: { ...plutonium, isStandardDragDrop: true } } };
+}
 
 // A kind's noun (its `noun`: "crate", "wheel") in the module's words, for
 // a sentence about it ("The wheel jammed."); one the module doesn't know is said as is.

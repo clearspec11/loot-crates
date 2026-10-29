@@ -164,7 +164,8 @@ function formOf(game, poolIds) {
 // bonus spot, the roll's size and a row per prize (scratch.js scratchFieldsHTML).
 function scratchForm(game, v) {
   const ids = game.roll.prizes.map((_, i) => `p${i}`);
-  const rows = Object.fromEntries(game.roll.prizes.flatMap((p, i) => [[`z.p${i}.count`, String(p.count)], [`z.p${i}.what`, p.bonus ? "bonus" : p.item ? `item.${p.item.rarity}` : "gp"], [`z.p${i}.gp`, p.gp != null ? String(p.gp) : ""]]));
+  // Each row a prize line: its count, then its parts by id, as the editor names them.
+  const rows = Object.fromEntries(game.roll.prizes.flatMap((p, i) => [[`z.p${i}.count`, String(p.count)], [`z.p${i}.parts`, p.parts.map((_, j) => `q${j}`)], ...p.parts.flatMap((q, j) => [[`z.p${i}.q${j}.what`, q.bonus ? "bonus" : q.item ? `item.${q.item.rarity}` : "gp"], [`z.p${i}.q${j}.gp`, q.gp != null ? String(q.gp) : ""]])]));
   return { ...v, layout: game.layout, cols: String(game.grid.cols), rows: String(game.grid.rows), bonusOn: game.bonus.on, bonusGp: String(game.bonus.gp), size: String(game.roll.size), prizes: ids, ...rows };
 }
 

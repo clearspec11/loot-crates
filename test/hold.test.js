@@ -321,6 +321,18 @@ describe("the item on a sheet while its crate spins here", () => {
     expect(isSealedItem("item1")).toBe(false);
   });
 
+  it("holds every item a pull granted (itemIds), pre-sealed or not, to the landing", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    preSealItem(created("item1"));
+    preSealItem(created("item2"));
+    const app = await showReveal(pull({ itemId: "item1", itemIds: ["item1", "item2", "item3"] }));
+    vi.advanceTimersByTime(PRESEAL_MS * 2);
+    expect(sealedItemIds().sort()).toEqual(["item1", "item2", "item3"]);
+    expect(hiddenRows(sheet())).toEqual(["item1"]);
+    await land(app);
+    expect(sealedItemIds()).toEqual([]);
+  });
+
   it("shows a pre-sealed item after PRESEAL_MS when no reveal claims it", () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
     preSealItem(created("lone1"));

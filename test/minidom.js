@@ -81,6 +81,8 @@ class Element extends Node {
     return !event.defaultPrevented;
   }
   get tagName() { return this.nodeName; }
+  // A control's name, as readForm reads every checkbox by it (ticked or not).
+  get name() { return this.getAttribute("name") ?? ""; }
   get id() { return this.getAttribute("id") ?? ""; }
   set id(v) { this.setAttribute("id", v); }
   get children() { return this.childNodes.filter(n => n.nodeType === 1); }
@@ -94,8 +96,10 @@ class Element extends Node {
   get previousElementSibling() { const sibs = this.parentNode?.children ?? []; const i = sibs.indexOf(this); return i > 0 ? sibs[i - 1] : null; }
   // A <template>'s content is its own children here (manager.js htmlNode).
   get content() { return this.nodeName === "TEMPLATE" ? this : undefined; }
-  // "beforeend" only: what the manager's Show more uses.
+  // "beforeend" (the manager's Show more) and "beforebegin" (the scratch
+  // editor's Add a part, which puts a part before its own button).
   insertAdjacentHTML(where, html) {
+    if (where === "beforebegin") { for (const n of parse(this.ownerDocument, html)) this.parentNode.insertBefore(n, this); return; }
     if (where !== "beforeend") throw new Error(`minidom: insertAdjacentHTML ${where} not supported`);
     this.append(...parse(this.ownerDocument, html));
   }

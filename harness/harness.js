@@ -93,15 +93,18 @@
   with their real chances, "and 3 more" and "Nothing 25%")
   ?scratch=1 (shop: the Fortune Ticket leads the shelf, 43 of its 100
   tickets sold, both 100 gp prizes gone; scratch.js) | soldout (the Market
-  Scratchie's roll 2 sold out: Sold out under an off Buy); on the Boxes
+  Scratchie's roll 2 sold out: Sold out under an off Buy) | hidden (the
+  Fortune Ticket with what is left hidden from players; &gm=1 the GM's
+  card, which still shows it); on the Boxes
   tab, the Fortune Ticket's row with Print a new roll; in the editor
   (state=editor&scratch=1), the scratch ticket's editor with its prize
   list and the live readout
   "scratch" is a scratch ticket's reveal (scratch.js mountScratch, the foil
   in foil.js), a real scratchable ticket: the Fortune Ticket (lucky
   numbers, 4 x 3 and the bonus spot) or with ?layout=match3 the Market
-  Scratchie; ?outcome=coins | nothing | item | bonus (coins by default,
-  25 gp, or 5 gp on match 3; the card laid out by the seed). buyer=1 is
+  Scratchie; ?outcome=coins | nothing | item | bonus | combo (coins by
+  default, 25 gp, or 5 gp on match 3; combo a prize line paying the Rare
+  item, 25 gp and the gem at once; the card laid out by the seed). buyer=1 is
   the buyer's card, scratched by hand with the mouse (or the keys, or
   Reveal all); without it the card scratches itself as the table sees
   it. ?phase=covered: the buyer's card untouched, the coin over the
@@ -196,6 +199,10 @@ if (q.get("auction") === "1") GAMES = [AUCTION, ...GAMES];
 // With ?scratch=1 the Fortune Ticket leads the shelf, 57 of its 100
 // tickets left; with ?scratch=soldout the Market Scratchie, its roll gone.
 if (q.get("scratch") === "1") GAMES = [SCRATCH, ...GAMES];
+// With ?scratch=hidden the same ticket with "Players see what is left in
+// the roll" off: a player's card says only what a printed ticket says
+// (&gm=1 is the GM's, which still shows everything).
+if (q.get("scratch") === "hidden") GAMES = [{ ...SCRATCH, showLeft: false }, ...GAMES];
 if (q.get("scratch") === "soldout") GAMES = [SCRATCH_MATCH3, ...GAMES];
 // Every pool the shop's games draw from, the table crate's included.
 const SHOP_POOLS = { ...POOLS, [TABLE_POOL.id]: TABLE_POOL };
@@ -216,7 +223,7 @@ document.getElementById("title").textContent = appTitle;
 const CRATE_ICON = `<svg class="lc-box__icon" viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M3 8.5 12 4l9 4.5v8L12 21l-9-4.5z"/><path d="M3 8.5 12 13l9-4.5M12 13v8"/></svg>`;
 
 const nav = document.getElementById("nav");
-for (const [label, query] of [["shop", "state=shop"], ["spin", "state=spin"], ["landed", "state=landed"], ["landed, buyer", "state=landed&buyer=1"], ["missed", "state=landed&buyer=1&watched=0"], ["replay", "state=replay"], ["well", "state=well&buyer=1"], ["well, coin", "state=well&outcome=coin&buyer=1"], ["well, item", "state=well&outcome=item&buyer=1"], ["dice", "state=dice&buyer=1"], ["dice, lost", "state=dice&outcome=lose&buyer=1"], ["dice, prize", "state=dice&outcome=prize&buyer=1"], ["deck", "state=deck&buyer=1"], ["deck, item", "state=deck&outcome=item&buyer=1"], ["deck, bane", "state=deck&outcome=loss&buyer=1"], ["deck, effect", "state=deck&outcome=effect&buyer=1"], ["table", "state=table"], ["table, GM", "state=table&phase=waiting&gm=1"], ["wheel", "state=table&phase=spinning"], ["wheel, landed", "state=table&phase=landed&duration=0"], ["manager", "state=manager"], ["empty manager", "state=manager&empty=1"], ["boxes", "state=manager&tab=boxes&added=1"], ["starter", "state=manager&tab=boxes&starter=1"], ["pull log", "state=manager&tab=log"], ["box editor", "state=editor"], ["table crate", "state=shop&table=1"], ["table editor", "state=editor&odds=weight"], ["table drop", "state=preview"], ["nothing", "state=landed&nothing=1&buyer=1"], ["auction", "state=auction&phase=open"], ["auction, bids", "state=auction&phase=bid"], ["auction, GM", "state=auction&phase=bid&gm=1"], ["auction, hammer", "state=auction&phase=hammer&duration=0"], ["auction, crate", "state=auction&phase=hammer&lot=crate"], ["auction card", "state=shop&auction=1"], ["scratch card", "state=shop&scratch=1"], ["sold out", "state=shop&scratch=soldout"], ["scratch editor", "state=editor&scratch=1"], ["scratch", "state=scratch&buyer=1&phase=covered"], ["scratch, half", "state=scratch&buyer=1&phase=half"], ["scratch, watched", "state=scratch&phase=sweep"], ["scratch, match 3", "state=scratch&layout=match3&buyer=1"], ["scratch, fey", "state=scratch&outcome=coins&buyer=1&duration=0&ticket=fey"], ["welcome", "state=welcome"], ["welcome, new world", "state=welcome&empty=1"], ["what's new", "state=welcome&view=news"]]) {
+for (const [label, query] of [["shop", "state=shop"], ["spin", "state=spin"], ["landed", "state=landed"], ["landed, buyer", "state=landed&buyer=1"], ["missed", "state=landed&buyer=1&watched=0"], ["replay", "state=replay"], ["well", "state=well&buyer=1"], ["well, coin", "state=well&outcome=coin&buyer=1"], ["well, item", "state=well&outcome=item&buyer=1"], ["dice", "state=dice&buyer=1"], ["dice, lost", "state=dice&outcome=lose&buyer=1"], ["dice, prize", "state=dice&outcome=prize&buyer=1"], ["deck", "state=deck&buyer=1"], ["deck, item", "state=deck&outcome=item&buyer=1"], ["deck, bane", "state=deck&outcome=loss&buyer=1"], ["deck, effect", "state=deck&outcome=effect&buyer=1"], ["table", "state=table"], ["table, GM", "state=table&phase=waiting&gm=1"], ["wheel", "state=table&phase=spinning"], ["wheel, landed", "state=table&phase=landed&duration=0"], ["manager", "state=manager"], ["empty manager", "state=manager&empty=1"], ["boxes", "state=manager&tab=boxes&added=1"], ["starter", "state=manager&tab=boxes&starter=1"], ["pull log", "state=manager&tab=log"], ["box editor", "state=editor"], ["table crate", "state=shop&table=1"], ["table editor", "state=editor&odds=weight"], ["table drop", "state=preview"], ["nothing", "state=landed&nothing=1&buyer=1"], ["auction", "state=auction&phase=open"], ["auction, bids", "state=auction&phase=bid"], ["auction, GM", "state=auction&phase=bid&gm=1"], ["auction, hammer", "state=auction&phase=hammer&duration=0"], ["auction, crate", "state=auction&phase=hammer&lot=crate"], ["auction card", "state=shop&auction=1"], ["scratch card", "state=shop&scratch=1"], ["scratch hidden", "state=shop&scratch=hidden"], ["sold out", "state=shop&scratch=soldout"], ["scratch editor", "state=editor&scratch=1"], ["scratch", "state=scratch&buyer=1&phase=covered"], ["scratch, half", "state=scratch&buyer=1&phase=half"], ["scratch, watched", "state=scratch&phase=sweep"], ["scratch, match 3", "state=scratch&layout=match3&buyer=1"], ["scratch, fey", "state=scratch&outcome=coins&buyer=1&duration=0&ticket=fey"], ["scratch, combo", "state=scratch&outcome=combo&buyer=1&duration=0"], ["welcome", "state=welcome"], ["welcome, new world", "state=welcome&empty=1"], ["what's new", "state=welcome&view=news"]]) {
   const a = document.createElement("a");
   a.href = `?${query}&seed=${seed}&theme=${theme}`;
   a.textContent = label;
@@ -681,9 +688,15 @@ async function renderDeck() {
   events on the ticket, the path a mouse takes.
 */
 async function renderScratch() {
-  const outcome = ["coins", "nothing", "item", "bonus"].includes(q.get("outcome")) ? q.get("outcome") : "coins";
+  const picked = ["coins", "nothing", "item", "bonus", "combo"].includes(q.get("outcome")) ? q.get("outcome") : "coins";
+  // ?outcome=combo is a prize line that pays three ways at once: the
+  // roll's Rare item, 25 gp and the gem, each on its own winning panel
+  // (the Fortune Ticket's roll with that line printed once).
+  const combo = picked === "combo";
+  const outcome = combo ? "item" : picked;
   const phase = ["covered", "half", "sweep"].includes(q.get("phase")) ? q.get("phase") : null;
-  const printed = q.get("layout") === "match3" ? SCRATCH_MATCH3 : SCRATCH;
+  const COMBO_LINE = { count: 1, parts: [{ item: { rarity: "rare" } }, { gp: 25 }, { bonus: true }] };
+  const printed = q.get("layout") === "match3" ? SCRATCH_MATCH3 : combo ? { ...SCRATCH, roll: { ...SCRATCH.roll, prizes: [COMBO_LINE, ...SCRATCH.roll.prizes.slice(1)] } } : SCRATCH;
   // ?ticket=fey prints the same ticket in another of the four themes.
   const game = THEMES.includes(q.get("ticket")) ? { ...printed, theme: q.get("ticket") } : printed;
   const kind = getKind("scratch").reveal;
@@ -692,14 +705,16 @@ async function renderScratch() {
   const rarity = game.roll.prizes.find(p => p.item)?.item.rarity ?? "rare";
   const drawn = outcome === "item" ? draw({ box: { ...game, weights: Object.fromEntries(RARITIES.map(r => [r, r === rarity ? 1 : 0])), rules: {} }, pools: POOLS, rng, state: {} }) : null;
   const gp = printed === SCRATCH ? 25 : 5;
-  const win = outcome === "coins" ? { kind: "gp", gp } : outcome === "bonus" ? { kind: "bonus" } : drawn ? { kind: "item", rarity: drawn.rarity, name: drawn.entry.name, img: drawn.entry.img } : { kind: "dud" };
-  const payoutCp = outcome === "coins" ? gp * 100 : outcome === "bonus" ? game.bonus.gp * 100 : 0;
+  const won = drawn ? { kind: "item", rarity: drawn.rarity, name: drawn.entry.name, img: drawn.entry.img } : null;
+  const win = combo && won ? { kind: "line", parts: [won, { kind: "gp", gp: 25 }, { kind: "bonus" }] } : outcome === "coins" ? { kind: "gp", gp } : outcome === "bonus" ? { kind: "bonus" } : won ?? { kind: "dud" };
+  const payoutCp = combo ? (25 + game.bonus.gp) * 100 : outcome === "coins" ? gp * 100 : outcome === "bonus" ? game.bonus.gp * 100 : 0;
   const reveal = {
     kind: "scratch", outcome: outcome === "bonus" ? "coins" : outcome, actorName: "Tam Thornwick", userId: "buyer",
     box: { id: game.id, name: game.name, price: game.price },
     card: layCard(game, win, rng), ticket: { rollId: game.roll.id, no: Math.min(44, game.roll.size - 3), size: game.roll.size },
     result: drawn ? { uuid: drawn.entry.uuid, name: drawn.entry.name, img: drawn.entry.img, rarity: drawn.rarity, pity: false } : payoutCp ? { name: formatPrice(payoutCp / 100), outcome: "coins" } : null,
     itemUuid: drawn ? "Actor.sample.Item.sample" : null,
+    ...(combo && drawn ? { wonItems: [{ name: drawn.entry.name, img: drawn.entry.img, rarity: drawn.rarity }] } : {}),
     payoutCp,
     purse: charge({ ...purse, gp: purse.gp + payoutCp / 100 }, game.price) ?? {},
   };
