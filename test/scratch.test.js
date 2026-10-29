@@ -762,7 +762,7 @@ describe("prize lines: tickets that pay like real ones", () => {
     const log = getLog();
     const pairRow = log.find(r => r.tier === PAIR);
     const comboRow = log.find(r => r.tier === COMBO);
-    expect(pairRow).toMatchObject({ name: "Flame Tongue", itemNames: ["Flame Tongue", "Lucky Coin"] });
+    expect(pairRow).toMatchObject({ name: "Flame Tongue and Lucky Coin", itemNames: ["Flame Tongue", "Lucky Coin"] });
     expect(pairRow.itemIds).toHaveLength(2);
     expect(comboRow).toMatchObject({ name: "Flame Tongue", rarity: "rare", payoutCp: 1500 });
     for (const r of reveals) expect(cardWins(r.card).cp).toBe(log.find(l => l.id === r.logId).payoutCp);

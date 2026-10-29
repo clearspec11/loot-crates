@@ -636,11 +636,14 @@ const leftOf = st => ({ rollId: st.id, size: st.size, left: st.left, prizes: Obj
 
 // The row: the roll and the tier it took (what rollState counts), the
 // winning panels, and for an item the crate's columns so the one refund
-// finds and removes it. A dud is the core's miss (the Pull log folds them).
+// finds and removes it; a line of several items is named by them all
+// ("Flame Tongue and Lucky Coin"), so the Pull log says what was won.
+// A dud is the core's miss (the Pull log folds them).
 function logRow(ctx) {
   const { out } = ctx;
   const base = { rollId: out.ticket.rollId, tier: out.ticket.tier, ticketNo: out.ticket.no, winners: cardWins(out.card).winners };
-  if (out.outcome === "item") return { ...base, ...crateLogRow(ctx) };
+  const names = itemsWon(out).map(i => i.name);
+  if (out.outcome === "item") return { ...base, ...crateLogRow(ctx), ...(names.length > 1 ? { name: listAnd(names) } : {}) };
   if (out.outcome === "coins") return { ...base, outcome: "coins", swatch: "coin", name: out.result.name };
   return { ...base, outcome: "nothing", swatch: "none", name: t("LOOTCRATES.Scratch.Dud") };
 }
