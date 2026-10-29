@@ -18,7 +18,7 @@ const { ticketData, ticketOf, keptStack, keptTicketFor, keepRow, rowPriceTag } =
 const { cardShell } = await import("../module/scripts/views/boxcard.js");
 const { boughtBy } = await import("../module/scripts/core/limits.js");
 const { throwsToday } = await import("../module/scripts/games/well.js");
-const { streakOf } = await import("../module/scripts/games/deck.js");
+const { streakOf, nextPrice, drawnIds } = await import("../module/scripts/games/deck.js");
 const { rollRows } = await import("../module/scripts/games/scratch.js");
 const { toCopper } = await import("../module/scripts/core/currency.js");
 
@@ -333,9 +333,25 @@ describe("a kept row is a sale, not a play", () => {
   it("isn't a throw at the well, a draw at the deck, or a ticket sold from a scratch roll", () => {
     const log = [row({ kind: "well", keep: { paid: 1 } }), row({ kind: "well" })];
     expect(throwsToday(log, { boxId: "g", actorId: "a", day: "y1d1" })).toBe(1);
-    const deck = [row({ kind: "deck", at: 1000, keep: { paid: 1 } }), row({ kind: "deck", at: 900 })];
-    expect(streakOf(deck, { boxId: "g", actorId: "a", now: 1100, within: 60000 })).toBe(1);
+    expect(drawnIds({ id: "g", deck: { cards: [{ id: "c1", kind: "blank", label: "x", weight: 1, once: true }] } }, [row({ kind: "deck", keep: { paid: 1 } })]).size).toBe(0);
     expect(rollRows([row({ kind: "scratch", rollId: 1, keep: { paid: 1 } })], { boxId: "g", rollId: 1 })).toHaveLength(0);
+  });
+
+  it("raises the deck's price as a draw does, and its ticket's later use doesn't raise it again", () => {
+    const game = { id: "g", kind: "deck", price: 10, deck: { step: 2, streakMinutes: 5, cards: [] } };
+    const log = [];
+    const paid = [];
+    for (let i = 0; i < 4; i++) {
+      const price = nextPrice(game, log, { actorId: "a", now: 1000 + i });
+      paid.push(price);
+      log.push(row({ kind: "deck", at: 1000 + i, price, keep: { paid: price } }));
+    }
+    // Four kept tickets cost what four draws in a row do, not the base price four times.
+    expect(paid).toEqual([10, 20, 40, 80]);
+    const used = [row({ kind: "deck", at: 1000, keep: { paid: 10 } }), row({ kind: "deck", at: 1001, price: 0, redeem: { paid: 10, kept: true } })];
+    expect(streakOf(used, { boxId: "g", actorId: "a", now: 1100, within: 60000 })).toBe(1);
+    const given = [row({ kind: "deck", at: 1001, price: 0, redeem: { paid: 0 } })];
+    expect(streakOf(given, { boxId: "g", actorId: "a", now: 1100, within: 60000 })).toBe(1);
   });
 
   it("counts toward the limit per character on the day it was bought; a kept ticket's play doesn't", () => {

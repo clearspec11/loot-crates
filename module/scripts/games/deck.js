@@ -142,6 +142,12 @@ export const shuffledAt = game => Math.max(0, Number(game?.deck?.shuffledAt) || 
 const at = r => Number(r?.at) || 0;
 // The draws: a ticket bought to keep (row.keep) draws nothing until it is used.
 const deckRows = (log, boxId) => (log ?? []).filter(r => r.kind === "deck" && r.boxId === boxId && !r.refunded && !r.keep);
+// What the rising price counts: the paid draws and the tickets bought to
+// keep (each was charged at the streak's price, so it raises the next),
+// not the later use of a kept ticket (its purchase counted already).
+// Without the kept rows, Buy to keep would sell every draw at the base
+// price. A ticket the GM handed out (redeem, not kept) counts as a draw.
+const pricedRows = (log, boxId) => (log ?? []).filter(r => r.kind === "deck" && r.boxId === boxId && !r.refunded && !r.redeem?.kept);
 
 // The once cards out of the deck now: named by an unrefunded row since the
 // last reshuffle. A card the GM has since set to draw every time is back in.
@@ -197,7 +203,7 @@ export function deckOdds(game, pools, log = [], state = {}) {
 */
 export function streakOf(log, { boxId, actorId, now, within = STREAK_MS }) {
   if (!(within > 0)) return 0;
-  const rows = deckRows(log, boxId).filter(r => r.actorId === actorId).sort((a, b) => at(b) - at(a));
+  const rows = pricedRows(log, boxId).filter(r => r.actorId === actorId).sort((a, b) => at(b) - at(a));
   let n = 0, last = now;
   for (const r of rows) {
     if (last - at(r) > within) break;
@@ -226,7 +232,7 @@ export const nextPrice = (game, log, { actorId, now = Date.now() }) => priceAt(g
 */
 export function streakEndsAt(game, log, { actorId, now = Date.now() }) {
   if (!streakAt(game, log, { actorId, now })) return null;
-  const newest = Math.max(...deckRows(log, game.id).filter(r => r.actorId === actorId).map(at));
+  const newest = Math.max(...pricedRows(log, game.id).filter(r => r.actorId === actorId).map(at));
   return newest + streakWindowMs(game);
 }
 

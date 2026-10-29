@@ -135,8 +135,9 @@ export function keptTicketFor(items, row) {
 export const keepRow = ({ item, paid }) => ({ itemId: item?.id ?? null, itemName: String(item?.name ?? ""), paid: gp(paid) });
 
 // Whether a log row is a Buy to keep (a ticket sold, nothing played): no
-// game counts it as a play (the well's throws today, the deck's streak, a
-// scratch roll's tickets sold).
+// game counts it as a play (the well's throws today, the deck's once cards,
+// a scratch roll's tickets sold); the deck's rising price counts it as the
+// purchase it is (deck.js pricedRows).
 export const isKept = row => !!row?.keep;
 
 // How many plays a ticket item holds (its quantity, 0 when it has none).
