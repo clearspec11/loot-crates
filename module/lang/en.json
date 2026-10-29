@@ -499,12 +499,10 @@
       "CalendarOff": "dnd5e's calendar is off: a day ends at each character's long rest."
     },
     "News": {
-      "Title": "Scratch tickets",
-      "Line1": "New game: scratch tickets. You print a roll of tickets with a fixed prize list (coins, an item at a rarity from the ticket's pools, a bonus spot, and duds). Each ticket bought comes off the roll, so the shop shows the tickets and prizes left and the odds of what is left, and a sold-out roll says so until you press Print a new roll. A refund puts the ticket back.",
-      "Line2": "Two layouts: lucky numbers (match any of yours to a lucky number to win the prize under it, and wins add up) and match 3 (three of the same symbol wins that symbol's prize). The editor reads out the roll's odds as you type.",
-      "Line3": "The buyer scratches by hand: the pointer becomes a gold coin over the foil, its edge scrapes a band that widens with speed, foil shavings curl off, and a panel gives once it is 60% scratched. The scratch rasps louder and higher the faster you rub. Everyone else watches the same coin scratch the card by itself, panel by panel, and Watch again on the chat card replays it.",
-      "Line4": "Keyboard: the arrow keys move between panels, Space or Enter scratches one, R or Reveal all opens the whole card. With reduced motion on, the table's card opens at once and nothing flies off.",
-      "Line5": "Add starter crates now adds two scratch tickets as well, off the shelf like the rest: the Market scratchie (1 gp, match 3, a roll of 50, its top prize an uncommon potion or scroll) and the Fortune ticket (10 gp, lucky numbers with a 25 gp bonus spot, a roll of 100, its top prize a rare trinket)."
+      "Title": "Prizes like real tickets",
+      "Line1": "Scratch tickets pay like real ones. A prize on the list can now be a combination, printed so many times like any other prize: \"1 ticket: a rare item + 25 gp + the gem\", or \"2 tickets: a rare item + an uncommon item\". Press Add a part on a prize row to add coins, an item at a rarity or the bonus spot's gem to it. A ticket still wins one prize from the roll, so a ticket that pays twice is exactly as rare as you printed it, and the editor's odds still count tickets (\"1 in 2.3 tickets wins\"). \"All prizes 5 gp or more\" now counts what a whole prize pays. Prize lists you already have work as before, and are saved in the new form the next time you save the ticket.",
+      "Line2": "New per-ticket switch, Players see what is left in the roll, on by default. Turn it off and players' shop cards and the reveal no longer show the tickets left, the prizes left or the odds of what is left: they see the price, the top prize and the guarantee, as a printed ticket does. You still see everything in the manager and in your own shop, which says the counts are hidden from players.",
+      "Line3": "Items imported with Plutonium now arrive from any game with no \"Use Importer?\" prompt. Before, that prompt appeared on the GM's screen mid-spin naming the prize, and the item could be lost while the player was still charged."
     },
     "Welcome": {
       "Title": "Loot Crates",
