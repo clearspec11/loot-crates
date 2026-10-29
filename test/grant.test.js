@@ -266,6 +266,16 @@ describe("several items for one play", () => {
     expect(card.content).toContain("Removed from their inventory: Flame Tongue. Already gone: Rope.");
   });
 
+  it("a play that granted items and paid coins too: the refund card names the items and the coins taken back", async () => {
+    makeWorld(makeActor());
+    const row = { boxId: "pair", boxName: "Combo", name: "Glaive +1", rarity: "uncommon", price: 1, payoutCp: 1500, itemId: "item1", itemIds: ["item1"] };
+    const card = await postRefundCard({ row, actor: { name: "Crate Tester" }, removedItem: "Glaive +1", removedItems: ["Glaive +1"], goneItems: [] });
+    expect(card.content).toContain("Glaive +1 was removed from their inventory. 14 gp was taken back from their purse: the 15 gp won, less the 1 gp stake.");
+    // An item alone still says only the item; its head carries the price.
+    const plain = await postRefundCard({ row: { ...row, payoutCp: 0 }, actor: { name: "Crate Tester" }, removedItem: "Glaive +1", removedItems: ["Glaive +1"], goneItems: [] });
+    expect(plain.content).not.toContain("purse");
+  });
+
   it("never deletes an item under one of the row's ids that another game granted, or the player added", () => {
     const actor = makeActor();
     actor.items.set("item1", { id: "item1", name: "Flame Tongue", flags: { "loot-crates": { boxId: "pair" } } });

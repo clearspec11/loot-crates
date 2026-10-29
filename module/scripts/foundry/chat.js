@@ -78,11 +78,14 @@ export async function postRefundCard({ row, actor, removedItem, removedItems, go
   const stake = Math.round((Number(row.price) || 0) * 100);
   const payout = Math.round(Number(row.payoutCp) || 0);
   const net = stake - payout;
-  const line = refundItemsLine({ row, removedItem, removedItems, goneItems })
-    ?? (payout < 0 ? t("LOOTCRATES.Chat.RefundBane", { net: esc(formatPrice(net / 100)), stake: esc(formatPrice(stake / 100)), took: esc(formatPrice(-payout / 100)) })
+  const coinsLine = payout < 0 ? t("LOOTCRATES.Chat.RefundBane", { net: esc(formatPrice(net / 100)), stake: esc(formatPrice(stake / 100)), took: esc(formatPrice(-payout / 100)) })
     : net > 0 ? t("LOOTCRATES.Chat.RefundBack", { net: esc(formatPrice(net / 100)) })
     : net < 0 ? t("LOOTCRATES.Chat.RefundTaken", { net: esc(formatPrice(-net / 100)), won: esc(formatPrice(payout / 100)), stake: esc(formatPrice(stake / 100)) })
-    : t("LOOTCRATES.Chat.RefundCoinBack"));
+    : t("LOOTCRATES.Chat.RefundCoinBack");
+  // A play that granted items and paid coins too (a scratch line: an item
+  // + 25 gp) says both, since its head carries no price.
+  const itemsLine = refundItemsLine({ row, removedItem, removedItems, goneItems });
+  const line = itemsLine && payout ? `${itemsLine} ${coinsLine}` : itemsLine ?? coinsLine;
   const content = `
     <div class="loot-crates lc-chat lc-rarity-${esc(row.rarity ?? "none")}">
       <div class="lc-chat__head">${t("LOOTCRATES.Chat.RefundHead", { actor: esc(actor?.name || row.actorName || t("LOOTCRATES.Auction.Someone")), box: `<strong>${esc(row.boxName)}</strong>` })}${payout ? "" : ` <span class="lc-chat__price">${esc(formatPrice(row.price))}</span>`}</div>
