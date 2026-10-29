@@ -58,6 +58,8 @@ export function ticketable(box) {
 }
 
 const gp = v => Math.max(0, Number(v) || 0);
+// The description is HTML on the sheet: the game's name goes in escaped.
+const escHTML = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
 /*
   The Item data for a ticket to `box`: a consumable (trinket) with one
@@ -73,7 +75,7 @@ export function ticketData(box, { paid = 0, kept = false } = {}) {
     type: "consumable",
     img: ticketImg(box),
     system: {
-      description: { value: `<p>${t("LOOTCRATES.Ticket.Description", { game: box?.name ?? "" })}</p>` },
+      description: { value: `<p>${t("LOOTCRATES.Ticket.Description", { game: escHTML(box?.name) })}</p>` },
       quantity: 1,
       weight: { value: 0, units: "lb" },
       price: { value: price, denomination: "gp" },

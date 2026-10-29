@@ -34,6 +34,12 @@ describe("ticketData", () => {
     expect(data.system.description.value).toContain("One play of Gilded Crate.");
   });
 
+  it("escapes the game's name in the description, which the sheet shows as HTML", () => {
+    const data = ticketData({ ...CRATE, name: "Tom & Jerry's <Crate>" });
+    expect(data.system.description.value).toContain("One play of Tom &amp; Jerry&#39;s &lt;Crate&gt;.");
+    expect(data.name).toBe("Tom & Jerry's <Crate>");
+  });
+
   it("names the activity for each pulled game's play", () => {
     expect(useWord({ kind: "crate" })).toBe("Open");
     expect(useWord({})).toBe("Open");
