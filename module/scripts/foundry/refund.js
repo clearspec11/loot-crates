@@ -12,8 +12,11 @@
   taking the purse below zero.
 
   Constraints this holds: a row refunds at most once (the row is marked before
-  any write that could fail, and refunds run one at a time), and the only item
-  it will ever delete is the one carrying this pull's own loot-crates flag.
+  any write that could fail, and refunds run one at a time), and the only
+  items it will ever delete are the ones this pull granted, by the ids on
+  its row and carrying this pull's own loot-crates flag. A play that granted
+  several items (a kind's `grants`) is undone whole: every one still on the
+  sheet goes, and each one already gone is named.
   The pull's chat card is marked refunded in the same queued write, so chat,
   the log and the sheet agree, and the card stops linking a deleted item.
 */
@@ -21,7 +24,7 @@ import { settle, toCopper, formatPrice } from "../core/currency.js";
 import { getLog, updateLog, getBoxes, saveBox, enqueueWrite, getActorState, setActorState } from "./store.js";
 import { getKind, kindOf } from "../games/kinds.js";
 import { stockAfterRefund } from "../core/limits.js";
-import { t } from "../core/i18n.js";
+import { t, listAnd } from "../core/i18n.js";
 // The crate registers itself when imported, so a row or record with no kind is found.
 import "../games/crate.js";
 import { findPullCard, isRefundedCard, refundedCardContent } from "../views/chatcard.js";
@@ -58,15 +61,33 @@ export function shortMessage(row, actor) {
   return t("LOOTCRATES.Refund.Spent", { actor: actor.name, short: formatPrice(short), won: formatPrice(won), box: row.boxName, have: formatPrice(have), take: formatPrice(take) });
 }
 
-// The item this row granted, if the actor still has it. Matching on the
-// sourceUuid flag written at grant time means a reused id, or an item the
-// player added themselves, is never deleted.
-export function grantedItem(row, actor) {
-  const item = row.itemId ? actor?.items?.get(row.itemId) : null;
-  if (!item) return null;
-  const flag = item.flags?.["loot-crates"];
-  return flag?.sourceUuid === row.uuid ? item : null;
+/*
+  The items this row granted that the actor still has, and the names of
+  the ones it no longer has: { items, gone }. A row names its items by
+  itemIds; a row from before several items, by its one itemId. An item
+  counts only while it carries the loot-crates flag written at grant time
+  for this row's source (one item) or this row's game (several), so a
+  reused id, or an item the player added themselves, is never deleted.
+*/
+export function grantedItems(row, actor) {
+  const several = Array.isArray(row?.itemIds) && row.itemIds.length > 0;
+  const ids = several ? row.itemIds : row?.itemId ? [row.itemId] : [];
+  const items = [];
+  const gone = [];
+  ids.forEach((id, i) => {
+    const item = actor?.items?.get(id);
+    const flag = item?.flags?.["loot-crates"];
+    // One item names its source on the row, as it always has; several
+    // share the row, so each is matched on its game.
+    const ours = several && ids.length > 1 ? flag?.boxId === row.boxId : flag?.sourceUuid === row.uuid;
+    if (item && ours) items.push(item);
+    else gone.push((ids.length > 1 ? row.itemNames?.[i] : null) ?? row.name);
+  });
+  return { items, gone };
 }
+
+// The first item this row granted, if the actor still has it.
+export const grantedItem = (row, actor) => grantedItems(row, actor).items[0] ?? null;
 
 // What a refund of this row would do, for the confirm dialog. Writes nothing.
 // status: "ready" | "already" | "missing" | "no-actor" | "short"
@@ -80,7 +101,8 @@ export function describeRefund(rowId) {
   const box = getBoxes()[row.boxId] ?? null;
   const short = spentWinnings(row, actor);
   if (short > 0) return { status: "short", row, actor, box, short, message: shortMessage(row, actor) };
-  return { status: "ready", row, actor, item: grantedItem(row, actor), box, coins: refundCoins(row), state: stateAfter(row, box) };
+  const { items, gone } = grantedItems(row, actor);
+  return { status: "ready", row, actor, item: items[0] ?? null, items, gone, box, coins: refundCoins(row), state: stateAfter(row, box) };
 }
 
 // The buyer's state for the row's game now, and with the row undone the way
@@ -103,7 +125,7 @@ export function refundPull(rowId) {
 async function doRefund(rowId) {
   const plan = describeRefund(rowId);
   if (plan.status !== "ready") return plan;
-  const { row, actor, item, box } = plan;
+  const { row, actor, items, gone, box } = plan;
 
   // Marked first: if a later write throws, a retry can't pay twice. A refund
   // that failed halfway is visible in the console and the row says refunded.
@@ -115,11 +137,11 @@ async function doRefund(rowId) {
   const purse = settle(actor.system?.currency ?? {}, plan.coins);
   await actor.update({ "system.currency": purse });
 
-  let removedItem = null;
-  if (item) {
-    await item.delete();
-    removedItem = item.name;
-  }
+  // Every item the play granted, in one deletion when there are several.
+  const removedItems = items.map(i => i.name);
+  if (items.length === 1) await items[0].delete();
+  else if (items.length) await actor.deleteEmbeddedDocuments("Item", items.map(i => i.id));
+  const removedItem = removedItems.length ? listAnd(removedItems) : null;
 
   // A table stake (round.js) never took stock, so it gives none back.
   let stock = null;
@@ -147,7 +169,7 @@ async function doRefund(rowId) {
   }
 
   const card = await markPullCard({ ...row, refunded });
-  return { status: "refunded", row, purse, removedItem, stock, state, card };
+  return { status: "refunded", row, purse, removedItem, removedItems, goneItems: gone, stock, state, card };
 }
 
 // Rewrites the card that announced this pull, once. The coins and the item

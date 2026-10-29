@@ -11,7 +11,7 @@
   payout are one settle(), and a grant that fails after the charge puts the
   coins back. A purchase either charges and grants, or does neither.
 */
-import { kindFor } from "../games/kinds.js";
+import { kindFor, grantsOf, readyToGrant } from "../games/kinds.js";
 // The crate, the well and the dice register themselves when imported: a
 // direct caller of performPull (a live check, the module API) finds them
 // without loading main.js.
@@ -63,10 +63,12 @@ export async function resolveSource(uuid) {
   takes coins): the stake and the loss leave the purse in the one settle(),
   never two writes.
 
-  Returns { result, grant?, itemId, purse, payoutCp, price, priceNote,
-  state, pools, kind, ...whatever the kind's roll added } (the crate: strip,
-  sourceRarity, rarityOverride). `result` is null when the game gave
-  nothing (a miss).
+  Returns { result, itemId, itemIds, itemNames, purse, payoutCp, price,
+  priceNote, state, pools, kind, ...whatever the kind's roll added } (the
+  crate: strip, sourceRarity, rarityOverride). `result` is null when the
+  game gave nothing (a miss). `itemIds` are every item the play created
+  (a kind's `grants`: several, one creation), `itemId` the first, so
+  anything that reads one item reads it as before.
 */
 /*
   How far either side of the GM's clock a pressed price still counts. A
@@ -124,27 +126,57 @@ function guardPlay({ box, actor, state = {}, expectedPrice, log = [], today = nu
   return { kind, price, purse, now, priceNote };
 }
 
+/*
+  Creates a play's items on the actor in one call, each marked the way
+  Plutonium's own opt-out is (kinds.js readyToGrant), and returns the
+  created documents. Another module's preCreateItem hook can cancel a
+  creation by returning false: Foundry then returns fewer documents than
+  asked, with no error. That is a failed grant, the same as a throw: any
+  that were created are deleted again and this throws, so the caller puts
+  the coins back. A play is granted whole or not at all.
+*/
+export async function createGrants(actor, datas) {
+  const docs = datas.map(readyToGrant);
+  const created = ((await actor.createEmbeddedDocuments("Item", docs)) ?? []).filter(Boolean);
+  if (created.length === docs.length) return created;
+  if (created.length) {
+    try {
+      await actor.deleteEmbeddedDocuments("Item", created.map(d => d.id));
+    } catch (err) {
+      const names = created.map(d => d.name).join(", ");
+      console.error(`loot-crates | could not take ${names} back from ${actor.name} after a cancelled grant; remove by hand`, err);
+      globalThis.ui?.notifications?.error(t("LOOTCRATES.Error.GrantRollbackFailed", { items: names, actor: actor.name }));
+    }
+  }
+  throw new Error(`the creation made ${created.length} of ${docs.length} items: another module's preCreateItem hook cancelled it`);
+}
+
 export async function performPull({ box, pools, actor, state = {}, rng = rollRng(), grant = true, onMissing = null, expectedPrice, log = [], today = null }) {
   const { kind, price, purse, now, priceNote } = guardPlay({ box, actor, state, expectedPrice, log, today });
   // A table game is played in rounds (table.js): its roll settles every
   // stake at once, so it is staked, never pulled.
   if (kind.table) throw new PullError(t("LOOTCRATES.Error.TableGame", { name: box.name }));
 
-  const { result = null, grant: data = null, payoutCp: payout, state: nextState, pools: rolledFrom, ...own } = await kind.roll({ game: box, pools, actor, state, rng, resolveSource, onMissing, log, today, now, price });
+  const rolled = await kind.roll({ game: box, pools, actor, state, rng, resolveSource, onMissing, log, today, now, price });
+  const { result = null, payoutCp: payout, state: nextState, pools: rolledFrom, ...own } = rolled;
+  const datas = grantsOf(rolled);
+  // The Item data is created here, never broadcast.
+  delete own.grant;
+  delete own.grants;
   const payoutCp = Math.round(Number(payout) || 0);
   const nextPurse = settle(purse, payoutCp - Math.round(price * 100));
   if (!nextPurse) throw new PullError(t("LOOTCRATES.Error.CantAfford", { actor: actor.name, name: box.name }));
 
-  let created = null;
+  let created = [];
   if (grant) {
     await actor.update({ "system.currency": nextPurse });
-    if (data) {
+    if (datas.length) {
       try {
-        [created] = await actor.createEmbeddedDocuments("Item", [data]);
+        created = await createGrants(actor, datas);
       } catch (err) {
         // Charged but not granted: put the coins back before telling anyone.
         // A purchase either charges and grants, or does neither.
-        console.error(`loot-crates | granting ${result?.name ?? data.name} to ${actor.name} failed after charging ${price} gp; returning the coins`, err);
+        console.error(`loot-crates | granting ${result?.name ?? datas.map(d => d.name).join(", ")} to ${actor.name} failed after charging ${price} gp; returning the coins`, err);
         try {
           await actor.update({ "system.currency": purse });
         } catch (restoreErr) {
@@ -160,7 +192,9 @@ export async function performPull({ box, pools, actor, state = {}, rng = rollRng
     ...own,
     result,
     purse: nextPurse,
-    itemId: created?.id ?? null,
+    itemId: created[0]?.id ?? null,
+    itemIds: created.map(d => d.id),
+    itemNames: created.map(d => d.name),
     payoutCp,
     price,
     priceNote,

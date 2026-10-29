@@ -48,6 +48,8 @@ function makeActor(id, owner, gp = 100) {
     async createEmbeddedDocuments(_type, list) {
       await tick();
       if (actor.failGrant) throw new Error("sheet refused");
+      // Another module's preCreateItem hook cancelled it: Foundry makes nothing, says nothing.
+      if (actor.vetoGrant) return [];
       return list.map(d => {
         const item = { id: `it${items.size + 1}`, name: d.name, flags: d.flags, delete: async () => { items.delete(item.id); } };
         items.set(item.id, item);
@@ -310,6 +312,35 @@ describe("the hammer", () => {
     expect(auction.verdictText(auction.outcomeOf(out.reveal))).toBe("No sale: the lot couldn't be put on Char a2's sheet. The top bid of 10 gp came back.");
     expect(rowsOf(round)[0]).toMatchObject({ status: "refunded", refundReason: "grant" });
     expect(gp(world.actors.get("a2"))).toBe(100);
+  });
+
+  it("refunds the winner when another module's hook cancels the lot's creation, and marks a Plutonium lot with its opt-out", async () => {
+    await seed(world, { lot: AUCTION() });
+    const a2 = world.actors.get("a2");
+    a2.vetoGrant = true;
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    let round = await openRound("lot");
+    await world.deliver(bid(round, "a2", "p2", 10));
+    let out = await resolveRound(round.id);
+    expect(out.reveal.stakes[0]).toMatchObject({ action: "refund", reason: "grant", itemId: null });
+    expect(rowsOf(round)[0]).toMatchObject({ status: "refunded", refundReason: "grant" });
+    expect(gp(a2)).toBe(100);
+    expect(a2.items.size).toBe(0);
+
+    a2.vetoGrant = false;
+    const create = vi.spyOn(a2, "createEmbeddedDocuments");
+    const fromUuid = globalThis.fromUuid;
+    globalThis.fromUuid = async uuid => {
+      const src = await fromUuid(uuid);
+      return src && { ...src, toObject: () => ({ ...src.toObject(), flags: { plutonium: { propDroppable: "item", hash: "x" } } }) };
+    };
+    try {
+      round = await openRound("lot");
+      await world.deliver(bid(round, "a2", "p2", 10));
+      out = await resolveRound(round.id);
+    } finally { globalThis.fromUuid = fromUuid; }
+    expect(out.reveal.stakes[0]).toMatchObject({ action: "settle" });
+    expect(create.mock.calls[0][1][0].flags.plutonium).toEqual({ propDroppable: "item", hash: "x", isStandardDragDrop: true });
   });
 
   it("runs the crate's roll for the winner of a sealed crate: its draw granted, its strip in the broadcast", async () => {

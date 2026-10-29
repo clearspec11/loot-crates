@@ -124,7 +124,7 @@ import { onShelf, shelfRules, shelfFieldHTML, shelfNotice } from "../core/shelf.
 import { starterPresent, hasStarter, starterAgainText, starterNotice, starterCallHTML, STARTER_LABEL } from "../views/starter.js";
 import { addStarterSet } from "./starterbuild.js";
 import { poolsFieldset, poolPicks, syncShares, pityRow, stakeRow, betRangeRow, dragonRow, CARD_FIELDS, renumberCards, oddsModeFieldset, tableNoteHTML, nothingRow } from "../views/editorfields.js";
-import { t } from "../core/i18n.js";
+import { t, listAnd } from "../core/i18n.js";
 
 const { ApplicationV2, DialogV2 } = foundry.applications.api;
 const esc = s => foundry.utils.escapeHTML(String(s ?? ""));
@@ -1320,7 +1320,11 @@ export class CrateManager extends ApplicationV2 {
       return target.focus?.();
     }
     if (plan.status !== "ready") return ui.notifications.warn(plan.message);
-    const { row, actor, item, box } = plan;
+    const { row, actor, box } = plan;
+    // Every item the play granted: the ones still there are removed, each
+    // one already gone is named (refund.js grantedItems).
+    const items = plan.items ?? (plan.item ? [plan.item] : []);
+    const gone = plan.gone ?? [];
     // A game that paid coins out gives the stake back less the payout; one
     // that paid more than the stake takes the difference back; a coin that
     // already came back (a well's coin return) moves nothing.
@@ -1328,8 +1332,11 @@ export class CrateManager extends ApplicationV2 {
     const money = coins > 0 ? t("LOOTCRATES.Refund.Return", { price: `<strong>${esc(formatPrice(coins / 100))}</strong>`, name: esc(actor.name) })
       : coins < 0 ? t("LOOTCRATES.Refund.TakeBack", { price: `<strong>${esc(formatPrice(-coins / 100))}</strong>`, name: esc(actor.name) })
       : t("LOOTCRATES.Refund.CoinBack", { name: esc(actor.name) });
-    const ask = item ? t("LOOTCRATES.Refund.AskRemove", { money, item: `<strong>${esc(item.name)}</strong>` })
-      : row.itemId ? t("LOOTCRATES.Refund.AskGone", { money, item: `<strong>${esc(row.name)}</strong>` }) : t("LOOTCRATES.Refund.Ask", { money });
+    const strong = names => listAnd(names.map(n => `<strong>${esc(n)}</strong>`));
+    const ask = items.length && gone.length ? t("LOOTCRATES.Refund.AskRemoveSomeGone", { money, item: strong(items.map(i => i.name)), gone: strong(gone) })
+      : items.length ? t("LOOTCRATES.Refund.AskRemove", { money, item: strong(items.map(i => i.name)) })
+      : gone.length > 1 ? t("LOOTCRATES.Refund.AskGoneSeveral", { money, items: strong(gone) })
+      : gone.length ? t("LOOTCRATES.Refund.AskGone", { money, item: strong(gone) }) : t("LOOTCRATES.Refund.Ask", { money });
     const stockBack = row.roundId ? null : stockAfterRefund(box);
     const stockLine = stockBack != null ? ` ${t("LOOTCRATES.Refund.StockBack", { name: esc(box.name), count: stockBack })}` : "";
     // A throw that gave no item still counted toward the pity (row.before).
@@ -1348,7 +1355,7 @@ export class CrateManager extends ApplicationV2 {
         : coins > 0 ? ["LOOTCRATES.Refund.DoneReturned", "LOOTCRATES.Refund.DoneReturnedRemoved"]
         : ["LOOTCRATES.Refund.DoneTaken", "LOOTCRATES.Refund.DoneTakenRemoved"];
       ui.notifications.info(t(keys[done.removedItem ? 1 : 0], { box: row.boxName, name: actor.name, price: formatPrice(Math.abs(coins) / 100), item: done.removedItem }));
-      await postRefundCard({ row, actor, removedItem: done.removedItem });
+      await postRefundCard({ row, actor, removedItem: done.removedItem, removedItems: done.removedItems, goneItems: done.goneItems });
     } else if (done.status === "already") {
       ui.notifications.info(t("LOOTCRATES.Refund.Already"));
     } else {

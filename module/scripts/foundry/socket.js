@@ -12,7 +12,11 @@
     { type: "ack", requestId, userId, hidden: true }       GM -> the buyer, only
                                                            when the GM's tab is hidden
                                                            and the pull is already slow
-    { type: "reveal", requestId, itemId, itemUuid, logId, purse, ... }  GM -> everyone
+    { type: "reveal", requestId, itemId, itemUuid, itemIds, itemUuids, logId, purse, ... }
+                                                           GM -> everyone; itemIds and
+                                                           itemUuids every item the
+                                                           play granted, itemId and
+                                                           itemUuid the first
     { type: "error", requestId, userId, message }          GM -> the buyer
     { type: "cancel", requestId, userId }                  the buyer -> GM, when
                                                            its wait timed out
@@ -372,6 +376,18 @@ async function recordPull({ msg, box, actor, out, log }) {
   globalThis.ui?.notifications?.error(t("LOOTCRATES.Error.LogFailed", { actor: actor.name, got, box: box.name }));
 }
 
+/*
+  A pull row's items: itemIds, every item the play granted, which the
+  refund removes together (refund.js grantedItems), and when there are
+  several their names (itemNames), so a refund can name the one that is
+  already gone. A play that granted nothing adds neither.
+*/
+export function itemColumns(out) {
+  const ids = out?.itemIds ?? [];
+  if (!ids.length) return {};
+  return { itemIds: [...ids], ...(ids.length > 1 ? { itemNames: [...(out.itemNames ?? [])] } : {}) };
+}
+
 async function doPull(msg, timer, sent, stopWatching) {
   timer.mark("queue");
   const hiddenAtStart = gmTabHidden();
@@ -409,6 +425,7 @@ async function doPull(msg, timer, sent, stopWatching) {
     // itemUuid is the granted copy on the sheet, which the reveal's Open item
     // and the chat card's link point at (the pool's source is r.result.uuid).
     // logId is the row written below, so the chat card can be refunded.
+    const itemUuids = (out.itemIds ?? []).map(id => `Actor.${actor.id}.Item.${id}`);
     const itemUuid = out.itemId ? `Actor.${actor.id}.Item.${out.itemId}` : null;
     const logId = newId();
     // Charged now: a cancel from here on is too late to drop the pull.
@@ -421,7 +438,7 @@ async function doPull(msg, timer, sent, stopWatching) {
     const ctx = { game: box, pools: out.pools, state, out };
     // box.price is what this play cost (pull.js: the record's, or the
     // kind's for this play), so the head and the row say what was paid.
-    const reveal = { ...out, type: "reveal", requestId: msg.requestId, userId: msg.userId, kind: out.kind, actorId: actor.id, actorName: actor.name, box: { id: box.id, name: box.name, price: out.price }, result: out.result, purse: out.purse, itemId: out.itemId, itemUuid, logId, stateBefore: { ...state }, ...(kind.revealExtra?.(ctx) ?? {}) };
+    const reveal = { ...out, type: "reveal", requestId: msg.requestId, userId: msg.userId, kind: out.kind, actorId: actor.id, actorName: actor.name, box: { id: box.id, name: box.name, price: out.price }, result: out.result, purse: out.purse, itemId: out.itemId, itemUuid, itemIds: out.itemIds ?? [], itemUuids, logId, stateBefore: { ...state }, ...(kind.revealExtra?.(ctx) ?? {}) };
     delete reveal.grant;
     delete reveal.state;
     delete reveal.pools;
@@ -438,8 +455,9 @@ async function doPull(msg, timer, sent, stopWatching) {
     // is what the game paid back in copper (negative: what it took beyond
     // the stake); rows from before it count as 0. `day` is the in-game day
     // it was bought on, which a limit per character per day counts
-    // (limits.js); none in a world with no clock.
-    const log = { id: logId, kind: out.kind, boxId: box.id, boxName: box.name, actorId: actor.id, actorName: actor.name, userId: msg.userId, itemId: out.itemId, price: out.price, payoutCp: out.payoutCp, ...(today ? { day: today } : {}), ...(kind.logRow?.(ctx) ?? {}) };
+    // (limits.js); none in a world with no clock. itemId is the first
+    // item, as rows from before several items read; itemColumns the rest.
+    const log = { id: logId, kind: out.kind, boxId: box.id, boxName: box.name, actorId: actor.id, actorName: actor.name, userId: msg.userId, itemId: out.itemId, ...itemColumns(out), price: out.price, payoutCp: out.payoutCp, ...(today ? { day: today } : {}), ...(kind.logRow?.(ctx) ?? {}) };
     await recordPull({ msg, box, actor, out, log });
     timer.mark("record");
     return reveal;
