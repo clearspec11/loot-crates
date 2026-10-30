@@ -201,9 +201,15 @@ const untilCard = async (pl, boxId, pred, ms = 5000) => {
     await row.locator(".lc-prize-part").nth(1).locator(".lc-prize-row__gp").fill("5");
     await row.locator(".lc-prize-row__and").click();
     await row.locator(".lc-prize-part").nth(2).locator(".lc-prize-row__what").selectOption("bonus");
+    // The card and Who sees what are folded under a line saying what they
+    // hold, and the world's other pools under "Add a pool" (views/editors.js,
+    // poolpicker.js): open each, as a GM does.
+    await dlg.locator('[data-fold="card"] > summary').click();
     await dlg.locator('input[name="bonusOn"]').check();
     await dlg.locator('input[name="bonusGp"]').fill("10");
+    await dlg.locator('[data-fold="sees"] > summary').click();
     await dlg.locator('input[name="showLeft"]').uncheck();
+    if (await dlg.locator(".lc-pool-picker__add").count() && !(await dlg.locator(`input[name="pool.${poolId}"]`).isVisible())) await dlg.locator(".lc-pool-picker__add").click();
     await dlg.locator(`input[name="pool.${poolId}"]`).check();
     out.editor = {
       partLabels: await row.locator(".lc-prize-part .lc-prize-row__what").evaluateAll(els => els.map(e => e.getAttribute("aria-label"))),

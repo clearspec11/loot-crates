@@ -179,6 +179,8 @@ const untilCard = async (pl, boxId, pred, ms = 5000) => {
     await row.locator(".lc-prize-row__what").selectOption("gp");
     await row.locator(".lc-prize-row__count").fill("1");
     await row.locator(".lc-prize-row__gp").fill("1");
+    // The card is folded under a line saying what it is (views/editors.js): open it, as a GM does.
+    await dlg.locator('[data-fold="card"] > summary').click();
     await dlg.locator('input[name="bonusOn"]').uncheck();
     out.readout = (await dlg.locator(".lc-scratch-form__readout").textContent()).trim();
     const known = await gm.page.evaluate(() => Object.keys(game.settings.get("loot-crates", "boxes")));

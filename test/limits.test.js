@@ -246,7 +246,7 @@ describe("the shop card", () => {
 describe("the editor's Limits group", () => {
   it("groups the stock, what is left with Restock, and the limit per character, with help", () => {
     const html = limitsFieldset({ id: "b", rules: { stock: 3, stockMax: 10, perCharacter: { max: 1, per: "day" } } });
-    expect(html).toContain("<legend>Limits</legend>");
+    expect(html).toContain("<legend>Who can buy</legend>");
     expect(html).toContain(`name="stock" type="number" min="0" step="1" value="10"`);
     expect(html).toContain(`<span class="lc-limits__left" role="status">3 of 10 left</span>`);
     expect(html).toMatch(/<button type="button" class="lc-limits__restock" data-restock>/);

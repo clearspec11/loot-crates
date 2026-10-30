@@ -12,6 +12,11 @@ The newest numbered entry's version is the one in `module/module.json`, and its 
 - A stock below 0 is refused under the field with Save off, where -3 used to save as sold out with nothing said. The line under Stock now follows what you type ("10 of 10 left once you save").
 - A new scratch ticket starts from the prize list Fill the prize list makes at its defaults: about 65% of the roll's takings back in coins, about 1 in 3.5 tickets winning, a Rare item on top. The old starting list paid back 124%, so the house lost money on every roll left as it was.
 - Buy to keep now refuses what the game itself would refuse when the ticket is used, with nothing charged: a sold-out scratch roll, or the Wishing Well once a character has thrown today's share.
+- The editors ask for things in the order you plan a game, and are much shorter. What's in it comes first, then the odds, the price, who can buy and how it looks. The pools a game uses are at the top of its pool list, each saying what it holds ("2 uncommon, 1 rare"); your other pools fold under **Add a pool**, with a search, so the pool you just made is no longer 20 rows down. With 18 pools in the world, New crate from this pool went from 2,223 px of form to 762 px (about one screen), and a new scratch ticket from 2,956 px to 1,376 px.
+- Only what applies is open. Rarity weights show just the rarities your pools hold. The dice's, the wheel's, the well's and the deck's pools and weights appear only while the game has an item prize turned on. Who can buy and Extras (pity, no duplicates) fold under a line saying what is set; so do a scratch ticket's card layout and Who sees what.
+- In a scratch ticket's editor the pools sit right above Fill the prize list, Fill's top prize starts at a Rare item (or the list's own top prize) in both New and Edit, and after Fill the first new prize has focus and is in view. The readout pinned at the foot no longer covers Fill, Shuffle or the field you are on.
+- The deck editor opens wide enough for its column heads (Card, Does, Gold, Weight, Once); on a phone each field says what it is.
+- The auction's lot list is grouped by pool, with a search: type part of a name and press Enter to make it the lot. An item in two pools is listed under both.
 
 ## 1.5.1
 

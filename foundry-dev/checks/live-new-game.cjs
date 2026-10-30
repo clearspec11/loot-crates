@@ -223,6 +223,8 @@ const untilCards = (pl, pred, since, ms = 4000) => pl.evaluate(async ({ pred, si
     const dlg = gm.page.locator(".application.lc-dialog").last();
     await dlg.locator('input[name="name"]').fill(crateName);
     await dlg.locator('input[name="price"]').fill("7");
+    // The world's other pools are folded under "Add a pool" (poolpicker.js): open it, as a GM does.
+    if (await dlg.locator(".lc-pool-picker__add").count()) await dlg.locator(".lc-pool-picker__add").click();
     await dlg.locator(`.lc-pool-pick:has-text("Live UI pool") input[type="checkbox"]`).check();
     out.crate.previewTicked = (await dlg.locator(".lc-form__preview").textContent()).trim();
     out.crate.okTicked = (await dlg.locator('button[data-action="ok"]').textContent()).trim();

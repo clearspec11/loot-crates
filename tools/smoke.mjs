@@ -209,6 +209,20 @@ const STATES = [
   ["shop-scratch-hidden", "state=shop&scratch=hidden"],
   ["shop-scratch-soldout", "state=shop&scratch=soldout"],
   ["editor-scratch", "state=editor&scratch=1"],
+  // Every game's editor in the order a GM plans it (views/editors.js,
+  // round 30): what is in it first (the game's own pool first, ticked,
+  // with what it holds, the world's eight others folded under "Add a
+  // pool"), the odds, the price, Who can buy and Extras folded with their
+  // line, the shelf. The pools and weights only while an item prize is
+  // on; the weights only for rarities the pools hold. -picker opens Add a
+  // pool and searches it; the auction's -search finds a lot by name.
+  ["editor-crate", "state=editor&kind=crate"],
+  ["editor-crate-picker", "state=editor&kind=crate&picker=open"],
+  ["editor-well", "state=editor&kind=well"],
+  ["editor-dice", "state=editor&kind=dice"],
+  ["editor-wheel", "state=editor&kind=roulette"],
+  ["editor-auction", "state=editor&kind=auction"],
+  ["editor-auction-search", "state=editor&kind=auction&lot=search"],
   // Fill the prize list (scratchplan.js): its fields open, then after a
   // Fill (the Fortune Ticket's six rows replaced, the harness saying yes
   // to the confirm), the rows, the readout's payback and the status line.
@@ -1776,6 +1790,92 @@ async function limitCardProblems({ reached, off, shelved = false }) {
 // period, and plain help tied to the fields.
 // The deck editor's streak window: a number field in its sentence, the
 // deck's 2 minutes, its hint named and at the 11px floor or over, inside the form.
+/*
+  An editor in the order a GM plans it (views/editors.js): its sections in
+  the kind's order, the game's own pool first and ticked with what it
+  holds, the others folded under "Add a pool (N more)", the parts that
+  don't apply hidden, the folds' lines, every control inside the form,
+  and the deck's whole card row with its heads where the window is wide.
+*/
+const EDITOR_KINDS = { "editor-crate": "crate", "editor-crate-picker": "crate", "editor-well": "well", "editor-dice": "dice", "editor-wheel": "roulette", "editor-auction": "auction", "editor-auction-search": "auction" };
+function editorOrderProblems(kind) {
+  const out = [];
+  const ORDER = {
+    crate: "name,pools,odds,weights,readout,price,limits,extras,shelf",
+    scratch: "name,price,roll,pools,prizes,readout,card,look,sees,shelf",
+    well: "name,outcomes,pools,weights,readout,price,cap,extras,shelf",
+    dice: "name,dragon,prize,pools,weights,readout,price,limits,shelf",
+    deck: "name,cards,pools,weights,readout,price,limits,shelf",
+    roulette: "name,pockets,payouts,prize,pools,readout,price,shelf",
+    auction: "name,lot,price,house,readout,shelf",
+  };
+  const form = document.querySelector(".lc-form");
+  const order = [...form.querySelectorAll("[data-section]")].map(el => el.dataset.section).join(",");
+  if (order !== ORDER[kind]) out.push(`the ${kind} editor's sections run ${order}`);
+  const picker = form.querySelector(".lc-pool-picks");
+  // (The wheel's pools stand aside while its item pocket is off.)
+  if (kind !== "auction" && picker?.checkVisibility()) {
+    const first = picker?.querySelector(".lc-pool-pick");
+    if (!first?.querySelector('input[type="checkbox"]')?.checked) out.push("the first pool in the picker isn't the game's own, ticked");
+    if (!/\d+ (common|uncommon|rare|very rare|legendary)/.test(first?.querySelector(".lc-pool-pick__mix")?.textContent ?? "")) out.push(`the game's pool doesn't say what it holds: "${first?.querySelector(".lc-pool-pick__mix")?.textContent}"`);
+    const add = picker?.querySelector("[data-picker-add]")?.textContent.trim();
+    if (add !== "Add a pool (9 more)") out.push(`the fold reads "${add}"`);
+    const shownRows = [...(picker?.querySelectorAll(".lc-pool-pick") ?? [])].filter(r => r.checkVisibility()).length;
+    if (!picker?.querySelector(".lc-pool-picker__more")?.open && shownRows !== 1) out.push(`${shownRows} pools show with the fold closed`);
+  }
+  // Rarities the pools don't hold step aside behind one button.
+  const weights = form.querySelector(".lc-form__weights");
+  if (weights && !weights.hidden && weights.getBoundingClientRect().height) {
+    const shown = [...weights.querySelectorAll("[data-weight]")].filter(r => r.checkVisibility()).map(r => r.dataset.weight);
+    const more = weights.querySelector(".lc-weights__more");
+    if (shown.length === 6 || !more || more.hidden || !/^Show .* too$/.test(more.textContent)) out.push(`the weights show ${shown.join(", ")} with "${more?.textContent}"`);
+  }
+  for (const fold of form.querySelectorAll("[data-fold]")) {
+    const said = fold.querySelector("[data-fold-said]")?.textContent.trim();
+    if (!said) out.push(`the ${fold.dataset.fold} fold says nothing`);
+  }
+  const fr = form.getBoundingClientRect();
+  const over = [...form.querySelectorAll("input, select, button")].filter(el => { const r = el.getBoundingClientRect(); return r.width && (r.right > fr.right + 1 || r.left < fr.left - 1); });
+  if (over.length) out.push(`${over.length} controls past the form's edge, e.g. ${over[0].name || over[0].className}`);
+  const small = [...form.querySelectorAll("*")].filter(el => [...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim()) && el.getBoundingClientRect().height && parseFloat(getComputedStyle(el).fontSize) < 11);
+  if (small.length) out.push(`${small.length} texts under 11px, e.g. "${small[0].textContent.trim().slice(0, 30)}"`);
+  if (kind === "deck") {
+    const head = form.querySelector(".lc-cards__head");
+    const wide = innerWidth > 700;
+    if (wide && !head?.getBoundingClientRect().height) out.push("the deck's column heads are gone at its own width");
+    if (!wide && [...form.querySelectorAll(".lc-card-row__cap")].filter(c => c.getBoundingClientRect().height).length < 2) out.push("the narrow deck rows don't caption weight and once");
+  }
+  return out;
+}
+
+// "Add a pool" open with "s" typed: the pools whose names hold an s, and the line saying how many.
+function pickerSearchProblems() {
+  const out = [];
+  const more = document.querySelector(".lc-pool-picker__more");
+  if (!more?.open) return ["Add a pool isn't open"];
+  const rows = [...more.querySelectorAll(".lc-pool-pick")];
+  const shown = rows.filter(r => r.checkVisibility());
+  if (shown.some(r => !r.dataset.poolName.includes("s"))) out.push("the search shows a pool without an s");
+  const said = more.querySelector(".lc-pool-picker__count")?.textContent;
+  if (said !== `${shown.length} pools match.`) out.push(`the search says "${said}" for ${shown.length} shown`);
+  if (shown.some(r => r.querySelector("input[data-share]")?.checkVisibility())) out.push("an unticked pool shows its share");
+  return out;
+}
+
+// The lot search with "cloak" typed: only cloaks, under the pools that hold them, and the lot still named.
+function lotSearchProblems() {
+  const out = [];
+  const pick = document.querySelector(".lc-auction-lot__pick");
+  const shown = [...pick.querySelectorAll("optgroup option")].filter(o => !o.hidden && !o.parentNode.hidden);
+  if (!shown.length || shown.some(o => !/cloak/i.test(o.textContent))) out.push(`the search shows ${shown.map(o => o.textContent).join(", ")}`);
+  const groups = [...pick.querySelectorAll("optgroup")].filter(g => !g.hidden).map(g => g.label);
+  if (!groups.includes("Core magic items") || groups.includes("Sealed crates")) out.push(`the search's groups are ${groups.join(", ")}`);
+  const said = document.querySelector("[data-lot-said]")?.textContent;
+  if (said !== "Flame Tongue, Rare is the lot.") out.push(`the lot line reads "${said}"`);
+  if (pick.size < 6) out.push(`the lot list shows ${pick.size} rows`);
+  return out;
+}
+
 function deckEditorProblems() {
   const out = [];
   const input = document.querySelector('input[name="streakMinutes"]');
@@ -1795,8 +1895,8 @@ function deckEditorProblems() {
 
 async function limitsEditorProblems() {
   const out = [];
-  const group = [...document.querySelectorAll(".lc-form fieldset")].find(f => f.querySelector("legend")?.textContent.trim() === "Limits");
-  if (!group) return ["no Limits group"];
+  const group = [...document.querySelectorAll(".lc-form fieldset")].find(f => f.querySelector("legend")?.textContent.trim() === "Who can buy");
+  if (!group) return ["no Who can buy group"];
   if (group.querySelector('input[name="stock"]')?.value !== "10") out.push("the stock field doesn't show the GM's 10");
   const left = group.querySelector('.lc-limits__left[role="status"]');
   if (left?.textContent.trim() !== "3 of 10 left") out.push(`the stock line reads "${left?.textContent}"`);
@@ -2434,7 +2534,7 @@ try {
       if (name.startsWith("scratch")) await page.waitForSelector(name === "scratch-unscratched" || name === "scratch-half" || name === "scratch-spectator" ? "body[data-ready]" : "body[data-landed]", { timeout: 10000 });
       // Mid auto-scratch: the coin has opened a few panels by itself.
       if (name === "scratch-spectator") await page.waitForFunction(() => document.querySelectorAll(".lc-scratch__panel--open").length >= 3, null, { timeout: 10000 });
-      if (name.startsWith("manager") || name === "box-limits" || name === "editor-deck" || name.startsWith("editor-scratch") || name.startsWith("editor-guard") || name === "box-odds" || name === "drop-preview") await page.waitForSelector("body[data-ready]", { timeout: 10000 });
+      if (name.startsWith("manager") || name === "box-limits" || name.startsWith("editor") || name === "box-odds" || name === "drop-preview") await page.waitForSelector("body[data-ready]", { timeout: 10000 });
       await page.waitForTimeout(500);
       const wide = await page.evaluate(() => document.scrollingElement.scrollWidth > document.scrollingElement.clientWidth + 1);
       if (name.startsWith("shop")) problems0.push(...await page.evaluate(shopControlProblems, name.endsWith("-gm")));
@@ -2484,9 +2584,14 @@ try {
         problems0.push(...await page.evaluate(stockEditorProblems));
       }
       else if (name === "editor-guard-discard") problems0.push(...await page.evaluate(discardProblems));
-      else if (name === "editor-deck") problems0.push(...await page.evaluate(deckEditorProblems), ...await page.evaluate(shelfEditorProblems));
-      else if (name === "editor-scratch") problems0.push(...await page.evaluate(scratchEditorProblems), ...await page.evaluate(shelfEditorProblems));
+      else if (name === "editor-deck") problems0.push(...await page.evaluate(deckEditorProblems), ...await page.evaluate(shelfEditorProblems), ...await page.evaluate(editorOrderProblems, "deck"));
+      else if (name === "editor-scratch") problems0.push(...await page.evaluate(scratchEditorProblems), ...await page.evaluate(shelfEditorProblems), ...await page.evaluate(editorOrderProblems, "scratch"));
       else if (name.startsWith("editor-scratch-fill")) problems0.push(...await page.evaluate(scratchFillProblems, name === "editor-scratch-filled"));
+      else if (EDITOR_KINDS[name]) {
+        problems0.push(...await page.evaluate(editorOrderProblems, EDITOR_KINDS[name]), ...await page.evaluate(shelfEditorProblems));
+        if (name === "editor-crate-picker") problems0.push(...await page.evaluate(pickerSearchProblems));
+        if (name === "editor-auction-search") problems0.push(...await page.evaluate(lotSearchProblems));
+      }
       else if (name === "box-odds") problems0.push(...await page.evaluate(oddsEditorProblems));
       else if (name === "drop-preview") problems0.push(...await page.evaluate(dropPreviewProblems));
       else if (name === "landed-nothing") problems0.push(...await page.evaluate(nothingRevealProblems));

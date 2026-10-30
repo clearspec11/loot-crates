@@ -61,7 +61,7 @@
       "Restock": "Restock",
       "StockHint": "How many there are in all; blank for unlimited. Each sale takes one, a refund puts one back, and Restock fills it to this number again.",
       "NoCalendar": "No calendar: a limit per day will not apply.",
-      "Legend": "Limits",
+      "Legend": "Who can buy",
       "EachMayBuy": "Each character may buy",
       "HowOften": "How often",
       "EachHint": "Blank for no limit. Counted for each character from the Pull log, so a refund gives the purchase back.",
@@ -202,7 +202,9 @@
       "ItemsAndFlattened": "{items}, {nested}",
       "CopiedFrom": "Copied from {name} ({what}); edit the table and make the crate again to pick up changes.",
       "CountNothing": "Count text results as nothing",
-      "CountNothingHint": "The table's text results are {chance} of it. Ticked, that share of pulls gives no item; unticked, they are left out."
+      "CountNothingHint": "The table's text results are {chance} of it. Ticked, that share of pulls gives no item; unticked, they are left out.",
+      "WeightsMore": "Show {names} too",
+      "WeightsFewer": "Show only the rarities these pools hold"
     },
     "Deck": {
       "CardName": "Name of card {n}",
@@ -678,7 +680,9 @@
       "PrintRollAsk": "Print a new roll of {name}? {roll} still has {left}; they come off sale, and the new roll starts with every prize on the list.",
       "RollPrinted": "{name}: {roll} is printed, {size} tickets on sale.",
       "TicketMade": "A {name} ticket is in the Items sidebar, in the folder {folder}. Drag it onto a character's sheet, a loot sheet or a pool.",
-      "TicketFailed": "The ticket for {name} couldn't be made. The console says why."
+      "TicketFailed": "The ticket for {name} couldn't be made. The console says why.",
+      "PoolsWheel": "Pools the item comes from",
+      "PriceLegend": "The price"
     },
     "Game": {
       "EditBox": "Edit box",
@@ -1119,7 +1123,11 @@
       "IsTheLot": "{name} is the lot.",
       "PickLot": "Pick a lot",
       "SealedCrates": "Sealed crates",
-      "PoolItems": "Items in your pools"
+      "FindLot": "Find a lot",
+      "FindLotLabel": "Find a lot by name",
+      "LotNoMatch": "No lot matches “{query}”.",
+      "LotMatchOne": "{count} lot matches.",
+      "LotMatchMany": "{count} lots match."
     },
     "Settings": {
       "SoundName": "Crate sounds",
@@ -1162,7 +1170,7 @@
       "RollSize": "Print {input} tickets",
       "LiveRoll": "{roll} has sold {sold} so far: the prizes left follow this list. Print a new roll on the Boxes tab to start again.",
       "AddPrize": "Add prize",
-      "PrizesHint": "Each row is how many tickets win that prize. A prize can pay several parts at once (an item, coins and the gem), and a ticket wins every part of its row. The tickets left over are duds. An item comes from the pools below at its rarity.",
+      "PrizesHint": "Each row is how many tickets win that prize. A prize can pay several parts at once (an item, coins and the gem), and a ticket wins every part of its row. The tickets left over are duds. An item comes from the pools above at its rarity.",
       "PrizesFull": "A roll holds up to {max} prizes.",
       "FillToggle": "Fill the prize list",
       "FillHint": "Give a few numbers and the list is built for you, the way real tickets are printed: the most common win gives the price back, prizes climb in steps, the top prize comes once. Edit any row after; nothing is saved until you press Save.",
@@ -1293,7 +1301,10 @@
       "BonusCovered": "Bonus spot, covered",
       "PanelsLabel": "The panels of {name}",
       "RevealAll": "Reveal all",
-      "Help": "Hold the mouse button and rub the coin over the foil. Keyboard: the arrow keys move between panels, Space scratches one, R reveals the whole card."
+      "Help": "Hold the mouse button and rub the coin over the foil. Keyboard: the arrow keys move between panels, Space scratches one, R reveals the whole card.",
+      "PrizesLegend": "The prizes",
+      "LookLegend": "How it looks",
+      "SeesLegend": "Who sees what"
     },
     "Ticket": {
       "UseOpen": "Open",
@@ -1328,6 +1339,33 @@
       "RefundDone": "{box} refunded for {name}: one ticket out of their pack and {price} back in their purse.",
       "RefundGone": "{actor} has no {box} ticket left to give back (it was used or traded), so nothing was refunded.",
       "RefundTaken": "One {box} ticket was taken out of their pack."
+    },
+    "Picker": {
+      "Empty": "empty",
+      "NoneTicked": "No pool ticked yet.",
+      "AddMore": "Add a pool ({count} more)",
+      "Find": "Find a pool",
+      "FindLabel": "Find a pool by name",
+      "NoMatch": "No pool matches “{query}”.",
+      "MatchOne": "{count} pool matches.",
+      "MatchMany": "{count} pools match."
+    },
+    "Fold": {
+      "WhoCanBuy": "Who can buy",
+      "WhoCanPlay": "Who can play",
+      "Extras": "Extras",
+      "Anyone": "Anyone, as often as they like",
+      "Off": "None set",
+      "InStock": "{count} in stock",
+      "WellCap": "{count} throws a day per character",
+      "Pity": "Pity: {rarity} or better after {after} {noun}",
+      "PityNoDupes": "Pity: {rarity} or better after {after} {noun}, no duplicates",
+      "NoDupes": "No duplicates per character",
+      "Card": "{layout}, {cols} by {rows} panels",
+      "CardBonus": "{layout}, {cols} by {rows} panels, a bonus spot paying {gp} gp",
+      "LeftShown": "Players see what is left",
+      "LeftHidden": "What is left is hidden from players",
+      "SeesAnd": "{left}, {limits}"
     }
   }
 }

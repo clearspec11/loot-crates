@@ -14,6 +14,7 @@
 import { RARITIES, RARITY_LABEL } from "../core/config.js";
 import { oddsModeOf, missChanceOf, chanceLabel } from "../core/odds.js";
 import { t, words } from "../core/i18n.js";
+import { poolPickerHTML } from "./poolpicker.js";
 
 const plain = s => String(s ?? "");
 
@@ -23,33 +24,27 @@ const plain = s => String(s ?? "");
 export const field = (labelText, control) => `<label class="lc-field">${labelText} ${control}</label>`;
 
 /*
-  The pools a game draws from, one row each: the checkbox and the pool's
-  name in a label of their own, then (with `share`) the pool's share of
-  pulls, named for its pool and off while the pool is unticked (draftBox
-  reads no share for an unticked pool, so there is nothing to type).
-  `refs` is the game's pools ([{ id, share }]).
+  The pools a game draws from (poolpicker.js): the game's own pools first,
+  each with its share and what it holds, the rest folded under "Add a
+  pool" with a search. With `share`, a pool's share of pulls is named for
+  its pool and off while the pool is unticked (draftBox reads no share
+  for an unticked pool, so there is nothing to type). `refs` is the
+  game's pools ([{ id, share }]); `pools` the world's (a list or the map).
 */
-export function poolPicks(pools, refs = [], { share = true, esc = plain } = {}) {
-  const shares = Object.fromEntries((refs ?? []).map(p => [p.id, p.share ?? 1]));
-  if (!pools.length) return `<p>${t("LOOTCRATES.Editor.NoPools")}</p>`;
-  return pools.map(p => {
-    const on = p.id in shares;
-    const id = esc(p.id);
-    const shareInput = share ? ` <input name="share.${id}" type="number" min="0" step="1" value="${esc(shares[p.id] ?? 1)}" title="${t("LOOTCRATES.Editor.Share")}" aria-label="${t("LOOTCRATES.Editor.ShareOf", { name: esc(p.name) })}" data-share="${id}"${on ? "" : " disabled"}>` : "";
-    return `<div class="lc-row lc-pool-pick">${field(`<input type="checkbox" name="pool.${id}"${on ? " checked" : ""}>`, esc(p.name))}${shareInput}</div>`;
-  }).join("");
-}
+export const poolPicks = (pools, refs = [], opts = {}) => poolPickerHTML(pools, refs, opts);
 
-export const poolsFieldset = (legend, pools, refs, opts = {}) => `<fieldset class="lc-pool-picks"><legend>${legend}</legend>
-        ${poolPicks(pools, refs, opts)}
+export const poolsFieldset = (legend, pools, refs, opts = {}) => `<fieldset class="lc-pool-picks" data-section="pools"${opts.when ? ` data-when="${opts.when}"` : ""}><legend>${legend}</legend>
+        ${poolPickerHTML(pools, refs, opts)}
       </fieldset>`;
 
-// Each share follows its pool's checkbox (on while ticked); the editors
-// call it on every input and change (manager.js liveOdds).
+// Each share follows its pool's checkbox (on and shown while ticked); the
+// editors call it on every input and change (manager.js liveOdds).
 export function syncShares(root) {
   for (const share of root.querySelectorAll("input[data-share]")) {
     const box = share.closest(".lc-pool-pick")?.querySelector('input[type="checkbox"]');
-    if (box) share.disabled = !box.checked;
+    if (!box) continue;
+    share.disabled = !box.checked;
+    share.hidden = !box.checked;
   }
 }
 
