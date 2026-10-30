@@ -16,6 +16,7 @@ const { ticketUseHook, ticketToRedeem, spendTicket, returnTicket } = await impor
 const { ticketData } = await import("../module/scripts/games/ticket.js");
 const { PullError } = await import("../module/scripts/foundry/pull.js");
 const { toCopper } = await import("../module/scripts/core/currency.js");
+const { boughtBy } = await import("../module/scripts/core/limits.js");
 
 const tick = () => new Promise(r => setTimeout(r, 0));
 const GM = { id: "gm", name: "Gamemaster" };
@@ -214,6 +215,20 @@ describe("the GM's guards on a redeem: nothing is spent", () => {
     await deliver(redeem());
     expect(errorsTo(emitted)).toEqual([]);
     expect(emitted.filter(m => m.type === "reveal")).toHaveLength(1);
+  });
+
+  it("plays a ticket the GM handed out past the limit per character, and doesn't count it (Leigh, 2026-10-30)", async () => {
+    const { actor, emitted, deliver } = makeWorld();
+    const LIMITED = { ...CRATE, rules: { perCharacter: { max: 1, per: "ever" } } };
+    await seed([LIMITED]);
+    // The character has bought its one already.
+    await appendLog({ id: "bought", kind: "crate", boxId: "box", actorId: "actor1", price: 10, at: Date.now() });
+    addTicket(actor, LIMITED, 2);
+    await deliver(redeem());
+    await deliver(redeem());
+    expect(errorsTo(emitted)).toEqual([]);
+    expect(emitted.filter(m => m.type === "reveal")).toHaveLength(2);
+    expect(boughtBy(getLog(), { boxId: "box", actorId: "actor1" })).toBe(1);
   });
 });
 

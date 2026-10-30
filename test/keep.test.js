@@ -354,9 +354,9 @@ describe("a kept row is a sale, not a play", () => {
     expect(streakOf(given, { boxId: "g", actorId: "a", now: 1100, within: 60000 })).toBe(1);
   });
 
-  it("counts toward the limit per character on the day it was bought; a kept ticket's play doesn't", () => {
+  it("counts toward the limit per character on the day it was bought; no ticket's play does", () => {
     const log = [row({ keep: { paid: 1 } }), row({ redeem: { paid: 1, kept: true } }), row({ redeem: { paid: 0 } })];
-    expect(boughtBy(log, { boxId: "g", actorId: "a" })).toBe(2);
+    expect(boughtBy(log, { boxId: "g", actorId: "a" })).toBe(1);
     expect(boughtBy(log, { boxId: "g", actorId: "a", per: "day", today: "y1d2" })).toBe(0);
   });
 
