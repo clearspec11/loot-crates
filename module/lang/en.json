@@ -695,7 +695,8 @@
       "TicketMade": "{name} is in the Items sidebar, in the folder {folder}. Drag it onto a character's sheet, a loot sheet or a pool.",
       "TicketFailed": "The ticket for {name} couldn't be made. The console says why.",
       "PoolsWheel": "Pools the item comes from",
-      "PriceLegend": "The price"
+      "PriceLegend": "The price",
+      "ShelfRefused": "{name} stays off the shelf: {why}"
     },
     "Game": {
       "EditBox": "Edit crate",

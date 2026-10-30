@@ -224,12 +224,17 @@ const pressToggle = (gm, boxId) => gm.evaluate(async ({ boxId }) => {
       const d = dialog();
       const ok = () => d.querySelector('button[data-action="ok"]');
       const shelf = d.querySelector('input[name="onShelf"]');
-      const tickedAtFirst = shelf.checked;
-      const okBefore = ok().textContent.trim();
+      // A new crate with no pool ticked can't be played, so it starts as
+      // "Save off the shelf" (round 30's guard rails); ticking the pool
+      // puts it back on the shelf, and the GM then takes it off.
+      const noPool = { ticked: shelf.checked, ok: ok().textContent.trim() };
       type(d.querySelector('input[name="name"]'), name);
       type(d.querySelector('input[name="price"]'), "1");
       const pool = d.querySelector(`input[name="pool.${poolId}"]`);
       if (!pool.checked) click(pool);
+      await wait(100);
+      const tickedAtFirst = shelf.checked;
+      const okBefore = ok().textContent.trim();
       click(shelf);
       await wait(100);
       const okAfter = ok().textContent.trim();
@@ -241,7 +246,7 @@ const pressToggle = (gm, boxId) => gm.evaluate(async ({ boxId }) => {
       const t = app.element.querySelector(`button[data-action="toggleShelf"][data-box="${id}"]`);
       const row = t?.closest("tr");
       return {
-        id, tickedAtFirst, okBefore, okAfter, record: structuredClone(store.getBoxes()[id]),
+        id, noPool, tickedAtFirst, okBefore, okAfter, record: structuredClone(store.getBoxes()[id]),
         toggle: { pressed: t?.getAttribute("aria-pressed"), label: t?.textContent.trim() }, offTag: row?.querySelector(".lc-kind--off")?.textContent.trim() ?? "",
         dimmed: !!row?.classList.contains("lc-row--off"),
         status: app.element.querySelector(".lc-manager__status")?.textContent.trim(), count: app.element.querySelector(".lc-shelf-count")?.textContent.trim(),

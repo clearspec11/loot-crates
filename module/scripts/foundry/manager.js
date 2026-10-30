@@ -527,14 +527,14 @@ export class CrateManager extends ApplicationV2 {
     if (!unset.length) return this.#repaint(poolId);
     const n = unset.length;
     const matching = !!(view.q.trim() || view.chip);
-    const lead = target(n === 1 ? (matching ? "LOOTCRATES.Manager.UnsetOneMatching" : "LOOTCRATES.Manager.UnsetOne") : (matching ? "LOOTCRATES.Manager.UnsetManyMatching" : "LOOTCRATES.Manager.UnsetMany"), { count: n });
+    const lead = t(n === 1 ? (matching ? "LOOTCRATES.Manager.UnsetOneMatching" : "LOOTCRATES.Manager.UnsetOne") : (matching ? "LOOTCRATES.Manager.UnsetManyMatching" : "LOOTCRATES.Manager.UnsetMany"), { count: n });
     const data = await promptForm(t("LOOTCRATES.Manager.SetRarityIn", { pool: pool.name }), `
       <p>${lead}</p>
       <label>${t("LOOTCRATES.Roulette.Rarity")} <select name="rarity">${RARITIES.map(r => `<option value="${r}">${RARITY_LABEL[r]}</option>`).join("")}</select></label>
       <p class="lc-form__hint">${t("LOOTCRATES.Manager.SetRarityHint")}</p>`);
     if (!RARITIES.includes(data?.rarity)) return;
     const saved = await updatePool(poolId, fresh => ({ ...fresh, entries: curateEntries(fresh.entries, unset, { sourceRarity: "", rarityOverride: data.rarity }) }));
-    if (saved) ui.notifications.info(target(n === 1 ? "LOOTCRATES.Manager.SetToOne" : "LOOTCRATES.Manager.SetToMany", { count: n, pool: pool.name, rarity: RARITY_LABEL[data.rarity] }));
+    if (saved) ui.notifications.info(t(n === 1 ? "LOOTCRATES.Manager.SetToOne" : "LOOTCRATES.Manager.SetToMany", { count: n, pool: pool.name, rarity: RARITY_LABEL[data.rarity] }));
     this.#repaint(poolId);
   }
 
@@ -862,7 +862,7 @@ export class CrateManager extends ApplicationV2 {
     const box = getBoxes()[target.dataset.box];
     if (!box) return this.render();
     const drawn = deckOdds(box, getPools(), getLog()).drawn;
-    const ok = await DialogV2.confirm({ window: { title: t("LOOTCRATES.Boxes.Reshuffle") }, content: `<p>${t("LOOTCRATES.Manager.ReshuffleAsk", { name: `<strong>${esc(box.name)}</strong>` })} ${drawn ? target(drawn === 1 ? "LOOTCRATES.Manager.ReshuffleOne" : "LOOTCRATES.Manager.ReshuffleMany", { count: drawn }) : t("LOOTCRATES.Manager.ReshuffleNone")}</p>` });
+    const ok = await DialogV2.confirm({ window: { title: t("LOOTCRATES.Boxes.Reshuffle") }, content: `<p>${t("LOOTCRATES.Manager.ReshuffleAsk", { name: `<strong>${esc(box.name)}</strong>` })} ${drawn ? t(drawn === 1 ? "LOOTCRATES.Manager.ReshuffleOne" : "LOOTCRATES.Manager.ReshuffleMany", { count: drawn }) : t("LOOTCRATES.Manager.ReshuffleNone")}</p>` });
     if (!ok) return target.focus?.();
     const saved = await updateBox(box.id, fresh => ({ ...fresh, deck: { ...(fresh.deck ?? {}), shuffledAt: Date.now() } }));
     if (saved) ui.notifications.info(t("LOOTCRATES.Manager.Reshuffled", { name: box.name }));
@@ -1498,9 +1498,15 @@ export class CrateManager extends ApplicationV2 {
     what the players can see now.
   */
   static async #toggleShelf(_e, target) {
-    const saved = await updateBox(target.dataset.box, fresh => ({ ...fresh, rules: shelfRules(fresh.rules ?? {}, !onShelf(fresh)) }));
+    // Putting a game out runs the editor's check (playable.js): a game that
+    // can't be played stays off the shelf, and the status line says why.
+    let why = "";
+    const saved = await updateBox(target.dataset.box, fresh => {
+      if (!onShelf(fresh)) why = unplayableReason(fresh, getPools());
+      return why ? fresh : { ...fresh, rules: shelfRules(fresh.rules ?? {}, !onShelf(fresh)) };
+    });
     await this.render();
-    if (saved) this.#announce(shelfNotice(saved));
+    if (saved) this.#announce(why ? t("LOOTCRATES.Manager.ShelfRefused", { name: saved.name, why }) : shelfNotice(saved));
   }
 
   // The Pull log without the throws that gave nothing (view state only).

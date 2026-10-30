@@ -555,6 +555,20 @@ describe("Copy", () => {
     expect(notifications.warn).not.toHaveBeenCalled();
   });
 
+  it("Reshuffle on a deck with a card drawn asks with the count and puts it back (it used to throw)", async () => {
+    const cards = [{ id: "a", label: "Sun", kind: "item", weight: 2, once: true, gp: 0, text: "" }, { id: "b", label: "Ruin", kind: "loss", weight: 1, once: false, gp: 25, text: "" }];
+    await store.saveBox({ id: "k1", kind: "deck", name: "Thornwick Deck", price: 10, pools: [{ id: "p", share: 1 }], weights: { common: 0, uncommon: 2, rare: 1, veryRare: 0, legendary: 0, artifact: 0 }, deck: { step: 1.5, shuffledAt: 1000, cards }, rules: {} });
+    await store.appendLog({ id: "row1", kind: "deck", boxId: "k1", boxName: "Thornwick Deck", actorId: "A", actorName: "Tam", price: 10, cardId: "a", at: 2000 });
+    const app = await manager();
+    Dialog.asked = [];
+    Dialog.answer = true;
+    await act(app, "reshuffle", { dataset: { box: "k1" }, focus() {} });
+    await settle();
+    expect(Dialog.asked).toHaveLength(1);
+    expect(Dialog.asked[0].content).toMatch(/1/);
+    expect(store.getBoxes().k1.deck.shuffledAt).toBeGreaterThan(2000);
+  });
+
   it("copies a deck with its cards, the shuffle mark fresh so nothing counts as drawn", async () => {
     const cards = [{ id: "a", label: "Sun", kind: "item", weight: 2, once: true, gp: 0, text: "" }, { id: "b", label: "Ruin", kind: "loss", weight: 1, once: false, gp: 25, text: "" }, { id: "c", label: "Fates", kind: "effect", weight: 1, once: true, gp: 0, text: "Undo one thing." }];
     await store.saveBox({ id: "k1", kind: "deck", name: "Thornwick Deck", price: 10, pools: [{ id: "p", share: 1 }], weights: { common: 0, uncommon: 2, rare: 1, veryRare: 0, legendary: 0, artifact: 0 }, deck: { step: 1.5, shuffledAt: 1000, cards }, rules: {} });
@@ -760,6 +774,18 @@ describe("On the shelf", () => {
     expect(toggle().getAttribute("aria-pressed")).toBe("true");
     expect(focused()).toBe(toggle());
     expect(status(app).textContent).toBe("Gilded Crate is on the shelf; players can see it.");
+  });
+
+  it("the row's toggle won't put out a game that can't be played, and says why", async () => {
+    await store.saveBox({ id: "b2", name: "Empty Crate", price: 50, pools: [], weights: {}, rules: { shelved: false } });
+    const app = await manager();
+    const toggle = () => app.element.querySelector('.lc-table [data-action="toggleShelf"][data-box="b2"]');
+    expect(toggle().getAttribute("aria-pressed")).toBe("false");
+    await act(app, "toggleShelf", toggle());
+    await settle();
+    expect(store.getBoxes().b2.rules.shelved).toBe(false);
+    expect(toggle().getAttribute("aria-pressed")).toBe("false");
+    expect(status(app).textContent).toMatch(/^Empty Crate stays off the shelf: /);
   });
 
   it("a new crate draws from the world's one pool, already ticked", async () => {
