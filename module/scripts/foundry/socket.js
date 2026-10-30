@@ -709,7 +709,7 @@ async function doKeep(msg, timer, sent, stopWatching) {
     const { actor, buyer } = guardBuyer(msg);
     box = getBoxes()[msg.boxId];
     const today = todayKey(actor.id);
-    const out = await performKeep({ box, actor, state: getActorState(msg.actorId, msg.boxId), expectedPrice: msg.price, log: getLog(), today });
+    const out = await performKeep({ box, pools: getPools(), actor, state: getActorState(msg.actorId, msg.boxId), expectedPrice: msg.price, log: getLog(), today });
     timer.mark("charge");
 
     const logId = newId();

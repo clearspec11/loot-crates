@@ -146,7 +146,9 @@ import { POOLS, BOX, BOXES, TABLE_POOL, TABLE_CRATE, TABLE_PLAN, WELL, DICE, DIC
 import { welcomeHTML, newsFor, WELCOME_TITLE } from "../module/scripts/views/welcome.js";
 import { LATEST } from "../module/scripts/core/changelog.js";
 import { STARTER_POOLS, pickEntries, buildStarter, starterNotice, starterCallHTML } from "../module/scripts/views/starter.js";
-import { limitsFieldset, restockLine, stockField } from "../module/scripts/core/limits.js";
+import { limitsFieldset } from "../module/scripts/core/limits.js";
+import { wireShelf, wireStock, discardTitle, discardHTML, discardLabels } from "../module/scripts/views/editorguard.js";
+import { unplayableReason } from "../module/scripts/views/playable.js";
 import { poolsFieldset, pityRow, syncShares, oddsModeFieldset, tableNoteHTML, nothingRow } from "../module/scripts/views/editorfields.js";
 import { getKind, kindOf } from "../module/scripts/games/kinds.js";
 import { mountWell } from "../module/scripts/games/well.js";
@@ -211,7 +213,7 @@ const SHOP_POOLS = { ...POOLS, [TABLE_POOL.id]: TABLE_POOL };
 document.body.classList.replace("theme-dark", `theme-${theme}`);
 
 // The window the module would open for this state: its class and title.
-const WINDOWS = { welcome: ["lc-welcome-window", WELCOME_TITLE], auction: ["lc-table", `The auction at ${q.get("lot") === "crate" ? AUCTION_CRATE.name : AUCTION.name}`], editor: ["lc-dialog", q.get("odds") ? "New box" : q.get("deck") ? "Edit deck" : q.get("scratch") ? "Edit scratch ticket" : "Edit box"], preview: ["lc-dialog", "Add to Goblin's Pockets"], shop: ["lc-shop", "Crate Shop"], manager: ["lc-manager", "Loot Crates"], well: ["lc-reveal", "A coin in the well"], dice: ["lc-reveal", "Dragon's Teeth"], deck: ["lc-reveal", "A card from the deck"], scratch: ["lc-reveal", "A scratch ticket"], table: ["lc-table", `The wheel at ${ROULETTE.name}`] };
+const WINDOWS = { welcome: ["lc-welcome-window", WELCOME_TITLE], auction: ["lc-table", `The auction at ${q.get("lot") === "crate" ? AUCTION_CRATE.name : AUCTION.name}`], editor: ["lc-dialog", q.get("odds") || q.get("guard") === "offshelf" ? "New box" : q.get("deck") ? "Edit deck" : q.get("scratch") ? "Edit scratch ticket" : "Edit box"], preview: ["lc-dialog", "Add to Goblin's Pockets"], shop: ["lc-shop", "Crate Shop"], manager: ["lc-manager", "Loot Crates"], well: ["lc-reveal", "A coin in the well"], dice: ["lc-reveal", "Dragon's Teeth"], deck: ["lc-reveal", "A card from the deck"], scratch: ["lc-reveal", "A scratch ticket"], table: ["lc-table", `The wheel at ${ROULETTE.name}`] };
 const [appClass, appTitle] = WINDOWS[state] ?? ["lc-reveal", "Opening a crate"];
 document.getElementById("app").classList.add(appClass);
 // The welcome opens at its window's width (welcomewindow.js), 540px.
@@ -225,7 +227,7 @@ document.getElementById("title").textContent = appTitle;
 const CRATE_ICON = `<svg class="lc-box__icon" viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M3 8.5 12 4l9 4.5v8L12 21l-9-4.5z"/><path d="M3 8.5 12 13l9-4.5M12 13v8"/></svg>`;
 
 const nav = document.getElementById("nav");
-for (const [label, query] of [["shop", "state=shop"], ["spin", "state=spin"], ["landed", "state=landed"], ["landed, buyer", "state=landed&buyer=1"], ["missed", "state=landed&buyer=1&watched=0"], ["replay", "state=replay"], ["well", "state=well&buyer=1"], ["well, coin", "state=well&outcome=coin&buyer=1"], ["well, item", "state=well&outcome=item&buyer=1"], ["dice", "state=dice&buyer=1"], ["dice, lost", "state=dice&outcome=lose&buyer=1"], ["dice, prize", "state=dice&outcome=prize&buyer=1"], ["deck", "state=deck&buyer=1"], ["deck, item", "state=deck&outcome=item&buyer=1"], ["deck, bane", "state=deck&outcome=loss&buyer=1"], ["deck, effect", "state=deck&outcome=effect&buyer=1"], ["table", "state=table"], ["table, GM", "state=table&phase=waiting&gm=1"], ["wheel", "state=table&phase=spinning"], ["wheel, landed", "state=table&phase=landed&duration=0"], ["manager", "state=manager"], ["empty manager", "state=manager&empty=1"], ["boxes", "state=manager&tab=boxes&added=1"], ["starter", "state=manager&tab=boxes&starter=1"], ["pull log", "state=manager&tab=log"], ["box editor", "state=editor"], ["table crate", "state=shop&table=1"], ["table editor", "state=editor&odds=weight"], ["table drop", "state=preview"], ["nothing", "state=landed&nothing=1&buyer=1"], ["auction", "state=auction&phase=open"], ["auction, bids", "state=auction&phase=bid"], ["auction, GM", "state=auction&phase=bid&gm=1"], ["auction, hammer", "state=auction&phase=hammer&duration=0"], ["auction, crate", "state=auction&phase=hammer&lot=crate"], ["auction card", "state=shop&auction=1"], ["scratch card", "state=shop&scratch=1"], ["scratch hidden", "state=shop&scratch=hidden"], ["sold out", "state=shop&scratch=soldout"], ["scratch editor", "state=editor&scratch=1"], ["scratch fill", "state=editor&scratch=1&fill=done"], ["scratch", "state=scratch&buyer=1&phase=covered"], ["scratch, half", "state=scratch&buyer=1&phase=half"], ["scratch, watched", "state=scratch&phase=sweep"], ["scratch, match 3", "state=scratch&layout=match3&buyer=1"], ["scratch, fey", "state=scratch&outcome=coins&buyer=1&duration=0&ticket=fey"], ["scratch, combo", "state=scratch&outcome=combo&buyer=1&duration=0"], ["welcome", "state=welcome"], ["welcome, new world", "state=welcome&empty=1"], ["what's new", "state=welcome&view=news"]]) {
+for (const [label, query] of [["shop", "state=shop"], ["spin", "state=spin"], ["landed", "state=landed"], ["landed, buyer", "state=landed&buyer=1"], ["missed", "state=landed&buyer=1&watched=0"], ["replay", "state=replay"], ["well", "state=well&buyer=1"], ["well, coin", "state=well&outcome=coin&buyer=1"], ["well, item", "state=well&outcome=item&buyer=1"], ["dice", "state=dice&buyer=1"], ["dice, lost", "state=dice&outcome=lose&buyer=1"], ["dice, prize", "state=dice&outcome=prize&buyer=1"], ["deck", "state=deck&buyer=1"], ["deck, item", "state=deck&outcome=item&buyer=1"], ["deck, bane", "state=deck&outcome=loss&buyer=1"], ["deck, effect", "state=deck&outcome=effect&buyer=1"], ["table", "state=table"], ["table, GM", "state=table&phase=waiting&gm=1"], ["wheel", "state=table&phase=spinning"], ["wheel, landed", "state=table&phase=landed&duration=0"], ["manager", "state=manager"], ["empty manager", "state=manager&empty=1"], ["boxes", "state=manager&tab=boxes&added=1"], ["starter", "state=manager&tab=boxes&starter=1"], ["pull log", "state=manager&tab=log"], ["box editor", "state=editor"], ["table crate", "state=shop&table=1"], ["table editor", "state=editor&odds=weight"], ["table drop", "state=preview"], ["nothing", "state=landed&nothing=1&buyer=1"], ["auction", "state=auction&phase=open"], ["auction, bids", "state=auction&phase=bid"], ["auction, GM", "state=auction&phase=bid&gm=1"], ["auction, hammer", "state=auction&phase=hammer&duration=0"], ["auction, crate", "state=auction&phase=hammer&lot=crate"], ["auction card", "state=shop&auction=1"], ["scratch card", "state=shop&scratch=1"], ["scratch hidden", "state=shop&scratch=hidden"], ["sold out", "state=shop&scratch=soldout"], ["scratch editor", "state=editor&scratch=1"], ["editor, off the shelf", "state=editor&guard=offshelf"], ["editor, stock", "state=editor&guard=stock"], ["editor, discard", "state=editor&guard=discard"], ["scratch fill", "state=editor&scratch=1&fill=done"], ["scratch", "state=scratch&buyer=1&phase=covered"], ["scratch, half", "state=scratch&buyer=1&phase=half"], ["scratch, watched", "state=scratch&phase=sweep"], ["scratch, match 3", "state=scratch&layout=match3&buyer=1"], ["scratch, fey", "state=scratch&outcome=coins&buyer=1&duration=0&ticket=fey"], ["scratch, combo", "state=scratch&outcome=combo&buyer=1&duration=0"], ["welcome", "state=welcome"], ["welcome, new world", "state=welcome&empty=1"], ["what's new", "state=welcome&view=news"]]) {
   const a = document.createElement("a");
   a.href = `?${query}&seed=${seed}&theme=${theme}`;
   a.textContent = label;
@@ -1129,8 +1131,87 @@ function renderTableEditor(esc) {
   document.body.dataset.ready = "1";
 }
 
+/*
+  The guard rails (round 30; editorguard.js, playable.js), on the crate
+  editor wired as the manager wires it:
+  ?guard=offshelf  a New box with no pool ticked: the default button reads
+                   "Save off the shelf", the On the shelf box is off with
+                   the reason under it; ticking a pool brings Add to shelf
+                   back.
+  ?guard=stock     the Royal Vault's stock typed as -3: refused under the
+                   field, Save off.
+  ?guard=discard   the Royal Vault with its price changed and Escape
+                   pressed: Foundry's confirm (drawn here as a stand-in
+                   window) asks "Discard your changes to Royal Vault?",
+                   Keep editing focused.
+*/
+function renderGuardEditor(esc, mode) {
+  const royal = BOXES.find(b => b.id === "royal");
+  const isNew = mode === "offshelf";
+  const box = isNew ? { id: "new", name: "New box", price: 100, pools: [], weights: { ...DEFAULT_WEIGHTS }, rules: {} } : { ...royal, pools: [{ id: "core", share: 2 }] };
+  stage.innerHTML = `
+    <div class="dialog-form">
+      <div class="dialog-content"><div class="lc-form">
+        <label>Name <input name="name" value="${esc(box.name)}"></label>
+        <label class="lc-form__price">Price <input name="price" type="text" data-price-field value="${esc(formatPrice(box.price))}" placeholder="50 gp, 5 sp or 12 gp 5 sp" autocomplete="off" spellcheck="false"></label>
+        ${poolsFieldset("Pools and their share of pulls", Object.values(POOLS), box.pools, { esc })}
+        <div class="lc-form__odds" role="group" aria-labelledby="lc-odds-h"><div class="lc-form__label" id="lc-odds-h">Chances a player sees</div><div class="lc-form__preview"></div></div>
+        ${limitsFieldset(box, { draft: isNew, hasClock: true, esc })}
+        ${shelfFieldHTML(box, { isNew, esc })}
+      </div></div>
+      <footer class="form-footer"><button type="submit" data-action="ok"><span>${isNew ? "Add to shelf" : "Save"}</span></button><button type="button" data-action="cancel"><span>Cancel</span></button></footer>
+    </div>`;
+  const form = stage.querySelector(".dialog-form");
+  const shelf = wireShelf(form, { isNew, shopOpen: true });
+  wireStock(form, box);
+  const read = () => {
+    const out = {};
+    for (const el of form.querySelectorAll("input, select")) {
+      if (el.type === "checkbox") out[el.name] = el.checked;
+      else if (el.type === "radio") { if (el.checked) out[el.name] = el.value; }
+      else out[el.name] = el.value;
+    }
+    return out;
+  };
+  const paint = () => {
+    syncShares(form);
+    const draft = draftBox(box, read(), Object.keys(POOLS));
+    form.querySelector(".lc-form__preview").innerHTML = boxPreviewHTML(boxPreview(draft, POOLS), esc);
+    shelf(unplayableReason(draft, POOLS));
+  };
+  form.addEventListener("input", paint);
+  form.addEventListener("change", paint);
+  paint();
+  const scroller = form.querySelector(".dialog-content");
+  if (mode === "offshelf") scroller.scrollTop = scroller.scrollHeight;
+  if (mode === "stock") {
+    const stock = form.querySelector('input[name="stock"]');
+    stock.value = "-3";
+    stock.dispatchEvent(new Event("input", { bubbles: true }));
+    stock.scrollIntoView({ block: "center" });
+    stock.focus();
+  }
+  if (mode === "discard") {
+    const price = form.querySelector('input[name="price"]');
+    price.value = "1400 gp";
+    price.dispatchEvent(new Event("input", { bubbles: true }));
+    const words = discardLabels();
+    const confirm = document.createElement("div");
+    confirm.className = "application harness-confirm";
+    confirm.setAttribute("role", "dialog");
+    confirm.setAttribute("aria-labelledby", "harness-confirm-title");
+    confirm.innerHTML = `<header class="window-header"><h2 class="window-title" id="harness-confirm-title">${esc(discardTitle())}</h2></header>
+      <section class="window-content"><div class="dialog-content">${discardHTML(box.name, esc)}</div>
+        <footer class="form-footer"><button type="button" data-action="yes"><span>${esc(words.yes)}</span></button><button type="button" data-action="no" autofocus><span>${esc(words.no)}</span></button></footer></section>`;
+    document.querySelector(".page").append(confirm);
+    confirm.querySelector('[data-action="no"]').focus();
+  }
+  document.body.dataset.ready = "1";
+}
+
 function renderEditor() {
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+  if (q.get("guard")) return renderGuardEditor(esc, q.get("guard"));
   if (q.get("odds")) return renderTableEditor(esc);
   if (q.get("deck")) return renderDeckEditor(esc);
   if (q.get("scratch")) return renderScratchEditor(esc);
@@ -1151,16 +1232,8 @@ function renderEditor() {
       </div></div>
       <footer class="form-footer"><button type="button">Save</button><button type="button">Cancel</button></footer>
     </div>`;
-  const btn = stage.querySelector("[data-restock]");
-  const stock = stage.querySelector('input[name="stock"]');
-  const paint = () => { stage.querySelector(".lc-limits__left").textContent = restockLine(stock?.value ?? "", stockField(box)); };
-  btn?.addEventListener("click", () => {
-    if (btn.getAttribute("aria-disabled") === "true") return;
-    btn.setAttribute("aria-disabled", "true");
-    stage.querySelector('input[name="restock"]').value = "1";
-    paint();
-  });
-  stock?.addEventListener("input", () => { if (stage.querySelector('input[name="restock"]').value === "1") paint(); });
+  // Restock and the stock line as the manager wires them (editorguard.js).
+  wireStock(stage.querySelector(".dialog-form"), box);
   stage.addEventListener("change", () => syncShares(stage));
   document.body.dataset.ready = "1";
 }

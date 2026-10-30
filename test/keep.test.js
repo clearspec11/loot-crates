@@ -250,6 +250,38 @@ describe("Buy to keep on the GM: a purchase's guards, nothing moves when one ref
     expect(toCopper(actor.system.currency)).toBe(9000);
   });
 
+  it("refuses what the game itself would refuse on use, as its shop card says: a sold-out scratch roll", async () => {
+    const { actor, emitted, deliver } = makeWorld();
+    await seed([SCRATCH]);
+    // The roll's one ticket is sold (played): the roll is sold out.
+    await deliver({ type: "pull", requestId: "p1", boxId: "scratch", actorId: "actor1", userId: "p1", price: 5 });
+    expect(errorsTo(emitted)).toEqual([]);
+    const purse = toCopper(actor.system.currency);
+    const writes = actor.writes.length;
+    await deliver(keep({ boxId: "scratch", price: 5 }));
+    expect(errorsTo(emitted)).toEqual(["Fortune: Sold out. Nothing was charged."]);
+    expect(toCopper(actor.system.currency)).toBe(purse);
+    expect(actor.writes).toHaveLength(writes);
+    expect(tickets(actor)).toEqual([]);
+    expect(getLog().filter(r => r.keep)).toEqual([]);
+  });
+
+  it("refuses past the well's cap for today, with nothing charged", async () => {
+    const WELL = { id: "well", kind: "well", name: "Wishing Well", price: 1, pools: [], weights: {}, odds: { nothing: 1, coin: 0, item: 0 }, rules: { cap: 1 } };
+    const { actor, emitted, deliver } = makeWorld();
+    // A world clock, so the well counts throws by the day.
+    globalThis.game.time = { worldTime: 0 };
+    await seed([WELL]);
+    await deliver({ type: "pull", requestId: "w1", boxId: "well", actorId: "actor1", userId: "p1", price: 1 });
+    expect(errorsTo(emitted)).toEqual([]);
+    const purse = toCopper(actor.system.currency);
+    await deliver(keep({ boxId: "well", price: 1 }));
+    expect(errorsTo(emitted)).toEqual(["Wishing Well: The well is still until tomorrow (1 of 1 today). Nothing was charged."]);
+    expect(toCopper(actor.system.currency)).toBe(purse);
+    expect(tickets(actor)).toEqual([]);
+    expect(getLog().filter(r => r.keep)).toEqual([]);
+  });
+
   it("draws nothing from a scratch roll at buy time", async () => {
     const { actor, emitted, deliver } = makeWorld();
     await seed([SCRATCH]);

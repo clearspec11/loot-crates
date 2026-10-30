@@ -16,10 +16,14 @@
 //      while it is open. Cancel: still nothing written, the Boxes table has
 //      the rows it had.
 //   1b. Click "New scratch ticket": the dialog "New scratch ticket" opens on
-//      the draft (six prize rows, the readout "1 in 2.3 tickets wins, ..."),
-//      the name focused; Cancel: nothing written.
-//   2. Click "New box": the dialog "New box"; type a name and a price, tick
-//      "Live UI pool", press "Add to shelf". Exactly one box is added, the
+//      the draft (Fill's list at its defaults: seven prize rows, the readout
+//      "1 in 3.4 tickets wins, ...", 65% back), the name focused, its button
+//      "Save off the shelf" (the Rare item has no pool yet); Cancel, nothing
+//      typed: closes with no question, nothing written.
+//   2. Click "New box": the dialog "New box", its button "Save off the
+//      shelf" while no pool is ticked; type a name and a price, tick
+//      "Live UI pool" (the button reads "Add to shelf" again), press "Add to
+//      shelf". Exactly one box is added, the
 //      player's shop shows its card within 2 s, the manager is on the Boxes
 //      tab with focus on that row's Edit, the row is marked new and the
 //      status line reads "<name> is on the shelf at <price>."
@@ -197,6 +201,7 @@ const untilCards = (pl, pred, since, ms = 4000) => pl.evaluate(async ({ pred, si
         name: d?.querySelector('input[name="name"]')?.value,
         prizeRows: d?.querySelectorAll(".lc-prize-row").length ?? 0,
         readout: d?.querySelector(".lc-scratch-form__readout")?.textContent.trim() ?? null,
+        payback: d?.querySelector(".lc-scratch-form__payback")?.textContent.trim() ?? null,
         boxes: Object.keys(store.getBoxes()).length,
       };
       __lc.click(__lc.cancel());
@@ -220,6 +225,7 @@ const untilCards = (pl, pred, since, ms = 4000) => pl.evaluate(async ({ pred, si
     await dlg.locator('input[name="price"]').fill("7");
     await dlg.locator(`.lc-pool-pick:has-text("Live UI pool") input[type="checkbox"]`).check();
     out.crate.previewTicked = (await dlg.locator(".lc-form__preview").textContent()).trim();
+    out.crate.okTicked = (await dlg.locator('button[data-action="ok"]').textContent()).trim();
     const t2save = Date.now();
     await dlg.locator('button[data-action="ok"]').click();
     out.crate.saved = await gm.page.evaluate(async ({ base, before, name }) => {
@@ -313,9 +319,9 @@ const untilCards = (pl, pred, since, ms = 4000) => pl.evaluate(async ({ pred, si
       diceWritesNothing: d.open.boxes === out.before.boxIds.length && d.open.boxesLater === out.before.boxIds.length && d.open.rows === d.rowsBefore,
       diceNoCard: out.diceCards.cards.length === out.shop.cards,
       diceCancel: d.after.boxes === out.before.boxIds.length && d.after.rows === d.rowsBefore && !d.after.dialog,
-      scratchDialog: !out.scratch.missing && out.scratch.open.button === "New scratch ticket" && out.scratch.open.title === "New scratch ticket" && out.scratch.open.okLabel === addLabel && out.scratch.open.nameFocused && out.scratch.open.name === "New scratch ticket" && out.scratch.open.prizeRows === 6 && out.scratch.open.readout === "1 in 2.3 tickets wins, the top prize (Rare item) 1 in 100, all prizes 5 gp or more",
+      scratchDialog: !out.scratch.missing && out.scratch.open.button === "New scratch ticket" && out.scratch.open.title === "New scratch ticket" && out.scratch.open.okLabel === "Save off the shelf" && out.scratch.open.nameFocused && out.scratch.open.name === "New scratch ticket" && out.scratch.open.prizeRows === 7 && out.scratch.open.readout === "1 in 3.4 tickets wins, the top prize (Rare item) 1 in 100, all prizes 5 gp or more" && /^Pays back 6[2-8]% in coins/.test(out.scratch.open.payback ?? ""),
       scratchCancel: !out.scratch.missing && out.scratch.open.boxes === out.before.boxIds.length && out.scratch.after.boxes === out.before.boxIds.length && out.scratch.after.rows === out.scratch.rowsBefore && !out.scratch.after.dialog,
-      crateDialog: c.title === "New box" && c.okLabel === addLabel && c.nameFocused && /drop nothing/.test(c.preview ?? "") && /\d+%/.test(c.previewTicked ?? ""),
+      crateDialog: c.title === "New box" && c.okLabel === "Save off the shelf" && c.okTicked === addLabel && c.nameFocused && /drop nothing/.test(c.preview ?? "") && /\d+%/.test(c.previewTicked ?? ""),
       crateAdded: c.saved.added.length === 1 && c.saved.added[0].name === crateName && c.saved.added[0].price === 7 && JSON.stringify(c.saved.added[0].pools) === JSON.stringify(poolRef),
       crateShown: c.saved.tab === "boxes" && c.saved.focusOnEdit && c.saved.editLabel === `Edit ${crateName}` && c.saved.rowNew && c.saved.rowInView && c.saved.rows === d.rowsBefore + 1,
       crateSaid: c.saved.status === (out.before.shopOpen ? `${crateName} is on the shelf at 7 gp.` : `${crateName} added. The shop is closed, so players can't see it yet.`),

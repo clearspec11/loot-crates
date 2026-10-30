@@ -79,6 +79,14 @@ const STATES = [
   // The box editor's Limits group: the stock with what is left and
   // Restock, then the limit per character, each with its help.
   ["box-limits", "state=editor"],
+  // The guard rails (round 30, editorguard.js, playable.js) on the crate
+  // editor: a New box with no pool ticked reads "Save off the shelf", its
+  // On the shelf box off with the reason under it (ticking a pool brings
+  // Add to shelf back); a stock of -3 refused under the field with Save
+  // off; and the discard question over an edited price, Keep editing focused.
+  ["editor-guard-offshelf", "state=editor&guard=offshelf"],
+  ["editor-guard-stock", "state=editor&guard=stock"],
+  ["editor-guard-discard", "state=editor&guard=discard"],
   // The deck editor's head (deck.js deckRiseFieldsHTML): the step, then
   // "Draws count as in a row within 2 minutes" with its hint.
   ["editor-deck", "state=editor&deck=1"],
@@ -388,6 +396,67 @@ function shelfEditorProblems() {
   if (parseFloat(getComputedStyle(label).fontSize) < 11) out.push("the On the shelf words are under 11px");
   const r = box.getBoundingClientRect();
   if (r.width < 10 || r.height < 10) out.push("the On the shelf box is not visible");
+  return out;
+}
+
+// The crate editor while the game can't be played (editorguard.js
+// wireShelf): the default button says what Save will do, the On the shelf
+// box is unticked and off, described by the reason right under it, in view
+// and at the 11px floor or over.
+function offShelfEditorProblems() {
+  const out = [];
+  const ok = document.querySelector('button[data-action="ok"]');
+  const box = document.querySelector('.lc-form__shelf input[name="onShelf"]');
+  const why = document.querySelector("[data-shelf-why]");
+  if (ok?.textContent.trim() !== "Save off the shelf") out.push(`the default button reads "${ok?.textContent.trim()}"`);
+  if (!box || box.checked || !box.disabled) out.push("the On the shelf box isn't unticked and off");
+  if (why?.textContent.trim() !== "This box can drop nothing: tick a pool above.") out.push(`the shelf's reason reads "${why?.textContent.trim()}"`);
+  if (!box || !why || box.getAttribute("aria-describedby") !== why.id) out.push("the On the shelf box isn't described by its reason");
+  if (why && parseFloat(getComputedStyle(why).fontSize) < 11) out.push("the shelf's reason is under 11px");
+  const r = why?.getBoundingClientRect(), c = document.querySelector(".dialog-content").getBoundingClientRect(), label = box?.closest("label").getBoundingClientRect();
+  if (!r || r.height < 8 || r.bottom > c.bottom + 1 || r.top < c.top - 1) out.push("the shelf's reason isn't in view");
+  else if (label && r.top - label.bottom > 8) out.push(`the reason sits ${Math.round(r.top - label.bottom)}px under its box`);
+  const o = ok?.getBoundingClientRect(), app = document.getElementById("app").getBoundingClientRect();
+  if (!o || o.height < 10 || o.bottom > app.bottom + 1 || o.right > app.right + 1) out.push("the default button isn't in the window");
+  return out;
+}
+
+// The stock refused (limits.js stockProblem, editorguard.js wireStock):
+// the reason under the field, the field invalid and described by it, Save
+// off, the line beside Restock still the saved state.
+function stockEditorProblems() {
+  const out = [];
+  const stock = document.querySelector('input[name="stock"]');
+  const why = document.querySelector("[data-stock-why]");
+  const ok = document.querySelector('button[data-action="ok"]');
+  if (stock?.value !== "-3" || stock.getAttribute("aria-invalid") !== "true") out.push(`the stock field is ${stock?.value}, aria-invalid ${stock?.getAttribute("aria-invalid")}`);
+  if (why?.textContent.trim() !== "Stock can't be below 0. Leave it blank for unlimited.") out.push(`the stock's reason reads "${why?.textContent.trim()}"`);
+  if (!stock?.getAttribute("aria-describedby")?.split(" ").includes(why?.id)) out.push("the stock field isn't described by its reason");
+  if (!ok?.disabled) out.push("Save is on with a stock of -3");
+  if (why && parseFloat(getComputedStyle(why).fontSize) < 11) out.push("the stock's reason is under 11px");
+  const r = why?.getBoundingClientRect(), c = document.querySelector(".dialog-content").getBoundingClientRect();
+  if (!r || r.height < 8 || r.bottom > c.bottom + 1 || r.top < c.top - 1) out.push("the stock's reason isn't in view");
+  if (document.querySelector(".lc-limits__left")?.textContent.trim() !== "3 of 10 left") out.push(`the stock line reads "${document.querySelector(".lc-limits__left")?.textContent.trim()}"`);
+  return out;
+}
+
+// The discard question over the editor: its title and words name the
+// game, Discard then Keep editing, Keep editing focused, all of it inside
+// the screen and at the 11px floor or over.
+function discardProblems() {
+  const out = [];
+  const box = document.querySelector(".harness-confirm");
+  if (!box) return ["no discard question"];
+  if (box.querySelector(".window-title")?.textContent.trim() !== "Discard changes?") out.push(`the question's title reads "${box.querySelector(".window-title")?.textContent.trim()}"`);
+  const text = box.querySelector(".dialog-content")?.textContent.replace(/\s+/g, " ").trim();
+  if (text !== "Discard your changes to Royal Vault? Nothing you changed has been saved.") out.push(`the question reads "${text}"`);
+  const words = [...box.querySelectorAll("button")].map(b => b.textContent.trim());
+  if (words.join("|") !== "Discard|Keep editing") out.push(`the question's buttons read ${words.join(", ")}`);
+  if (document.activeElement?.textContent.trim() !== "Keep editing") out.push("Keep editing isn't focused");
+  const r = box.getBoundingClientRect();
+  if (r.left < 0 || r.right > innerWidth + 1 || r.top < 0 || r.bottom > innerHeight) out.push("the question runs off the screen");
+  for (const el of box.querySelectorAll("p, button")) if (parseFloat(getComputedStyle(el).fontSize) < 11) { out.push("the question has text under 11px"); break; }
+  if (document.querySelector('input[name="price"]')?.value !== "1400 gp") out.push("the edited price isn't under the question");
   return out;
 }
 
@@ -1734,9 +1803,12 @@ async function limitsEditorProblems() {
   const restock = group.querySelector("[data-restock]");
   if (!restock || restock.disabled || restock.getAttribute("aria-disabled") === "true") out.push("Restock isn't on with 3 of 10 left");
   if (group.querySelector('input[name="limitMax"]')?.value !== "1" || group.querySelector('select[name="limitPer"]')?.value !== "day") out.push("the limit per character isn't 1 a day");
+  // Described by its help (and the stock by its reason when it has one,
+  // empty until then): at least one of them says something.
   for (const input of group.querySelectorAll("input[aria-describedby]")) {
-    const help = document.getElementById(input.getAttribute("aria-describedby"));
-    if (!help?.textContent.trim()) out.push(`${input.name}'s help is missing`);
+    const helps = input.getAttribute("aria-describedby").split(/\s+/).map(id => document.getElementById(id));
+    if (helps.some(h => !h)) out.push(`${input.name} is described by an element that isn't there`);
+    if (!helps.some(h => h?.textContent.trim())) out.push(`${input.name}'s help is missing`);
   }
   const hints = [...group.querySelectorAll(".lc-form__hint")].filter(el => parseFloat(getComputedStyle(el).fontSize) < 11);
   if (hints.length) out.push("a hint is under 11px");
@@ -2362,7 +2434,7 @@ try {
       if (name.startsWith("scratch")) await page.waitForSelector(name === "scratch-unscratched" || name === "scratch-half" || name === "scratch-spectator" ? "body[data-ready]" : "body[data-landed]", { timeout: 10000 });
       // Mid auto-scratch: the coin has opened a few panels by itself.
       if (name === "scratch-spectator") await page.waitForFunction(() => document.querySelectorAll(".lc-scratch__panel--open").length >= 3, null, { timeout: 10000 });
-      if (name.startsWith("manager") || name === "box-limits" || name === "editor-deck" || name.startsWith("editor-scratch") || name === "box-odds" || name === "drop-preview") await page.waitForSelector("body[data-ready]", { timeout: 10000 });
+      if (name.startsWith("manager") || name === "box-limits" || name === "editor-deck" || name.startsWith("editor-scratch") || name.startsWith("editor-guard") || name === "box-odds" || name === "drop-preview") await page.waitForSelector("body[data-ready]", { timeout: 10000 });
       await page.waitForTimeout(500);
       const wide = await page.evaluate(() => document.scrollingElement.scrollWidth > document.scrollingElement.clientWidth + 1);
       if (name.startsWith("shop")) problems0.push(...await page.evaluate(shopControlProblems, name.endsWith("-gm")));
@@ -2391,6 +2463,27 @@ try {
         for (const v of ["12", "", "10"]) { await page.fill('input[name="stock"]', v); said.push((await page.textContent(".lc-limits__left")).trim()); }
         if (said.join(" | ") !== "12 of 12 left once you save | Unlimited once you save | 10 of 10 left once you save") problems0.push(`the Restock line reads ${said.join(" | ")}`);
       }
+      else if (name === "editor-guard-offshelf") {
+        problems0.push(...await page.evaluate(offShelfEditorProblems));
+        // Ticking a pool (a click, as a GM does) brings Add to shelf and the
+        // box back; unticking it takes them away again.
+        await page.click('input[name="pool.core"]');
+        const on = await page.evaluate(() => [document.querySelector('button[data-action="ok"]').textContent.trim(), document.querySelector('input[name="onShelf"]').checked, document.querySelector('input[name="onShelf"]').disabled, document.querySelector("[data-shelf-why]").textContent]);
+        if (on.join("|") !== "Add to shelf|true|false|") problems0.push(`with a pool ticked the editor reads ${on.join(", ")}`);
+        await page.click('input[name="pool.core"]');
+        await page.evaluate(() => { const c = document.querySelector(".dialog-content"); c.scrollTop = c.scrollHeight; });
+        problems0.push(...await page.evaluate(offShelfEditorProblems));
+      }
+      else if (name === "editor-guard-stock") {
+        problems0.push(...await page.evaluate(stockEditorProblems));
+        // Typed back to a good number: Save on, the line says what Save will leave.
+        await page.fill('input[name="stock"]', "12");
+        const good = await page.evaluate(() => [document.querySelector("[data-stock-why]").textContent, document.querySelector('button[data-action="ok"]').disabled, document.querySelector(".lc-limits__left").textContent.trim()]);
+        if (good.join("|") !== "|false|5 of 12 left once you save") problems0.push(`with a stock of 12 the editor reads ${good.join(", ")}`);
+        await page.fill('input[name="stock"]', "-3");
+        problems0.push(...await page.evaluate(stockEditorProblems));
+      }
+      else if (name === "editor-guard-discard") problems0.push(...await page.evaluate(discardProblems));
       else if (name === "editor-deck") problems0.push(...await page.evaluate(deckEditorProblems), ...await page.evaluate(shelfEditorProblems));
       else if (name === "editor-scratch") problems0.push(...await page.evaluate(scratchEditorProblems), ...await page.evaluate(shelfEditorProblems));
       else if (name.startsWith("editor-scratch-fill")) problems0.push(...await page.evaluate(scratchFillProblems, name === "editor-scratch-filled"));

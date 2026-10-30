@@ -11,7 +11,7 @@ import { performPull, PullError } from "../module/scripts/foundry/pull.js";
 import { boxCard, cardShell } from "../module/scripts/views/boxcard.js";
 import { getKind } from "../module/scripts/games/kinds.js";
 import {
-  stockOf, stockText, restocked, restockLine, stockAfterRefund, stockFromForm, stockField, perCharacterOf, perCharacterFromForm,
+  stockOf, stockText, restocked, restockLine, stockAfterRefund, stockFromForm, stockField, stockProblem, stockLine, perCharacterOf, perCharacterFromForm,
   boughtBy, limitState, limitLine, limitReason, limitRefusal, withLimit, perCharacterText, limitsText, limitsFieldset,
 } from "../module/scripts/core/limits.js";
 import { POOLS as SHOP_POOLS, BOXES } from "../harness/sample.js";
@@ -81,6 +81,28 @@ describe("the global stock", () => {
     expect(stockField({ rules: { stock: 3, stockMax: 10 } })).toBe(10);
     expect(stockFromForm({ stock: 3 }, { shown: 3, value: "3" })).toEqual({ stock: 3, stockMax: null });
     expect(stockFromForm({ stock: 3 }, { shown: 3, value: "10" })).toEqual({ stock: 10, stockMax: 10 });
+  });
+
+  it("a stock below 0 is refused, never saved as sold out; the line under the field says what Save will leave", () => {
+    expect(stockProblem("-3")).toBe("Stock can't be below 0. Leave it blank for unlimited.");
+    expect(stockProblem("-0.5")).toBe("Stock can't be below 0. Leave it blank for unlimited.");
+    for (const ok of ["", " ", "0", "10", null, undefined]) expect(stockProblem(ok)).toBe("");
+    // Before round 30, -3 saved as stock 0 of 0. Should one reach Save, nothing changes.
+    expect(stockFromForm({ stock: 2, stockMax: 10 }, { shown: 10, value: "-3" })).toEqual({ stock: 2, stockMax: 10 });
+    expect(stockFromForm({}, { shown: null, value: "-3" })).toEqual({ stock: null, stockMax: null });
+    // The line follows the field, by Save's own rule.
+    const game = { rules: { stock: 3, stockMax: 10 } };
+    expect(stockLine(game, "10")).toBe("3 of 10 left");
+    expect(stockLine(game, "12")).toBe("5 of 12 left once you save");
+    expect(stockLine(game, "")).toBe("Unlimited once you save");
+    expect(stockLine(game, "-3")).toBe("3 of 10 left");
+    expect(stockLine({ rules: {} }, "")).toBe("Unlimited");
+    expect(stockLine({ rules: {} }, "10")).toBe("10 of 10 left once you save");
+    expect(stockLine({ rules: {} }, "0")).toBe("0 of 0 left once you save");
+    // The editor's field says it under itself.
+    const html = limitsFieldset({ id: "g", rules: {} });
+    expect(html).toContain('aria-describedby="lc-limits-g-stock-why lc-limits-g-stock"');
+    expect(html).toContain('id="lc-limits-g-stock-why" data-stock-why aria-live="polite"');
   });
 
   it("an old record without stockMax or perCharacter sells as before, and sells out at 0", async () => {

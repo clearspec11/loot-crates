@@ -55,11 +55,23 @@ export const shelfRoundRefusal = game => t("LOOTCRATES.Shelf.RoundRefusal", { na
   The editor's "On the shelf" checkbox: ticked for a New (its default
   button reads "Add to shelf", so it keeps its word), as the record has it
   for an edit or a copy. Unticked, a new game is added for the GM alone.
+  Under it, the reason it is off while the game can't be played
+  (views/playable.js; the editor fills it, editorguard.js wireShelf).
 */
-export function shelfFieldHTML(game, { isNew = false, copy = false } = {}) {
+export function shelfFieldHTML(game, { isNew = false, copy = false, esc = s => String(s ?? "") } = {}) {
   const on = isNew && !copy ? true : onShelf(game);
-  return `<label class="lc-row lc-form__shelf"><input type="checkbox" name="onShelf"${on ? " checked" : ""}> ${t("LOOTCRATES.Shelf.Field")}</label>`;
+  const why = `lc-shelf-why-${esc(game?.id ?? "new")}`;
+  return `<label class="lc-row lc-form__shelf"><input type="checkbox" name="onShelf"${on ? " checked" : ""} aria-describedby="${why}"> ${t("LOOTCRATES.Shelf.Field")}</label>
+      <p class="lc-form__hint lc-form__hint--warn lc-form__shelf-why" id="${why}" data-shelf-why aria-live="polite"></p>`;
 }
+
+// The editor's default button while the game can't be played: what Save will do.
+export const saveOffShelfLabel = () => t("LOOTCRATES.Shelf.SaveOff");
+
+// The status line after a Save that kept the game off the shelf because it
+// can't be played: an edit that took it off, or a new game.
+export const savedOffNotice = (game, why) => t("LOOTCRATES.Shelf.SavedOff", { name: game?.name || t("LOOTCRATES.Shelf.TheGame"), why });
+export const addedOffNotice = (game, why) => t("LOOTCRATES.Shelf.AddedOffWhy", { name: game?.name || t("LOOTCRATES.Shelf.TheGame"), why });
 
 /*
   The Boxes row's toggle: one fixed label, "On the shelf", pressed while

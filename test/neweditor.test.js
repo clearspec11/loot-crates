@@ -110,6 +110,7 @@ afterAll(() => vi.unstubAllGlobals());
 
 const POOL = { id: "p", name: "Odds and ends", pools: [], entries: [{ uuid: "Item.a", name: "Rope", img: "", rarity: "common", weight: 1 }, { uuid: "Item.b", name: "Flame Tongue", img: "", rarity: "rare", weight: 1 }] };
 beforeEach(async () => {
+  vi.restoreAllMocks();
   settings = new Map();
   sets = 0;
   store.registerSettings();
@@ -133,6 +134,23 @@ async function manager(tab = "boxes") {
 const field = name => dialog.form.querySelector(`[name="${name}"]`);
 const status = app => app.element.querySelector(".lc-manager__status");
 const focused = () => document.activeElement;
+
+// The rows a New scratch ticket opened on before round 30 (the mockup's
+// list), for the tests that walk its rows; a New now starts from Fill's.
+const MOCKUP_PRIZES = [{ count: 1, parts: [{ item: { rarity: "rare" } }] }, { count: 2, parts: [{ gp: 100 }] }, { count: 5, parts: [{ gp: 25 }] }, { count: 12, parts: [{ gp: 10 }] }, { count: 20, parts: [{ gp: 5 }] }, { count: 3, parts: [{ bonus: true }] }];
+function mockupList() {
+  const make = newgame.NEW_DEFAULTS.scratch;
+  vi.spyOn(newgame.NEW_DEFAULTS, "scratch").mockImplementation(() => ({ ...make(), roll: { id: 1, size: 100, prizes: structuredClone(MOCKUP_PRIZES) } }));
+}
+// What a New's default draft lacks before it can be played (views/playable.js),
+// put right as the GM would: the auction's lot picked, the scratch ticket's pool ticked.
+function makePlayable(kind) {
+  const el = kind === "auction" ? field("lot") : kind === "scratch" ? field("pool.p") : null;
+  if (!el) return;
+  if (kind === "auction") el.value = "item:Item.a";
+  else el.checked = true;
+  dialog.form.dispatchEvent({ type: "change", target: el });
+}
 
 const NEWS = [["addBox", "crate", "New box"], ["addWell", "well", "New well"], ["addDice", "dice", "New dice game"], ["addDeck", "deck", "New deck"], ["addWheel", "roulette", "New wheel"], ["addAuction", "auction", "New auction"], ["addScratch", "scratch", "New scratch ticket"]];
 
@@ -198,6 +216,9 @@ describe("New then Save", () => {
       const pending = act(app, action);
       await settle(2);
       field("name").value = `My ${kind}`;
+      // The auction's draft has no lot and the scratch ticket's Rare item no
+      // pool: Save writes them off the shelf and the status says why.
+      const why = { auction: "Pick a lot: an auction with none can't be opened.", scratch: "Tick a pool for the item prizes, or those tickets can't be sold." }[kind];
       dialog.save();
       await pending;
       await settle();
@@ -207,7 +228,10 @@ describe("New then Save", () => {
       expect(boxes[0]).toMatchObject({ kind, name: `My ${kind}` });
       expect(boxes[0].price).toBe(newgame.NEW_DEFAULTS[kind]().price);
       expect(focused()?.getAttribute("aria-label")).toBe(`Edit My ${kind}`);
-      expect(status(app).textContent).toBe(newgame.addedNotice(boxes[0], { shopOpen: true }));
+      if (why) {
+        expect(boxes[0].rules.shelved).toBe(false);
+        expect(status(app).textContent).toBe(`My ${kind} added off the shelf. ${why}`);
+      } else expect(status(app).textContent).toBe(newgame.addedNotice(boxes[0], { shopOpen: true }));
     });
   }
 
@@ -221,6 +245,7 @@ describe("New then Save", () => {
     expect(options).toEqual(["", "crate:crate1", "item:Item.a", "item:Item.b"]);
     field("name").value = "The Flame Tongue";
     field("lot").value = "item:Item.b";
+    dialog.form.dispatchEvent({ type: "change", target: field("lot") });
     field("price").value = "20 gp";
     field("increment").value = "2";
     field("reserve").value = "40";
@@ -237,6 +262,7 @@ describe("New then Save", () => {
   });
 
   it("addScratch: the readout follows the prize list, Add prize and remove change it, the layout moves the grid, and Save writes the roll", async () => {
+    mockupList();
     const app = await manager();
     const pending = act(app, "addScratch");
     await settle(2);
@@ -283,6 +309,7 @@ describe("New then Save", () => {
   });
 
   it("addScratch: Fill the prize list asks before replacing the rows, fills them for a rare top prize at about 1 in 3.5 and 65% back, Shuffle changes them, and only Save writes them", async () => {
+    mockupList();
     const app = await manager();
     const pending = act(app, "addScratch");
     await settle(2);
@@ -325,6 +352,7 @@ describe("New then Save", () => {
   });
 
   it("addScratch: Add a part makes a prize line pay several parts at once, and the switch hides what is left from players", async () => {
+    mockupList();
     const app = await manager();
     const pending = act(app, "addScratch");
     await settle(2);
@@ -664,6 +692,7 @@ describe("On the shelf", () => {
       const pending = act(app, action);
       await settle(2);
       expect(dialog.title).toBe(title);
+      makePlayable(kind);
       expect(field("onShelf").checked).toBe(true);
       field("onShelf").checked = false;
       dialog.save();

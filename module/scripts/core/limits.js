@@ -70,6 +70,9 @@ export function stockAfterRefund(game) {
   starts full. Returns { stock, stockMax }.
 */
 export function stockFromForm(fresh = {}, { shown, value }) {
+  // A number below 0 is refused in the editor (stockProblem); should one
+  // reach Save, it changes nothing rather than selling the game out.
+  if (stockProblem(value)) value = shown;
   const next = whole(value);
   const was = whole(shown);
   const left = whole(fresh.stock);
@@ -78,6 +81,36 @@ export function stockFromForm(fresh = {}, { shown, value }) {
   const before = whole(fresh.stockMax) ?? left;
   const now = before == null || left == null ? next : Math.min(next, Math.max(0, left + (next - before)));
   return { stock: now, stockMax: next };
+}
+
+/*
+  What is wrong with the Stock field as typed, or "": a number below 0
+  (blank is unlimited, 0 sold out). The editor says it under the field and
+  keeps Save off until it is fixed, as for a price it can't read. Before
+  this, -3 saved as stock 0 of 0: the game sold out with nothing said.
+*/
+export function stockProblem(value) {
+  const text = String(value ?? "").trim();
+  return text !== "" && Number(text) < 0 ? t("LOOTCRATES.Limits.StockNegative") : "";
+}
+
+/*
+  The line under the Stock field, following what is typed (`typed`): the
+  saved state while the number is the one the form opened with ("3 of 10
+  left", "Unlimited"), else what Save will leave, by the same rule Save
+  uses (stockFromForm): "12 of 12 left once you save" from unlimited,
+  "5 of 12 left once you save" raising 10 with 3 left, "Unlimited once
+  you save" for blank. A number Save would refuse leaves the line alone.
+*/
+export function stockLine(game, typed) {
+  const shown = stockField(game);
+  const saved = stockOf(game) ? stockText(game) : t("LOOTCRATES.Limits.Unlimited");
+  if (stockProblem(typed)) return saved;
+  const next = whole(typed);
+  if (next === whole(shown)) return saved;
+  if (next == null) return t("LOOTCRATES.Limits.UnlimitedOnSave");
+  const { stock, stockMax } = stockFromForm(game?.rules ?? {}, { shown, value: typed });
+  return t("LOOTCRATES.Limits.LeftOfOnSave", { left: stock, max: stockMax });
 }
 
 // The editor's line once Restock is pressed: nothing is written until Save,
@@ -204,7 +237,8 @@ export function limitsFieldset(game, { stock = true, draft = false, hasClock = t
   const full = !s || s.max == null || s.left >= s.max;
   const id = `lc-limits-${esc(game?.id ?? "new")}`;
   const stockPart = stock ? `
-        <label class="lc-row">${t("LOOTCRATES.Limits.Stock")} <input name="stock" type="number" min="0" step="1" value="${esc(stockField(game) ?? "")}" aria-describedby="${id}-stock"></label>
+        <label class="lc-row">${t("LOOTCRATES.Limits.Stock")} <input name="stock" type="number" min="0" step="1" value="${esc(stockField(game) ?? "")}" aria-describedby="${id}-stock-why ${id}-stock"></label>
+        <p class="lc-form__hint lc-form__hint--warn" id="${id}-stock-why" data-stock-why aria-live="polite"></p>
         <div class="lc-row lc-limits__stock">
           <span class="lc-limits__left" role="status">${esc(s ? stockText(game) : t("LOOTCRATES.Limits.Unlimited"))}</span>
           ${s?.max != null && !draft ? `<button type="button" class="lc-limits__restock" data-restock${full ? ` aria-disabled="true"` : ""}><i class="fas fa-rotate-left" inert></i> ${t("LOOTCRATES.Limits.Restock")}</button><input type="hidden" name="restock" value="">` : ""}

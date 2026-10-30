@@ -122,15 +122,20 @@ import { describeRefund, refundPull } from "./refund.js";
 import { postRefundCard } from "./chat.js";
 import { makeTicket } from "./tickets.js";
 import { changeCount } from "../core/redraw.js";
-import { limitsFieldset, perCharacterFromForm, restocked, restockLine, stockAfterRefund, stockField, stockFromForm } from "../core/limits.js";
+import { limitsFieldset, perCharacterFromForm, restocked, stockAfterRefund, stockField, stockFromForm } from "../core/limits.js";
 import { byRest } from "../core/clock.js";
-import { onShelf, shelfRules, shelfFieldHTML, shelfNotice } from "../core/shelf.js";
+import { onShelf, shelfRules, shelfFieldHTML, shelfNotice, savedOffNotice, addedOffNotice } from "../core/shelf.js";
+import { unplayableReason } from "../views/playable.js";
+import { okGate, snapshotOf, wireShelf as wireShelfBox, wireStock, discardTitle, discardHTML, discardLabels, freeTitle, freeHTML, freeLabels } from "../views/editorguard.js";
+import { guardDialog } from "./editordialog.js";
 import { starterPresent, hasStarter, starterAgainText, starterNotice, starterCallHTML, STARTER_LABEL } from "../views/starter.js";
 import { addStarterSet } from "./starterbuild.js";
 import { poolsFieldset, poolPicks, syncShares, pityRow, stakeRow, betRangeRow, dragonRow, CARD_FIELDS, renumberCards, oddsModeFieldset, tableNoteHTML, nothingRow } from "../views/editorfields.js";
 import { t, listAnd } from "../core/i18n.js";
 
 const { ApplicationV2, DialogV2 } = foundry.applications.api;
+// Every editor's dialog: DialogV2 that asks before it throws a changed form away (editordialog.js).
+const EditorDialog = guardDialog(DialogV2);
 const esc = s => foundry.utils.escapeHTML(String(s ?? ""));
 // How this world tells a day (store.js dayMode), for the editors' notes
 // beside the well's cap and a limit per day.
@@ -390,7 +395,7 @@ export class CrateManager extends ApplicationV2 {
 
   static async #editPool(_e, target) {
     const pool = getPools()[target.dataset.pool];
-    const data = await promptForm(t("LOOTCRATES.Manager.EditPool"), `<label>${t("LOOTCRATES.Manager.Name")} <input name="name" value="${esc(pool.name)}"></label>`);
+    const data = await promptForm(t("LOOTCRATES.Manager.EditPool"), `<label>${t("LOOTCRATES.Manager.Name")} <input name="name" value="${esc(pool.name)}"></label>`, { guard: { name: pool.name } });
     if (data) { await updatePool(pool.id, { name: data.name || pool.name }); this.render(); }
   }
 
@@ -655,23 +660,32 @@ export class CrateManager extends ApplicationV2 {
     was added off the shelf. An edit is applied to the record as it is now
     (store.js updateBox); only an edit can find its record deleted
     meanwhile. Every editor's "On the shelf" box (`data.onShelf`, shelf.js)
-    is written here, over whatever the kind's own rules say.
+    is written here, over whatever the kind's own rules say. A game that
+    can't be played as saved (playable.js, judged on the record as it is
+    written, with the pools as they are now) is written off the shelf
+    whatever the box says, and the status line says why: a new one, or an
+    edit that takes a game off the shelf.
   */
   async #saveEditor(box, isNew, kindBuild, data) {
+    let why = "";
     const build = fresh => {
       const out = kindBuild(fresh);
-      return { ...out, rules: shelfRules(out.rules ?? {}, !!data.onShelf) };
+      why = unplayableReason(out, getPools());
+      return { ...out, rules: shelfRules(out.rules ?? {}, !!data.onShelf && !why) };
     };
     if (!isNew) {
+      const was = onShelf(getBoxes()[box.id] ?? box);
       const saved = await updateBox(box.id, build);
       if (!saved) ui.notifications.warn(t("LOOTCRATES.Manager.DeletedWhileEditing", { name: box.name }));
-      return this.render();
+      await this.render();
+      if (saved && why && was) this.#announce(savedOffNotice(saved, why));
+      return;
     }
     const saved = await createBox(build(box));
     this.tab = "boxes";
     this.#focusBox = this.#recentBox = saved.id;
     await this.render();
-    this.#announce(addedNotice(saved, { shopOpen: isShopOpen() }));
+    this.#announce(why ? addedOffNotice(saved, why) : addedNotice(saved, { shopOpen: isShopOpen() }));
   }
 
   /*
@@ -831,9 +845,10 @@ export class CrateManager extends ApplicationV2 {
       ${limitsFieldset(box, { draft: isNew, ...dayOpts(), esc })}
       ${shelfFieldHTML(box, opts)}`, {
       // Restock fills the stored record at Save; a draft has none to fill.
-      onForm: form => { liveOdds(form, box, poolIds); if (!isNew) wireRestock(form, box); wireShelf(form, isNew); wirePrice(form); },
+      onForm: form => { const shelf = wireShelf(form, isNew); wirePrice(form); wireStock(form, box); liveOdds(form, box, poolIds, cratePreview, draftBox, shelf); },
       position: { width: 460 },
       okLabel: saveLabel(isNew),
+      guard: editorGuardOf(box, isNew, { free: true }),
     });
     if (!data) return false;
     // Stock moves while the dialog is open (each pull takes one, a refund
@@ -899,14 +914,15 @@ export class CrateManager extends ApplicationV2 {
       </fieldset>
       ${shelfFieldHTML(box, opts)}`, {
       onForm: form => {
+        const shelf = wireShelf(form, isNew);
         liveOdds(form, box, poolIds, (draft, live) => {
           const preview = wellPreview(draft, live);
           return { html: wellPreviewHTML(preview, esc), summary: wellSummary(preview), held: heldRarities(draft, live) };
-        }, draftWell);
-        wireShelf(form, isNew);
+        }, draftWell, shelf);
       },
       position: { width: 460 },
       okLabel: saveLabel(isNew),
+      guard: editorGuardOf(box, isNew),
     });
     if (!data) return;
     const draft = draftWell(box, data, poolIds);
@@ -964,14 +980,15 @@ export class CrateManager extends ApplicationV2 {
       ${limitsFieldset(box, { stock: false, draft: isNew, ...dayOpts(), esc })}
       ${shelfFieldHTML(box, opts)}`, {
       onForm: form => {
+        const shelf = wireShelf(form, isNew);
         liveOdds(form, box, poolIds, (draft, live) => {
           const preview = dicePreview(draft, live);
           return { html: dicePreviewHTML(preview, esc), summary: diceSummary(preview), held: heldRarities(draft, live) };
-        }, draftDice);
-        wireShelf(form, isNew);
+        }, draftDice, shelf);
       },
       position: { width: 460 },
       okLabel: saveLabel(isNew),
+      guard: editorGuardOf(box, isNew),
     });
     if (!data) return;
     const draft = draftDice(box, data, poolIds);
@@ -1022,12 +1039,12 @@ export class CrateManager extends ApplicationV2 {
       ${limitsFieldset(box, { stock: false, draft: isNew, ...dayOpts(), esc })}
       ${shelfFieldHTML(box, opts)}`, {
       onForm: form => {
-        wireShelf(form, isNew);
+        const shelf = wireShelf(form, isNew);
         wirePrice(form);
         const paint = liveOdds(form, box, poolIds, (draft, live) => {
           const preview = deckPreview(draft, live, getLog());
           return { html: deckPreviewHTML(preview, esc), summary: deckSummary(preview), held: heldRarities(draft, live) };
-        }, draftDeck);
+        }, draftDeck, shelf);
         const rows = form.querySelector(".lc-cards__rows");
         // Add card: a blank row at the foot, its name focused. Remove: the
         // row goes and focus moves to the next row's name, else Add card.
@@ -1054,6 +1071,7 @@ export class CrateManager extends ApplicationV2 {
       },
       position: { width: 560 },
       okLabel: saveLabel(isNew),
+      guard: editorGuardOf(box, isNew, { free: true }),
     });
     if (!data) return;
     const draft = draftDeck(box, data, poolIds);
@@ -1102,15 +1120,15 @@ export class CrateManager extends ApplicationV2 {
       ${limitsFieldset(box, { stock: false, draft: isNew, ...dayOpts(), esc })}
       ${shelfFieldHTML(box, opts)}`, {
       onForm: form => {
-        wireShelf(form, isNew);
+        const shelf = wireShelf(form, isNew);
         wirePrice(form);
-        const ok = form.querySelector('button[data-action="ok"]') ?? form.closest(".application, dialog")?.querySelector('button[data-action="ok"]');
+        const gate = okGate(form);
         const paint = liveOdds(form, box, poolIds, (draft, live) => {
           const preview = scratchPreview(draft, live);
-          // Off while a line can't be shown, or while the price can't be read (wirePrice).
-          if (ok) ok.disabled = preview.refused || form.querySelector("input[data-price-field]")?.getAttribute("aria-invalid") === "true";
+          // Off while a line can't be shown (the price has its own say, wirePrice).
+          gate.set("lines", preview.refused);
           return { html: scratchPreviewHTML(preview, esc), summary: scratchSummary(preview), held: preview.held };
-        }, draftScratch);
+        }, draftScratch, shelf);
         wireScratchEditor(form, { newId: () => foundry.utils.randomID(8), paint });
         // Fill the prize list: combinations use only rarities the ticked pools hold.
         wireFill(form, {
@@ -1122,6 +1140,7 @@ export class CrateManager extends ApplicationV2 {
       },
       position: { width: 520 },
       okLabel: saveLabel(isNew),
+      guard: editorGuardOf(box, isNew, { free: true }),
     });
     if (!data) return;
     const draft = draftScratch(box, data, poolIds);
@@ -1185,11 +1204,11 @@ export class CrateManager extends ApplicationV2 {
       </div>
       ${shelfFieldHTML(box, opts)}`, {
       onForm: form => {
-        wireShelf(form, isNew);
+        const shelf = wireShelf(form, isNew);
         const paint = liveOdds(form, box, poolIds, (draft, live) => {
           const preview = roulettePreview(draft, live);
           return { html: roulettePreviewHTML(preview, esc), summary: rouletteSummary(preview), held: new Set() };
-        }, draftRoulette);
+        }, draftRoulette, shelf);
         const rows = form.querySelector(".lc-pockets__rows");
         const names = () => [0, 1].map(i => form.querySelector(`.lc-pockets__colour[data-colour="${i}"]`)?.value.trim() || ROULETTE_DEFAULTS.colours[i]);
         const renumber = () => { [...rows.children].forEach((row, i) => { row.querySelector(".lc-pocket-row__n").textContent = String(i + 1); }); };
@@ -1218,6 +1237,7 @@ export class CrateManager extends ApplicationV2 {
       },
       position: { width: 520 },
       okLabel: saveLabel(isNew),
+      guard: editorGuardOf(box, isNew),
     });
     if (!data) return;
     const draft = draftRoulette(box, data, poolIds);
@@ -1273,12 +1293,12 @@ export class CrateManager extends ApplicationV2 {
       </div>
       ${shelfFieldHTML(box, opts)}`, {
       onForm: form => {
-        wireShelf(form, isNew);
+        const shelf = wireShelf(form, isNew);
         wirePrice(form);
         const paint = liveOdds(form, box, [], draft => {
           const preview = auctionPreview(draft);
           return { html: auctionPreviewHTML(preview, esc), summary: auctionSummary(preview), held: new Set() };
-        }, (game, values) => draftAuction({ ...game, price: parsePrice(values.price) ?? game.price }, { ...values, price: parsePrice(values.price) ?? game.price }, key => choices.get(key)));
+        }, (game, values) => draftAuction({ ...game, price: parsePrice(values.price) ?? game.price }, { ...values, price: parsePrice(values.price) ?? game.price }, key => choices.get(key)), shelf);
         // An item dropped on the editor becomes the lot (and a choice of its own).
         const zone = form.querySelector("[data-lot-drop]");
         const said = form.querySelector("[data-lot-said]");
@@ -1307,6 +1327,7 @@ export class CrateManager extends ApplicationV2 {
       },
       position: { width: 540 },
       okLabel: saveLabel(isNew),
+      guard: editorGuardOf(box, isNew),
     });
     if (!data) return;
     const price = parsePrice(data.price) ?? box.price;
@@ -1801,13 +1822,13 @@ function wirePrice(form) {
   const input = form.querySelector("input[data-price-field]");
   if (!input) return;
   const why = form.querySelector("[data-price-why]");
-  const ok = form.querySelector('button[data-action="ok"]') ?? form.closest(".application, dialog")?.querySelector('button[data-action="ok"]');
+  const gate = okGate(form);
   const check = () => {
     const text = parsePrice(input.value) == null ? unreadablePrice(input.value) : "";
     input.setCustomValidity?.(text);
     input.setAttribute("aria-invalid", text ? "true" : "false");
     if (why && why.textContent !== text) why.textContent = text;
-    if (ok) ok.disabled = !!text;
+    gate.set("price", !!text);
     return !text;
   };
   input.addEventListener("input", check);
@@ -1821,48 +1842,68 @@ const wheelOverMax = box => t("LOOTCRATES.Manager.WheelOverMax", { name: box.nam
 // puts a new game where players buy; an edit's reads Save.
 const saveLabel = isNew => (isNew ? addLabel(isShopOpen()) : t("LOOTCRATES.Common.Save"));
 
-// A new game's default button follows its "On the shelf" box: "Add to
-// shelf" while ticked (and the shop open), "Add" once unticked, so the
-// words on it are what it will do.
-function wireShelf(form, isNew) {
-  const box = form.querySelector('input[name="onShelf"]');
-  if (!isNew || !box) return;
-  const ok = form.querySelector('button[data-action="ok"]') ?? form.closest(".application, dialog")?.querySelector('button[data-action="ok"]');
-  if (!ok) return;
-  const paint = () => { (ok.querySelector("span") ?? ok).textContent = addLabel(isShopOpen(), box.checked); };
-  box.addEventListener("change", paint);
-  paint();
-}
+// The On the shelf box and the words on the default button
+// (editorguard.js wireShelf): "Add to shelf" while ticked (and the shop
+// open), "Add" once unticked, Save for an edit, and "Save off the shelf"
+// with the box off and the reason under it while the game can't be played
+// (playable.js; liveOdds passes the verdict on every change).
+const wireShelf = (form, isNew) => wireShelfBox(form, { isNew, shopOpen: isShopOpen() });
 
 /*
-  The Limits group's Restock (limits.js limitsFieldset): marks the form
-  (its hidden "restock" field) so Save fills the stock to the GM's number,
-  and Cancel writes nothing, as for every other field. The line beside it
-  says what Save will leave, as a status a screen reader hears; the button
-  stays focused, off once pressed. The number is the Stock field's if the
-  GM changed it, since Save fills to that, and the line follows the field
-  as it changes after the press (limits.js restockLine).
+  An editor's guard (editordialog.js): the form as it opened, so Cancel,
+  X and Escape ask "Discard your changes to <name>?" (Keep editing the
+  default; focus goes back where it was) only once it differs; the name
+  is the game's, or for a new one what the GM typed. With `free`, a price
+  of 0 asks "Free to play?" once at Save (an edit of a game already free
+  doesn't ask); Set a price goes back to the price, selected.
 */
-function wireRestock(form, box) {
-  const btn = form.querySelector("[data-restock]");
-  const left = form.querySelector(".lc-limits__left");
-  const mark = form.querySelector('input[name="restock"]');
-  const stock = form.querySelector('input[name="stock"]');
-  if (!btn || !left || !mark) return;
-  const paint = () => { left.textContent = restockLine(stock?.value ?? "", stockField(box)); };
-  btn.addEventListener("click", () => {
-    if (btn.getAttribute("aria-disabled") === "true") return;
-    btn.setAttribute("aria-disabled", "true");
-    mark.value = "1";
-    paint();
-  });
-  stock?.addEventListener("input", () => { if (mark.value === "1") paint(); });
+function editorGuardOf(box, isNew, { free = false } = {}) {
+  return { name: form => (isNew ? form.querySelector('input[name="name"]')?.value.trim() : "") || box.name, free: free && (isNew || Number(box.price) !== 0) };
+}
+function guardFor(form, { name, free = false }) {
+  const { dirty } = snapshotOf(() => readForm(form));
+  const nameNow = () => (typeof name === "function" ? name(form) : name) || t("LOOTCRATES.Shelf.TheGame");
+  let freeOk = !free;
+  return {
+    dirty,
+    discard: async () => {
+      const back = document.activeElement;
+      const words = discardLabels();
+      const yes = await DialogV2.confirm({
+        window: { title: discardTitle() },
+        content: discardHTML(nameNow(), esc),
+        yes: { label: words.yes, icon: "fa-solid fa-trash" },
+        no: { label: words.no, icon: "fa-solid fa-pen", default: true },
+        rejectClose: false,
+      });
+      if (!yes && back && form.contains(back)) back.focus?.();
+      return !!yes;
+    },
+    beforeSave: async () => {
+      const input = form.querySelector("input[data-price-field]");
+      if (freeOk || !input || parsePrice(input.value) !== 0) return true;
+      const words = freeLabels();
+      const yes = await DialogV2.confirm({
+        window: { title: freeTitle() },
+        content: freeHTML(nameNow(), esc),
+        yes: { label: words.yes, icon: "fa-solid fa-check" },
+        no: { label: words.no, icon: "fa-solid fa-coins", default: true },
+        rejectClose: false,
+      });
+      if (yes) { freeOk = true; return true; }
+      input.focus?.();
+      input.select?.();
+      return false;
+    },
+  };
 }
 
 // `onForm(form)` runs once, with the dialog's <form>, when it is first on
-// screen; `okLabel` is the default button's words (Save unless said).
-async function promptForm(title, fieldsHtml, { onForm, position, okLabel = t("LOOTCRATES.Common.Save") } = {}) {
-  const result = await DialogV2.wait({
+// screen; `okLabel` is the default button's words (Save unless said);
+// `guard` ({ name, free }, guardFor) asks before a changed form is thrown
+// away, from the form as onForm left it.
+async function promptForm(title, fieldsHtml, { onForm, position, okLabel = t("LOOTCRATES.Common.Save"), guard = null } = {}) {
+  const result = await EditorDialog.wait({
     window: { title },
     classes: ["loot-crates", "lc-dialog"],
     ...(position ? { position } : {}),
@@ -1874,11 +1915,12 @@ async function promptForm(title, fieldsHtml, { onForm, position, okLabel = t("LO
       { action: "cancel", label: t("LOOTCRATES.Common.Cancel"), callback: () => null },
     ],
     rejectClose: false,
-    render: onForm ? (_e, dialog) => {
+    render: onForm || guard ? (_e, dialog) => {
       const form = dialog.element?.querySelector(".lc-form")?.closest("form");
       if (!form || form.dataset.lcReady) return;
       form.dataset.lcReady = "1";
-      onForm(form);
+      onForm?.(form);
+      if (guard) dialog.lcGuard = guardFor(form, guard);
     } : undefined,
   });
   // DialogV2 resolves a button whose callback gives nothing to its action
@@ -1894,9 +1936,11 @@ async function promptForm(title, fieldsHtml, { onForm, position, okLabel = t("LO
   form would save (boxcard.js draftBox) is drawn with the shop's own ribbon
   and pills against the stored pools (so missing and 0-weight entries are
   left out, as the shop leaves them out), and each weight whose rarity the
-  ticked pools don't hold says so. Nothing is written until Save.
+  ticked pools don't hold says so. Nothing is written until Save. `shelf`
+  (wireShelf) hears whether the draft can be played (playable.js), so the
+  On the shelf box and the default button follow it.
 */
-function liveOdds(form, box, poolIds, previewOf = cratePreview, draftOf = draftBox) {
+function liveOdds(form, box, poolIds, previewOf = cratePreview, draftOf = draftBox, shelf = null) {
   const out = form.querySelector(".lc-form__preview");
   const status = form.querySelector(".lc-form__odds [role=status]");
   let shown = null;
@@ -1905,6 +1949,7 @@ function liveOdds(form, box, poolIds, previewOf = cratePreview, draftOf = draftB
     syncShares(form);
     const draft = draftOf(box, readForm(form), poolIds);
     const preview = previewOf(draft, getPools());
+    shelf?.(unplayableReason(draft, getPools()));
     if (preview.html !== shown) { out.innerHTML = preview.html; shown = preview.html; }
     // The picture follows every keystroke; a screen reader hears one line,
     // once the GM stops typing (the opening odds go unsaid).

@@ -115,12 +115,11 @@ export const themeOf = game => (THEMES.includes(game?.theme) ? game.theme : "hoa
 /*
   What a New scratch ticket starts as: the approved mockup's Fortune
   Ticket, 5 gp a ticket, lucky numbers on a 4 x 3 grid with a 25 gp bonus
-  spot, a roll of 100: one Rare item, two 100 gp, five 25 gp, twelve
-  10 gp, twenty 5 gp and three bonus tickets, the other 57 duds.
+  spot, a roll of 100. Its prize list is Fill the prize list's at its own
+  defaults (newgame.js, scratchplan.js generatePrizeLines).
 */
 export const SCRATCH_DEFAULTS = {
   price: 5, layout: "lucky", bonusGp: 25, size: 100, theme: "hoard",
-  prizes: [{ count: 1, parts: [{ item: { rarity: "rare" } }] }, { count: 2, parts: [{ gp: 100 }] }, { count: 5, parts: [{ gp: 25 }] }, { count: 12, parts: [{ gp: 10 }] }, { count: 20, parts: [{ gp: 5 }] }, { count: 3, parts: [{ bonus: true }] }],
 };
 
 const clampInt = (v, [lo, hi], fallback) => {

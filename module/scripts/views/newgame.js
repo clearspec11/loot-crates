@@ -32,6 +32,8 @@ import { DECK_DEFAULTS } from "../games/deck.js";
 import { ROULETTE_DEFAULTS } from "../games/roulette.js";
 import { AUCTION_DEFAULTS } from "../games/auction.js";
 import { SCRATCH_DEFAULTS, GRID_DEFAULTS } from "../games/scratch.js";
+import { generatePrizeLines, FILL_DEFAULTS } from "../games/scratchplan.js";
+import { seededRng } from "../core/odds.js";
 import { formatPrice } from "../core/currency.js";
 import { restocked } from "../core/limits.js";
 import { onShelf } from "../core/shelf.js";
@@ -51,10 +53,18 @@ const weights = () => ({ ...DEFAULT_WEIGHTS });
   editor asks for one), bids opening at 10 gp and rising by 5 gp, no
   reserve, a 20-second gavel, no house bidders. A scratch ticket: the
   approved mockup's Fortune Ticket, 5 gp, lucky numbers on a 4 x 3 grid
-  with a 25 gp bonus spot, roll 1 of 100 tickets (one Rare item, coins
-  from 5 gp to 100 gp, three bonus tickets, 57 duds). Each call builds
-  fresh copies.
+  with a 25 gp bonus spot, roll 1 of 100 tickets, its prize list the one
+  Fill the prize list makes at its own defaults (scratchplan.js: a Rare
+  item on top, about 1 in 3.5 tickets winning, about 65% of the roll's
+  takings paid back in coins), from a fixed seed so every New starts from
+  the same list. The list it had before paid back 124%: the house lost on
+  every roll a GM didn't change. Each call builds fresh copies.
 */
+const SCRATCH_SEED = 7;
+function defaultPrizes(d) {
+  const grid = { ...GRID_DEFAULTS[d.layout] };
+  return generatePrizeLines({ price: d.price, size: d.size, layout: d.layout, grid, bonus: { gp: d.bonusGp }, top: { item: { rarity: "rare" } }, ...FILL_DEFAULTS, rng: seededRng(SCRATCH_SEED) });
+}
 export const NEW_DEFAULTS = {
   crate: () => ({ name: t("LOOTCRATES.Boxes.NewBox"), price: DEFAULT_PRICE_GP, pools: [], weights: weights(), rules: {} }),
   well: () => ({ kind: "well", name: t("LOOTCRATES.Boxes.NewWell"), price: WELL_DEFAULTS.price, pools: [], weights: weights(), odds: { ...WELL_DEFAULTS.odds }, rules: { cap: WELL_DEFAULTS.cap } }),
@@ -70,7 +80,7 @@ export const NEW_DEFAULTS = {
   },
   scratch: () => {
     const d = SCRATCH_DEFAULTS;
-    return { kind: "scratch", name: t("LOOTCRATES.Boxes.NewScratch"), price: d.price, pools: [], weights: weights(), layout: d.layout, grid: { ...GRID_DEFAULTS[d.layout] }, bonus: { on: true, gp: d.bonusGp }, theme: d.theme, roll: { id: 1, size: d.size, prizes: d.prizes.map(p => structuredClone(p)) }, rules: {} };
+    return { kind: "scratch", name: t("LOOTCRATES.Boxes.NewScratch"), price: d.price, pools: [], weights: weights(), layout: d.layout, grid: { ...GRID_DEFAULTS[d.layout] }, bonus: { on: true, gp: d.bonusGp }, theme: d.theme, roll: { id: 1, size: d.size, prizes: defaultPrizes(d) }, rules: {} };
   },
 };
 

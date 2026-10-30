@@ -374,10 +374,17 @@ describe("Restock in the editor is written by Save", () => {
     const [pending] = await openEdit(app, "crate");
     const left = dialog.form.querySelector(".lc-limits__left");
     const stock = field("stock");
-    // Typing before Restock says nothing new: the line is the stock left.
+    // Typing before Restock: the line says what Save will leave, by Save's
+    // own rule (raising 10 to 11 with 3 left leaves 4), not the saved state.
     stock.value = "11";
     stock.dispatchEvent({ type: "input" });
+    expect(left.textContent).toBe("4 of 11 left once you save");
+    // Back to the number it opened with: the stock as it is.
+    stock.value = "10";
+    stock.dispatchEvent({ type: "input" });
     expect(left.textContent).toBe("3 of 10 left");
+    stock.value = "11";
+    stock.dispatchEvent({ type: "input" });
     dialog.form.querySelector("[data-restock]").dispatchEvent({ type: "click" });
     expect(left.textContent).toBe("11 of 11 left once you save");
     stock.value = "15";

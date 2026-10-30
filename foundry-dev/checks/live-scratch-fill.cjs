@@ -289,7 +289,7 @@ const lineText = line => [line.count, ...line.parts.map(q => (q.item ? `item.${q
     const pct = s => Number(s.match(/Pays back (\d+)% in coins/)?.[1]);
     out.checks = {
       fields: out.fields.expanded === "true" && out.fields.payback === "65" && out.fields.winEvery === "3.5" && out.fields.shuffleOff === "true",
-      confirmed: /Replace the 6 prizes in the list with a new list\?/.test(out.confirmAsk ?? ""),
+      confirmed: /Replace the \d+ prizes in the list with a new list\?/.test(out.confirmAsk ?? ""),
       filled: JSON.stringify(out.filled.rows) !== JSON.stringify(startRows) && out.filled.rows[0] === "1 item.rare:" && /prizes filled in/.test(out.filled.said),
       oneIn35: Number(oneIn) >= 3.3 && Number(oneIn) <= 3.7 && /the top prize \(Rare item\) 1 in 100/.test(out.filled.readout),
       payback65: Math.abs(pct(out.filled.payback) - 65) <= 3 && Math.abs(pct(out.shuffled.payback) - 65) <= 3,
