@@ -253,6 +253,27 @@ describe("only what applies is open", () => {
     el.dispatchEvent({ type: "input" });
     expect(el.querySelector('[data-fold="limits"] [data-fold-said]').textContent).toBe("5 in stock, 1 per character a day");
   });
+
+  it("a fold holding a field Save refuses says why on its line, not \"0 in stock\"", () => {
+    const el = root(editorHTML("crate", newDraft("crate", { id: "c" }), ctx));
+    let values = { stock: "", limitMax: "" };
+    wireEditor(el, { read: () => values });
+    const stock = el.querySelector('input[name="stock"]');
+    const line = el.querySelector('[data-fold="limits"] [data-fold-said]');
+    // As editorguard.js wireStock leaves a stock below 0 (setCustomValidity).
+    stock.setAttribute("aria-invalid", "true");
+    stock.validationMessage = "Stock can't be below 0. Leave it blank for unlimited.";
+    values = { stock: "-3", limitMax: "" };
+    el.dispatchEvent({ type: "input" });
+    expect(line.textContent).toBe("Stock can't be below 0. Leave it blank for unlimited.");
+    expect(line.classList.contains("lc-form__hint--warn")).toBe(true);
+    stock.setAttribute("aria-invalid", "false");
+    stock.validationMessage = "";
+    values = { stock: "4", limitMax: "" };
+    el.dispatchEvent({ type: "input" });
+    expect(line.textContent).toBe("4 in stock");
+    expect(line.classList.contains("lc-form__hint--warn")).toBe(false);
+  });
 });
 
 describe("Fill's top prize starts the same in a New and an Edit", () => {

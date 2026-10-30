@@ -564,13 +564,18 @@ export function wireEditor(form, { read, repaint = () => {}, noun = "pulls" } = 
       repaint();
     });
   }
+  // A field in a fold that can't be saved (a stock below 0: Save is off,
+  // editorguard.js) puts its reason on the fold's line, so a folded group
+  // never hides why Save is off behind "0 in stock".
   const folds = [...form.querySelectorAll("[data-fold]")];
   const say = () => {
     const values = read();
     for (const fold of folds) {
       const line = fold.querySelector("[data-fold-said]");
-      const text = foldLine(fold.dataset.fold, values, { noun });
+      const bad = fold.querySelector('[aria-invalid="true"]')?.validationMessage || "";
+      const text = bad || foldLine(fold.dataset.fold, values, { noun });
       if (line && line.textContent !== text) line.textContent = text;
+      if (line) line.classList[bad ? "add" : "remove"]("lc-form__hint--warn");
     }
   };
   if (folds.length) {
