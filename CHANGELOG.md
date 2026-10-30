@@ -8,6 +8,14 @@ The newest numbered entry's version is the one in `module/module.json`, and its 
 
 - Nothing yet.
 
+## 1.5.1
+
+Tickets and the limit per character.
+
+- A ticket you hand out now plays even when the character has reached the game's limit per character, and using it doesn't count toward that limit.
+- The limit counts what a character buys: a ticket bought with Buy to keep counts once, when it is bought, and a ticket from the GM never counts.
+- Unchanged: tickets still work with the shop closed or the game off the shelf, use none of the game's stock, and a Wishing Well coin back on a ticket's throw pays coins.
+
 ## 1.5.0
 
 Tickets you carry.

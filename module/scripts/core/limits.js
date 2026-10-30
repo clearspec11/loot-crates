@@ -120,11 +120,13 @@ export function perCharacterFromForm({ limitMax, limitPer } = {}) {
 // How many times this character has bought this game: its unrefunded rows
 // (today's, for a limit per day). Every pulled play writes one row, a miss
 // included. A Buy to keep (row.keep) is a purchase, so it counts on the day
-// it was bought; the play its ticket is used for later (a redeem of a kept
-// ticket) was that purchase, so it doesn't count again.
+// it was bought; the play its ticket is used for later (a redeem) was that
+// purchase, so it doesn't count again. A ticket the GM handed out was never
+// bought: its play (a redeem with no Buy to keep behind it) counts for
+// nothing either.
 export function boughtBy(log, { boxId, actorId, per = "ever", today = null }) {
   if (per === "day" && !today) return 0;
-  return (log ?? []).filter(r => r.boxId === boxId && r.actorId === actorId && !r.refunded && !r.roundId && !r.redeem?.kept && (per !== "day" || r.day === today)).length;
+  return (log ?? []).filter(r => r.boxId === boxId && r.actorId === actorId && !r.refunded && !r.roundId && !r.redeem && (per !== "day" || r.day === today)).length;
 }
 
 /*

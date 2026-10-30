@@ -27,7 +27,6 @@ import { limitState, limitRefusal } from "../core/limits.js";
 import { onShelf, shelfRefusal } from "../core/shelf.js";
 import { t } from "../core/i18n.js";
 import { spendTicket, keepTicket } from "./tickets.js";
-import { ticketOf } from "../games/ticket.js";
 
 export { PullError } from "../games/kinds.js";
 export { sourceRaritiesOf };
@@ -100,17 +99,19 @@ export const PRICE_SKEW_MS = 5000;
   reads it, so the deck's streak matches what was paid), and `priceNote`
   the buyer's line when the pressed price was the other side of a
   boundary (else null). A `ticket` play (performPull) skips the shelf,
-  the stock and the price: it costs nothing, the ticket is its payment.
-  A `kept` ticket's play skips the limit per character too: its Buy to
-  keep was the purchase the limit counted (limits.js boughtBy).
+  the stock, the price and the limit per character: it costs nothing, the
+  ticket is its payment, and the limit counts purchases. A ticket bought
+  to keep was counted when it was bought (limits.js boughtBy); one the GM
+  handed out was never bought, so it plays past the limit and doesn't
+  count toward it.
 */
-function guardPlay({ box, actor, state = {}, expectedPrice, log = [], today = null, bet, ticket = false, kept = false }) {
+function guardPlay({ box, actor, state = {}, expectedPrice, log = [], today = null, bet, ticket = false }) {
   if (!box) throw new PullError(t("LOOTCRATES.Error.BoxGone"));
   if (!ticket && !onShelf(box)) throw new PullError(shelfRefusal(box));
   if (!actor) throw new PullError(t("LOOTCRATES.Error.NoActor"));
   if (!ticket && box.rules?.stock != null && box.rules.stock <= 0) throw new PullError(t("LOOTCRATES.Error.SoldOut", { name: box.name }));
   const kind = kindFor(box);
-  const limit = kept ? null : limitState(box, { log, actorId: actor.id, today });
+  const limit = ticket ? null : limitState(box, { log, actorId: actor.id, today });
   if (limit?.reached) throw new PullError(limitRefusal(box, limit, actor.name));
   // A ticket was paid for already (or handed out): the play costs nothing.
   if (ticket) return { kind, price: 0, purse: { ...(actor.system?.currency ?? {}) }, now: Date.now(), priceNote: null };
@@ -168,7 +169,7 @@ export async function createGrants(actor, datas) {
   daily cap) refuse in its roll, before anything is spent.
 */
 export async function performPull({ box, pools, actor, state = {}, rng = rollRng(), grant = true, onMissing = null, expectedPrice, log = [], today = null, ticket = null }) {
-  const { kind, price, purse, now, priceNote } = guardPlay({ box, actor, state, expectedPrice, log, today, ticket: !!ticket, kept: !!ticketOf(ticket)?.kept });
+  const { kind, price, purse, now, priceNote } = guardPlay({ box, actor, state, expectedPrice, log, today, ticket: !!ticket });
   // A table game is played in rounds (table.js): its roll settles every
   // stake at once, so it is staked, never pulled.
   if (kind.table) throw new PullError(t("LOOTCRATES.Error.TableGame", { name: box.name }));
