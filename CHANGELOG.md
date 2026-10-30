@@ -6,13 +6,20 @@ The newest numbered entry's version is the one in `module/module.json`, and its 
 
 ## Unreleased
 
+- Nothing yet.
+
+## 1.6.0
+
+Easier to set up.
+
 - No more lost work in the editors. Cancel, the window's X and Escape now ask "Discard your changes to Goblin Crate?" once you have changed anything in a game's editor (New, Edit or Copy, every kind) or a pool's name; Keep editing is the default and leaves everything as you typed it. With nothing changed they close at once, as before.
 - A game that can't be played no longer reaches the shelf. While a crate has no pool to drop from, a scratch ticket's item prizes have no pool or every ticket is a dud, an auction has no lot (or a well is dry, nobody can beat the dragon, a deck has no card to draw, a wheel has under two pockets), the editor's button reads Save off the shelf and the On the shelf box is off with the reason under it. Fix it and the button and the box come back. Editing a game on the shelf into that state saves it off the shelf, and the status line says why.
+- The On the shelf switch on a Boxes row checks the same thing: a game that can't be played stays off and the status line says why.
 - A price of 0 asks "Free to play?" once when you save (a free crate is allowed; a slip isn't).
 - A stock below 0 is refused under the field with Save off, where -3 used to save as sold out with nothing said. The line under Stock now follows what you type ("10 of 10 left once you save").
 - A new scratch ticket starts from the prize list Fill the prize list makes at its defaults: about 65% of the roll's takings back in coins, about 1 in 3.5 tickets winning, a Rare item on top. The old starting list paid back 124%, so the house lost money on every roll left as it was.
 - Buy to keep now refuses what the game itself would refuse when the ticket is used, with nothing charged: a sold-out scratch roll, or the Wishing Well once a character has thrown today's share.
-- The editors ask for things in the order you plan a game, and are much shorter. What's in it comes first, then the odds, the price, who can buy and how it looks. The pools a game uses are at the top of its pool list, each saying what it holds ("2 uncommon, 1 rare"); your other pools fold under **Add a pool**, with a search, so the pool you just made is no longer 20 rows down. With 18 pools in the world, New crate from this pool went from 2,223 px of form to 762 px (about one screen), and a new scratch ticket from 2,956 px to 1,376 px.
+- The editors ask for things in the order you plan a game, and are much shorter. What's in it comes first, then the odds, the price, who can buy and how it looks. The pools a game uses are at the top of its pool list, each saying what it holds ("2 uncommon, 1 rare"); your other pools fold under Add a pool, with a search, so the pool you just made is no longer 20 rows down. With 18 pools in the world, New crate from this pool went from 2,223 px of form to 762 px (about one screen), and a new scratch ticket from 2,956 px to 1,376 px.
 - Only what applies is open. Rarity weights show just the rarities your pools hold. The dice's, the wheel's, the well's and the deck's pools and weights appear only while the game has an item prize turned on. Who can buy and Extras (pity, no duplicates) fold under a line saying what is set; so do a scratch ticket's card layout and Who sees what.
 - In a scratch ticket's editor the pools sit right above Fill the prize list, Fill's top prize starts at a Rare item (or the list's own top prize) in both New and Edit, and after Fill the first new prize has focus and is in view. The readout pinned at the foot no longer covers Fill, Shuffle or the field you are on.
 - The deck editor opens wide enough for its column heads (Card, Does, Gold, Weight, Once); on a phone each field says what it is.
@@ -25,6 +32,7 @@ The newest numbered entry's version is the one in `module/module.json`, and its 
 - One name for each thing. The crate is a crate everywhere (New crate, Edit crate, Copy crate, Delete crate; the Boxes tab's first column is Game), and the other games use the names their shop cards show: New Wishing Well, New Dragon's Teeth, New Deck of Many Things, New Roulette wheel. A scratch ticket's bonus is "the bonus spot" in its prize lines, the Boxes tab and chat.
 - Make a ticket names the ticket "Goblin Crate ticket" (it was named exactly like the game and its pool), says where it went, and opens the Items sidebar on it, marked for a moment.
 - After Add starter crates, **Put all on the shelf** beside the line saying they came in off the shelf puts every one out in one press.
+- Reshuffle on a deck with cards drawn, and Set rarity for a pool's unset items, work again; both stopped with an error.
 - Make a crate is now near the top of a roll table's menu in the Roll Tables sidebar, straight after Draw, instead of last under Delete.
 
 ## 1.5.1

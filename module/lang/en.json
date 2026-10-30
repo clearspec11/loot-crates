@@ -527,10 +527,12 @@
       "CalendarOff": "dnd5e's calendar is off: a day ends at each character's long rest."
     },
     "News": {
-      "Title": "Tickets and the limit per character",
-      "Line1": "A ticket you hand out now plays even when the character has reached the game's limit per character, and using it doesn't count toward that limit.",
-      "Line2": "The limit counts what a character buys: a ticket bought with Buy to keep counts once, when it is bought, and a ticket from the GM never counts.",
-      "Line3": "Unchanged: tickets still work with the shop closed or the game off the shelf, use none of the game's stock, and a Wishing Well coin back on a ticket's throw pays coins."
+      "Title": "Easier to set up",
+      "Line1": "No more lost work in the editors. Cancel, the window's X and Escape now ask \"Discard your changes to Goblin Crate?\" once you have changed anything in a game's editor (New, Edit or Copy, every kind) or a pool's name; Keep editing is the default and leaves everything as you typed it. With nothing changed they close at once, as before.",
+      "Line2": "A game that can't be played no longer reaches the shelf. While a crate has no pool to drop from, a scratch ticket's item prizes have no pool or every ticket is a dud, an auction has no lot (or a well is dry, nobody can beat the dragon, a deck has no card to draw, a wheel has under two pockets), the editor's button reads Save off the shelf and the On the shelf box is off with the reason under it. Fix it and the button and the box come back. Editing a game on the shelf into that state saves it off the shelf, and the status line says why.",
+      "Line3": "The editors ask for things in the order you plan a game, and are much shorter. What's in it comes first, then the odds, the price, who can buy and how it looks. The pools a game uses are at the top of its pool list, each saying what it holds (\"2 uncommon, 1 rare\"); your other pools fold under Add a pool, with a search, so the pool you just made is no longer 20 rows down. With 18 pools in the world, New crate from this pool went from 2,223 px of form to 762 px (about one screen), and a new scratch ticket from 2,956 px to 1,376 px.",
+      "Line4": "Every action in the manager says what it did where you are looking. The line at the top of each tab now stays pinned there as you scroll, so \"Added 6 items from Items (SRD) to Goblin loot\" or \"Goblin Crate is on the shelf at 25 gp.\" is in view even 8,000 px down the Pools tab. Saving an edit now says so too: \"Saved Goblin Crate.\"",
+      "Line5": "One name for each thing. The crate is a crate everywhere (New crate, Edit crate, Copy crate, Delete crate; the Boxes tab's first column is Game), and the other games use the names their shop cards show: New Wishing Well, New Dragon's Teeth, New Deck of Many Things, New Roulette wheel. A scratch ticket's bonus is \"the bonus spot\" in its prize lines, the Boxes tab and chat."
     },
     "Welcome": {
       "Title": "Loot Crates",
