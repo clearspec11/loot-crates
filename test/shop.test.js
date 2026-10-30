@@ -18,7 +18,8 @@ let logReads = 0;
 let pullLog = [];
 vi.mock("../module/scripts/foundry/store.js", () => ({ getBoxes: () => boxes, getPools: () => POOLS, getLog: () => { logReads++; return pullLog; }, getRounds: () => ({}), todayKey: () => null, isShopOpen: () => shopOpen, getActorState: (a, b) => states[`${a}.${b}`] ?? {} }));
 const requestPull = vi.fn(async () => ({}));
-vi.mock("../module/scripts/foundry/socket.js", () => ({ requestPull: (...args) => requestPull(...args) }));
+const requestKeep = vi.fn(async () => ({}));
+vi.mock("../module/scripts/foundry/socket.js", () => ({ requestPull: (...args) => requestPull(...args), requestKeep: (...args) => requestKeep(...args) }));
 
 // ApplicationV2 stand-in: counts renders and, when a document is stubbed,
 // puts each rendered body in `content` through _replaceHTML, as ApplicationV2
@@ -56,6 +57,8 @@ const buy = (app, box, price) => CrateShop.DEFAULT_OPTIONS.actions.buy.call(app,
 beforeEach(() => {
   requestPull.mockClear();
   requestPull.mockImplementation(async () => ({}));
+  requestKeep.mockClear();
+  requestKeep.mockImplementation(async () => ({}));
   shopOpen = true;
   states = {};
   activeGM = { id: "gm" };
@@ -667,6 +670,66 @@ describe("the shop mid-purchase, and a Buy that does nothing", () => {
   in the window's header controls, and on an empty shelf. A player has
   neither, and an empty shelf points them at nothing they can't open.
 */
+describe("the shop's Buy to keep", () => {
+  beforeEach(() => { globalThis.document = createDocument(); });
+  afterEach(() => { delete globalThis.document; });
+
+  const draw = async app => { app.render(); return app.last; };
+  const keep = (app, box, price, off = false) => CrateShop.DEFAULT_OPTIONS.actions.keep.call(app, {}, {
+    dataset: { keep: box, price }, getAttribute: name => (name === "aria-disabled" && off ? "true" : null),
+  });
+  const keepButton = (app, box) => app.content.querySelector(`.lc-box__keep[data-keep="${box}"]`);
+
+  it("asks the GM to keep a ticket for the character, at the price on the button, and plays nothing", async () => {
+    const app = new CrateShop();
+    await keep(app, "common", "25");
+    expect(requestKeep).toHaveBeenCalledTimes(1);
+    expect(requestKeep.mock.calls[0][0]).toEqual({ boxId: "common", actorId: "a1", price: 25 });
+    expect(requestPull).not.toHaveBeenCalled();
+    expect(app.busy).toBe(false);
+    expect(app.busyKeep).toBe(false);
+  });
+
+  it("says Buying… on the pressed card while it is out, then where the ticket went, in the notice", async () => {
+    let settle;
+    requestKeep.mockImplementation(() => new Promise(r => { settle = r; }));
+    const app = new CrateShop();
+    await draw(app);
+    const btn = keepButton(app, "common");
+    const buyBtn = app.content.querySelector('.lc-box__buy[data-box="common"]');
+    const pressed = keep(app, "common", "25");
+    await app.last;
+    expect(keepButton(app, "common") === btn).toBe(true);
+    expect(app.content.querySelector('.lc-box__buy[data-box="common"]') === buyBtn).toBe(true);
+    expect(btn.textContent.trim()).toBe("Pauper's Box: Buying…");
+    expect(btn.getAttribute("aria-disabled")).toBe("true");
+    expect(app.content.querySelector('.lc-box__buy[data-box="common"]').textContent.trim()).toBe("Pauper's Box: Open for 25 gp");
+    settle({ type: "kept", boxName: "Pauper's Box", actorName: "Tam", count: 2 });
+    await pressed;
+    await app.last;
+    expect(app.content.querySelector(".lc-shop__notice").textContent).toBe("A Pauper's Box ticket is in Tam's pack (2 now). Use it from the character sheet whenever you like.");
+    expect(app.content.querySelector(".lc-shop__notice").dataset.tone).toBe("done");
+    expect(btn.textContent.trim()).toBe("Pauper's Box: Buy to keep, 25 gp, a ticket for your pack to use later");
+    expect(btn.getAttribute("aria-disabled")).toBeNull();
+  });
+
+  it("refuses what Buy refuses: a crate the character can't afford, a closed shop, no GM", async () => {
+    await keep(new CrateShop(), "royal");
+    shopOpen = false;
+    await keep(new CrateShop(), "common", "25");
+    shopOpen = true;
+    activeGM = null;
+    await keep(new CrateShop(), "common", "25");
+    expect(requestKeep).not.toHaveBeenCalled();
+  });
+
+  it("shows the GM's refusal as Buy does", async () => {
+    requestKeep.mockImplementation(async () => { throw new PullError("Pauper's Box is sold out."); });
+    await keep(new CrateShop(), "common", "25");
+    expect(globalThis.ui.notifications.warn).toHaveBeenCalledWith("Pauper's Box is sold out.");
+  });
+});
+
 describe("the shop's way to the manager", () => {
   beforeEach(() => { globalThis.document = createDocument(); });
   afterEach(() => { delete globalThis.document; globalThis.game.user.isGM = false; });

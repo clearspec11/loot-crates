@@ -31,6 +31,25 @@ describe("kindTag", () => {
   });
 });
 
+describe("Make a ticket on the Boxes table", () => {
+  const html = boxesTableHTML({ boxes: BOXES, pools: POOLS, log: deckDraws(1), rounds: { R1: rouletteRound() }, esc });
+
+  it("is a button in words, named for the game, on a line of its own after any extra, on every pulled game's row", () => {
+    const pulled = BOXES.filter(b => b.kind !== "roulette" && b.kind !== "auction");
+    for (const b of pulled) {
+      expect(html).toContain(`<button type="button" class="lc-table__extra" data-action="makeTicket" data-box="${esc(b.id)}" aria-label="Make a ticket for ${esc(b.name)}">Make a ticket</button>`);
+    }
+    expect(html).toMatch(/data-action="reshuffle"[^>]*>[^<]*<\/button> <button type="button" class="lc-table__extra" data-action="makeTicket"/);
+    expect([...html.matchAll(/data-action="makeTicket"/g)]).toHaveLength(pulled.length);
+  });
+
+  it("is left off a table game's row and a scratch ticket's row has one", () => {
+    expect(boxesTableHTML({ boxes: [{ id: "w", kind: "roulette", name: "Wheel", price: 1, pools: [] }], pools: {}, esc })).not.toContain("makeTicket");
+    expect(boxesTableHTML({ boxes: [{ id: "a", kind: "auction", name: "Lot", price: 1, pools: [] }], pools: {}, esc })).not.toContain("makeTicket");
+    expect(boxesTableHTML({ boxes: [{ id: "s", kind: "scratch", name: "Fortune", price: 5, pools: [], prizes: [] }], pools: {}, esc })).toContain('data-action="makeTicket" data-box="s"');
+  });
+});
+
 describe("the Boxes table", () => {
   const html = boxesTableHTML({ boxes: BOXES, pools: POOLS, log: deckDraws(1), rounds: { R1: rouletteRound() }, esc });
 
@@ -62,6 +81,8 @@ describe("the Boxes table", () => {
       const last = tr.slice(tr.lastIndexOf('<td role="cell" data-label=""'));
       const actions = [...last.matchAll(/data-action="([^"]+)"/g)].map(m => m[1]);
       expect(actions.slice(-3)).toEqual(["editBox", "copyBox", "deleteBox"]);
+      // A table game is staked in rounds, never pulled: it has no tickets.
+      expect(actions.includes("makeTicket")).toBe(!/lc-kind">Wheel</.test(tr));
     }
     expect(html).toContain('data-action="reshuffle"');
     expect(html).toContain('data-action="openTable"');

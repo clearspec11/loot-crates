@@ -282,6 +282,48 @@ describe("New then Save", () => {
     expect(status(app).textContent).toBe("Fortune Ticket is on the shelf at 5 gp.");
   });
 
+  it("addScratch: Fill the prize list asks before replacing the rows, fills them for a rare top prize at about 1 in 3.5 and 65% back, Shuffle changes them, and only Save writes them", async () => {
+    const app = await manager();
+    const pending = act(app, "addScratch");
+    await settle(2);
+    const form = dialog.form;
+    field("name").value = "Filled Ticket";
+    field("pool.p").checked = true;
+    const toggle = form.querySelector(".lc-fill__toggle");
+    toggle.dispatchEvent({ type: "click" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(field("fillTop").value).toBe("item.rare");
+    Dialog.asked = [];
+    Dialog.answer = true;
+    form.querySelector(".lc-fill__fill").dispatchEvent({ type: "click" });
+    await settle(2);
+    // The six default rows are the GM's: the module's own confirm asks first.
+    expect(Dialog.asked.map(c => [c.window.title, c.content])).toEqual([["Fill the prize list", "<p>Replace the 6 prizes in the list with a new list?</p>"]]);
+    const values = () => form.querySelectorAll(".lc-prize-row").map(r => [r.querySelector(".lc-prize-row__count").value, ...r.querySelectorAll(".lc-prize-part").map(p => `${p.querySelector(".lc-prize-row__what").value}:${p.querySelector(".lc-prize-row__gp").value}`)].join(" "));
+    const filled = values();
+    expect(filled[0]).toBe("1 item.rare:");
+    expect(form.querySelector(".lc-scratch-form__readout").textContent).toMatch(/^1 in 3\.[3-7] tickets wins, the top prize \(Rare item\) 1 in 100/);
+    const pct = Number(form.querySelector(".lc-scratch-form__payback").textContent.match(/Pays back (\d+)% in coins/)[1]);
+    expect(Math.abs(pct - 65)).toBeLessThanOrEqual(3);
+    expect(form.querySelector(".lc-fill__said").textContent).toMatch(/prizes filled in\. Pays back \d+% in coins: .*\. Nothing is saved until you press Save\.$/);
+    // Shuffle: another list, no second question; nothing is written yet.
+    form.querySelector(".lc-fill__shuffle").dispatchEvent({ type: "click" });
+    await settle(2);
+    expect(Dialog.asked).toHaveLength(1);
+    expect(values()).not.toEqual(filled);
+    expect(sets).toBe(0);
+    expect(store.getBoxes()).toEqual({});
+    const shuffled = values();
+    dialog.save();
+    await pending;
+    await settle();
+    const made = Object.values(store.getBoxes()).find(b => b.name === "Filled Ticket");
+    expect(made.roll.size).toBe(100);
+    expect(made.roll.prizes.map(p => [p.count, ...p.parts.map(q => (q.item ? `item.${q.item.rarity}:` : q.bonus ? "bonus:" : `gp:${q.gp}`))].join(" "))).toEqual(shuffled);
+    // The fields aren't stored on the record.
+    expect(Object.keys(made).filter(k => k.startsWith("fill"))).toEqual([]);
+  });
+
   it("addScratch: Add a part makes a prize line pay several parts at once, and the switch hides what is left from players", async () => {
     const app = await manager();
     const pending = act(app, "addScratch");
@@ -407,7 +449,7 @@ describe("Copy", () => {
       expect(copy.getAttribute("data-tooltip")).toBe("Copy");
       const cell = copy.closest("td");
       const actions = [...cell.querySelectorAll("[data-action]")].map(b => b.getAttribute("data-action"));
-      expect(actions).toEqual(["toggleShelf", "editBox", "copyBox", "deleteBox"]);
+      expect(actions).toEqual(["toggleShelf", "makeTicket", "editBox", "copyBox", "deleteBox"]);
     }
   });
 

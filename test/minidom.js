@@ -76,7 +76,8 @@ class Element extends Node {
   // dispatches on the element a handler was added to.
   addEventListener(type, fn) { ((this._listeners ??= new Map()).get(type) ?? this._listeners.set(type, []).get(type)).push(fn); }
   dispatchEvent(event) {
-    event.target ??= this;
+    // A real Event's target is a getter, so it is set as an own property.
+    if (event.target == null) Object.defineProperty(event, "target", { value: this, configurable: true });
     for (const fn of this._listeners?.get(event.type) ?? []) fn(event);
     return !event.defaultPrevented;
   }

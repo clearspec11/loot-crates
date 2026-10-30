@@ -17,7 +17,9 @@
   stock and limit per character ("3 of 10 left, 1 per character",
   limits.js). Every row's price is a field the GM types into (priceInputHTML
   below). Every row's last cell holds Edit, Copy (the same editor on an
-  unsaved copy of the game, newgame.js copyOf) and Delete.
+  unsaved copy of the game, newgame.js copyOf) and Delete, under Make a
+  ticket on a pulled game's row (one ticket for it in the Items sidebar,
+  games/ticket.js; not a table game's, which is staked, never pulled).
   Every row says whether players can see the game (shelf.js): its buttons'
   cell leads with the On the shelf toggle (aria-pressed, as the shop's own
   switch), on a line of its own as Reshuffle is, so the table is no wider
@@ -56,6 +58,7 @@ import { limitsText } from "../core/limits.js";
 import { onShelf, shelfCountText, shelfToggleHTML } from "../core/shelf.js";
 import { starterCallHTML, STARTER_LABEL } from "./starter.js";
 import { t, words, onStrings } from "../core/i18n.js";
+import { ticketable } from "../games/ticket.js";
 
 // The New buttons, in the order the kinds arrived; their action names are
 // the manager's (test/actions.test.js keeps them off ApplicationV2's own).
@@ -140,9 +143,14 @@ export function boxesTableHTML({ boxes, pools, log = [], rounds = {}, recent = n
           ${cell(POOLS, (b.pools ?? []).map(r => esc(pools[r.id]?.name ?? t("LOOTCRATES.Boxes.MissingPool"))).join(", ") || `<em>${t("LOOTCRATES.Boxes.NoPools")}</em>`)}
           ${cell(ODDS, odds(b))}
           ${cell(RULES, rules(b))}
-          ${cell(ACT, `${shelfToggleHTML(b, esc)} ${extra(b)}<button type="button" data-action="editBox" data-box="${esc(b.id)}" aria-label="${t("LOOTCRATES.Boxes.EditLabel", { name: esc(b.name) })}" data-tooltip="${t("LOOTCRATES.Boxes.Edit")}"><i class="fas fa-pen" inert></i></button> <button type="button" data-action="copyBox" data-box="${esc(b.id)}" aria-label="${t("LOOTCRATES.Boxes.CopyLabel", { name: esc(b.name) })}" data-tooltip="${t("LOOTCRATES.Boxes.Copy")}"><i class="fas fa-copy" inert></i></button> <button type="button" data-action="deleteBox" data-box="${esc(b.id)}" aria-label="${t("LOOTCRATES.Boxes.DeleteLabel", { name: esc(b.name) })}" data-tooltip="${t("LOOTCRATES.Boxes.Delete")}"><i class="fas fa-trash" inert></i></button>`)}
+          ${cell(ACT, `${shelfToggleHTML(b, esc)} ${extra(b)}${ticketButton(b, esc)}<button type="button" data-action="editBox" data-box="${esc(b.id)}" aria-label="${t("LOOTCRATES.Boxes.EditLabel", { name: esc(b.name) })}" data-tooltip="${t("LOOTCRATES.Boxes.Edit")}"><i class="fas fa-pen" inert></i></button> <button type="button" data-action="copyBox" data-box="${esc(b.id)}" aria-label="${t("LOOTCRATES.Boxes.CopyLabel", { name: esc(b.name) })}" data-tooltip="${t("LOOTCRATES.Boxes.Copy")}"><i class="fas fa-copy" inert></i></button> <button type="button" data-action="deleteBox" data-box="${esc(b.id)}" aria-label="${t("LOOTCRATES.Boxes.DeleteLabel", { name: esc(b.name) })}" data-tooltip="${t("LOOTCRATES.Boxes.Delete")}"><i class="fas fa-trash" inert></i></button>`)}
         </tr>`).join(""));
 }
+
+// Make a ticket, on a pulled game's row only (manager.js #makeTicket): in
+// words on a line of its own, as Reshuffle is, so the icons' line stays
+// three wide and the table fits the pane down to where its rows stack.
+export const ticketButton = (b, esc = s => String(s ?? "")) => (ticketable(b) ? `<button type="button" class="lc-table__extra" data-action="makeTicket" data-box="${esc(b.id)}" aria-label="${t("LOOTCRATES.Boxes.TicketLabel", { name: esc(b.name) })}">${t("LOOTCRATES.Boxes.Ticket")}</button> ` : "");
 
 /*
   The Price cell is the price, typed in place as a pool row's weight is

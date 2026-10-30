@@ -17,7 +17,7 @@ import { mountSpin } from "../views/spin.js";
 import { playTick, playSlow, playReveal, playPlink } from "../foundry/sound.js";
 import { resultHTML, missHTML, oddsWithNothing } from "../views/revealcard.js";
 import { boxCard, buyReason } from "../views/boxcard.js";
-import { formatPrice } from "../core/currency.js";
+import { priceTag } from "./ticket.js";
 import { PullError, registerKind } from "./kinds.js";
 import { t } from "../core/i18n.js";
 
@@ -88,7 +88,9 @@ export function grantData(source, result, box) {
     marks.sourceRarity = sourceRarity;
     marks.rarityOverride = true;
   }
-  data.flags = { ...(data.flags ?? {}), "loot-crates": marks };
+  // A ticket in a pool (games/ticket.js) stays a ticket when it is won.
+  const ticket = data.flags?.["loot-crates"]?.ticket;
+  data.flags = { ...(data.flags ?? {}), "loot-crates": { ...(ticket ? { ticket } : {}), ...marks } };
   // Foundry's provenance convention for a copy taken from a compendium.
   if (source.pack || String(source.uuid ?? "").startsWith("Compendium.")) {
     data._stats = { ...(data._stats ?? {}), compendiumSource: source.uuid };
@@ -192,7 +194,7 @@ function chatCard(reveal, { esc, itemLink }) {
   if (!r) {
     return `
     <div class="loot-crates lc-chat lc-rarity-none">
-      <div class="lc-chat__head">${t("LOOTCRATES.Crate.ChatHead", { actor: esc(reveal.actorName), box: `<strong>${esc(reveal.box.name)}</strong>`, price: `<span class="lc-chat__price">${esc(formatPrice(reveal.box.price))}</span>` })}</div>
+      <div class="lc-chat__head">${t("LOOTCRATES.Crate.ChatHead", { actor: esc(reveal.actorName), box: `<strong>${esc(reveal.box.name)}</strong>`, price: `<span class="lc-chat__price">${esc(priceTag(reveal))}</span>` })}</div>
       <div class="lc-chat__item">
         <div>
           <div class="lc-chat__name">${t("LOOTCRATES.Odds.Nothing")}</div>
@@ -203,7 +205,7 @@ function chatCard(reveal, { esc, itemLink }) {
   }
   return `
     <div class="loot-crates lc-chat lc-rarity-${esc(r.rarity)}">
-      <div class="lc-chat__head">${t("LOOTCRATES.Crate.ChatHead", { actor: esc(reveal.actorName), box: `<strong>${esc(reveal.box.name)}</strong>`, price: `<span class="lc-chat__price">${esc(formatPrice(reveal.box.price))}</span>` })}</div>
+      <div class="lc-chat__head">${t("LOOTCRATES.Crate.ChatHead", { actor: esc(reveal.actorName), box: `<strong>${esc(reveal.box.name)}</strong>`, price: `<span class="lc-chat__price">${esc(priceTag(reveal))}</span>` })}</div>
       <div class="lc-chat__item">
         <img src="${esc(r.img)}" alt="">
         <div>

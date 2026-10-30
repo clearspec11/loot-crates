@@ -31,13 +31,20 @@
   before the redraw showed it. A Buy the GM refused because its price had
   changed is said there too, in the same sentence, not as a toast. That
   line stays while it still holds and clears on the next Buy that goes out.
+
+  Buy to keep (the card's second button, boxcard.js cardShell) is a Buy
+  that plays nothing now: the same character, the same price on the
+  button, the same reasons it is off and the same refusals, sent as a
+  "keep" (socket.js requestKeep). The GM charges it and puts a ticket in
+  the character's pack, and the notice says where it went, so the player
+  hears it without a reveal.
 */
 import { getBoxes, getPools, getLog, getRounds, getActorState, isShopOpen, todayKey } from "./store.js";
 import { formatGold } from "../core/currency.js";
 import { actorPicker, boxCard, buyReason, changedCharacterLine, crateReason, refusalLine, shopHTML, shopNotice, shopReason, patchShop, pickActor } from "../views/boxcard.js";
 import { shopOdds } from "../core/odds.js";
 import { limitState, limitRefusal, withLimit } from "../core/limits.js";
-import { requestPull } from "./socket.js";
+import { requestPull, requestKeep } from "./socket.js";
 import { heldState, heldBefore, boxHeld, onHold, onRelease } from "./reveal.js";
 import { getKind, kindOf } from "../games/kinds.js";
 import { onShelf, shelfFor, offShelfReason } from "../core/shelf.js";
@@ -111,7 +118,7 @@ export class CrateShop extends ApplicationV2 {
     // The window's title is its own getter, in the module's words.
     window: { title: "LOOTCRATES.Shop.Title", resizable: true },
     position: { width: 640, height: "auto" },
-    actions: { buy: CrateShop.#buy, openManager: CrateShop.#openManager },
+    actions: { buy: CrateShop.#buy, keep: CrateShop.#keep, openManager: CrateShop.#openManager },
   };
 
   get title() { return t("LOOTCRATES.Shop.Title"); }
@@ -132,10 +139,13 @@ export class CrateShop extends ApplicationV2 {
   busy = false;
   // The box whose Buy was pressed, so only that card says "Opening…".
   busyBox = null;
+  // Whether the press out is a Buy to keep (that card says "Buying…").
+  busyKeep = false;
   // Why it is taking long, once it is: "gm" or "hidden" (socket.js onWait).
   waiting = null;
   // Why the last Buy did nothing, while it still holds: { text, actorId,
-  // holds() } (see #refuse), or null.
+  // holds(), tone? } (see #refuse), or null. A Buy to keep's line saying
+  // where the ticket went is kept here too, in its own tone.
   said = null;
 
   get actor() { return game.actors.get(this.actorId) ?? null; }
@@ -179,6 +189,15 @@ export class CrateShop extends ApplicationV2 {
     nothing is out and this crate can be bought now.
   */
   static async #buy(_event, target) {
+    return this.#press(target, false);
+  }
+
+  // Buy to keep: the same press, sent as a keep (see the head comment).
+  static async #keep(_event, target) {
+    return this.#press(target, true);
+  }
+
+  async #press(target, keep) {
     if (this.busy) return;
     // The cards on screen were drawn for this.actorId. If the player no
     // longer owns it (or now owns one where they had none), those cards
@@ -194,7 +213,8 @@ export class CrateShop extends ApplicationV2 {
       this.render();
       return;
     }
-    const boxId = target.dataset.box;
+    // Buy names its game in data-box, Buy to keep in data-keep (boxcard.js).
+    const boxId = target.dataset.box ?? target.dataset.keep;
     const box = forSale()[boxId];
     const ctx = this.#ctx();
     if (!box || reasonFor(box, getPools(), ctx)) {
@@ -204,13 +224,16 @@ export class CrateShop extends ApplicationV2 {
       return;
     }
     // A table game isn't bought here: its Buy opens the table (the GM's
-    // opens the round first), where the bets are placed.
+    // opens the round first), where the bets are placed. It has no Buy to
+    // keep: it is staked in rounds, never pulled.
     if (getKind(kindOf(box))?.table) {
+      if (keep) return;
       try { await openTableFor(boxId); } catch (err) { ui.notifications.warn(err.message); }
       return;
     }
     this.busy = true;
     this.busyBox = boxId;
+    this.busyKeep = keep;
     this.said = null;
     this.render();
     const onWait = why => {
@@ -224,16 +247,27 @@ export class CrateShop extends ApplicationV2 {
     const shown = target.dataset.price;
     const price = shown != null && shown !== "" && Number.isFinite(Number(shown)) ? Number(shown) : undefined;
     try {
-      await requestPull({ boxId, actorId, price }, { onWait });
+      if (keep) this.#kept(await requestKeep({ boxId, actorId, price }, { onWait }));
+      else await requestPull({ boxId, actorId, price }, { onWait });
     } catch (err) {
       if (err?.stalePrice != null) this.#staleRefusal(boxId, price, err);
       else ui.notifications.warn(err.message);
     } finally {
       this.busy = false;
       this.busyBox = null;
+      this.busyKeep = false;
       this.waiting = null;
       this.render();
     }
+  }
+
+  // The GM's answer to a Buy to keep: the notice says the ticket is in the
+  // pack, with how many of it there are now, until the next press (and
+  // the GM's note when the pressed price was the other side of a boundary).
+  #kept(answer) {
+    if (!answer) return;
+    const text = [answer.priceNote, t("LOOTCRATES.Keep.Done", { box: answer.boxName, actor: answer.actorName, count: answer.count ?? 1 })].filter(Boolean).join(" ");
+    this.said = { text, actorId: this.actorId, holds: () => true, tone: "done" };
   }
 
   /*
@@ -296,7 +330,7 @@ export class CrateShop extends ApplicationV2 {
     const notice = shopNotice(ctx);
     if (notice.text) return notice;
     if (this.said && (this.said.actorId !== this.actorId || !this.said.holds())) this.said = null;
-    return this.said ? { text: this.said.text, tone: "warn" } : notice;
+    return this.said ? { text: this.said.text, tone: this.said.tone ?? "warn" } : notice;
   }
 
   // A change listener, not a data-action: ApplicationV2 runs actions on click,
@@ -344,7 +378,7 @@ export class CrateShop extends ApplicationV2 {
       held: boxId => !!(actor && heldState(actor.id, boxId)) || boxHeld(boxId),
       // Anyone's pull of it still playing here (a scratch roll's counts).
       heldBefore: boxId => heldBefore(boxId),
-      busy: this.busy, busyBox: this.busyBox, waiting: this.waiting, art: `<i class="fas fa-box-open"></i>`, esc,
+      busy: this.busy, busyBox: this.busyBox, busyKeep: this.busyKeep, waiting: this.waiting, art: `<i class="fas fa-box-open"></i>`, esc,
     };
   }
 

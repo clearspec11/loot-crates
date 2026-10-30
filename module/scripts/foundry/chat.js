@@ -48,6 +48,25 @@ export async function postPullCard(reveal) {
 }
 
 /*
+  Buy to keep's chat line (socket.js doKeep): who bought which game's
+  ticket to keep and for how much. No reveal and nothing to watch again;
+  flags.logId ties it to its row, so a refund marks it as it marks a pull's
+  card (refund.js markPullCard).
+*/
+export async function postKeptCard(row) {
+  const actor = game.actors.get(row.actorId);
+  const content = `
+    <div class="loot-crates lc-chat lc-chat--kept">
+      <div class="lc-chat__head">${t("LOOTCRATES.Keep.ChatHead", { actor: esc(row.actorName), box: `<strong>${esc(row.boxName)}</strong>`, price: `<span class="lc-chat__price">${esc(formatPrice(row.price))}</span>` })}</div>
+    </div>`;
+  return ChatMessage.create({
+    content,
+    speaker: ChatMessage.getSpeaker({ actor }),
+    flags: { "loot-crates": { boxId: row.boxId, logId: row.id, kept: true } },
+  });
+}
+
+/*
   The refund card's line about the items, or null for a row that granted
   none. A play that granted several (refund.js removedItems, goneItems)
   names each removed and each already gone; a caller that passes only
@@ -67,7 +86,7 @@ function refundItemsLine({ row, removedItem, removedItems, goneItems }) {
 
 // Posted when the GM refunds a pull, so the player whose coins came back and
 // whose item vanished from their sheet can see why.
-export async function postRefundCard({ row, actor, removedItem, removedItems, goneItems }) {
+export async function postRefundCard({ row, actor, removedItem, removedItems, goneItems, ticketBack = null }) {
   // A row that granted no item (a well's miss or coin back, a dice bet, a
   // deck's card) has nothing to remove: the stake came back (and what a
   // bane took with it), the winnings were taken back less the stake (a
@@ -78,17 +97,26 @@ export async function postRefundCard({ row, actor, removedItem, removedItems, go
   const stake = Math.round((Number(row.price) || 0) * 100);
   const payout = Math.round(Number(row.payoutCp) || 0);
   const net = stake - payout;
-  const coinsLine = payout < 0 ? t("LOOTCRATES.Chat.RefundBane", { net: esc(formatPrice(net / 100)), stake: esc(formatPrice(stake / 100)), took: esc(formatPrice(-payout / 100)) })
+  // A play made with a ticket (row.redeem) cost no coins: the ticket came
+  // back instead, and only what it won moves (taken back, or a bane's loss
+  // given back).
+  const ticket = !!row.redeem;
+  const coinsLine = ticket ? (payout > 0 ? t("LOOTCRATES.Chat.RefundTicketWon", { won: esc(formatPrice(payout / 100)) }) : payout < 0 ? t("LOOTCRATES.Chat.RefundBack", { net: esc(formatPrice(-payout / 100)) }) : null)
+    : payout < 0 ? t("LOOTCRATES.Chat.RefundBane", { net: esc(formatPrice(net / 100)), stake: esc(formatPrice(stake / 100)), took: esc(formatPrice(-payout / 100)) })
     : net > 0 ? t("LOOTCRATES.Chat.RefundBack", { net: esc(formatPrice(net / 100)) })
     : net < 0 ? t("LOOTCRATES.Chat.RefundTaken", { net: esc(formatPrice(-net / 100)), won: esc(formatPrice(payout / 100)), stake: esc(formatPrice(stake / 100)) })
     : t("LOOTCRATES.Chat.RefundCoinBack");
   // A play that granted items and paid coins too (a scratch line: an item
   // + 25 gp) says both, since its head carries no price.
   const itemsLine = refundItemsLine({ row, removedItem, removedItems, goneItems });
-  const line = itemsLine && payout ? `${itemsLine} ${coinsLine}` : itemsLine ?? coinsLine;
+  const ticketLine = ticket ? t(ticketBack ? "LOOTCRATES.Chat.RefundTicketBack" : "LOOTCRATES.Chat.RefundTicketLost", { box: esc(row.boxName) }) : null;
+  // A Buy to keep (row.keep): the ticket left the pack and its price came back.
+  const line = row.keep ? [t("LOOTCRATES.Keep.RefundTaken", { box: esc(row.boxName) }), net ? coinsLine : null].filter(Boolean).join(" ")
+    : ticket ? [ticketLine, itemsLine, coinsLine].filter(Boolean).join(" ")
+    : itemsLine && payout ? `${itemsLine} ${coinsLine}` : itemsLine ?? coinsLine;
   const content = `
     <div class="loot-crates lc-chat lc-rarity-${esc(row.rarity ?? "none")}">
-      <div class="lc-chat__head">${t("LOOTCRATES.Chat.RefundHead", { actor: esc(actor?.name || row.actorName || t("LOOTCRATES.Auction.Someone")), box: `<strong>${esc(row.boxName)}</strong>` })}${payout ? "" : ` <span class="lc-chat__price">${esc(formatPrice(row.price))}</span>`}</div>
+      <div class="lc-chat__head">${t("LOOTCRATES.Chat.RefundHead", { actor: esc(actor?.name || row.actorName || t("LOOTCRATES.Auction.Someone")), box: `<strong>${esc(row.boxName)}</strong>` })}${payout || ticket ? "" : ` <span class="lc-chat__price">${esc(formatPrice(row.price))}</span>`}</div>
       <div class="lc-chat__refund">${line}</div>
     </div>`;
   return ChatMessage.create({

@@ -37,6 +37,12 @@ const STATES = [
   // The player owns two characters: the select is off (aria-disabled, still
   // legible) while the pull is out, and on again once it settles.
   ["shop-busy", "state=shop&characters=2"],
+  // Buy to keep pressed on the Pauper's Box (keepProblems presses it as
+  // shop.js does): left out with the GM, its keep button saying "Buying…"
+  // and its Buy still "Open for 25 gp"; then, settled, the shop's line
+  // saying where the ticket went.
+  ["shop-keep", "state=shop"],
+  ["shop-kept", "state=shop"],
   // A shop window shorter than its crates (Foundry caps windows at the
   // screen's height; a player can size it down): the grid scrolls under the
   // head, which stays in view, and a wheel over the grid reaches the last crate.
@@ -195,6 +201,11 @@ const STATES = [
   ["shop-scratch-hidden", "state=shop&scratch=hidden"],
   ["shop-scratch-soldout", "state=shop&scratch=soldout"],
   ["editor-scratch", "state=editor&scratch=1"],
+  // Fill the prize list (scratchplan.js): its fields open, then after a
+  // Fill (the Fortune Ticket's six rows replaced, the harness saying yes
+  // to the confirm), the rows, the readout's payback and the status line.
+  ["editor-scratch-fill", "state=editor&scratch=1&fill=open"],
+  ["editor-scratch-filled", "state=editor&scratch=1&fill=done"],
   ["manager-boxes-scratch", "state=manager&tab=boxes&scratch=1"],
   // The scratch itself (scratch.js mountScratch, the foil in foil.js), as
   // the approved mockup has it, played with motion on: the buyer's card
@@ -580,6 +591,19 @@ function boxesProblems(narrow) {
     if ((copy.querySelector("i")?.getBoundingClientRect().width ?? 0) < 10) out.push(`${name}'s Copy has no icon`);
     const order = [...r.lastElementChild.querySelectorAll("[data-action]")].map(b => b.dataset.action).slice(-3).join("|");
     if (order !== "editBox|copyBox|deleteBox") out.push(`${name}'s row actions end ${order}`);
+    // A pulled game's row has Make a ticket in words, as Reshuffle is; the
+    // wheel's (a table game) has none.
+    const table = /Wheel/.test(r.querySelector(".lc-kind")?.textContent ?? "");
+    const ticket = r.querySelector('[data-action="makeTicket"]');
+    if (table && ticket) out.push(`${name} is a table game with a Make a ticket`);
+    if (!table && !ticket) out.push(`${name} has no Make a ticket`);
+    if (ticket) {
+      if (ticket.getAttribute("aria-label") !== `Make a ticket for ${name}`) out.push(`${name}'s Make a ticket is labelled "${ticket.getAttribute("aria-label")}"`);
+      const tr = ticket.getBoundingClientRect();
+      if (tr.width < 20 || tr.height < 20 || ticket.textContent.trim() !== "Make a ticket") out.push(`${name}'s Make a ticket is not visible`);
+      if (parseFloat(getComputedStyle(ticket).fontSize) < 11) out.push(`${name}'s Make a ticket is under 11px`);
+      if (tr.right > app.right + 1) out.push(`${name}'s Make a ticket is past the window's edge`);
+    }
   }
   return out;
 }
@@ -1595,6 +1619,50 @@ async function scratchEditorProblems() {
   return out;
 }
 
+// Fill the prize list (scratchplan.js): the toggle open over its fields
+// with the defaults (65%, 1 in 3.5, the roll's Rare item on top, some
+// combinations), Shuffle off until a Fill. After a Fill: the harness's
+// confirm asked about the six rows, new rows numbered from 1 with the Rare
+// item first, the readout near 1 in 3.5 and the payback near 65%, the
+// status line, Shuffle on; nothing past the form's edge or under 11px.
+function scratchFillProblems(filled) {
+  const out = [];
+  const form = document.querySelector(".lc-form");
+  const toggle = form.querySelector(".lc-fill__toggle");
+  if (toggle?.textContent.trim() !== "Fill the prize list" || toggle.getAttribute("aria-expanded") !== "true") out.push("the Fill toggle isn't open");
+  const body = form.querySelector(".lc-fill__body");
+  if (!body || body.hidden || !body.getBoundingClientRect().height) out.push("the Fill fields don't show");
+  const val = n => form.querySelector(`[name="${n}"]`)?.value;
+  if (val("fillPayback") !== "65" || val("fillWinEvery") !== "3.5" || val("fillTop") !== "item.rare") out.push(`the Fill fields read ${val("fillPayback")}, ${val("fillWinEvery")}, ${val("fillTop")}`);
+  if (!form.querySelector('input[name="fillCombos"][value="some"]')?.checked) out.push("Some combinations isn't picked");
+  const shuffle = form.querySelector(".lc-fill__shuffle");
+  const said = form.querySelector(".lc-fill__said")?.textContent ?? "";
+  const rows = [...form.querySelectorAll(".lc-prize-row")];
+  if (!filled) {
+    if (shuffle?.getAttribute("aria-disabled") !== "true") out.push("Shuffle is on before a Fill");
+    if (rows.length !== 6) out.push(`expected the Fortune Ticket's 6 rows, got ${rows.length}`);
+  } else {
+    const asked = window.__lootCrates?.asked ?? [];
+    if (asked.join("|") !== "Replace the 6 prizes in the list with a new list?") out.push(`the confirm asked "${asked.join("|")}"`);
+    if (rows.length < 3) out.push(`only ${rows.length} rows after Fill`);
+    const labels = rows.map(r => r.querySelector(".lc-prize-row__count").getAttribute("aria-label"));
+    if (labels.some((l, i) => l !== `Tickets that win prize ${i + 1}`)) out.push(`the filled rows are named ${labels.join(", ")}`);
+    if (rows[0]?.querySelector(".lc-prize-row__what")?.value !== "item.rare" || rows[0]?.querySelector(".lc-prize-row__count")?.value !== "1") out.push("the first filled row isn't one Rare item");
+    const readout = form.querySelector(".lc-scratch-form__readout")?.textContent ?? "";
+    if (!/^1 in 3\.[3-7] tickets wins, the top prize \(Rare item\) 1 in 100/.test(readout)) out.push(`the readout reads "${readout}"`);
+    const pct = Number(form.querySelector(".lc-scratch-form__payback")?.textContent.match(/Pays back (\d+)% in coins/)?.[1]);
+    if (!(Math.abs(pct - 65) <= 3)) out.push(`the payback reads "${form.querySelector(".lc-scratch-form__payback")?.textContent}"`);
+    if (!/prizes filled in\. Pays back \d+% in coins.*Nothing is saved until you press Save\.$/.test(said)) out.push(`the status line reads "${said}"`);
+    if (shuffle?.hasAttribute("aria-disabled")) out.push("Shuffle is still off after a Fill");
+  }
+  const small = [...form.querySelectorAll("*")].filter(el => [...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim()) && parseFloat(getComputedStyle(el).fontSize) < 11);
+  if (small.length) out.push(`${small.length} texts under 11px, e.g. "${small[0].textContent.trim().slice(0, 30)}"`);
+  const fr = form.getBoundingClientRect();
+  const over = [...form.querySelectorAll("input, select, button")].filter(el => { const r = el.getBoundingClientRect(); return r.width && (r.right > fr.right + 1 || r.left < fr.left - 1); });
+  if (over.length) out.push(`${over.length} controls past the form's edge, e.g. ${over[0].name || over[0].className}`);
+  return out;
+}
+
 // The Boxes tab with the Fortune Ticket's row: tagged Scratch, its prizes
 // left as pills, its roll in the rules, Print a new roll named for it.
 function scratchBoxesProblems() {
@@ -1998,6 +2066,92 @@ function nothingRevealProblems() {
   return out;
 }
 
+/*
+  Buy to keep (boxcard.js cardShell): every card of a pulled game has one,
+  right under its Buy, and a table game's card none; it is off exactly when
+  its Buy is, described by the same lines; its name starts with the game's
+  and holds its visible words; its text is at least 11px; and it sits
+  inside its card, clear of the Buy, at every width (no crowding at 390).
+*/
+function keepProblems() {
+  const out = [];
+  const cards = [...document.querySelectorAll(".lc-box[data-box]")];
+  if (!cards.length) return out;
+  let seen = 0;
+  for (const card of cards) {
+    const id = card.dataset.box;
+    const buy = card.querySelector(".lc-box__buy");
+    const keep = card.querySelector(".lc-box__keep");
+    // The harness's two table games (sample.js): staked in rounds, never kept.
+    const table = id === "wheel" || id === "auction";
+    if (table) { if (keep) out.push(`the table game ${id} has a Buy to keep`); continue; }
+    if (!keep) { out.push(`${id} has no Buy to keep`); continue; }
+    seen++;
+    if (keep.previousElementSibling !== buy) out.push(`${id}'s Buy to keep isn't right under its Buy`);
+    if (keep.dataset.keep !== id || keep.hasAttribute("data-box")) out.push(`${id}'s Buy to keep names its game wrongly`);
+    if (keep.dataset.price !== buy.dataset.price) out.push(`${id}'s Buy to keep is ${keep.dataset.price}, its Buy ${buy.dataset.price}`);
+    if (keep.getAttribute("aria-disabled") !== buy.getAttribute("aria-disabled")) out.push(`${id}'s Buy to keep is ${keep.getAttribute("aria-disabled") ? "off" : "on"} while its Buy isn't`);
+    if (keep.getAttribute("aria-describedby") !== buy.getAttribute("aria-describedby")) out.push(`${id}'s Buy to keep is described by other lines than its Buy`);
+    if (keep.hasAttribute("disabled")) out.push(`${id}'s Buy to keep is disabled (it can't keep focus)`);
+    const name = card.querySelector(".lc-box__name")?.textContent.trim();
+    const visible = [...keep.childNodes].filter(n => !(n.nodeType === 1 && n.classList.contains("lc-sr-only"))).map(n => n.textContent).join("").trim();
+    if (!keep.textContent.trim().startsWith(`${name}: `)) out.push(`${id}'s Buy to keep doesn't name its game: "${keep.textContent.trim()}"`);
+    if (visible !== "Buy to keep") out.push(`${id}'s Buy to keep reads "${visible}"`);
+    if (parseFloat(getComputedStyle(keep).fontSize) < 11) out.push(`${id}'s Buy to keep is under 11px`);
+    const k = keep.getBoundingClientRect(), b = buy.getBoundingClientRect(), c = card.getBoundingClientRect();
+    if (k.top < b.bottom - 0.5) out.push(`${id}'s Buy to keep overlaps its Buy`);
+    if (k.left < c.left - 0.5 || k.right > c.right + 0.5 || k.bottom > c.bottom + 0.5) out.push(`${id}'s Buy to keep spills out of its card`);
+    if (k.height < 24) out.push(`${id}'s Buy to keep is only ${Math.round(k.height)}px tall`);
+    if (keep.scrollWidth > keep.clientWidth + 1) out.push(`${id}'s Buy to keep's words don't fit`);
+  }
+  if (!seen) out.push("no card has a Buy to keep");
+  return out;
+}
+
+/*
+  Buy to keep pressed on the Pauper's Box, as shop.js #press renders it:
+  focused, then out with the GM (busyKeep), the GM slow, and settled. After
+  each render (two frames, for Chrome's focus fixup) the same keep button
+  and Buy are there, the keep has focus, the keep says Buying… (Waiting for
+  the GM… when slow) while the Buy keeps "Open for 25 gp" and every button
+  is off; settled, both are back and on. `settled` leaves the shop's line
+  saying where the ticket went (in its own tone) for the screenshot, else
+  the press is left out.
+*/
+async function keepPressProblems(settled) {
+  const out = [];
+  const frames = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const keep = document.querySelector('.lc-box__keep[data-keep="common"]');
+  const buy = document.querySelector('.lc-box__buy[data-box="common"]');
+  if (!keep || !buy) return ["no Buy to keep on the Pauper's Box"];
+  keep.focus();
+  const said = { text: "A Pauper's Box ticket is in Tam Thornwick's pack (2 now). Use it from the character sheet whenever you like.", tone: "done" };
+  const steps = [
+    ["keeping", { busy: true, busyBox: "common", busyKeep: true }, "Buying\u2026", true],
+    ["waiting", { busy: true, busyBox: "common", busyKeep: true, waiting: "gm" }, "Waiting for the GM\u2026", true],
+    ["kept", { said }, "Buy to keep, 25 gp, a ticket for your pack to use later", false],
+    ...(settled ? [] : [["keeping again", { busy: true, busyBox: "common", busyKeep: true }, "Buying\u2026", true]]),
+  ];
+  for (const [label, extra, text, off] of steps) {
+    window.__lootCrates.renderShop(extra);
+    await frames();
+    if (document.activeElement !== keep) out.push(`after the ${label} render, focus is on ${document.activeElement?.className || document.activeElement?.tagName}`);
+    if (document.querySelector('.lc-box__keep[data-keep="common"]') !== keep) out.push(`the ${label} render replaced the pressed Buy to keep`);
+    if (document.querySelector('.lc-box__buy[data-box="common"]') !== buy) out.push(`the ${label} render replaced the Pauper's Box's Buy`);
+    if (keep.textContent.trim() !== `Pauper's Box: ${text}`) out.push(`after the ${label} render the Buy to keep reads "${keep.textContent.trim()}"`);
+    if (buy.textContent.trim() !== "Pauper's Box: Open for 25 gp") out.push(`after the ${label} render the Buy reads "${buy.textContent.trim()}"`);
+    const on = [...document.querySelectorAll(".lc-box__buy, .lc-box__keep")].filter(b => b.getAttribute("aria-disabled") !== "true").map(b => b.dataset.box ?? b.dataset.keep);
+    if (off && on.length) out.push(`after the ${label} render ${on.join(", ")} are still on`);
+    if (!off && (keep.getAttribute("aria-disabled") === "true" || buy.getAttribute("aria-disabled") === "true")) out.push(`after the ${label} render the Pauper's Box is still off`);
+  }
+  if (settled) {
+    const notice = document.querySelector(".lc-shop__notice");
+    if (notice?.textContent !== said.text || notice.dataset.tone !== "done") out.push(`the kept notice reads "${notice?.textContent}" (${notice?.dataset.tone})`);
+    if (parseFloat(getComputedStyle(notice).fontSize) < 11) out.push("the kept notice is under 11px");
+  }
+  return out;
+}
+
 async function shopProblems(mode) {
   const closed = mode === "closed";
   const out = [];
@@ -2208,7 +2362,7 @@ try {
       if (name.startsWith("scratch")) await page.waitForSelector(name === "scratch-unscratched" || name === "scratch-half" || name === "scratch-spectator" ? "body[data-ready]" : "body[data-landed]", { timeout: 10000 });
       // Mid auto-scratch: the coin has opened a few panels by itself.
       if (name === "scratch-spectator") await page.waitForFunction(() => document.querySelectorAll(".lc-scratch__panel--open").length >= 3, null, { timeout: 10000 });
-      if (name.startsWith("manager") || name === "box-limits" || name === "editor-deck" || name === "editor-scratch" || name === "box-odds" || name === "drop-preview") await page.waitForSelector("body[data-ready]", { timeout: 10000 });
+      if (name.startsWith("manager") || name === "box-limits" || name === "editor-deck" || name.startsWith("editor-scratch") || name === "box-odds" || name === "drop-preview") await page.waitForSelector("body[data-ready]", { timeout: 10000 });
       await page.waitForTimeout(500);
       const wide = await page.evaluate(() => document.scrollingElement.scrollWidth > document.scrollingElement.clientWidth + 1);
       if (name.startsWith("shop")) problems0.push(...await page.evaluate(shopControlProblems, name.endsWith("-gm")));
@@ -2216,10 +2370,13 @@ try {
       else if (name.startsWith("shop")) {
         problems0.push(...await page.evaluate(shopProblems, name.slice(5)));
         problems0.push(...await page.evaluate(wellCardProblems, { capped: name === "shop-well-capped", closed: name === "shop-closed" }));
-        problems0.push(...await page.evaluate(diceCardProblems, { closed: name === "shop-closed", busy: name === "shop-busy" }));
-        problems0.push(...await page.evaluate(deckCardProblems, { streak: name === "shop-deck-streak", closed: name === "shop-closed", busy: name === "shop-busy" }));
-        problems0.push(...await page.evaluate(rouletteCardProblems, { noRound: name === "shop-no-round", closed: name === "shop-closed", busy: name === "shop-busy", gm: name === "shop-gm" }));
-        problems0.push(...await page.evaluate(limitCardProblems, { reached: name === "shop-limit", off: name === "shop-closed" || name === "shop-busy", shelved: name === "shop-shelf" }));
+        const busy = name === "shop-busy";
+        problems0.push(...await page.evaluate(diceCardProblems, { closed: name === "shop-closed", busy }));
+        problems0.push(...await page.evaluate(deckCardProblems, { streak: name === "shop-deck-streak", closed: name === "shop-closed", busy }));
+        problems0.push(...await page.evaluate(rouletteCardProblems, { noRound: name === "shop-no-round", closed: name === "shop-closed", busy, gm: name === "shop-gm" }));
+        problems0.push(...await page.evaluate(limitCardProblems, { reached: name === "shop-limit", off: name === "shop-closed" || busy, shelved: name === "shop-shelf" }));
+        problems0.push(...await page.evaluate(keepProblems));
+        if (name === "shop-keep" || name === "shop-kept") problems0.push(...await page.evaluate(keepPressProblems, name === "shop-kept"));
         problems0.push(...await page.evaluate(shelfShopProblems, name === "shop-shelf"));
         problems0.push(...await page.evaluate(tableCardProblems, name === "shop-table"));
         problems0.push(...await page.evaluate(auctionCardProblems, name === "shop-auction"));
@@ -2236,6 +2393,7 @@ try {
       }
       else if (name === "editor-deck") problems0.push(...await page.evaluate(deckEditorProblems), ...await page.evaluate(shelfEditorProblems));
       else if (name === "editor-scratch") problems0.push(...await page.evaluate(scratchEditorProblems), ...await page.evaluate(shelfEditorProblems));
+      else if (name.startsWith("editor-scratch-fill")) problems0.push(...await page.evaluate(scratchFillProblems, name === "editor-scratch-filled"));
       else if (name === "box-odds") problems0.push(...await page.evaluate(oddsEditorProblems));
       else if (name === "drop-preview") problems0.push(...await page.evaluate(dropPreviewProblems));
       else if (name === "landed-nothing") problems0.push(...await page.evaluate(nothingRevealProblems));

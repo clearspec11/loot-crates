@@ -88,14 +88,14 @@ export function shopEmptyHTML(isGM) {
 
 export const shopToggleLabel = () => t("LOOTCRATES.Route.ShopOpen");
 
-const TAB_KEYS = [["pools", "LOOTCRATES.Manager.TabPools"], ["boxes", "LOOTCRATES.Manager.TabBoxes"], ["log", "LOOTCRATES.Manager.TabLog"]];
+const TAB_KEYS = [["boxes", "LOOTCRATES.Manager.TabBoxes"], ["pools", "LOOTCRATES.Manager.TabPools"], ["log", "LOOTCRATES.Manager.TabLog"]];
 export const MANAGER_TABS = TAB_KEYS.map(([tab, key]) => Object.defineProperty([tab], 1, { enumerable: true, get: () => t(key) }));
 
 // The manager's nav: the tabs (the ARIA tabs pattern, manager.js), then
 // "View shop" and the shop's toggle: one fixed label, "Shop open", pressed
 // while players can buy (the ARIA toggle-button pattern, as each Boxes
 // row's "On the shelf"); its switch (module.css) shows the state.
-export function managerNavHTML({ tab = "pools", shopOpen = false } = {}) {
+export function managerNavHTML({ tab = "boxes", shopOpen = false } = {}) {
   return `<nav class="lc-tabs">
         <div class="lc-tabs__list" role="tablist" aria-label="${t("LOOTCRATES.Manager.Sections")}">${MANAGER_TABS.map(([k, l]) => `<button type="button" role="tab" id="lc-manager-tab-${k}" aria-controls="lc-manager-panel" aria-selected="${k === tab}" tabindex="${k === tab ? 0 : -1}" data-action="switchTab" data-tab="${k}" class="${k === tab ? "active" : ""}">${l}</button>`).join("")}</div>
         <span class="lc-tabs__spacer"></span>

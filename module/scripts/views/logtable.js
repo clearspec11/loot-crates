@@ -30,6 +30,7 @@ import { formatPrice } from "../core/currency.js";
 import { refundTime } from "./chatcard.js";
 import { tableHTML, cell } from "./boxestable.js";
 import { t, words } from "../core/i18n.js";
+import { rowPriceTag } from "../games/ticket.js";
 
 const plain = s => String(s ?? "");
 const rarityName = r => RARITY_LABEL[normalizeRarity(r)] ?? String(r);
@@ -97,7 +98,7 @@ export function logTableHTML({ log = [], rounds = {}, hideMisses = false, esc = 
         ${cell(ACT, "")}
       </tr>`;
   const row = r => (r.house ? house(r) : `<tr class="${r.refunded ? "lc-row--refunded" : r.lateCancel ? "lc-row--late" : ""}" role="row">
-        ${cell(WHEN, new Date(r.at).toLocaleString())}${cell(WHO, esc(r.actorName))}${cell(BOX, `${esc(r.boxName)} (${esc(formatPrice(r.price))})`)}
+        ${cell(WHEN, new Date(r.at).toLocaleString())}${cell(WHO, esc(r.actorName))}${cell(BOX, `${esc(r.boxName)} (${esc(rowPriceTag(r))})`)}
         ${got(r.rarity ?? r.swatch ?? r.stake?.swatch ?? (r.win ? "coin" : "none"), `${r.refunded ? `<s>${esc(r.name)}</s>` : esc(r.name)}${r.pity ? ` · ${t("LOOTCRATES.Common.Pity")}` : ""}${logRarityNote(r, esc)}${logPayoutNote(r, esc)}${logStakeNote(r, esc)}${logLateNote(r)}`)}
         ${cell(ACT, r.refunded ? status(r.id, r.refunded) : `<button type="button" data-action="refund" data-row="${esc(r.id)}">${t("LOOTCRATES.Log.Refund")}</button>`)}
       </tr>`);

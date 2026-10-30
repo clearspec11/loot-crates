@@ -114,6 +114,7 @@ export function replaySnapshot(reveal) {
     },
     odds: (reveal.odds ?? []).map(({ rarity, chance, label }) => ({ rarity, chance, label })),
     box: { name: String(reveal.box?.name ?? ""), price: reveal.box?.price ?? 0 },
+    ...(reveal.redeem ? { redeem: true } : {}),
     actorName: String(reveal.actorName ?? ""),
     result: nothing ? { name: t("LOOTCRATES.Odds.Nothing"), rarity: "none", nothing: true } : { name: String(reveal.result.name ?? ""), rarity: reveal.result.rarity, pity: !!reveal.result.pity },
   };
@@ -142,6 +143,7 @@ export function replayReveal(snapshot, key) {
     replayKey: String(key ?? ""),
     actorName: String(snapshot.actorName ?? ""),
     box: { name: String(snapshot.box?.name ?? ""), price: Number(snapshot.box?.price) || 0 },
+    ...(snapshot.redeem ? { redeem: {} } : {}),
     odds: Array.isArray(snapshot.odds) ? snapshot.odds.filter(o => (RARITIES.includes(o?.rarity) || o?.rarity === "none") && Number.isFinite(o.chance)) : [],
     ...(snapshot.result.nothing
       ? { result: null, outcome: "nothing" }

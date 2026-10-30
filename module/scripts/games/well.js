@@ -39,6 +39,7 @@ import { resultHTML } from "../views/revealcard.js";
 import { cardShell, oddsRibbon, oddsPills, pityLine, shopReason, shortReason, draftBox } from "../views/boxcard.js";
 import { drawItem, grantData, crateLogRow } from "./crate.js";
 import { PullError, registerKind } from "./kinds.js";
+import { priceTag } from "./ticket.js";
 import { byRest, restDayNote } from "../core/clock.js";
 import { t, words } from "../core/i18n.js";
 
@@ -56,9 +57,10 @@ export function capOf(game) {
 
 // How many throws this character has made at this well today: its unrefunded
 // log rows carrying today's key. None when the world has no clock (day null).
+// A coin bought to keep (row.keep) isn't thrown until its ticket is used.
 export function throwsToday(log, { boxId, actorId, day }) {
   if (!day) return 0;
-  return (log ?? []).filter(r => r.boxId === boxId && r.actorId === actorId && r.day === day && !r.refunded).length;
+  return (log ?? []).filter(r => r.boxId === boxId && r.actorId === actorId && r.day === day && !r.refunded && !r.keep).length;
 }
 
 export const stillLine = (thrown, cap) => t("LOOTCRATES.Well.Still", { thrown, cap });
@@ -150,7 +152,8 @@ function logRow(ctx) {
   separately from live ones, so a group's Refund always has a play to give
   back (its newest row, rows[0]). Every other row passes through alone.
 */
-export const isMiss = r => r?.outcome === "nothing" && !r.roundId;
+// A ticket's play stands alone too: its Refund gives the ticket back.
+export const isMiss = r => r?.outcome === "nothing" && !r.roundId && !r.redeem;
 // What one play is called on a folded line: a throw at the well, a pull elsewhere.
 export const missNoun = kind => (kind === "well" ? "throw" : "pull");
 
@@ -306,7 +309,7 @@ function head(reveal, { esc }) {
   return t("LOOTCRATES.Well.Head", {
     who: `<span class="lc-reveal__who">${esc(reveal.actorName)}</span>`,
     crate: `<strong class="lc-reveal__crate">${esc(reveal.box.name)}</strong>`,
-    price: `<span class="lc-reveal__price">${esc(formatPrice(reveal.box.price))}</span>`,
+    price: `<span class="lc-reveal__price">${esc(priceTag(reveal))}</span>`,
   });
 }
 
@@ -318,7 +321,7 @@ function result(reveal, { esc = String, canSee = false } = {}) {
   const count = canSee && reveal.cap && reveal.thrown != null ? [t("LOOTCRATES.Well.ThrowsToday", { thrown: esc(reveal.thrown), cap: esc(reveal.cap) })] : [];
   if (outcome === "item") return resultHTML(reveal, { esc, canSee, extra: count });
   const where = [];
-  if (outcome === "coin") where.push(t("LOOTCRATES.Well.BackInPurse", { price: esc(formatPrice(reveal.box.price)), name: esc(reveal.actorName) }));
+  if (outcome === "coin") where.push(t("LOOTCRATES.Well.BackInPurse", { price: esc(formatPrice(reveal.payoutCp != null ? (Number(reveal.payoutCp) || 0) / 100 : reveal.box.price)), name: esc(reveal.actorName) }));
   if (canSee && reveal.purse) where.push(`<span class="lc-reveal__gold">${t("LOOTCRATES.Reveal.GoldLeft", { gold: esc(formatGold(reveal.purse)) })}</span>`);
   where.push(...count);
   return `<div class="lc-reveal__quiet">${outcome === "coin" ? t("LOOTCRATES.Well.ComesBack") : t("LOOTCRATES.Well.Sinks")}</div>`
@@ -345,7 +348,7 @@ function chatCard(reveal, { esc, itemLink }) {
   if (outcomeOf(reveal) !== "item" || !r) return null;
   return `
     <div class="loot-crates lc-chat lc-rarity-${esc(r.rarity)}">
-      <div class="lc-chat__head">${t("LOOTCRATES.Well.ChatHead", { actor: esc(reveal.actorName), box: `<strong>${esc(reveal.box.name)}</strong>`, price: `<span class="lc-chat__price">${esc(formatPrice(reveal.box.price))}</span>` })}</div>
+      <div class="lc-chat__head">${t("LOOTCRATES.Well.ChatHead", { actor: esc(reveal.actorName), box: `<strong>${esc(reveal.box.name)}</strong>`, price: `<span class="lc-chat__price">${esc(priceTag(reveal))}</span>` })}</div>
       <div class="lc-chat__item">
         <img src="${esc(r.img)}" alt="">
         <div>

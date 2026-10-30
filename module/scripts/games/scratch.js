@@ -8,8 +8,11 @@
   ticket from what is left of the roll, without replacement, so a ticket
   that pays twice is exactly as rare as the GM printed it; the shop shows
   the tickets and prizes still in it, unless the GM hides what is left
-  from players (showsLeft). Sold out is a real state, and the GM's Print
-  a new roll starts the next.
+  from players (showsLeft), which keeps the counts out of the reveal
+  every player's browser is sent too. Sold out is a real state, and the
+  GM's Print a new roll starts the next. Fill the prize list
+  (scratchplan.js) builds a prize list from a few numbers for the GM to
+  edit.
 
   - Nothing is stored for the roll beyond its definition and its id: the
     tickets sold are the unrefunded log rows at this game for this roll
@@ -82,6 +85,7 @@ import { mountFoil } from "../views/foil.js";
 import { cardShell, shopReason, shortReason, draftBox } from "../views/boxcard.js";
 import { drawItem, grantData, crateLogRow } from "./crate.js";
 import { PullError, registerKind } from "./kinds.js";
+import { priceTag } from "./ticket.js";
 import { t, words, listAnd } from "../core/i18n.js";
 
 export const LAYOUTS = ["lucky", "match3"];
@@ -262,8 +266,10 @@ export function rollOf(game) {
 
 /* ---------- The ledger, from the log ---------- */
 
-// The unrefunded rows of this roll at this game: the tickets sold.
-export const rollRows = (log, { boxId, rollId }) => (log ?? []).filter(r => r?.kind === "scratch" && r.boxId === boxId && Number(r.rollId) === rollId && !r.refunded);
+// The unrefunded rows of this roll at this game: the tickets sold. A
+// ticket bought to keep (row.keep) is drawn from the roll when it is used,
+// not when it is bought.
+export const rollRows = (log, { boxId, rollId }) => (log ?? []).filter(r => r?.kind === "scratch" && r.boxId === boxId && Number(r.rollId) === rollId && !r.refunded && !r.keep);
 export const ticketsSold = (log, { boxId, rollId }) => rollRows(log, { boxId, rollId }).length;
 
 /*
@@ -482,6 +488,27 @@ export function ribbonTotalText(prizes) {
   return "";
 }
 
+/*
+  What a roll pays back: { pct (the coins and the gem it pays out, as a
+  share of the coins it takes in, the price times its size), paid, taken
+  (gp), items (the items it pays, counted apart: they aren't coins) },
+  or null for a roll that takes nothing in.
+*/
+export function paybackOf(game) {
+  const taken = toGp((Number(game?.price) || 0) * rollOf(game).size);
+  if (!(taken > 0)) return null;
+  const { gp, items } = rollPrizes(game);
+  return { pct: Math.round((gp / taken) * 100), paid: gp, taken, items };
+}
+
+// "Pays back 65% in coins: 325 gp of the 500 gp the roll takes in, plus 1 item".
+export function paybackText(pb) {
+  if (!pb) return "";
+  const data = { pct: pb.pct, paid: formatPrice(pb.paid), taken: formatPrice(pb.taken), count: pb.items };
+  if (!pb.items) return t("LOOTCRATES.Scratch.Payback", data);
+  return t(pb.items === 1 ? "LOOTCRATES.Scratch.PaybackItem" : "LOOTCRATES.Scratch.PaybackItems", data);
+}
+
 function layLucky(game, won, { cols, rows, cells, coinValues, itemRarities, rng }) {
   const nLucky = luckyCount(cells);
   const all = shuffle(Array.from({ length: numberRange(cells) }, (_, i) => i + 1), rng);
@@ -591,7 +618,8 @@ export function cardWins(card) {
   and the gem added up into the one settle(). The ticket's place in the
   roll and what was left before it ride into the reveal and the row; a
   game whose players don't see what is left (showsLeft) marks the ticket
-  so the reveal says no counts.
+  hidden and keeps the counts off the reveal (revealExtra), so no
+  player's browser is sent them.
 */
 async function roll(ctx) {
   const { game, rng, log = [] } = ctx;
@@ -599,8 +627,9 @@ async function roll(ctx) {
   if (state.soldOut) throw new PullError(t("LOOTCRATES.Scratch.SoldOutError", { name: game.name }));
   if (!bag.length) throw new PullError(t("LOOTCRATES.Scratch.WaitingError", { name: game.name }));
   const line = weightedPick(bag, p => p.weight, rng) ?? bag[0];
-  const ticket = { rollId: state.id, tier: line.key, no: state.sold + 1, size: state.size, ...(showsLeft(game) ? {} : { hidden: true }) };
-  const common = { ticket, left: leftOf(state), grant: null };
+  const shown = showsLeft(game);
+  const ticket = { rollId: state.id, tier: line.key, no: state.sold + 1, size: state.size, ...(shown ? {} : { hidden: true }) };
+  const common = { ticket, ...(shown ? { left: leftOf(state) } : {}), grant: null };
   if (line.kind === "dud") return { ...common, outcome: "nothing", card: layCard(game, { kind: "dud" }, rng), result: null };
   let pools = ctx.pools;
   const granted = [];
@@ -648,10 +677,17 @@ function logRow(ctx) {
   return { ...base, outcome: "nothing", swatch: "none", name: t("LOOTCRATES.Scratch.Dud") };
 }
 
-// The card and what the roll held before this ticket: the shop holds its
-// counts there until this client's card is open (reveal.js heldState), so
-// a top prize going from the list doesn't tell the table first.
+/*
+  The card and what the roll held before this ticket: the shop holds its
+  counts there until this client's card is open (reveal.js heldState), so
+  a top prize going from the list doesn't tell the table first. A game
+  whose players don't see what is left sends no counts at all, since the
+  broadcast reaches every player's browser: the ticket by its roll alone
+  (no place in the roll, no size, no prize line) and nothing for a shop to
+  hold, which a hidden card doesn't show anyway.
+*/
 function revealExtra({ state = {}, out }) {
+  if (out.ticket?.hidden) return { card: out.card, ticket: { rollId: out.ticket.rollId, hidden: true } };
   return { card: out.card, ticket: out.ticket, stateBefore: { ...state, scratch: out.left } };
 }
 
@@ -853,6 +889,7 @@ function snapshot(reveal) {
     card, outcome, payoutCp: Math.max(0, Math.round(Number(reveal.payoutCp) || 0)),
     ticket: cleanTicket(reveal.ticket),
     box: { name: String(reveal.box?.name ?? ""), price: Number(reveal.box?.price) || 0 },
+    ...(reveal.redeem ? { redeem: true } : {}),
     actorName: String(reveal.actorName ?? ""),
     result: outcome === "item" && r ? { name: String(r.name ?? ""), rarity: RARITIES.includes(r.rarity) ? r.rarity : "common", img: String(r.img ?? "") } : outcome === "coins" ? { name: String(r?.name ?? ""), outcome: "coins" } : null,
     ...(outcome === "item" && itemsWon(reveal).length > 1 ? { wonItems: cleanItems(itemsWon(reveal)) } : {}),
@@ -873,6 +910,7 @@ function fromSnapshot(s) {
     card, outcome, payoutCp: Math.max(0, Math.round(Number(s.payoutCp) || 0)),
     ticket: cleanTicket(s.ticket),
     box: { name: String(s.box?.name ?? ""), price: Number(s.box?.price) || 0 },
+    ...(s.redeem ? { redeem: {} } : {}),
     actorName: String(s.actorName ?? ""),
     result: outcome === "item" && r?.name ? { name: String(r.name), rarity: RARITIES.includes(r.rarity) ? r.rarity : "common", img: String(r.img ?? "") } : outcome === "coins" ? { name: String(r?.name ?? ""), outcome: "coins" } : null,
     ...(outcome === "item" && cleanItems(s.wonItems).length > 1 ? { wonItems: cleanItems(s.wonItems) } : {}),
@@ -880,7 +918,9 @@ function fromSnapshot(s) {
 }
 
 const int = (v, lo, hi) => (Number.isInteger(v) && v >= lo && v <= hi ? v : null);
-const cleanTicket = tk => (tk && int(tk.rollId, 1, 1e9) && int(tk.no, 1, 1e9) && int(tk.size, 1, 1e9) ? { rollId: tk.rollId, no: tk.no, size: tk.size, ...(tk.hidden ? { hidden: true } : {}) } : null);
+// A hidden game's ticket names its roll alone (revealExtra), and keeps no count if it had one.
+const cleanTicket = tk => (tk?.hidden && int(tk.rollId, 1, 1e9) ? { rollId: tk.rollId, hidden: true }
+  : tk && int(tk.rollId, 1, 1e9) && int(tk.no, 1, 1e9) && int(tk.size, 1, 1e9) ? { rollId: tk.rollId, no: tk.no, size: tk.size } : null);
 const cleanPrize = p => (p?.item ? (RARITIES.includes(p.item) ? { item: p.item, ...(p.name ? { name: String(p.name) } : {}), ...(p.img ? { img: String(p.img) } : {}) } : null) : Number.isFinite(p?.gp) && p.gp >= 0 ? { gp: p.gp } : null);
 
 /*
@@ -932,7 +972,7 @@ function head(reveal, { esc }) {
   return t("LOOTCRATES.Scratch.Head", {
     who: `<span class="lc-reveal__who">${esc(reveal.actorName)}</span>`,
     crate: `<strong class="lc-reveal__crate">${esc(reveal.box.name)}</strong>`,
-    price: `<span class="lc-reveal__price">${esc(formatPrice(reveal.box.price))}</span>`,
+    price: `<span class="lc-reveal__price">${esc(priceTag(reveal))}</span>`,
   });
 }
 
@@ -1036,7 +1076,7 @@ function chatCard(reveal, { esc, itemLink }) {
   const line = items.length ? esc(listAnd([...new Set(items.map(i => RARITY_LABEL[i.rarity] ?? i.rarity ?? ""))])) : esc(outcome === "coins" ? coinsLine(reveal) : t("LOOTCRATES.Scratch.DudLine"));
   return `
     <div class="loot-crates lc-chat lc-rarity-${esc(swatch)}">
-      <div class="lc-chat__head">${t("LOOTCRATES.Scratch.ChatHead", { actor: esc(reveal.actorName), box: `<strong>${esc(reveal.box.name)}</strong>`, price: `<span class="lc-chat__price">${esc(formatPrice(reveal.box.price))}</span>` })}</div>
+      <div class="lc-chat__head">${t("LOOTCRATES.Scratch.ChatHead", { actor: esc(reveal.actorName), box: `<strong>${esc(reveal.box.name)}</strong>`, price: `<span class="lc-chat__price">${esc(priceTag(reveal))}</span>` })}</div>
       <div class="lc-chat__item">
         ${outcome === "item" && r.img ? `<img src="${esc(r.img)}" alt="">` : ""}${miniHTML(reveal.card)}
         <div>
@@ -1203,12 +1243,14 @@ export function prizeRowHTML(p, n, id, esc = s => String(s ?? "")) {
 /*
   The editor's own fields, between the price and the pools: the layout,
   the grid, the bonus spot (lucky numbers only), the ticket's colours
-  (Printed in, one of THEMES), the roll's size and its prize list as rows
-  (Add prize, a remove on each), then the readout the live preview fills.
+  (Printed in, one of THEMES), the roll's size, the Fill the prize list
+  fields when given (`fill`, scratchplan.js fillFieldsHTML) and the prize
+  list as rows (Add prize, a remove on each), then the readout the live
+  preview fills.
   The manager and the harness draw this one copy and wire it with
   wireScratchEditor.
 */
-export function scratchFieldsHTML(game, { esc = s => String(s ?? ""), sold = 0 } = {}) {
+export function scratchFieldsHTML(game, { esc = s => String(s ?? ""), sold = 0, fill = "" } = {}) {
   const layout = layoutOf(game);
   const { cols, rows } = gridOf(game);
   const bonus = { on: !!game?.bonus?.on, gp: toGp(game?.bonus?.gp) || SCRATCH_DEFAULTS.bonusGp };
@@ -1231,6 +1273,7 @@ export function scratchFieldsHTML(game, { esc = s => String(s ?? ""), sold = 0 }
         ${sold ? `<p class="lc-form__hint">${t("LOOTCRATES.Scratch.LiveRoll", { roll: rollName(rollOf(game).id), sold })}</p>` : ""}
         <div class="lc-scratch-form__left"><label class="lc-field"><input type="checkbox" name="showLeft"${showsLeft(game) ? " checked" : ""} aria-describedby="lc-left-${id}"> ${t("LOOTCRATES.Scratch.ShowLeftField")}</label>
           <p class="lc-form__hint" id="lc-left-${id}">${t("LOOTCRATES.Scratch.ShowLeftHint")}</p></div>
+        ${fill}
         <div class="lc-prizes__head" aria-hidden="true"><span>${t("LOOTCRATES.Scratch.HeadTickets")}</span><span>${t("LOOTCRATES.Scratch.HeadPrize")}</span><span>${t("LOOTCRATES.Manager.GoldHead")}</span><span></span></div>
         <div class="lc-prizes__rows">${(roll.prizes ?? []).map((p, i) => prizeRowHTML(p, i + 1, `p${i}`, esc)).join("")}</div>
         <div class="lc-prizes__foot"><button type="button" class="lc-prizes__add"><i class="fas fa-plus"></i> ${t("LOOTCRATES.Scratch.AddPrize")}</button></div>
@@ -1279,7 +1322,7 @@ export function draftScratch(game, values, poolIds) {
 /*
   The live readout beside the prize list: the odds of the roll as printed
   ("1 in 2.3 tickets wins, the top prize (Rare item) 1 in 100, all prizes
-  5 gp or more"), the duds, and what would stop a ticket being sold: more
+  5 gp or more"), what it pays back (paybackOf), the duds, and what would stop a ticket being sold: more
   prizes than tickets (the roll grows to fit), an item prize with no pool
   ticked or none at its rarity, a bonus prize with no bonus spot. A line
   the card can't show (more winning parts than a lucky numbers card has
@@ -1318,16 +1361,17 @@ export function scratchPreview(game, pools = {}) {
   });
   for (const text of misfits) notes.push({ text, warn: true });
   if (misfits.length) notes.push({ text: t("LOOTCRATES.Scratch.SaveOff"), warn: true });
-  return { roll, odds, notes, held, refused: misfits.length > 0 };
+  return { roll, odds, payback: paybackOf(game), notes, held, refused: misfits.length > 0 };
 }
 
 export function scratchPreviewHTML(preview, esc = s => String(s ?? "")) {
   const { roll, odds, notes } = preview;
   const duds = roll.size ? `<p class="lc-form__hint">${esc(t(roll.duds === 1 ? "LOOTCRATES.Scratch.DudsOne" : "LOOTCRATES.Scratch.DudsMany", { count: roll.duds, size: roll.size }))}</p>` : "";
-  return `<p class="lc-scratch-form__readout">${esc(oddsText(odds))}</p>${duds}${notes.map(n => `<p class="lc-form__hint${n.warn ? " lc-form__hint--warn" : ""}">${esc(n.text)}</p>`).join("")}`;
+  const payback = preview.payback ? `<p class="lc-scratch-form__payback">${esc(paybackText(preview.payback))}</p>` : "";
+  return `<p class="lc-scratch-form__readout">${esc(oddsText(odds))}</p>${payback}${duds}${notes.map(n => `<p class="lc-form__hint${n.warn ? " lc-form__hint--warn" : ""}">${esc(n.text)}</p>`).join("")}`;
 }
 
-export const scratchSummary = preview => [oddsText(preview.odds), ...preview.notes.map(n => n.text)].join(". ");
+export const scratchSummary = preview => [oddsText(preview.odds), ...(preview.payback ? [paybackText(preview.payback)] : []), ...preview.notes.map(n => n.text)].join(". ");
 
 /*
   The editor's moving parts, plain DOM so the harness wires the same:
@@ -1339,8 +1383,9 @@ export const scratchSummary = preview => [oddsText(preview.odds), ...preview.not
   else Add a part), and a line of one part has no part remove; a part's
   choice shows its gold field only for coins, and the layout shows the
   bonus spot for lucky numbers only and moves a grid still at the other
-  layout's default to its own. `newId()` names a new row or part;
-  `paint()` redraws the readout.
+  layout's default to its own; rows written all at once (Fill, an
+  "lc:prizes" event on the rows) are renumbered. `newId()` names a new row
+  or part; `paint()` redraws the readout.
 */
 export function wireScratchEditor(form, { newId, paint = () => {} } = {}) {
   const rows = form.querySelector(".lc-prizes__rows");
@@ -1409,6 +1454,8 @@ export function wireScratchEditor(form, { newId, paint = () => {} } = {}) {
     (next?.querySelector(".lc-prize-row__count") ?? add).focus();
     paint();
   });
+  // Rows written all at once (scratchplan.js wireFill): number them, and the readout follows.
+  rows.addEventListener("lc:prizes", () => { renumber(); paint(); });
   form.addEventListener("change", e => {
     const what = e.target.closest?.(".lc-prize-row__what");
     if (what) what.closest(".lc-prize-part").dataset.what = whatClass(what.value);

@@ -8,6 +8,18 @@ The newest numbered entry's version is the one in `module/module.json`, and its 
 
 - Nothing yet.
 
+## 1.5.0
+
+Tickets you carry.
+
+- Tickets you carry. Make a ticket on a game's row in the Boxes tab puts a ticket for that game in the Items sidebar (folder "Loot Crates tickets") to hand out: drag it onto a sheet, a loot sheet, a merchant or into a pool. On the character sheet it has a Use button like any item, and using it plays the game for the whole table with no coins taken and one ticket used up. Works for crates, the well, the dice, the deck and scratch tickets (not the wheel or the auction). The reveal and the chat card say "with a ticket" instead of a price, and a refund gives the ticket back.
+- Buy to keep. Every shop card of a game players pull has a second, quieter button under the Buy: Buy to keep charges the same price, with the same limits (purse, stock, the limit per character), and puts a ticket for that game in the character's pack instead of playing now, to use from the sheet later. Tickets bought at the same price stack. A scratch ticket bought to keep is drawn from the roll when it is used, and a coin kept for the well isn't a throw until then. At the deck, a ticket bought to keep raises the draw price the way a draw does, and using it later doesn't raise it again. The Pull log shows the sale as "(10 gp, kept)", the table gets a chat line, and a refund takes one of those tickets back out of the pack and returns the coins (refused if the character no longer has one: used or traded).
+- Fill the prize list. A scratch ticket's editor can build the prize list for you from a few numbers: how much of the coins it takes in the roll pays back (65% by default), how often a ticket wins (about 1 in 3.5), the top prize (an item at a rarity, coins, or coins worked out for you) and how many combinations (none, some, lots). The list comes out the way real tickets are printed: the most common win gives the price back, prizes climb in steps with fewer of each, the top prize comes once, and some middle prizes are combinations adding up to the prize. Every prize it writes fits the card. It asks before replacing rows you typed, Shuffle builds another from the same numbers, and the rows stay editable; nothing is saved until you press Save.
+- A ticket is an item on a sheet its player owns, so like the character's gold, a player could edit its quantity by hand. The Pull log records every ticket used, so the GM can see and refund any play.
+- The manager now opens on its Boxes tab, the games players can buy, and Boxes comes first: Boxes, Pools, Pull log.
+- The scratch editor's readout says what the roll pays back: "Pays back 65% in coins: 325 gp of the 500 gp the roll takes in, plus 2 items".
+- With Players see what is left in the roll off, the tickets and prizes left are no longer sent to players' browsers when a ticket is bought: not in the reveal, not in the chat card's replay. This fixes the known limit in 1.4.0, except for one place: the Pull log is a world setting, which Foundry sends to every player's browser, and it names each sold ticket's prize, so a player reading it in the browser's developer tools could still count what is left.
+
 ## 1.4.0
 
 Prizes like real tickets.
@@ -18,7 +30,7 @@ Prizes like real tickets.
 - New per-ticket switch, Players see what is left in the roll, on by default. Turn it off and players' shop cards and the reveal no longer show the tickets left, the prizes left or the odds of what is left: they see the price, the top prize and the guarantee, as a printed ticket does. You still see everything in the manager and in your own shop, which says the counts are hidden from players.
 - Items imported with Plutonium now arrive from any game with no "Use Importer?" prompt. Before, that prompt appeared on the GM's screen mid-spin naming the prize, and the item could be lost while the player was still charged.
 - If another module stops a won item from being created, the play now counts as failed and the coins go back, instead of charging for nothing.
-- Known limit: with the switch off, the counts are hidden on screen but still sent to every player's browser, so a determined player could read them in the browser's developer tools.
+- Known limit: with the switch off, the counts are hidden on screen but still sent to every player's browser, so a determined player could read them in the browser's developer tools. (Fixed in 1.5.0, but for the Pull log: see 1.5.0.)
 
 ## 1.3.0
 

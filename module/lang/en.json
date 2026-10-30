@@ -93,7 +93,10 @@
       "NothingNew": "Nothing new for this character",
       "OpenFor": "Open for {price}",
       "Waiting": "Waiting for the GM…",
-      "Opening": "Opening…"
+      "Opening": "Opening…",
+      "Keep": "Buy to keep",
+      "KeepHint": ", {price}, a ticket for your pack to use later",
+      "Keeping": "Buying…"
     },
     "Shop": {
       "ClosedByGM": "The GM has closed the shop.",
@@ -141,7 +144,12 @@
       "DoneReturned": "{price} returned to {name}.",
       "DoneReturnedRemoved": "{price} returned to {name} and {item} removed.",
       "DoneTaken": "{price} taken back from {name}.",
-      "DoneTakenRemoved": "{price} taken back from {name} and {item} removed."
+      "DoneTakenRemoved": "{price} taken back from {name} and {item} removed.",
+      "TicketBack": "Give {name} their {box} ticket back",
+      "TicketReturn": "Give {name} their {box} ticket back and return {price} to their purse",
+      "TicketTakeBack": "Give {name} their {box} ticket back, take back the {price} it won",
+      "DoneTicket": "{box} refunded for {name}; the ticket is back in their pack.",
+      "DoneTicketRemoved": "{box} refunded for {name}; the ticket is back in their pack and {item} removed."
     },
     "Editor": {
       "DropsNothingTick": "This box can drop nothing: tick a pool above.",
@@ -302,7 +310,9 @@
       "PriceAuction": "Opening bid at {name}",
       "PriceScratch": "Ticket price at {name}",
       "PriceCrate": "Price of {name}",
-      "TableDropHint": "Drop a roll table here to make a crate with its items and odds."
+      "TableDropHint": "Drop a roll table here to make a crate with its items and odds.",
+      "Ticket": "Make a ticket",
+      "TicketLabel": "Make a ticket for {name}"
     },
     "Kind": {
       "Crate": "Crate",
@@ -434,7 +444,10 @@
       "RefundBack": "{net} went back into their purse.",
       "RefundTaken": "{net} was taken back from their purse: the {won} won, less the {stake} stake.",
       "RefundCoinBack": "The coin had already come back, so nothing moved.",
-      "RefundHead": "{actor}'s {box} was refunded"
+      "RefundHead": "{actor}'s {box} was refunded",
+      "RefundTicketBack": "Their {box} ticket went back into their pack.",
+      "RefundTicketLost": "Their {box} ticket couldn't be given back; the GM will make them a new one.",
+      "RefundTicketWon": "The {won} won was taken back from their purse."
     },
     "Error": {
       "UnknownKind": "{name} is a kind of game ({id}) this client can't run.",
@@ -499,10 +512,10 @@
       "CalendarOff": "dnd5e's calendar is off: a day ends at each character's long rest."
     },
     "News": {
-      "Title": "Prizes like real tickets",
-      "Line1": "Scratch tickets pay like real ones. A prize on the list can now be a combination, printed so many times like any other prize: \"1 ticket: a rare item + 25 gp + the gem\", or \"2 tickets: a rare item + an uncommon item\". Press Add a part on a prize row to add coins, an item at a rarity or the bonus spot's gem to it. A ticket still wins one prize from the roll, so a ticket that pays twice is exactly as rare as you printed it, and the editor's odds still count tickets (\"1 in 2.3 tickets wins\"). \"All prizes 5 gp or more\" now counts what a whole prize pays. Prize lists you already have work as before, and are saved in the new form the next time you save the ticket.",
-      "Line2": "New per-ticket switch, Players see what is left in the roll, on by default. Turn it off and players' shop cards and the reveal no longer show the tickets left, the prizes left or the odds of what is left: they see the price, the top prize and the guarantee, as a printed ticket does. You still see everything in the manager and in your own shop, which says the counts are hidden from players.",
-      "Line3": "Items imported with Plutonium now arrive from any game with no \"Use Importer?\" prompt. Before, that prompt appeared on the GM's screen mid-spin naming the prize, and the item could be lost while the player was still charged."
+      "Title": "Tickets you carry",
+      "Line1": "Tickets you carry. Make a ticket on a game's row in the Boxes tab puts a ticket for that game in the Items sidebar (folder \"Loot Crates tickets\") to hand out: drag it onto a sheet, a loot sheet, a merchant or into a pool. On the character sheet it has a Use button like any item, and using it plays the game for the whole table with no coins taken and one ticket used up. Works for crates, the well, the dice, the deck and scratch tickets (not the wheel or the auction). The reveal and the chat card say \"with a ticket\" instead of a price, and a refund gives the ticket back.",
+      "Line2": "Buy to keep. Every shop card of a game players pull has a second, quieter button under the Buy: Buy to keep charges the same price, with the same limits (purse, stock, the limit per character), and puts a ticket for that game in the character's pack instead of playing now, to use from the sheet later. Tickets bought at the same price stack. A scratch ticket bought to keep is drawn from the roll when it is used, and a coin kept for the well isn't a throw until then. At the deck, a ticket bought to keep raises the draw price the way a draw does, and using it later doesn't raise it again. The Pull log shows the sale as \"(10 gp, kept)\", the table gets a chat line, and a refund takes one of those tickets back out of the pack and returns the coins (refused if the character no longer has one: used or traded).",
+      "Line3": "Fill the prize list. A scratch ticket's editor can build the prize list for you from a few numbers: how much of the coins it takes in the roll pays back (65% by default), how often a ticket wins (about 1 in 3.5), the top prize (an item at a rarity, coins, or coins worked out for you) and how many combinations (none, some, lots). The list comes out the way real tickets are printed: the most common win gives the price back, prizes climb in steps with fewer of each, the top prize comes once, and some middle prizes are combinations adding up to the prize. Every prize it writes fits the card. It asks before replacing rows you typed, Shuffle builds another from the same numbers, and the rows stay editable; nothing is saved until you press Save."
     },
     "Welcome": {
       "Title": "Loot Crates",
@@ -650,7 +663,9 @@
       "NoneInPools": "none in these pools",
       "MakeCrate": "Make a crate",
       "PrintRollAsk": "Print a new roll of {name}? {roll} still has {left}; they come off sale, and the new roll starts with every prize on the list.",
-      "RollPrinted": "{name}: {roll} is printed, {size} tickets on sale."
+      "RollPrinted": "{name}: {roll} is printed, {size} tickets on sale.",
+      "TicketMade": "A {name} ticket is in the Items sidebar, in the folder {folder}. Drag it onto a character's sheet, a loot sheet or a pool.",
+      "TicketFailed": "The ticket for {name} couldn't be made. The console says why."
     },
     "Game": {
       "EditBox": "Edit box",
@@ -910,7 +925,8 @@
       "PreviewNoPool": "The perfect-roll prize has no pool ticked, so it can never be won.",
       "PreviewNoItem": "The perfect-roll prize's pools have no item that can drop.",
       "GotText": "rolled {faces}: {verdict}",
-      "Title": "Dragon's Teeth"
+      "Title": "Dragon's Teeth",
+      "LostTicket": "Lost the ticket"
     },
     "Roulette": {
       "Colour": "Colour",
@@ -1135,6 +1151,30 @@
       "AddPrize": "Add prize",
       "PrizesHint": "Each row is how many tickets win that prize. A prize can pay several parts at once (an item, coins and the gem), and a ticket wins every part of its row. The tickets left over are duds. An item comes from the pools below at its rarity.",
       "PrizesFull": "A roll holds up to {max} prizes.",
+      "FillToggle": "Fill the prize list",
+      "FillHint": "Give a few numbers and the list is built for you, the way real tickets are printed: the most common win gives the price back, prizes climb in steps, the top prize comes once. Edit any row after; nothing is saved until you press Save.",
+      "FillPayback": "Pays back {input}% of the coins it takes in",
+      "FillWinEvery": "Wins about 1 in {input} tickets",
+      "FillTop": "Top prize",
+      "FillTopAuto": "Coins, worked out for you",
+      "FillTopGp": "Gold pieces for the top prize",
+      "FillCombos": "Combinations",
+      "FillCombosNone": "None",
+      "FillCombosSome": "Some",
+      "FillCombosLots": "Lots",
+      "FillGo": "Fill",
+      "FillShuffle": "Shuffle",
+      "FillShuffleOff": "Fill the list first",
+      "FillNoPrice": "Set the price of a ticket first.",
+      "FillNone": "No prize list fits those numbers. Try a bigger roll or a lower price.",
+      "FillReplaceOne": "Replace the 1 prize in the list with a new list?",
+      "FillReplace": "Replace the {count} prizes in the list with a new list?",
+      "FillKept": "The prize list is as it was.",
+      "FillDone": "{count} prizes filled in. {payback}. Nothing is saved until you press Save.",
+      "FillShuffled": "Shuffled: {count} new prizes. {payback}. Nothing is saved until you press Save.",
+      "Payback": "Pays back {pct}% in coins: {paid} of the {taken} the roll takes in",
+      "PaybackItem": "Pays back {pct}% in coins: {paid} of the {taken} the roll takes in, plus {count} item",
+      "PaybackItems": "Pays back {pct}% in coins: {paid} of the {taken} the roll takes in, plus {count} items",
       "PrizeCount": "Tickets that win prize {n}",
       "PrizeWhat": "What prize {n} is",
       "PrizeGp": "Gold pieces for prize {n}",
@@ -1240,6 +1280,39 @@
       "PanelsLabel": "The panels of {name}",
       "RevealAll": "Reveal all",
       "Help": "Hold the mouse button and rub the coin over the foil. Keyboard: the arrow keys move between panels, Space scratches one, R reveals the whole card."
+    },
+    "Ticket": {
+      "UseOpen": "Open",
+      "UseScratch": "Scratch",
+      "UseThrow": "Throw",
+      "UseRoll": "Roll",
+      "UseDraw": "Draw",
+      "Use": "Use",
+      "Description": "One play of {game}. Use it from the character sheet and the GM plays it for the whole table to watch. A stack plays one ticket at a time.",
+      "Folder": "Loot Crates tickets",
+      "WithTicket": "with a ticket",
+      "LogTag": "ticket",
+      "NoGM": "No GM is online to play the ticket, so it stays in your pack.",
+      "NotInPack": "That ticket is no longer in {actor}'s pack, so nothing was played.",
+      "GameGone": "This ticket's game is gone, so the ticket stays in your pack as a keepsake.",
+      "SpendFailed": "The ticket couldn't be used, so nothing was played.",
+      "GrantFailed": "The prize couldn't be added, so your ticket is back in your pack.",
+      "GrantAndRestoreFailed": "The prize couldn't be added and the ticket couldn't be put back. Ask the GM for a new ticket.",
+      "ReturnFailed": "Loot Crates: {actor}'s {box} was refunded, but the ticket couldn't be given back. Use Make a ticket on the game's row in the Boxes tab and give them the new one."
+    },
+    "Keep": {
+      "LogTag": "{price}, kept",
+      "LogGot": "A ticket to keep",
+      "Got": "got a {box} ticket to keep",
+      "ChatHead": "{actor} bought a {box} ticket to keep {price}",
+      "Done": "A {box} ticket is in {actor}'s pack ({count} now). Use it from the character sheet whenever you like.",
+      "Failed": "The ticket couldn't be put in the pack, so your coins are back.",
+      "FailedAndRestoreFailed": "The ticket couldn't be put in the pack and the coins couldn't be returned. Ask the GM to refund it from the Pull log.",
+      "RefundAsk": "{money} and take one {box} ticket out of their pack?",
+      "RefundAskFree": "Take one {box} ticket out of {name}'s pack? It cost nothing, so no coins move.",
+      "RefundDone": "{box} refunded for {name}: one ticket out of their pack and {price} back in their purse.",
+      "RefundGone": "{actor} has no {box} ticket left to give back (it was used or traded), so nothing was refunded.",
+      "RefundTaken": "One {box} ticket was taken out of their pack."
     }
   }
 }

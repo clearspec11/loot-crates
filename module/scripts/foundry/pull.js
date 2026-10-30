@@ -26,6 +26,8 @@ import { settle, canAfford, formatPrice } from "../core/currency.js";
 import { limitState, limitRefusal } from "../core/limits.js";
 import { onShelf, shelfRefusal } from "../core/shelf.js";
 import { t } from "../core/i18n.js";
+import { spendTicket, keepTicket } from "./tickets.js";
+import { ticketOf } from "../games/ticket.js";
 
 export { PullError } from "../games/kinds.js";
 export { sourceRaritiesOf };
@@ -97,16 +99,21 @@ export const PRICE_SKEW_MS = 5000;
   charge, `now` the moment the charged price is the kind's at (the roll
   reads it, so the deck's streak matches what was paid), and `priceNote`
   the buyer's line when the pressed price was the other side of a
-  boundary (else null).
+  boundary (else null). A `ticket` play (performPull) skips the shelf,
+  the stock and the price: it costs nothing, the ticket is its payment.
+  A `kept` ticket's play skips the limit per character too: its Buy to
+  keep was the purchase the limit counted (limits.js boughtBy).
 */
-function guardPlay({ box, actor, state = {}, expectedPrice, log = [], today = null, bet }) {
+function guardPlay({ box, actor, state = {}, expectedPrice, log = [], today = null, bet, ticket = false, kept = false }) {
   if (!box) throw new PullError(t("LOOTCRATES.Error.BoxGone"));
-  if (!onShelf(box)) throw new PullError(shelfRefusal(box));
+  if (!ticket && !onShelf(box)) throw new PullError(shelfRefusal(box));
   if (!actor) throw new PullError(t("LOOTCRATES.Error.NoActor"));
-  if (box.rules?.stock != null && box.rules.stock <= 0) throw new PullError(t("LOOTCRATES.Error.SoldOut", { name: box.name }));
+  if (!ticket && box.rules?.stock != null && box.rules.stock <= 0) throw new PullError(t("LOOTCRATES.Error.SoldOut", { name: box.name }));
   const kind = kindFor(box);
-  const limit = limitState(box, { log, actorId: actor.id, today });
+  const limit = kept ? null : limitState(box, { log, actorId: actor.id, today });
   if (limit?.reached) throw new PullError(limitRefusal(box, limit, actor.name));
+  // A ticket was paid for already (or handed out): the play costs nothing.
+  if (ticket) return { kind, price: 0, purse: { ...(actor.system?.currency ?? {}) }, now: Date.now(), priceNote: null };
   const priceAt = at => Number(kind.priceOf?.({ game: box, actor, state, log, today, now: at, bet }) ?? box.price);
   let now = Date.now();
   let price = priceAt(now);
@@ -151,8 +158,17 @@ export async function createGrants(actor, datas) {
   throw new Error(`the creation made ${created.length} of ${docs.length} items: another module's preCreateItem hook cancelled it`);
 }
 
-export async function performPull({ box, pools, actor, state = {}, rng = rollRng(), grant = true, onMissing = null, expectedPrice, log = [], today = null }) {
-  const { kind, price, purse, now, priceNote } = guardPlay({ box, actor, state, expectedPrice, log, today });
+/*
+  `ticket` (an Item on the actor, foundry/tickets.js) plays the game with a
+  ticket instead of coins: the guards are a purchase's but for the shelf
+  and the stock (a ticket is in the pack, already sold), the price is 0,
+  and the ticket is the payment: one is spent (spendTicket) before the
+  grant, as the coins are charged, and put back with any payout if the
+  grant fails. The kind's own guards (a sold-out scratch roll, the well's
+  daily cap) refuse in its roll, before anything is spent.
+*/
+export async function performPull({ box, pools, actor, state = {}, rng = rollRng(), grant = true, onMissing = null, expectedPrice, log = [], today = null, ticket = null }) {
+  const { kind, price, purse, now, priceNote } = guardPlay({ box, actor, state, expectedPrice, log, today, ticket: !!ticket, kept: !!ticketOf(ticket)?.kept });
   // A table game is played in rounds (table.js): its roll settles every
   // stake at once, so it is staked, never pulled.
   if (kind.table) throw new PullError(t("LOOTCRATES.Error.TableGame", { name: box.name }));
@@ -164,8 +180,12 @@ export async function performPull({ box, pools, actor, state = {}, rng = rollRng
   delete own.grant;
   delete own.grants;
   const payoutCp = Math.round(Number(payout) || 0);
-  const nextPurse = settle(purse, payoutCp - Math.round(price * 100));
+  const delta = payoutCp - Math.round(price * 100);
+  // A ticket's play that pays nothing moves no coins at all.
+  const nextPurse = ticket && !delta ? purse : settle(purse, delta);
   if (!nextPurse) throw new PullError(t("LOOTCRATES.Error.CantAfford", { actor: actor.name, name: box.name }));
+
+  if (ticket && grant) return { ...own, ...(await playTicket({ actor, ticket, purse, nextPurse, delta, datas, result })), result, payoutCp, price, priceNote, state: nextState, pools: rolledFrom ?? pools, kind: kind.id };
 
   let created = [];
   if (grant) {
@@ -202,6 +222,77 @@ export async function performPull({ box, pools, actor, state = {}, rng = rollRng
     pools: rolledFrom ?? pools,
     kind: kind.id,
   };
+}
+
+/*
+  A ticket's payment and grant: one ticket spent, any payout settled, the
+  items created; a failure at any step puts back what the steps before it
+  wrote (the coins, then the ticket), so the ticket is spent only when the
+  play goes through. Returns what performPull adds for a purchase: purse,
+  itemId, itemIds, itemNames.
+*/
+async function playTicket({ actor, ticket, purse, nextPurse, delta, datas, result }) {
+  let giveBack;
+  try {
+    giveBack = await spendTicket(actor, ticket);
+  } catch (err) {
+    console.error(`loot-crates | spending ${ticket?.name} on ${actor.name} failed; nothing was played`, err);
+    throw new PullError(t("LOOTCRATES.Ticket.SpendFailed"));
+  }
+  let paid = false;
+  let created = [];
+  try {
+    if (delta) { await actor.update({ "system.currency": nextPurse }); paid = true; }
+    if (datas.length) created = await createGrants(actor, datas);
+  } catch (err) {
+    console.error(`loot-crates | granting ${result?.name ?? datas.map(d => d.name).join(", ")} to ${actor.name} for ${ticket?.name} failed; putting the ticket back`, err);
+    try {
+      if (paid) await actor.update({ "system.currency": purse });
+      await giveBack();
+    } catch (restoreErr) {
+      console.error(`loot-crates | could not put ${ticket?.name} back on ${actor.name}; the GM must make it again`, restoreErr);
+      throw new PullError(t("LOOTCRATES.Ticket.GrantAndRestoreFailed"));
+    }
+    throw new PullError(t("LOOTCRATES.Ticket.GrantFailed"));
+  }
+  return { purse: nextPurse, itemId: created[0]?.id ?? null, itemIds: created.map(d => d.id), itemNames: created.map(d => d.name) };
+}
+
+/*
+  Buy to keep, on the GM inside the write queue: a purchase that plays
+  nothing now. The guards are a purchase's, all of them (the shelf, the
+  stock, the limit per character, the price on the button, the purse), the
+  price leaves the purse in one settle(), and a ticket to the game goes
+  into the character's pack (tickets.js keepTicket: onto a kept stack of
+  the same game at the same price, else a new item) in place of a roll.
+  Nothing is rolled: a scratch roll's ticket is drawn when the ticket is
+  used, and the game's own reasons (the well's cap, a sold-out roll) are
+  the shop's to show and the use's to check. A ticket that can't be put
+  in the pack puts the coins back. The caller writes the log row in the
+  same task, and undoes both (`undo`, then `before`) if it can't.
+
+  Returns { purse, before, price, priceNote, kind, item, stacked, undo }:
+  `item` the ticket stack it went onto.
+*/
+export async function performKeep({ box, actor, state = {}, expectedPrice, log = [], today = null }) {
+  const { kind, price, purse, priceNote } = guardPlay({ box, actor, state, expectedPrice, log, today });
+  if (kind.table) throw new PullError(t("LOOTCRATES.Error.TableGame", { name: box.name }));
+  const nextPurse = settle(purse, -Math.round(price * 100));
+  if (!nextPurse) throw new PullError(t("LOOTCRATES.Error.CantAfford", { actor: actor.name, name: box.name }));
+  const charge = Math.round(price * 100) > 0;
+  if (charge) await actor.update({ "system.currency": nextPurse });
+  let kept;
+  try {
+    kept = await keepTicket(actor, box, price);
+  } catch (err) {
+    console.error(`loot-crates | putting a ${box.name} ticket in ${actor.name}'s pack failed; returning the coins`, err);
+    try { if (charge) await actor.update({ "system.currency": purse }); } catch (restoreErr) {
+      console.error(`loot-crates | could not return ${price} gp to ${actor.name}; the GM must refund by hand`, restoreErr);
+      throw new PullError(t("LOOTCRATES.Keep.FailedAndRestoreFailed"));
+    }
+    throw new PullError(t("LOOTCRATES.Keep.Failed"));
+  }
+  return { purse: charge ? nextPurse : purse, before: purse, price, priceNote, kind: kind.id, ...kept };
 }
 
 /*
