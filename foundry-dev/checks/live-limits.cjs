@@ -25,7 +25,7 @@
 //      and log unchanged.
 //   3. The GM opens the manager's Boxes tab by clicking it, reads the row's
 //      rules cell ("2 of 3 left, 1 per character"), presses the crate's Edit,
-//      reads the Limits group ("2 of 3 left"), presses Restock (the line
+//      reads the Who can buy group ("2 of 3 left"), presses Restock (the line
 //      reads "3 of 3 left once you save" and nothing is stored yet: the
 //      stock is still 2 of 3), then Save, which stores 3 of 3. The player's
 //      card must read "3 of 3 left" within 2 s.
@@ -291,7 +291,7 @@ const untilCard = (pl, pred, since) => pl.evaluate(async ({ pred, since }) => {
       cardAtLimit: b.after.stock === "2 of 3 left" && b.after.why === `Limit reached: ${before.max} of ${before.max} for Crate Tester` && b.after.off && b.after.describedBy.split(" ").includes(b.after.whyId) && b.after.limit === "",
       staleRefused: out.stale.refused && out.stale.message === sentence && out.afterStale.rows.length === 1 && out.afterStale.rules?.stock === 2,
       boxesRow: r.rulesCell === `2 of 3 left, ${before.max} per character`,
-      limitsGroup: r.legend === "Limits" && r.leftBefore === "2 of 3 left" && r.stockField === "3" && r.limitField.max === String(before.max) && r.limitField.per === "ever" && !r.offBefore,
+      limitsGroup: r.legend === "Who can buy" && r.leftBefore === "2 of 3 left" && r.stockField === "3" && r.limitField.max === String(before.max) && r.limitField.per === "ever" && !r.offBefore,
       restock: r.leftAfter === "3 of 3 left once you save" && r.stored.stock === 2 && r.stored.stockMax === 3 && r.saved.stock === 3 && r.saved.stockMax === 3 && r.focusKept && r.offAfter,
       saveKeepsIt: r.saved.stock === 3 && r.saved.stockMax === 3 && r.saved.perCharacter?.max === before.max && r.rulesAfter === `3 of 3 left, ${before.max} per character`,
       cardAfterRestock: out.cardAfterRestock.ms != null && out.cardAfterRestock.ms <= 2000 && out.cardAfterRestock.off,
