@@ -94,10 +94,21 @@ async function poolsTab() {
   const app = openManager();
   app.tab = "pools";
   await app.render();
+  expandPools(app);
   const listen = storeRedraw({ refreshShop: () => {}, refreshManager });
   heard = key => listen(key === "pools" ? SETTINGS.POOLS : key);
   renders = 0;
   return app;
+}
+// The tab opens with only the newest pool open (poolview.js poolToOpen);
+// these open the rest as a GM does, a click on each pool's summary.
+function expandPools(app) {
+  for (const d of app.element.querySelectorAll(".lc-pool__details")) {
+    if (d.hasAttribute("open")) continue;
+    d.setAttribute("open", "");
+    d.open = true;
+    d.dispatchEvent({ type: "toggle" });
+  }
 }
 // Another client's write: the setting changes and this client hears it.
 const remote = change => { change(); heard("pools"); };

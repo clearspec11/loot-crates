@@ -12,7 +12,7 @@
 // branch's code (as live-new-game.cjs does). Player2's shop is open on
 // Crate Tester. Then, as a GM does, on the Boxes tab:
 //
-//   1. Click the crate's Copy: the dialog "Copy box" opens with the name
+//   1. Click the crate's Copy: the dialog "Copy crate" opens with the name
 //      "<name> (copy)" focused and "Add to shelf" as its default button,
 //      holding the source's price, pools and shares, weights and rules, with
 //      no Restock (a draft has no record to fill); no record is written while
@@ -298,7 +298,7 @@ const READ_SHOP = `globalThis.__lcCards = () => [...document.querySelectorAll("#
     const expectedStatus = out.before.shopOpen ? `${copyName} is on the shelf at ${formatPrice(source.price)}.` : `${copyName} added. The shop is closed, so players can't see it yet.`;
     out.checks = {
       rowButton: o.label === `Copy ${BOX}` && o.cell.slice(-3).join("|") === "editBox|copyBox|deleteBox",
-      dialog: o.title === "Copy box" && o.okLabel === addLabel && o.name === copyName && o.nameFocused,
+      dialog: o.title === "Copy crate" && o.okLabel === addLabel && o.name === copyName && o.nameFocused,
       dialogHoldsSource: o.price === price && o.priceText === formatPrice(source.price) && same(o.pools, srcPools) && same(o.weights, weightsOf(source)) && o.pity.minRarity === (source.rules?.pity?.minRarity ?? "") && o.noDuplicates === !!source.rules?.noDuplicates && !o.restock && /\d+%/.test(o.preview ?? ""),
       writesNothingWhileOpen: o.boxes === out.before.boxIds.length && o.boxesLater === out.before.boxIds.length && out.openCards === out.shop.cards,
       added: !!copy && s.added.length === 1 && same(settings(copy), settings(source)) && (copy.rules?.stockMax == null || copy.rules.stock === copy.rules.stockMax) && same(out.saved.copyState, {}),
@@ -307,7 +307,7 @@ const READ_SHOP = `globalThis.__lcCards = () => [...document.querySelectorAll("#
       card: out.copyCard.shown && out.copyCard.ms <= 2000 && out.copyCard.cards === out.shop.cards + 1,
       pulled: out.pull.skipped ? "skipped" : out.pull.landed && out.afterPull.rows.length === 1 && out.afterPull.rows[0].boxId === copy.id && out.afterPull.purseCp === out.before.purseCp - Math.round(price * 100) && out.afterPull.items === out.before.items + 1,
       sourceUntouched: out.pull.skipped ? "skipped" : out.afterPull.sourceRows === out.before.sourceRows && same(out.afterPull.sourceState, out.before.sourceState) && same(out.afterPull.source, source),
-      cancel: out.cancel.title === "Copy box" && out.cancel.after.boxes === out.cancel.before.boxes && out.cancel.after.rows === out.cancel.before.rows && out.cancel.after.html === out.cancel.before.html && !out.cancel.after.dialog,
+      cancel: out.cancel.title === "Copy crate" && out.cancel.after.boxes === out.cancel.before.boxes && out.cancel.after.rows === out.cancel.before.rows && out.cancel.after.html === out.cancel.before.html && !out.cancel.after.dialog,
     };
     out.ok = Object.values(out.checks).every(v => v === true || v === "skipped");
     out.gmConsole = gm.logs;

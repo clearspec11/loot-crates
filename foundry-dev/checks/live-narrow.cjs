@@ -17,7 +17,7 @@
 //      New buttons fit it, every row stacks as a card with its kind's tag
 //      (the crate's reads "Crate") and its Edit, Copy and Delete inside the
 //      pane and the window.
-//   2. Click the real Edit on the BOX crate: the dialog "Edit box" opens;
+//   2. Click the real Edit on the BOX crate: the dialog "Edit crate" opens;
 //      Cancel closes it with nothing written.
 //   3. Click the real Pull log tab: the pane doesn't scroll sideways and
 //      every Refund is inside the pane.
@@ -177,7 +177,7 @@ const shot = process.argv.includes("--shot") ? process.argv[process.argv.indexOf
     out.ok = Math.abs(out.resize.to - WIDTH) <= 4
       && b.tab === "boxes" && b.sideways <= 0 && b.toolbarFits && b.newButtons.length === 5 && b.rows > 0 && b.stacked === stacks && b.headerHidden === stacks && b.roles
       && b.tags.every(Boolean) && b.crateTag === "Crate" && b.offScreen.length === 0 && b.actions.every(a => a.slice(-3).join("|") === "editBox|copyBox|deleteBox")
-      && out.edit.opened && out.edit.title === "Edit box" && out.edit.closed && !out.edit.written
+      && out.edit.opened && out.edit.title === "Edit crate" && out.edit.closed && !out.edit.written
       && l.tab === "log" && l.sideways <= 0 && l.offScreen.length === 0 && (l.rows === 0 || (l.stacked === stacks && l.roles))
       && out.keyboard.focused && out.keyboard.opened && /^Edit /.test(out.keyboard.title ?? "") && (out.keyboard.escapeClosed || out.keyboard.cancelClosed) && !out.keyboard.written
       && errors.length === 0;

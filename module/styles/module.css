@@ -904,9 +904,50 @@
    width, not the screen's (the stacked rows under "Narrow windows"). */
 .loot-crates .lc-tab { overflow: auto; padding-right: 2px; container: lc-tab / inline-size; }
 .loot-crates .lc-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-bottom: 10px; }
-/* The Boxes tab's status line takes the rest of the row, or a line of its
-   own in a narrow window, and is never cut off. */
-.loot-crates .lc-toolbar--boxes .lc-manager__status { flex: 1 1 14em; min-width: 0; overflow-wrap: anywhere; }
+/* The tab's status line (route.js statusBarHTML): the first thing in the
+   pane and pinned to its top, so what an action did is in view however far
+   down the GM has scrolled. Empty, it takes no room; with words, it is a
+   card ruled in gold at the left, over the rows that scroll under it, with
+   a button beside the words when there is one (Put all on the shelf). The
+   manager sets the pane's scroll padding to its height (#padStatus), so a
+   row scrolled into view lands under it. */
+.loot-crates .lc-manager__statusbar {
+  position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
+  margin: 0 0 10px; padding: 7px 10px; background: var(--lc-card); border: 1px solid var(--lc-rule-soft);
+  border-left: 3px solid var(--lc-gold-ink); border-radius: 3px; box-shadow: 0 2px 6px rgb(0 0 0 / .12);
+}
+.loot-crates .lc-manager__statusbar:has(> .lc-manager__status:empty):not(:has(> button)) {
+  padding: 0; margin: 0; border: 0; box-shadow: none; background: none; min-height: 0;
+}
+.loot-crates .lc-manager__statusbar .lc-manager__status { flex: 1 1 16em; min-width: 0; overflow-wrap: anywhere; font-size: 13px; color: var(--lc-ink); line-height: 1.4; }
+.loot-crates .lc-manager__statusbar .lc-manager__status:empty { display: block; flex-basis: 0; }
+.loot-crates .lc-manager__statusbar > button { flex: none; margin: 0; white-space: nowrap; }
+
+/* Add from compendium's Types and Rarities (poolview.js bulkAddHTML): a
+   row of chips, each a real checkbox with its words, so what is picked is
+   in sight; a ticked chip fills like a pressed filter chip. */
+.loot-crates .lc-form .lc-chipset__chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.loot-crates .lc-form label.lc-chipbox {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 9px 0 7px; cursor: pointer;
+  font-family: var(--lc-label); font-weight: 700; font-size: 12px; color: var(--lc-ink);
+  background: var(--lc-field); border: 1px solid var(--lc-rule-soft); border-radius: 3px;
+}
+.loot-crates .lc-form label.lc-chipbox:hover { border-color: var(--lc-rule); }
+.loot-crates .lc-form label.lc-chipbox input { margin: 0; flex: none; }
+.loot-crates .lc-form label.lc-chipbox:has(input:checked) { background: var(--lc-btn); color: var(--lc-btn-ink); border-color: var(--lc-btn); }
+.loot-crates .lc-form label.lc-chipbox:has(input:focus-visible) { outline: 2px solid var(--lc-focus); outline-offset: 1px; }
+.loot-crates .lc-form .lc-chipset .lc-form__hint { margin: 6px 0 0; }
+
+/* The crate's "Make a pool from a compendium" while no pool is ticked
+   (poolpicker.js makePoolHTML), and the line saying what it made. */
+.loot-crates .lc-form .lc-pool-picker__make { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: 4px; }
+.loot-crates .lc-form .lc-pool-picker__make > button { flex: none; width: auto; margin: 0; }
+.loot-crates .lc-form .lc-pool-picker__make > .lc-form__hint { flex: 1 1 14em; margin: 0; }
+.loot-crates .lc-form .lc-pool-picker__made:empty { display: none; }
+
+/* A ticket Make a ticket just made, marked in the Items sidebar for a few
+   seconds (tickets.js showInItems). Foundry's own highlight colour. */
+.loot-crates-made { outline: 2px solid var(--color-border-highlight, #ff6400); outline-offset: -2px; border-radius: 3px; }
 
 /* An empty Pools or Boxes tab (starter.js starterCallHTML): what the tab
    holds, then the offer of the starter set on a paper card ruled in gold,

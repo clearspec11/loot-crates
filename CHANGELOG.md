@@ -17,6 +17,15 @@ The newest numbered entry's version is the one in `module/module.json`, and its 
 - In a scratch ticket's editor the pools sit right above Fill the prize list, Fill's top prize starts at a Rare item (or the list's own top prize) in both New and Edit, and after Fill the first new prize has focus and is in view. The readout pinned at the foot no longer covers Fill, Shuffle or the field you are on.
 - The deck editor opens wide enough for its column heads (Card, Does, Gold, Weight, Once); on a phone each field says what it is.
 - The auction's lot list is grouped by pool, with a search: type part of a name and press Enter to make it the lot. An item in two pools is listed under both.
+- Every action in the manager says what it did where you are looking. The line at the top of each tab now stays pinned there as you scroll, so "Added 6 items from Items (SRD) to Goblin loot" or "Goblin Crate is on the shelf at 25 gp." is in view even 8,000 px down the Pools tab. Saving an edit now says so too: "Saved Goblin Crate."
+- New pool asks for the pool's name first, then shows the new pool open with Add from compendium ready, instead of adding an unnamed "New pool" at the foot of the list with nothing said. Cancel makes nothing. The pencil on a pool reads Rename pool, opens Rename pool, and has the name selected to type over.
+- The Pools tab opens with only the pool you last worked on (or the newest) open; the others show their summary line until you click them. It was over 8,000 px tall with every pool open.
+- Add from compendium shows its Types and Rarities as chips you can see and tick, picks the dnd5e Items compendium for you, and its button reads Preview, since that is all it does. Nothing is added until the preview's Add.
+- A new crate with no pool can make one without leaving its editor: **Make a pool from a compendium** runs Add from compendium into a pool named for the crate and ticks it. A first crate by hand now takes 9 clicks starting from New pool (the usability test counted 14), or 7 from New crate.
+- One name for each thing. The crate is a crate everywhere (New crate, Edit crate, Copy crate, Delete crate; the Boxes tab's first column is Game), and the other games use the names their shop cards show: New Wishing Well, New Dragon's Teeth, New Deck of Many Things, New Roulette wheel. A scratch ticket's bonus is "the bonus spot" in its prize lines, the Boxes tab and chat.
+- Make a ticket names the ticket "Goblin Crate ticket" (it was named exactly like the game and its pool), says where it went, and opens the Items sidebar on it, marked for a moment.
+- After Add starter crates, **Put all on the shelf** beside the line saying they came in off the shelf puts every one out in one press.
+- Make a crate is now near the top of a roll table's menu in the Roll Tables sidebar, straight after Draw, instead of last under Delete.
 
 ## 1.5.1
 

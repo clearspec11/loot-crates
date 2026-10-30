@@ -354,14 +354,14 @@ describe("a second press", () => {
     const auction = again.games.find(g => kindOf(g) === "auction");
     expect(auction.auction.lot.boxId).toBe(again.games.find(g => g.name === "Dragon's hoard chest (copy)").id);
     expect(again.games.every(g => !onShelf(g))).toBe(true);
-    expect(starterNotice({ ...again, reused: 4 })).toBe("Added 10 starter games as copies, all off the shelf, drawing from the starter pools already here. Players can't see them yet: look each one over, then press On the shelf on its row.");
+    expect(starterNotice({ ...again, reused: 4 })).toBe("Added 10 starter games as copies, all off the shelf, drawing from the starter pools already here. Players can't see them yet: look each one over and press On the shelf on its row, or Put all on the shelf.");
   });
 });
 
 describe("the words", () => {
   it("the status line names what came in and how to put it out", () => {
     const set = built();
-    expect(starterNotice(set)).toBe("Added 4 starter pools and 10 starter games, all off the shelf. Players can't see them yet: look each one over, then press On the shelf on its row.");
+    expect(starterNotice(set)).toBe("Added 4 starter pools and 10 starter games, all off the shelf. Players can't see them yet: look each one over and press On the shelf on its row, or Put all on the shelf.");
     expect(starterNotice({ games: [], notes: ["No dnd5e item compendium could be read."] })).toBe("No dnd5e item compendium could be read. Nothing was added.");
   });
 

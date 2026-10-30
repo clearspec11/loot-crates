@@ -481,7 +481,7 @@ describe("the words", () => {
     const html = ticketHTML({ ...coins, box: { name: "Fortune Ticket" } }, { esc });
     expect(html).toContain("Roll 1, ticket 44 of 100");
     expect((html.match(/lc-scratch__panel--win/g) ?? []).length).toBe(cardWins(card).winners.length);
-    expect(html).toContain('<div class="lc-scratch__extra">Extra 25 gp</div><p>Reveal the gem to win it on top of the card.</p>');
+    expect(html).toContain('<div class="lc-scratch__extra">Extra 25 gp</div><p>Find the gem in the bonus spot to win it on top of the card.</p>');
     expect(miniHTML(card).match(/<i/g)).toHaveLength(12);
     // A coin win's four rising notes (the rarity sting at Rare), a dud's two falling ones.
     k.sting(coins); expect(sound.playReveal).toHaveBeenLastCalledWith("rare");
@@ -574,7 +574,7 @@ describe("the words", () => {
   as rare as the GM printed it.
 */
 describe("prize lines: tickets that pay like real ones", () => {
-  // A roll of 6: one "Rare item + 5 gp + the gem (10 gp)", one "Rare item
+  // A roll of 6: one "Rare item + 5 gp + the bonus spot (10 gp)", one "Rare item
   // + Uncommon item", two of 10 gp, two duds.
   const LINES = { ...GAME, id: "lines", name: "Lines Ticket", bonus: { on: true, gp: 10 }, roll: { id: 1, size: 6, prizes: [
     { count: 1, parts: [{ gp: 5 }, { item: { rarity: "rare" } }, { bonus: true }] },
@@ -623,7 +623,7 @@ describe("prize lines: tickets that pay like real ones", () => {
     expect(lines.map(l => `${l.key} x${l.count}`)).toEqual([`${PAIR} x1`, `${COMBO} x1`, "gp.10 x2"]);
     expect(lines[1]).toMatchObject({ kind: "line", items: ["rare"], gp: 15, rarity: "rare" });
     expect(lines[0]).toMatchObject({ kind: "line", items: ["rare", "uncommon"], gp: 0 });
-    expect(lines.map(prizeText)).toEqual(["Rare item + Uncommon item", "Rare item + 5 gp + the gem (10 gp)", "10 gp"]);
+    expect(lines.map(prizeText)).toEqual(["Rare item + Uncommon item", "Rare item + 5 gp + the bonus spot (10 gp)", "10 gp"]);
     // The same parts in another order are the same line.
     const twice = { ...LINES, roll: { ...LINES.roll, prizes: [...LINES.roll.prizes, { count: 2, parts: [{ bonus: true }, { item: { rarity: "rare" } }, { gp: 5 }] }] } };
     expect(prizesOf(twice).find(l => l.key === COMBO).count).toBe(3);
@@ -746,7 +746,7 @@ describe("prize lines: tickets that pay like real ones", () => {
     expect(cleanCard(card).prizes.top).toEqual({ parts: [{ item: "rare" }, { item: "uncommon" }] });
     expect(cleanCard({ ...card, prizes: { ...card.prizes, top: { parts: [{ item: "mythic" }] } } }).prizes.top).toBeNull();
     // The shop's rows and the Boxes pills name each line in full.
-    expect(prizeListHTML(rollState(LINES, []), esc)).toContain("Rare item + 5 gp + the gem (10 gp)");
+    expect(prizeListHTML(rollState(LINES, []), esc)).toContain("Rare item + 5 gp + the bonus spot (10 gp)");
     expect(scratchOddsHTML(LINES, [])).toContain(`<span class="lc-odd lc-odd--wrap lc-rarity-rare">Rare item + Uncommon item 1/1</span>`);
   });
 

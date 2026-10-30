@@ -80,7 +80,7 @@ const STATES = [
   // Restock, then the limit per character, each with its help.
   ["box-limits", "state=editor"],
   // The guard rails (round 30, editorguard.js, playable.js) on the crate
-  // editor: a New box with no pool ticked reads "Save off the shelf", its
+  // editor: a New crate with no pool ticked reads "Save off the shelf", its
   // On the shelf box off with the reason under it (ticking a pool brings
   // Add to shelf back); a stock of -3 refused under the field with Save
   // off; and the discard question over an edited price, Keep editing focused.
@@ -148,7 +148,20 @@ const STATES = [
   // A dropped item on a big pool that was collapsed and filtered to Rare:
   // opened, the chip cleared, the row pinned first and focused, and said.
   ["manager-dropped", "state=manager&dropped=1"],
-  // The Boxes tab the moment "New box" was saved as the Royal Vault
+  // New pool just made "UX first pool" (round 30, B3, manager.js
+  // #addPool): every other pool collapsed, the tab scrolled to the new one
+  // at the foot, opened, its Add from compendium focused, and the status
+  // line pinned to the top of the pane saying what was made, in view.
+  ["manager-pool-made", "state=manager&made=1&height=460"],
+  // New pool's name dialog: the name focused and selected to type over,
+  // its button "Make the pool"; Add from compendium's filters as ticked
+  // chips in sight, dnd5e's item pack picked, its first button Preview.
+  ["prompt-newpool", "state=prompt&prompt=newpool"],
+  ["prompt-bulk", "state=prompt&prompt=bulk"],
+  // A New crate with no pool ticked: its picker offers "Make a pool from a
+  // compendium" (poolpicker.js makePoolHTML) under "No pool ticked yet".
+  ["editor-crate-makepool", "state=editor&kind=crate&nopool=1"],
+  // The Boxes tab the moment "New crate" was saved as the Royal Vault
   // (boxestable.js, manager.js #saveEditor): every kind's row in one table,
   // the status line saying it is on the shelf, the new row's edge and its
   // Edit focused and in view; the toolbar's five New buttons and the line
@@ -424,7 +437,7 @@ function offShelfEditorProblems() {
   const why = document.querySelector("[data-shelf-why]");
   if (ok?.textContent.trim() !== "Save off the shelf") out.push(`the default button reads "${ok?.textContent.trim()}"`);
   if (!box || box.checked || !box.disabled) out.push("the On the shelf box isn't unticked and off");
-  if (why?.textContent.trim() !== "This box can drop nothing: tick a pool above.") out.push(`the shelf's reason reads "${why?.textContent.trim()}"`);
+  if (why?.textContent.trim() !== "This crate can drop nothing: tick a pool above.") out.push(`the shelf's reason reads "${why?.textContent.trim()}"`);
   if (!box || !why || box.getAttribute("aria-describedby") !== why.id) out.push("the On the shelf box isn't described by its reason");
   if (why && parseFloat(getComputedStyle(why).fontSize) < 11) out.push("the shelf's reason is under 11px");
   const r = why?.getBoundingClientRect(), c = document.querySelector(".dialog-content").getBoundingClientRect(), label = box?.closest("label").getBoundingClientRect();
@@ -642,7 +655,7 @@ function boxesProblems(narrow) {
   const toolbar = document.querySelector(".lc-toolbar--boxes");
   if (!toolbar) return [...out, "no Boxes toolbar"];
   const news = [...toolbar.querySelectorAll('[data-action^="add"]')].map(b => b.textContent.trim());
-  if (news.join("|") !== "New box|New well|New dice game|New deck|New wheel|New auction|New scratch ticket") out.push(`the New buttons read ${news.join(", ")}`);
+  if (news.join("|") !== "New crate|New Wishing Well|New Dragon's Teeth|New Deck of Many Things|New Roulette wheel|New auction|New scratch ticket") out.push(`the New buttons read ${news.join(", ")}`);
   if (toolbar.scrollWidth > toolbar.clientWidth + 1 || toolbar.getBoundingClientRect().right > app.right + 1) out.push("the Boxes toolbar overflows the window");
   if (document.querySelectorAll('[role="status"]').length !== 1) out.push("expected one role=status");
   const status = document.querySelector(".lc-manager__status");
@@ -662,7 +675,8 @@ function boxesProblems(narrow) {
   if (document.activeElement !== edit) out.push("focus is not on the new row's Edit");
   const tab = document.querySelector(".lc-tab")?.getBoundingClientRect();
   const er = edit?.getBoundingClientRect();
-  if (tab && er && (er.top < tab.top - 1 || er.bottom > tab.bottom + 1)) out.push("the new row is out of view");
+  const under = document.querySelector(".lc-manager__statusbar")?.getBoundingClientRect().bottom ?? tab?.top;
+  if (tab && er && (er.top < under - 1 || er.bottom > tab.bottom + 1)) out.push("the new row is out of view");
   if (!document.querySelector('[data-action="openTable"]') || !document.querySelector('[data-action="reshuffle"]')) out.push("the wheel's Open a round or the deck's Reshuffle is missing");
   // Every row has a visible Copy naming its game, between Edit and Delete.
   for (const r of rows) {
@@ -706,7 +720,7 @@ function starterEmptyProblems(where) {
   const block = document.querySelector(".lc-tab .lc-starter");
   if (!block) return [...out, "no starter offer on the empty tab"];
   const line = block.querySelector(".lc-empty")?.textContent ?? "";
-  if (!(where === "pools" ? /^No pools yet\. A pool is the set of items a box can give out/ : /^No games yet\. A box prices a pull/).test(line)) out.push(`the empty line reads "${line}"`);
+  if (!(where === "pools" ? /^No pools yet\. A pool is the set of items a game can give out/ : /^No games yet\. A crate prices a pull/).test(line)) out.push(`the empty line reads "${line}"`);
   const offer = block.querySelector(".lc-starter__offer");
   if (!/added off the shelf/.test(offer?.textContent ?? "")) out.push("the offer doesn't say the games come off the shelf");
   if (block.getAttribute("aria-labelledby") !== offer?.id) out.push("the offer doesn't name its group");
@@ -793,15 +807,111 @@ function starterBoxesProblems() {
   const starter = document.querySelectorAll('.lc-toolbar--boxes [data-action="starterCrates"]');
   if (starter.length !== 1 || starter[0].textContent.trim() !== "Add starter crates") out.push("the toolbar has no Add starter crates");
   const news = [...document.querySelectorAll('.lc-toolbar--boxes [data-action^="add"]')].map(b => b.textContent.trim());
-  if (news.join("|") !== "New box|New well|New dice game|New deck|New wheel|New auction|New scratch ticket") out.push(`the New buttons read ${news.join(", ")}`);
+  if (news.join("|") !== "New crate|New Wishing Well|New Dragon's Teeth|New Deck of Many Things|New Roulette wheel|New auction|New scratch ticket") out.push(`the New buttons read ${news.join(", ")}`);
   const status = document.querySelector(".lc-manager__status")?.textContent ?? "";
-  if (status !== "Added 4 starter pools and 10 starter games, all off the shelf. Players can't see them yet: look each one over, then press On the shelf on its row.") out.push(`status line says "${status}"`);
+  if (status !== "Added 4 starter pools and 10 starter games, all off the shelf. Players can't see them yet: look each one over and press On the shelf on its row, or Put all on the shelf.") out.push(`status line says "${status}"`);
   const first = rows[0]?.querySelector('[data-action="editBox"]');
   if (document.activeElement !== first) out.push("focus is not on the first starter game's Edit");
   const pools = rows.map(r => r.querySelector('td[data-label="Pools"]')?.textContent.trim());
   if ([...pools.slice(0, 6), ...pools.slice(8)].some(p => !p || /none|missing/.test(p))) out.push(`a starter game draws from no pool: ${pools.join(" / ")}`);
   if (!/A sealed Dragon's hoard chest/.test(rows[7]?.textContent ?? "")) out.push("the auction's lot isn't the sealed hoard chest");
+  // Put all on the shelf, beside the sentence and outside its live region.
+  const all = document.querySelector('.lc-manager__statusbar > [data-action="shelfAll"]');
+  if (all?.textContent.trim() !== "Put all on the shelf") out.push("no Put all on the shelf beside the status line");
+  else if (all.closest('[role="status"]')) out.push("Put all on the shelf is inside the status region");
+  else if (all.getBoundingClientRect().right > document.getElementById("app").getBoundingClientRect().right + 1) out.push("Put all on the shelf is cut off");
   if (document.querySelectorAll('[role="status"]').length !== 1) out.push("expected one role=status");
+  return out;
+}
+
+/*
+  The tab's status line (round 30, B3, route.js statusBarHTML): the first
+  thing in the pane, pinned to its top (position: sticky), its words in
+  view and whole, and the focused control below it, not under it. With
+  `scrolled`, the pane must be scrolled down, so the line is shown to stay.
+*/
+function pinnedProblems(scrolled = false) {
+  const out = [];
+  const tab = document.querySelector(".lc-tab");
+  const bar = tab?.firstElementChild;
+  if (!bar?.classList.contains("lc-manager__statusbar")) return ["the status line is not the first thing in the tab's pane"];
+  if (getComputedStyle(bar).position !== "sticky") out.push("the status line isn't pinned (position sticky)");
+  const status = bar.querySelector('.lc-manager__status[role="status"]');
+  if (!status) return ["the status bar has no role=status line"];
+  // Nothing said yet: the line takes no room (and has nothing to pin).
+  if (!status.textContent.trim()) return bar.getBoundingClientRect().height > 1 && !bar.querySelector("button") ? ["the empty status line takes room"] : [];
+  if (scrolled && tab.scrollTop < 40) out.push(`the pane isn't scrolled (scrollTop ${Math.round(tab.scrollTop)}), so the pin is untested`);
+  const t = tab.getBoundingClientRect(), b = bar.getBoundingClientRect(), w = status?.getBoundingClientRect();
+  if (b.top < t.top - 1 || b.top > t.top + 2) out.push(`the status line is ${Math.round(b.top - t.top)} px from the pane's top`);
+  if (w && (w.bottom > t.bottom || w.right > t.right + 1 || status.scrollWidth > status.clientWidth + 1)) out.push("the status line's words are cut off");
+  if (getComputedStyle(bar).backgroundColor === "rgba(0, 0, 0, 0)") out.push("the pinned line has no background, so rows show through it");
+  const focus = document.activeElement;
+  if (focus && tab.contains(focus)) {
+    const f = focus.getBoundingClientRect();
+    if (f.top < b.bottom - 1) out.push("the focused control is under the pinned status line");
+    if (f.bottom > t.bottom + 1) out.push("the focused control is below the pane");
+  }
+  return out;
+}
+
+// New pool just made (manager.js #addPool), read from the DOM.
+function poolMadeProblems() {
+  const out = [];
+  const open = [...document.querySelectorAll(".lc-pool__details")].filter(d => d.open).map(d => d.dataset.pool);
+  if (open.join() !== "made") out.push(`open pools: ${open.join(", ") || "none"}; only the new one should be`);
+  const add = document.querySelector('.lc-pool__details[data-pool="made"] [data-action="bulkAdd"]');
+  if (!add || document.activeElement !== add) out.push("focus is not on the new pool's Add from compendium");
+  const status = document.querySelector(".lc-manager__status")?.textContent ?? "";
+  if (!/^Made the pool UX first pool\./.test(status)) out.push(`status line says "${status}"`);
+  const pencil = document.querySelector('.lc-pool__details[data-pool="made"] [data-action="editPool"]');
+  if (pencil?.getAttribute("data-tooltip") !== "Rename pool") out.push(`the pencil's tooltip reads "${pencil?.getAttribute("data-tooltip")}"`);
+  if (document.querySelectorAll('[role="status"]').length !== 1) out.push("expected one role=status");
+  return out;
+}
+
+// New pool's name and Add from compendium (?prompt=newpool|bulk).
+function promptProblems(kind) {
+  const out = [];
+  const app = document.getElementById("app").getBoundingClientRect();
+  const ok = document.querySelector('.form-footer [data-action="ok"]')?.textContent.trim();
+  if (kind === "newpool") {
+    if (document.getElementById("title").textContent !== "New pool") out.push("the dialog isn't titled New pool");
+    if (ok !== "Make the pool") out.push(`its button reads "${ok}"`);
+    const name = document.querySelector('input[name="name"]');
+    if (document.activeElement !== name) out.push("the name isn't focused");
+    else if (name.selectionStart !== 0 || name.selectionEnd !== name.value.length || name.value !== "New pool") out.push(`the name isn't selected to type over (${name.selectionStart}-${name.selectionEnd} of "${name.value}")`);
+    return out;
+  }
+  if (ok !== "Preview") out.push(`the first button reads "${ok}"`);
+  if (document.querySelector("select[multiple]")) out.push("a multi-select is back");
+  if (document.querySelector('select[name="pack"]')?.value !== "dnd5e.items") out.push("dnd5e's item pack isn't picked");
+  for (const [name, want, on] of [["types", 6, 4], ["rarities", 6, 5]]) {
+    const chips = [...document.querySelectorAll(`input[name="${name}"]`)];
+    if (chips.length !== want) out.push(`${name}: ${chips.length} chips, want ${want}`);
+    if (chips.filter(c => c.checked).length !== on) out.push(`${name}: ${chips.filter(c => c.checked).length} ticked, want ${on}`);
+    for (const c of chips) {
+      const label = c.closest("label"), r = label.getBoundingClientRect();
+      if (r.height < 24 || r.left < app.left - 1 || r.right > app.right + 1) { out.push(`${name}: the chip "${label.textContent.trim()}" isn't whole in the window`); break; }
+      if (r.bottom > app.bottom) { out.push(`${name}: the chip "${label.textContent.trim()}" is below the window`); break; }
+    }
+    const [a, b] = [chips.find(c => c.checked), chips.find(c => !c.checked)].map(c => c && getComputedStyle(c.closest("label")).backgroundColor);
+    if (a && b && a === b) out.push(`${name}: a ticked chip looks like an unticked one`);
+  }
+  return out;
+}
+
+// A New crate with no pool ticked offers Make a pool from a compendium.
+function makePoolProblems() {
+  const out = [];
+  const app = document.getElementById("app").getBoundingClientRect();
+  const button = document.querySelector("[data-make-pool]");
+  if (!button) return ["no Make a pool from a compendium"];
+  if (button.textContent.trim() !== "Make a pool from a compendium") out.push(`the offer reads "${button.textContent.trim()}"`);
+  const r = button.getBoundingClientRect();
+  if (!r.width || r.left < app.left - 1 || r.right > app.right + 1 || button.scrollWidth > button.clientWidth + 1) out.push("the offer isn't whole in the window");
+  if (button.closest("[hidden]")) out.push("the offer is hidden with no pool ticked");
+  if (!button.closest(".lc-pool-picks")) out.push("the offer isn't in the pool picker");
+  if (!document.querySelector(".lc-pool-picker__none:not([hidden])")) out.push("No pool ticked yet isn't said");
   return out;
 }
 
@@ -848,6 +958,9 @@ async function managerProblems(narrow) {
   if (usersOf("everything") !== "Not in any box") out.push(`the unused pool's line reads "${usersOf("everything")}"`);
   const everything = document.querySelector('.lc-pool__details[data-pool="everything"]');
   if (everything?.open) out.push("the 200-entry pool should start collapsed");
+  // Every pool collapsed but the one the GM last worked on (poolToOpen).
+  const opened = pools.filter(d => d.open).map(d => d.dataset.pool);
+  if (opened.join() !== "compendium") out.push(`open pools: ${opened.join(", ") || "none"}; only the last worked on should be`);
   if (document.querySelectorAll('[role="status"]').length !== 1) out.push("expected one role=status");
   if (document.querySelector(".lc-manager__body [aria-live]")) out.push("a per-pool aria-live region is back");
   const big = document.querySelector('.lc-pool__details[data-pool="compendium"]');
@@ -2046,7 +2159,7 @@ function scratchPrintProblems(mode) {
   if (!ribbon) out.push("no ribbon");
   else if (!/^Top prize/.test(ribbonText) || !/in prizes in this roll$/.test(ribbonText)) out.push(`the ribbon reads "${ribbonText}"`);
   else if (getComputedStyle(ribbon).clipPath === "none") out.push("the ribbon has no chevron ends");
-  const wantRibbon = mode === "combo" ? "Top prize Rare item + 25 gp + the gem (25 gp) 670 gp and 1 item in prizes in this roll" : "Top prize Rare item 620 gp and 1 item in prizes in this roll";
+  const wantRibbon = mode === "combo" ? "Top prize Rare item + 25 gp + the bonus spot (25 gp) 670 gp and 1 item in prizes in this roll" : "Top prize Rare item 620 gp and 1 item in prizes in this roll";
   if (!match3 && ribbonText !== wantRibbon) out.push(`the Fortune Ticket's ribbon reads "${ribbonText}"`);
   const caps = [...ticket.querySelectorAll(".lc-scratch__cap")].map(words);
   const wantCaps = match3 ? ["Three the same win that prize", "Your numbers"] : ["Lucky numbers Match any of yours to win its prize", "Your numbers Wins add up"];
@@ -2061,7 +2174,7 @@ function scratchPrintProblems(mode) {
     }
     const extra = ticket.querySelector(".lc-scratch__extra");
     if (!ticket.querySelector(".lc-scratch__bonus") || extra?.textContent.trim() !== "Extra 25 gp") out.push(`the EXTRA box reads "${extra?.textContent.trim()}"`);
-    if (ticket.querySelector(".lc-scratch__bonus p")?.textContent.trim() !== "Reveal the gem to win it on top of the card.") out.push("no line under Extra saying how");
+    if (ticket.querySelector(".lc-scratch__bonus p")?.textContent.trim() !== "Find the gem in the bonus spot to win it on top of the card.") out.push("no line under Extra saying how");
     const spot = ticket.querySelector(".lc-scratch__spot")?.getBoundingClientRect();
     if (!spot || Math.abs(spot.width - spot.height) > 1) out.push("the bonus spot isn't square");
   }
@@ -2609,7 +2722,10 @@ try {
       else if (name.startsWith("table") || name.startsWith("roulette")) problems0.push(...await page.evaluate(tableProblems, { phase: { "table-betting": "betting", "table-waiting": "waiting", "table-closed": "closed", "roulette-spinning": "spinning", "roulette-won": "landed", "roulette-lost": "landed" }[name], outcome: name === "roulette-lost" ? "lose" : "win", gm: name === "table-waiting" }));
       else if (name.startsWith("dice")) problems0.push(...await page.evaluate(diceProblems, { "dice-rolling": "rolling", "dice-won": "win", "dice-lost": "lose" }[name]));
       else if (name.startsWith("deck")) problems0.push(...await page.evaluate(deckProblems, { "deck-held": "held", "deck-boon": "item", "deck-bane": "loss", "deck-effect": "effect" }[name]));
-      else if (name === "manager-dropped") problems0.push(...await page.evaluate(droppedProblems));
+      else if (name === "manager-dropped") problems0.push(...await page.evaluate(droppedProblems), ...await page.evaluate(pinnedProblems, false));
+      else if (name === "manager-pool-made") problems0.push(...await page.evaluate(poolMadeProblems), ...await page.evaluate(pinnedProblems, true));
+      else if (name.startsWith("prompt-")) problems0.push(...await page.evaluate(promptProblems, name.slice(7)));
+      else if (name === "editor-crate-makepool") problems0.push(...await page.evaluate(makePoolProblems));
       else if (name === "manager-empty") problems0.push(...await page.evaluate(starterEmptyProblems, "pools"));
       else if (name === "manager-boxes-empty") problems0.push(...await page.evaluate(starterEmptyProblems, "boxes"));
       else if (name === "manager-boxes-starter") problems0.push(...await page.evaluate(starterBoxesProblems), ...await page.evaluate(panelProblems));
@@ -2622,7 +2738,7 @@ try {
       else if (name.startsWith("well")) problems0.push(...await page.evaluate(wellProblems, { "well-missed": "nothing", "well-coin": "coin", "well-won": "item" }[name]));
       else problems0.push(...await page.evaluate(revealProblems, name === "landed-buyer" || name === "landed-missed"));
       if (name.startsWith("manager")) problems0.push(...await page.evaluate(navProblems));
-      if (name.startsWith("manager-boxes") && name !== "manager-boxes-empty") problems0.push(...await page.evaluate(priceProblems));
+      if (name.startsWith("manager-boxes") && name !== "manager-boxes-empty") problems0.push(...await page.evaluate(priceProblems), ...await page.evaluate(pinnedProblems, false));
       if (name === "landed-missed") problems0.push(...await page.evaluate(missedProblems));
       if (name === "shop-short") {
         const grid = await page.$(".lc-shop__grid");

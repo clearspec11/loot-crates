@@ -91,6 +91,38 @@ export const shopToggleLabel = () => t("LOOTCRATES.Route.ShopOpen");
 const TAB_KEYS = [["boxes", "LOOTCRATES.Manager.TabBoxes"], ["pools", "LOOTCRATES.Manager.TabPools"], ["log", "LOOTCRATES.Manager.TabLog"]];
 export const MANAGER_TABS = TAB_KEYS.map(([tab, key]) => Object.defineProperty([tab], 1, { enumerable: true, get: () => t(key) }));
 
+/*
+  Where a menu entry goes in a sidebar entry's menu (`options`, the array
+  Foundry's get<Document>ContextOptions hook passes): straight after the
+  document's own Draw or Roll entries (v14's "TABLE.ACTIONS.DrawResult"),
+  which lead a roll table's menu, else first. "Make a crate" was pushed
+  last, under Delete and Duplicate, 9th of 9. Returns the index it went to.
+*/
+const LEADING = /draw|roll/i;
+export function placeMenuEntry(options, entry) {
+  if (!Array.isArray(options)) return -1;
+  const said = o => String(o?.label ?? o?.name ?? "");
+  let at = options.findIndex(o => LEADING.test(said(o)));
+  if (at < 0) at = 0;
+  else while (at < options.length && LEADING.test(said(options[at]))) at++;
+  options.splice(at, 0, entry);
+  return at;
+}
+
+/*
+  The manager's status line: one per tab, the first thing in the tab's
+  scrolling pane and pinned there (module.css, position: sticky), so what
+  an action did is in view however far down the GM is (an add 7,800 px
+  down the Pools tab said so at the top, out of sight). The words are a
+  role="status" region, written after the render (manager.js #announce) so
+  a screen reader hears them once; an empty line takes no room. `action`
+  is a button beside the words (Put all on the shelf after the starter
+  crates), outside the region so it isn't read out with every change.
+*/
+export function statusBarHTML(text = "", esc = s => String(s ?? ""), action = "") {
+  return `<div class="lc-manager__statusbar"><span class="lc-pool__hint lc-manager__status" role="status">${esc(text)}</span>${action}</div>`;
+}
+
 // The manager's nav: the tabs (the ARIA tabs pattern, manager.js), then
 // "View shop" and the shop's toggle: one fixed label, "Shop open", pressed
 // while players can buy (the ARIA toggle-button pattern, as each Boxes

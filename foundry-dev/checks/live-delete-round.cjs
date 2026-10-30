@@ -21,7 +21,7 @@
 //   2. Player2 places one 2 gp bet through the window's real form: the
 //      purse drops by 2 gp and an open row is in the log.
 //   3. The GM presses the wheel's Delete on the Boxes row. The confirm must
-//      be titled "Delete wheel" and say the round holds 1 stake (2 gp),
+//      be titled "Delete Roulette wheel" and say the round holds 1 stake (2 gp),
 //      refunded first. The GM presses Yes.
 //   4. The game is gone, the round resolved and voided as cancelled, the
 //      row refunded (reason "cancel"), the purse back to its value before
@@ -288,7 +288,7 @@ const purseOf = (gm, actorId) => gm.evaluate(async ({ base, actorId }) => {
     out.checks = {
       openedFromBoxes: out.open.label === "Open a round" && !!out.open.roundId,
       betTaken: out.bet.landed && !out.bet.why && out.afterBet.purseCp === before.purseCp - 200 && out.playerTableBet?.chips === 1,
-      confirmNamesStake: out.del.title === "Delete wheel" && out.del.text === `Delete ${WHEEL}? Its round still holds 1 stake (2 gp); it is refunded first.`,
+      confirmNamesStake: out.del.title === "Delete Roulette wheel" && out.del.text === `Delete ${WHEEL}? Its round still holds 1 stake (2 gp); it is refunded first.`,
       gameGone: out.del.gone && !out.del.rowLeft,
       roundCalledOff: out.after.round?.status === "resolved" && out.after.round.voided && out.after.round.cancelled,
       rowRefunded: !!row && !!row.refunded && row.refundReason === "cancel" && out.after.rows.length === 1,

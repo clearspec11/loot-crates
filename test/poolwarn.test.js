@@ -71,8 +71,20 @@ async function openPools() {
   const root = await app._renderHTML();
   document.body.appendChild(root);
   app.element = root;
+  expandPools(app);
   return app;
 }
+// The tab opens with only the newest pool open (poolview.js poolToOpen);
+// these open the rest as a GM does, a click on each pool's summary.
+function expandPools(app) {
+  for (const d of app.element.querySelectorAll(".lc-pool__details")) {
+    if (d.hasAttribute("open")) continue;
+    d.setAttribute("open", "");
+    d.open = true;
+    d.dispatchEvent({ type: "toggle" });
+  }
+}
+
 const card = (app, id) => app.element.querySelector(`[data-drop-pool="${id}"]`);
 const press = (app, action, el) => CrateManager.DEFAULT_OPTIONS.actions[action].call(app, {}, el);
 const removeButton = (app, uuid) => app.element.querySelector(`[data-entry="${uuid}"] .lc-entry__remove`);
@@ -163,6 +175,7 @@ describe("a pool's header after the boxes change elsewhere", () => {
     document.body.replaceChildren(root);
     app.element = root;
     app.rendered = true;
+    expandPools(app);
     // The GM searches Core for "Flame" and pages Spare parts to all 60.
     const search = card(app, "core").querySelector(".lc-pool__search");
     search.setAttribute("value", "Flame");

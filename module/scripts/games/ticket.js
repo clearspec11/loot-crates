@@ -71,7 +71,9 @@ export function ticketData(box, { paid = 0, kept = false } = {}) {
   const verb = useWord(box);
   const price = gp(paid) || gp(box?.price);
   return {
-    name: String(box?.name ?? ""),
+    // "<game> ticket": in the Items sidebar and on a sheet it isn't
+    // mistaken for the game's crate or its pool, which share the name.
+    name: t("LOOTCRATES.Ticket.Name", { game: String(box?.name ?? "") }),
     type: "consumable",
     img: ticketImg(box),
     system: {

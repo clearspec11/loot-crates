@@ -16,7 +16,7 @@
 //      is the one main.js adds (Foundry builds a directory's menu once, at
 //      its first render, before this page could load the branch, so the
 //      entry joins that same menu's items).
-//   2. The crate editor opens on an unsaved draft: "New box", named for the
+//   2. The crate editor opens on an unsaved draft: "New crate", named for the
 //      table, the price focused, "Use the table's odds" picked with the
 //      rarity weights hidden, the copy note "Copied from Live loot table (3
 //      items, 1 nested table flattened)", "Count text results as nothing"
@@ -276,7 +276,7 @@ const GM_HELPERS = `
     const lines = Object.fromEntries((out.card?.lines ?? []).map(x => [x.name, x.label]));
     out.checks = {
       menu: out.menu.includes("Make a crate"),
-      editor: e.title === "New box" && e.name === TABLE && e.priceFocused && e.okLabel === (s.shopOpen ? "Add to shelf" : "Add"),
+      editor: e.title === "New crate" && e.name === TABLE && e.priceFocused && e.okLabel === (s.shopOpen ? "Add to shelf" : "Add"),
       tableOdds: e.mode === "weight" && e.weightsHidden && /Use the table's odds|\d+%/.test(e.preview ?? ""),
       copyNote: e.note === `Copied from ${TABLE} (3 items, 1 nested table flattened); edit the table and make the crate again to pick up changes.`,
       nothingOffer: e.nothing.there && !e.nothing.checked && /33%/.test(e.nothing.hint ?? ""),

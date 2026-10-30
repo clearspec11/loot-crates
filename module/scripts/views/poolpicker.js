@@ -19,6 +19,13 @@
   changed); Enter in it moves to the first match instead of pressing the
   dialog's default button, and Escape clears it before it closes anything.
 
+  The crate's picker (`makePool`) offers "Make a pool from a compendium"
+  while no pool is ticked, or the world has none: the manager runs Add
+  from compendium into a new pool named for the crate and ticks it there
+  (manager.js #makePoolHere), so a first crate never leaves its editor.
+  The offer goes once a pool is ticked and comes back if every one is
+  unticked (wirePoolPicker).
+
   No Foundry globals: the callers pass `esc`; Vitest and the harness
   render and wire it as the manager does.
 */
@@ -67,17 +74,18 @@ function pickRow(p, { on, share, shares, esc, id, all }) {
   a share field, `id` a prefix for the ids it makes (the game's id, so two
   open editors don't share one).
 */
-export function poolPickerHTML(pools, refs = [], { share = true, esc = plain, id = "lc-picks" } = {}) {
+export function poolPickerHTML(pools, refs = [], { share = true, esc = plain, id = "lc-picks", makePool = false } = {}) {
   const all = asMap(pools);
   const { on, rest } = pickerOrder(pools, refs);
-  if (!on.length && !rest.length) return `<p>${t("LOOTCRATES.Editor.NoPools")}</p>`;
+  const make = makePool ? makePoolHTML(on.length > 0) : "";
+  if (!on.length && !rest.length) return `<p>${t("LOOTCRATES.Editor.NoPools")}</p>${make}`;
   const shares = Object.fromEntries((refs ?? []).map(p => [p.id, p.share ?? 1]));
   const opts = { share, shares, esc, id: esc(id), all };
   const ticked = on.map(p => pickRow(p, { ...opts, on: true })).join("");
   const none = `<p class="lc-form__hint lc-pool-picker__none"${on.length ? " hidden" : ""}>${t("LOOTCRATES.Picker.NoneTicked")}</p>`;
   const rows = rest.map(p => pickRow(p, { ...opts, on: false })).join("");
-  if (rest.length <= FOLD_AFTER) return `<div class="lc-pool-picker__on">${ticked}${on.length ? "" : none}</div>${rows ? `<div class="lc-pool-picker__rest">${rows}</div>` : ""}`;
-  return `<div class="lc-pool-picker__on">${ticked}${none}</div>
+  if (rest.length <= FOLD_AFTER) return `<div class="lc-pool-picker__on">${ticked}${on.length ? "" : none}</div>${rows ? `<div class="lc-pool-picker__rest">${rows}</div>` : ""}${make}`;
+  return `<div class="lc-pool-picker__on">${ticked}${none}</div>${make}
         <details class="lc-pool-picker__more">
           <summary class="lc-pool-picker__add" data-picker-add>${t("LOOTCRATES.Picker.AddMore", { count: rest.length })}</summary>
           <div class="lc-pool-picker__body">
@@ -87,6 +95,15 @@ export function poolPickerHTML(pools, refs = [], { share = true, esc = plain, id
           </div>
         </details>`;
 }
+
+// The crate's offer while nothing is ticked: one button and what it does.
+// The line under it is where the manager says what it made (role=status).
+export function makePoolHTML(hidden = false) {
+  return `<div class="lc-pool-picker__make"${hidden ? " hidden" : ""}><button type="button" data-make-pool aria-describedby="lc-make-pool-hint"><i class="fas fa-book" inert></i> ${t("LOOTCRATES.Picker.MakePool")}</button> <span class="lc-form__hint" id="lc-make-pool-hint">${t("LOOTCRATES.Picker.MakePoolHint")}</span></div>`;
+}
+
+// What the offer says once it made the pool.
+export const madeText = (pool, count) => t(count === 1 ? "LOOTCRATES.Picker.MadeOne" : "LOOTCRATES.Picker.MadeMany", { pool, count });
 
 // The search's line: how many pools match, or that none does.
 export function matchText(count, query) {
@@ -141,6 +158,8 @@ export function wirePoolPicker(root) {
       const boxes = [...picker.querySelectorAll('.lc-pool-pick input[type="checkbox"]')];
       const none = picker.querySelector(".lc-pool-picker__none");
       if (none) none.hidden = boxes.some(b => b.checked);
+      const make = picker.querySelector(".lc-pool-picker__make");
+      if (make) make.hidden = boxes.some(b => b.checked);
       const add = picker.querySelector("[data-picker-add]");
       const more = picker.querySelector(".lc-pool-picker__more");
       if (add && more) {

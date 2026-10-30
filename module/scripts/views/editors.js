@@ -176,7 +176,7 @@ function crateHTML(box, ctx) {
   return [
     nameHTML(box, ctx),
     section("from", tableNoteHTML(box, { esc })),
-    picker(t("LOOTCRATES.Manager.PoolsShare"), box, ctx),
+    picker(t("LOOTCRATES.Manager.PoolsShare"), box, ctx, { makePool: true }),
     section("odds", oddsModeFieldset(box, { esc })),
     weightsFieldset(t("LOOTCRATES.Manager.RarityWeights"), box, { esc, hidden: oddsModeOf(box) === "weight" }),
     section("nothing", nothingRow(box, { esc })),

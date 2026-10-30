@@ -126,12 +126,12 @@ describe("Buy to keep on the GM: the charge", () => {
     expect(toCopper(actor.system.currency)).toBe(9000);
     expect(actor.writes.filter(w => w.purse)).toHaveLength(1);
     const [ticket] = tickets(actor);
-    expect(ticket).toMatchObject({ name: "Test Crate", type: "consumable", system: { quantity: 1, price: { value: 10 } } });
+    expect(ticket).toMatchObject({ name: "Test Crate ticket", type: "consumable", system: { quantity: 1, price: { value: 10 } } });
     expect(ticketOf(ticket)).toEqual({ boxId: "box", paid: 10, kept: true });
     // No prize was granted: the ticket is the only item.
     expect(actor.items.size).toBe(1);
     const row = getLog()[0];
-    expect(row).toMatchObject({ kind: "crate", boxId: "box", actorId: "actor1", userId: "p1", price: 10, payoutCp: 0, itemId: null, keep: { itemId: ticket.id, itemName: "Test Crate", paid: 10 } });
+    expect(row).toMatchObject({ kind: "crate", boxId: "box", actorId: "actor1", userId: "p1", price: 10, payoutCp: 0, itemId: null, keep: { itemId: ticket.id, itemName: "Test Crate ticket", paid: 10 } });
     expect(row.uuid).toBeUndefined();
     // A purchase takes one from the stock.
     expect(getBoxes().box.rules.stock).toBe(3);
@@ -308,7 +308,7 @@ describe("refunding a Buy to keep", () => {
     expect(plan).toMatchObject({ status: "ready", coins: 1000, items: [], gone: [] });
     expect(plan.ticket.id).toBe(tickets(actor)[0].id);
     const out = await refundPull(getLog()[0].id);
-    expect(out).toMatchObject({ status: "refunded", keptBack: "Test Crate", removedItem: null });
+    expect(out).toMatchObject({ status: "refunded", keptBack: "Test Crate ticket", removedItem: null });
     expect(tickets(actor)[0].system.quantity).toBe(1);
     expect(toCopper(actor.system.currency)).toBe(9000);
     expect(getBoxes().box.rules.stock).toBe(3);

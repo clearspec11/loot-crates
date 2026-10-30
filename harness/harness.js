@@ -26,7 +26,7 @@
   "manager" is the pool editor's Pools tab (poolview.js), with chips and
   open/close working; search, edits and Show more need Foundry.
   ?tab=boxes (manager: the Boxes tab, boxestable.js, every kind's row in
-  one table; &added=1 shows it the moment "New box" was saved as the Royal
+  one table; &added=1 shows it the moment "New crate" was saved as the Royal
   Vault: the status line says it is on the shelf, the row carries the new
   edge and its Edit has focus, as manager.js #saveEditor leaves it)
   ?tab=log (manager: the Pull log, logtable.js, with sample.js sampleLog:
@@ -162,11 +162,11 @@ import { wireFill } from "../module/scripts/games/scratchplan.js";
 import { editorHTML, lotChoices, wireLotSearch, showWhen, foldWeights, wireEditor, wireReadout } from "../module/scripts/views/editors.js";
 import { wirePoolPicker } from "../module/scripts/views/poolpicker.js";
 import { parsePrice } from "../module/scripts/core/currency.js";
-import { poolRows, sortRows, defaultView, poolSummary, poolBody, pinRecent, dropNotice, poolUsers, dropPreviewHTML } from "../module/scripts/views/poolview.js";
-import { boxesTabHTML } from "../module/scripts/views/boxestable.js";
-import { managerNavHTML, shopControls, shopEmptyHTML } from "../module/scripts/views/route.js";
+import { poolRows, sortRows, defaultView, poolToOpen, poolSummary, poolBody, pinRecent, dropNotice, poolUsers, dropPreviewHTML, poolNameHTML, bulkAddHTML } from "../module/scripts/views/poolview.js";
+import { boxesTabHTML, shelfAllHTML } from "../module/scripts/views/boxestable.js";
+import { managerNavHTML, shopControls, shopEmptyHTML, statusBarHTML } from "../module/scripts/views/route.js";
 import { logTableHTML } from "../module/scripts/views/logtable.js";
-import { addedNotice } from "../module/scripts/views/newgame.js";
+import { addedNotice, EDIT_TITLE } from "../module/scripts/views/newgame.js";
 import { onShelf, shelfFor, shelfFieldHTML, shelfRules, shelfNotice } from "../module/scripts/core/shelf.js";
 import { draw, seededRng } from "../module/scripts/core/odds.js";
 import { buildStrip, NOTHING_CARD } from "../module/scripts/core/strip.js";
@@ -216,7 +216,7 @@ const SHOP_POOLS = { ...POOLS, [TABLE_POOL.id]: TABLE_POOL };
 document.body.classList.replace("theme-dark", `theme-${theme}`);
 
 // The window the module would open for this state: its class and title.
-const WINDOWS = { welcome: ["lc-welcome-window", WELCOME_TITLE], auction: ["lc-table", `The auction at ${q.get("lot") === "crate" ? AUCTION_CRATE.name : AUCTION.name}`], editor: ["lc-dialog", q.get("odds") || q.get("guard") === "offshelf" ? "New box" : q.get("deck") ? "Edit deck" : q.get("scratch") ? "Edit scratch ticket" : q.get("kind") ? `Edit ${{ crate: "box", well: "well", dice: "dice game", deck: "deck", roulette: "wheel", auction: "auction", scratch: "scratch ticket" }[q.get("kind")] ?? "box"}` : "Edit box"], preview: ["lc-dialog", "Add to Goblin's Pockets"], shop: ["lc-shop", "Crate Shop"], manager: ["lc-manager", "Loot Crates"], well: ["lc-reveal", "A coin in the well"], dice: ["lc-reveal", "Dragon's Teeth"], deck: ["lc-reveal", "A card from the deck"], scratch: ["lc-reveal", "A scratch ticket"], table: ["lc-table", `The wheel at ${ROULETTE.name}`] };
+const WINDOWS = { welcome: ["lc-welcome-window", WELCOME_TITLE], auction: ["lc-table", `The auction at ${q.get("lot") === "crate" ? AUCTION_CRATE.name : AUCTION.name}`], editor: ["lc-dialog", q.get("odds") || q.get("guard") === "offshelf" ? "New crate" : q.get("deck") ? "Edit Deck of Many Things" : q.get("scratch") ? "Edit scratch ticket" : q.get("nopool") ? "New crate" : q.get("kind") ? EDIT_TITLE[q.get("kind")] ?? EDIT_TITLE.crate : "Edit crate"], prompt: ["lc-dialog", q.get("prompt") === "bulk" ? "Add from compendium" : q.get("prompt") === "rename" ? "Rename pool" : "New pool"], preview: ["lc-dialog", "Add to Goblin's Pockets"], shop: ["lc-shop", "Crate Shop"], manager: ["lc-manager", "Loot Crates"], well: ["lc-reveal", "A coin in the well"], dice: ["lc-reveal", "Dragon's Teeth"], deck: ["lc-reveal", "A card from the deck"], scratch: ["lc-reveal", "A scratch ticket"], table: ["lc-table", `The wheel at ${ROULETTE.name}`] };
 const [appClass, appTitle] = WINDOWS[state] ?? ["lc-reveal", "Opening a crate"];
 document.getElementById("app").classList.add(appClass);
 // The welcome opens at its window's width (welcomewindow.js), 540px.
@@ -237,7 +237,7 @@ for (const [label, query] of [["shop", "state=shop"], ["spin", "state=spin"], ["
   if (query === `state=${state}${buyer ? "&buyer=1" : ""}${unwatched ? "&watched=0" : ""}`) a.classList.add("active");
   nav.append(a);
 }
-if (state !== "welcome" && state !== "shop" && state !== "manager" && state !== "well" && state !== "dice" && state !== "deck" && state !== "scratch" && state !== "table" && state !== "auction" && state !== "editor" && state !== "preview") {
+if (state !== "welcome" && state !== "shop" && state !== "manager" && state !== "well" && state !== "dice" && state !== "deck" && state !== "scratch" && state !== "table" && state !== "auction" && state !== "editor" && state !== "preview" && state !== "prompt") {
   const again = document.createElement("a");
   again.href = `?state=spin&seed=${seed + 1}${q.has("box") ? `&box=${q.get("box")}` : ""}${buyer ? "&buyer=1" : ""}&theme=${theme}`;
   again.textContent = "open another";
@@ -455,7 +455,8 @@ function renderManager() {
     <div class="lc-manager__body">
       ${managerNavHTML({ tab: "pools", shopOpen: true })}
       <section class="lc-tab" role="tabpanel">
-        <div class="lc-toolbar"><button type="button"><i class="fas fa-plus"></i> New pool</button><span class="lc-pool__hint lc-manager__status" role="status"></span></div>
+        ${statusBarHTML("", esc)}
+        <div class="lc-toolbar"><button type="button"><i class="fas fa-plus"></i> New pool</button></div>
         ${starterCallHTML("pools", esc)}
       </section>
     </div>`;
@@ -463,9 +464,19 @@ function renderManager() {
     return;
   }
   const srcOf = e => MANAGER_SOURCES.has(e.uuid) ? MANAGER_SOURCES.get(e.uuid) : { name: e.name, img: e.img, rarity: e.sourceRarity || null, rawRarity: e.sourceRarity ?? null };
-  const views = new Map(MANAGER_POOLS.map(p => [p.id, { ...defaultView(p), open: p.id === "compendium" ? true : defaultView(p).open }]));
+  // ?made=1: New pool just made "UX first pool" (manager.js #addPool):
+  // the newest pool, opened and scrolled to, its Add from compendium
+  // focused, the pinned status line saying so at the top of the pane.
+  const made = q.get("made") === "1" ? { id: "made", name: "UX first pool", pools: [], entries: [] } : null;
+  const shown = made ? [...MANAGER_POOLS, made] : MANAGER_POOLS;
+  // Every pool collapsed but one (poolview.js poolToOpen): the one the GM
+  // last worked on, here the 130-entry compendium pool (or the pool just
+  // dropped on, or just made).
+  const last = made ? made.id : q.get("dropped") === "1" ? "everything" : "compendium";
+  const open = poolToOpen(shown, last);
+  const views = new Map(shown.map(p => [p.id, defaultView(p, p.id === open)]));
   const rowsOf = p => sortRows(poolRows(p, srcOf), views.get(p.id).recent);
-  const managerPools = Object.fromEntries(MANAGER_POOLS.map(p => [p.id, p]));
+  const managerPools = Object.fromEntries(shown.map(p => [p.id, p]));
   // The manager's #pinDrop, with the same pure steps.
   let status = "", dropped = null;
   if (q.get("dropped") === "1") {
@@ -475,12 +486,14 @@ function renderManager() {
     views.set(pool.id, view);
     status = dropNotice({ pool, rows: rowsOf(pool).filter(r => r.recent), cleared });
   }
+  if (made) status = "Made the pool UX first pool. Fill it with Add from compendium, or drop items, an Items folder or a roll table on it.";
   stage.innerHTML = `
     <div class="lc-manager__body">
       ${managerNavHTML({ tab: "pools", shopOpen: true })}
       <section class="lc-tab" role="tabpanel">
-        <div class="lc-toolbar"><button type="button"><i class="fas fa-plus"></i> New pool</button><span class="lc-pool__hint lc-manager__status" role="status">${esc(status)}</span></div>
-        ${MANAGER_POOLS.map(p => `
+        ${statusBarHTML(status, esc)}
+        <div class="lc-toolbar"><button type="button"><i class="fas fa-plus"></i> New pool</button></div>
+        ${shown.map(p => `
         <article class="lc-pool" data-drop-pool="${esc(p.id)}">
           <details class="lc-pool__details" data-pool="${esc(p.id)}"${views.get(p.id).open ? " open" : ""}>
             ${poolSummary(p, rowsOf(p), esc, poolUsers(p.id, managerPools, MANAGER_BOXES).map(b => b.name))}
@@ -490,7 +503,7 @@ function renderManager() {
       </section>
     </div>`;
   const fill = details => {
-    const pool = MANAGER_POOLS.find(p => p.id === details.dataset.pool);
+    const pool = shown.find(p => p.id === details.dataset.pool);
     const view = views.get(pool.id);
     view.open = details.open;
     details.querySelector(".lc-pool__body").innerHTML = view.open ? poolBody(pool, rowsOf(pool), view, esc) : "";
@@ -504,10 +517,20 @@ function renderManager() {
     fill(chip.closest(".lc-pool__details"));
     stage.querySelector(`.lc-pool__details[data-pool="${chip.dataset.pool}"] [data-chip="${chip.dataset.chip}"]`)?.focus();
   });
+  // The manager's #padStatus: the pane's scroll padding is the pinned
+  // status line's height, so what scrolls into view lands under it.
+  const tab = stage.querySelector(".lc-tab");
+  const bar = tab.querySelector(".lc-manager__statusbar");
+  if (status) tab.style.scrollPaddingTop = `${bar.offsetHeight + 4}px`;
   if (dropped) {
     const li = stage.querySelector(`[data-entry="${CSS.escape(dropped)}"]`);
     li?.querySelector("select, input, button")?.focus({ preventScroll: true });
     li?.scrollIntoView({ block: "nearest" });
+  }
+  if (made) {
+    const add = stage.querySelector('.lc-pool__details[data-pool="made"] [data-action="bulkAdd"]');
+    add?.focus({ preventScroll: true });
+    add?.closest(".lc-pool")?.scrollIntoView({ block: "start" });
   }
   document.body.dataset.ready = "1";
 }
@@ -991,7 +1014,7 @@ async function renderAuction() {
 /*
   The manager's Boxes tab (boxestable.js) with the sample games, one of
   every kind, and the log and round their rows read. With ?added=1 it is
-  the tab as "New box" leaves it once saved as the Royal Vault (manager.js
+  the tab as "New crate" leaves it once saved as the Royal Vault (manager.js
   #saveEditor): the status line written after the render, the row marked
   and its Edit focused and scrolled into view. The New buttons and Edit
   need Foundry here.
@@ -1022,6 +1045,14 @@ function renderBoxes({ toggled = null } = {}) {
     stage.querySelector(`[data-action="toggleShelf"][data-box="${CSS.escape(shown)}"]`)?.focus({ preventScroll: true });
     stage.querySelector(".lc-manager__status").textContent = shelfNotice(GAMES.find(b => b.id === shown));
   }
+  // The manager's #padStatus: the pinned line's height is the pane's
+  // scroll padding, and the focused row is brought out from under it.
+  const tab = stage.querySelector(".lc-tab");
+  const bar = tab.querySelector(".lc-manager__statusbar");
+  if (bar.offsetHeight) {
+    tab.style.scrollPaddingTop = `${bar.offsetHeight + 4}px`;
+    document.activeElement?.closest?.(".lc-tab tr")?.scrollIntoView({ block: "nearest" });
+  }
   document.body.dataset.ready = "1";
 }
 /*
@@ -1038,13 +1069,15 @@ function renderStarterBoxes(esc) {
     <div class="lc-manager__body">
       ${managerNavHTML({ tab: "boxes", shopOpen: true })}
       <section class="lc-tab" role="tabpanel">
-        ${boxesTabHTML({ boxes: built.games, pools, log: [], rounds: {}, esc })}
+        ${boxesTabHTML({ boxes: built.games, pools, log: [], rounds: {}, action: built.games.length ? shelfAllHTML() : "", esc })}
       </section>
     </div>`;
   if (built.games.length) {
     const edit = stage.querySelector(`.lc-table [data-action="editBox"][data-box="${CSS.escape(built.games[0].id)}"]`);
     edit?.focus({ preventScroll: true });
     stage.querySelector(".lc-manager__status").textContent = starterNotice(built);
+    const tab = stage.querySelector(".lc-tab");
+    tab.style.scrollPaddingTop = `${tab.querySelector(".lc-manager__statusbar").offsetHeight + 4}px`;
     window.__lootCrates = { starter: built };
   }
   document.body.dataset.ready = "1";
@@ -1137,7 +1170,7 @@ function renderTableEditor(esc) {
 /*
   The guard rails (round 30; editorguard.js, playable.js), on the crate
   editor wired as the manager wires it:
-  ?guard=offshelf  a New box with no pool ticked: the default button reads
+  ?guard=offshelf  a New crate with no pool ticked: the default button reads
                    "Save off the shelf", the On the shelf box is off with
                    the reason under it; ticking a pool brings Add to shelf
                    back.
@@ -1151,7 +1184,7 @@ function renderTableEditor(esc) {
 function renderGuardEditor(esc, mode) {
   const royal = BOXES.find(b => b.id === "royal");
   const isNew = mode === "offshelf";
-  const box = isNew ? { id: "new", name: "New box", price: 100, pools: [], weights: { ...DEFAULT_WEIGHTS }, rules: {} } : { ...royal, pools: [{ id: "core", share: 2 }] };
+  const box = isNew ? { id: "new", name: "New crate", price: 100, pools: [], weights: { ...DEFAULT_WEIGHTS }, rules: {} } : { ...royal, pools: [{ id: "core", share: 2 }] };
   stage.innerHTML = `
     <div class="dialog-form">
       <div class="dialog-content"><div class="lc-form">
@@ -1209,6 +1242,33 @@ function renderGuardEditor(esc, mode) {
     document.querySelector(".page").append(confirm);
     confirm.querySelector('[data-action="no"]').focus();
   }
+  document.body.dataset.ready = "1";
+}
+
+/*
+  The manager's small dialogs (?prompt=newpool|rename|bulk), as promptForm
+  draws them: New pool's name, focused and selected ("New pool" to type
+  over), its button "Make the pool"; Rename pool the same on a pool's name;
+  Add from compendium's filters, dnd5e's item pack picked, Types and
+  Rarities as ticked chips, its first button Preview.
+*/
+function renderPrompt() {
+  const esc = escHTML;
+  const kind = q.get("prompt") ?? "newpool";
+  const PACKS = [{ id: "world.imps", label: "imps" }, { id: "dnd5e.items", label: "Items (SRD)" }, { id: "dnd5e.tradegoods", label: "Trade Goods (SRD)" }, { id: "world.homebrew", label: "Homebrew magic items" }];
+  const TYPES = [["weapon", "Weapon"], ["equipment", "Equipment"], ["consumable", "Consumable"], ["tool", "Tool"], ["loot", "Loot"], ["container", "Container"]].map(([key, label]) => ({ key, label }));
+  const body = kind === "bulk" ? bulkAddHTML({ packs: PACKS, types: TYPES, esc }) : poolNameHTML(kind === "rename" ? "Wren's curios" : "New pool", esc);
+  const ok = kind === "bulk" ? "Preview" : kind === "rename" ? "Save" : "Make the pool";
+  Object.assign(document.getElementById("app").style, { width: `${kind === "bulk" ? 480 : 380}px`, maxWidth: "100%" });
+  stage.innerHTML = `
+    <div class="dialog-form">
+      <div class="dialog-content"><div class="lc-form">${body}</div></div>
+      <footer class="form-footer"><button type="submit" data-action="ok" autofocus><span>${ok}</span></button><button type="button" data-action="cancel"><span>Cancel</span></button></footer>
+    </div>`;
+  // Foundry focuses the first [autofocus]: the name, before the button.
+  const first = stage.querySelector("[autofocus]");
+  first?.focus();
+  if (first?.matches("input")) first.select();
   document.body.dataset.ready = "1";
 }
 
@@ -1278,7 +1338,9 @@ function heldOf(draft, pools) {
 }
 
 function renderKindEditor(esc, kind) {
-  const box = KIND_GAMES()[kind] ?? KIND_GAMES().crate;
+  // ?nopool=1: a New crate with no pool ticked, offering "Make a pool from
+  // a compendium" in its picker (poolpicker.js makePoolHTML).
+  const box = q.get("nopool") === "1" ? { ...KIND_GAMES().crate, id: "new", name: "New crate", pools: [] } : KIND_GAMES()[kind] ?? KIND_GAMES().crate;
   const pools = EDITOR_POOLS;
   const poolIds = Object.keys(pools);
   const lots = lotChoices(BOXES, pools, lotOf(box));
@@ -1400,6 +1462,7 @@ stage.addEventListener("click", e => {
 if (state === "welcome") renderWelcome();
 else if (state === "shop") renderShop();
 else if (state === "editor") renderEditor();
+else if (state === "prompt") renderPrompt();
 else if (state === "preview") renderPreview();
 else if (state === "manager" && q.get("tab") === "boxes") renderBoxes();
 else if (state === "manager" && q.get("tab") === "log") renderLog();

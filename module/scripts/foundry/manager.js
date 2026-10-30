@@ -101,7 +101,7 @@ import { wireScratchEditor, draftScratch, scratchPreview, scratchPreviewHTML, sc
 import { wireFill } from "../games/scratchplan.js";
 import { lotOf, lotFromEntry, draftAuction, auctionPreview, auctionPreviewHTML, auctionSummary } from "../games/auction.js";
 import { newDraft, crateFromPool, crateFromTable, copyOf, editorTitle, addLabel, addedNotice, deleteTitle, deleteGameText, deletedNotice } from "../views/newgame.js";
-import { boxesTabHTML } from "../views/boxestable.js";
+import { boxesTabHTML, shelfAllHTML } from "../views/boxestable.js";
 import { logTableHTML, logRarityNote, logPayoutNote, logStakeNote, logLateNote } from "../views/logtable.js";
 // The log's notes stay reachable here for the checks that import them from the manager.
 export { logRarityNote, logPayoutNote, logStakeNote, logLateNote };
@@ -113,14 +113,14 @@ const cancelTableRound = roundId => import("./table.js").then(m => m.cancelRound
 // The shop, opened from the nav's "View shop"; loaded when pressed, as the
 // table is (shop.js reaches back here for its own "Manage crates").
 const openShopWindow = () => import("./shop.js").then(m => m.openShop());
-import { getRounds, getPools, getBoxes, getLog, dayMode, newId, createPool, updatePool, removePool, createBox, updateBox, removeBox, entryFromItem, entriesFromDrop, addEntries, packHasLoot, LOOT_TYPES, isLootType, isShopOpen, setShopOpen, checkSources, sweepPools, removeEntry, patchEntry } from "./store.js";
+import { getRounds, getPools, getBoxes, getLog, dayMode, newId, createPool, updatePool, removePool, createBox, updateBox, updateBoxes, removeBox, entryFromItem, entriesFromDrop, addEntries, packHasLoot, LOOT_TYPES, isLootType, isShopOpen, setShopOpen, checkSources, sweepPools, removeEntry, patchEntry } from "./store.js";
 import { flattenPool, withSources, entryWeight, curateEntries, oddsModeOf } from "../core/odds.js";
-import { SKIPPED_NOUN, describeSkipped, dropPreviewHTML, savedNotice, PAGE_ROWS, defaultView, poolRows, sortRows, filterRows, pageRows, nextRows, poolCount, poolSummary, poolBody, chipsHTML, unsetButton, footHTML, entryRow, entryParts, pinRecent, dropNotice, poolUsers, usersText, deleteImpact, removeImpact, deletePoolText, removeEntryText } from "../views/poolview.js";
+import { SKIPPED_NOUN, describeSkipped, dropPreviewHTML, savedNotice, PAGE_ROWS, defaultView, poolToOpen, poolNameHTML, bulkAddHTML, poolRows, sortRows, filterRows, pageRows, nextRows, poolCount, poolSummary, poolBody, chipsHTML, unsetButton, footHTML, entryRow, entryParts, pinRecent, dropNotice, poolUsers, usersText, deleteImpact, removeImpact, deletePoolText, removeEntryText } from "../views/poolview.js";
 import { formatPrice, parsePrice, unreadablePrice } from "../core/currency.js";
-import { managerNavHTML, MANAGER_TABS, directoryMenuEntry } from "../views/route.js";
+import { managerNavHTML, MANAGER_TABS, directoryMenuEntry, statusBarHTML } from "../views/route.js";
 import { describeRefund, refundPull } from "./refund.js";
 import { postRefundCard } from "./chat.js";
-import { makeTicket } from "./tickets.js";
+import { makeTicket, showInItems } from "./tickets.js";
 import { changeCount } from "../core/redraw.js";
 import { perCharacterFromForm, restocked, stockAfterRefund, stockField, stockFromForm } from "../core/limits.js";
 import { onShelf, shelfRules, shelfNotice, savedOffNotice, addedOffNotice } from "../core/shelf.js";
@@ -131,7 +131,7 @@ import { starterPresent, hasStarter, starterAgainText, starterNotice, starterCal
 import { addStarterSet } from "./starterbuild.js";
 import { syncShares, renumberCards } from "../views/editorfields.js";
 import { editorHTML, cardRow, pocketRow, lotKey, lotChoices, lotOptionHTML, wireLotSearch, showWhen, foldWeights, wireEditor, wireReadout } from "../views/editors.js";
-import { wirePoolPicker } from "../views/poolpicker.js";
+import { wirePoolPicker, poolPickerHTML, madeText } from "../views/poolpicker.js";
 import { t, listAnd } from "../core/i18n.js";
 
 const { ApplicationV2, DialogV2 } = foundry.applications.api;
@@ -163,7 +163,7 @@ export class CrateManager extends ApplicationV2 {
       editBox: CrateManager.#editBox, toggleShelf: CrateManager.#toggleShelf, copyBox: CrateManager.#copyBox, makeTicket: CrateManager.#makeTicket, deleteBox: CrateManager.#deleteBox, reshuffle: CrateManager.#reshuffle, printRoll: CrateManager.#printRoll, openTable: CrateManager.#openTable,
       refund: CrateManager.#refund, toggleShop: CrateManager.#toggleShop, openShop: CrateManager.#openShop, toggleMisses: CrateManager.#toggleMisses,
       filterChip: CrateManager.#filterChip, showMore: CrateManager.#showMore,
-      starterCrates: CrateManager.#starterCrates,
+      starterCrates: CrateManager.#starterCrates, shelfAll: CrateManager.#shelfAll,
     },
   };
 
@@ -191,11 +191,15 @@ export class CrateManager extends ApplicationV2 {
 
   // Each pool's view: open, name search, filter chip, rows shown.
   #view = new Map();
+  // A pool's view starts collapsed, but for the one the GM last worked on
+  // (or the newest): poolview.js poolToOpen.
   #viewOf(pool) {
     let v = this.#view.get(pool.id);
-    if (!v) this.#view.set(pool.id, (v = defaultView(pool)));
+    if (!v) this.#view.set(pool.id, (v = defaultView(pool, pool.id === poolToOpen(getPools(), this.#lastPool))));
     return v;
   }
+  // The pool this window last made, filled, renamed or edited.
+  #lastPool = null;
   #rowsOf(pool) { return sortRows(poolRows(pool, e => this.#srcOf(e)), this.#viewOf(pool).recent); }
 
   /*
@@ -227,9 +231,31 @@ export class CrateManager extends ApplicationV2 {
     });
   }
   #poolEl(poolId) { return this.element?.querySelector(`.lc-pool[data-drop-pool="${CSS.escape(poolId)}"]`) ?? null; }
-  #announce(text) {
+  /*
+    The tab's status line (route.js statusBarHTML), pinned to the top of
+    the pane so it is in view wherever the GM is. Once it holds words, the
+    pane's scroll padding is its height, so a row scrolled into view (a new
+    game's, a dropped item's) lands under it, not behind it. A starter set's
+    "Put all on the shelf" goes with the next thing the line says, unless
+    that is the starter set's own sentence (`offer`).
+  */
+  #announce(text, { offer = false } = {}) {
+    if (!offer && this.#shelfOffer) {
+      this.#shelfOffer = null;
+      this.element?.querySelector('[data-action="shelfAll"]')?.remove();
+    }
     const el = this.element?.querySelector(".lc-manager__status");
     if (el) el.textContent = text;
+    this.#padStatus();
+  }
+  #padStatus() {
+    const tab = this.element?.querySelector(".lc-tab");
+    const bar = tab?.querySelector(".lc-manager__statusbar");
+    const high = bar?.offsetHeight;
+    if (!tab?.style || typeof high !== "number") return;
+    tab.style.scrollPaddingTop = high ? `${high + 4}px` : "";
+    const active = tab.ownerDocument?.activeElement;
+    if (high && active && active !== tab && tab.contains(active)) (active.closest?.("tr, li") ?? active).scrollIntoView?.({ block: "nearest" });
   }
 
   // An open pool's whole body, drawn again from the stored pool, with focus
@@ -258,6 +284,7 @@ export class CrateManager extends ApplicationV2 {
   #pinDrop(poolId, uuids, { label = "", added = uuids.length, duplicate = false } = {}) {
     const pool = getPools()[poolId];
     if (!pool || !uuids.length) return this.render();
+    this.#lastPool = poolId;
     for (const [id, v] of this.#view) {
       if (id === poolId || !v.recent?.length) continue;
       v.recent = [];
@@ -303,6 +330,7 @@ export class CrateManager extends ApplicationV2 {
   async _onClose(options) {
     for (const v of this.#view.values()) v.recent = [];
     this.#recentBox = null;
+    this.#shelfOffer = null;
     return super._onClose?.(options);
   }
 
@@ -395,12 +423,40 @@ export class CrateManager extends ApplicationV2 {
     });
   }
 
-  static async #addPool() { await createPool({ name: t("LOOTCRATES.Pools.NewPool") }); this.render(); }
+  /*
+    New pool asks for the name first (focused and selected, "New pool"
+    until typed over), then makes the pool and shows it: the Pools tab
+    scrolled to it, opened, its Add from compendium focused (the next thing
+    a new pool needs), and the status line saying so. Cancel makes nothing.
+    It used to append an unnamed "New pool" at the foot of a 17-screen tab
+    with nothing said, and cc-dev had two stray empty ones from it.
+  */
+  static async #addPool(_e, target) {
+    const data = await promptForm(t("LOOTCRATES.Manager.NewPoolTitle"), poolNameHTML(t("LOOTCRATES.Pools.NewPool"), esc), {
+      okLabel: t("LOOTCRATES.Manager.NewPoolCreate"), select: 'input[name="name"]', position: { width: 380 },
+    });
+    if (!data) return target?.focus?.();
+    const pool = await createPool({ name: String(data.name ?? "").trim() || t("LOOTCRATES.Pools.NewPool") });
+    this.#lastPool = pool.id;
+    this.#view.set(pool.id, defaultView(pool, true));
+    this.tab = "pools";
+    this.#focusPool = pool.id;
+    await this.render();
+    this.#announce(t("LOOTCRATES.Manager.PoolMade", { name: pool.name }));
+    return pool;
+  }
 
+  // The pencil: Rename pool, its tooltip and its dialog in the same words,
+  // the name focused and selected to type over.
   static async #editPool(_e, target) {
     const pool = getPools()[target.dataset.pool];
-    const data = await promptForm(t("LOOTCRATES.Manager.EditPool"), `<label>${t("LOOTCRATES.Manager.Name")} <input name="name" value="${esc(pool.name)}"></label>`, { guard: { name: pool.name } });
-    if (data) { await updatePool(pool.id, { name: data.name || pool.name }); this.render(); }
+    if (!pool) return this.render();
+    const data = await promptForm(t("LOOTCRATES.Manager.EditPool"), poolNameHTML(pool.name, esc), { guard: { name: pool.name }, select: 'input[name="name"]', position: { width: 380 } });
+    if (!data) return;
+    const saved = await updatePool(pool.id, { name: String(data.name ?? "").trim() || pool.name });
+    this.#lastPool = pool.id;
+    await this.render();
+    if (saved) this.#announce(t("LOOTCRATES.Manager.PoolRenamed", { name: saved.name }));
   }
 
   // The pools as the last source check found them, so a box's "nothing
@@ -499,6 +555,7 @@ export class CrateManager extends ApplicationV2 {
     // The pool is drawn as stored once this row is, unless something else
     // changed meanwhile (another client's edit, a render that replaced the
     // row): then the batch that follows redraws the tab (refreshManager).
+    this.#lastPool = poolId;
     const before = changeCount();
     const synced = this.#bodyDrawn(poolId);
     const saved = await updatePool(poolId, fresh => ({ ...fresh, entries: curateEntries(fresh.entries, [uuid], change) }));
@@ -537,42 +594,59 @@ export class CrateManager extends ApplicationV2 {
   // fill up with spells or class features.
   static async #bulkAdd(_e, target) {
     const pool = getPools()[target.dataset.pool];
-    const packs = game.packs.filter(packHasLoot);
-    if (!packs.length) return ui.notifications.warn(t("LOOTCRATES.Manager.NoLootPacks"));
-    const types = LOOT_TYPES.filter(k => k in (CONFIG.Item.typeLabels ?? {}));
-    const data = await promptForm(t("LOOTCRATES.Pools.BulkAdd"), `
-      <label>${t("LOOTCRATES.Manager.Compendium")} <select name="pack">${packs.map(p => `<option value="${esc(p.collection)}">${esc(p.metadata.label)} (${esc(p.collection)})</option>`).join("")}</select></label>
-      <label>${t("LOOTCRATES.Manager.Types")} <select name="types" multiple size="5">${types.map(k => `<option value="${esc(k)}" ${["weapon", "equipment", "consumable", "tool"].includes(k) ? "selected" : ""}>${esc(game.i18n.localize(CONFIG.Item.typeLabels[k]))}</option>`).join("")}</select></label>
-      <label>${t("LOOTCRATES.Manager.Rarities")} <select name="rarities" multiple size="6">${RARITIES.map(r => `<option value="${r}" ${r === "common" ? "" : "selected"}>${RARITY_LABEL[r]}</option>`).join("")}</select></label>
-      <label>${t("LOOTCRATES.Manager.NameContains")} <input name="name" placeholder="${t("LOOTCRATES.Manager.NameContainsPlaceholder")}"></label>`);
-    if (!data) return;
-    const filter = { types: data.types, rarities: data.rarities, name: data.name };
-    const plan = await entriesFromDrop({ type: "Compendium", collection: data.pack, filter }, { known: pool.entries.map(e => e.uuid) });
+    if (!pool) return this.render();
+    const plan = await this.#askCompendium(pool.entries.map(e => e.uuid));
     if (plan) await this.#previewAdd(pool.id, plan);
   }
 
-  // The preview before a folder, compendium, table or filter goes in.
-  async #previewAdd(poolId, plan) {
-    const pool = getPools()[poolId];
+  /*
+    Add from compendium's filters (poolview.js bulkAddHTML): the compendium,
+    Types and Rarities as ticked chips, Name contains. Its first button
+    reads Preview, as that is all it does: the plan it returns (store.js
+    entriesFromDrop) goes to the preview, and nothing is added until the
+    preview's Add. Only packs and types that can hold loot are offered: a
+    pool should never fill up with spells or class features.
+  */
+  async #askCompendium(known = []) {
+    const packs = game.packs.filter(packHasLoot);
+    if (!packs.length) { ui.notifications.warn(t("LOOTCRATES.Manager.NoLootPacks")); return null; }
+    const labels = CONFIG.Item.typeLabels ?? {};
+    const types = LOOT_TYPES.filter(k => k in labels).map(key => ({ key, label: game.i18n.localize(labels[key]) }));
+    const data = await promptForm(t("LOOTCRATES.Pools.BulkAdd"), bulkAddHTML({ packs: packs.map(p => ({ id: p.collection, label: p.metadata.label })), types, esc }), {
+      okLabel: t("LOOTCRATES.Manager.PreviewItems"), position: { width: 480 },
+    });
+    if (!data) return null;
+    const filter = { types: data.types ?? [], rarities: data.rarities ?? [], name: data.name };
+    return entriesFromDrop({ type: "Compendium", collection: data.pack, filter }, { known });
+  }
+
+  // The preview before a folder, compendium, table or filter goes in a pool
+  // (named `name`): true once the GM presses Add.
+  async #confirmPlan(name, plan) {
     const n = plan.entries.length;
     const skipped = describeSkipped(plan.skipped, { flattened: plan.flattened ?? 0 });
     if (!n) {
-      ui.notifications.info(skipped.length ? t("LOOTCRATES.Manager.NothingToAddWhy", { pool: pool.name, label: plan.label, why: skipped.join(t("LOOTCRATES.Common.ListSemicolon")) }) : t("LOOTCRATES.Manager.NothingToAdd", { pool: pool.name, label: plan.label }));
+      ui.notifications.info(skipped.length ? t("LOOTCRATES.Manager.NothingToAddWhy", { pool: name, label: plan.label, why: skipped.join(t("LOOTCRATES.Common.ListSemicolon")) }) : t("LOOTCRATES.Manager.NothingToAdd", { pool: name, label: plan.label }));
       return false;
     }
     const items = t(n === 1 ? "LOOTCRATES.Editor.ItemsOne" : "LOOTCRATES.Editor.ItemsMany", { count: n });
     const action = await DialogV2.wait({
-      window: { title: t("LOOTCRATES.Manager.AddTo", { pool: pool.name }) },
+      window: { title: t("LOOTCRATES.Manager.AddTo", { pool: name }) },
       classes: ["loot-crates", "lc-dialog"],
       position: { width: 460 },
-      content: dropPreviewHTML(plan, pool.name, esc),
+      content: dropPreviewHTML(plan, name, esc),
       buttons: [
         { action: "add", label: t("LOOTCRATES.Manager.AddItems", { items }), icon: "fas fa-plus", default: true },
         { action: "cancel", label: t("LOOTCRATES.Common.Cancel") },
       ],
       rejectClose: false,
     });
-    if (action !== "add") return false;
+    return action === "add";
+  }
+
+  async #previewAdd(poolId, plan) {
+    const pool = getPools()[poolId];
+    if (!pool || !await this.#confirmPlan(pool.name, plan)) return false;
     const had = new Set((getPools()[poolId]?.entries ?? []).map(e => e.uuid));
     const added = await addEntries(poolId, plan.entries);
     if (!added) { ui.notifications.info(t("LOOTCRATES.Manager.NothingNewToAdd", { pool: pool.name, label: plan.label })); this.render(); return false; }
@@ -682,7 +756,8 @@ export class CrateManager extends ApplicationV2 {
       const saved = await updateBox(box.id, build);
       if (!saved) ui.notifications.warn(t("LOOTCRATES.Manager.DeletedWhileEditing", { name: box.name }));
       await this.render();
-      if (saved && why && was) this.#announce(savedOffNotice(saved, why));
+      // Every save says so: "Saved Goblin Crate.", or why it went off the shelf.
+      if (saved) this.#announce(why && was ? savedOffNotice(saved, why) : t("LOOTCRATES.Game.Saved", { name: saved.name }));
       return;
     }
     const saved = await createBox(build(box));
@@ -737,9 +812,41 @@ export class CrateManager extends ApplicationV2 {
       this.#focusBox = report.games[0].id;
       this.#recentBox = null;
     }
+    // They come in off the shelf: one button beside the sentence puts them
+    // all out, as On the shelf on each row would.
+    const off = report.games.filter(g => !onShelf(getBoxes()[g.id] ?? g)).map(g => g.id);
+    this.#shelfOffer = off.length ? off : null;
     await this.render({ force: true });
-    this.#announce(starterNotice(report));
+    this.#announce(starterNotice(report), { offer: true });
     return report;
+  }
+
+  /*
+    "Put all on the shelf" after starter crates: the games the set just
+    added go on the shelf in one write (store.js updateBoxes), as each
+    row's On the shelf would put them; one that can't be played (a starter
+    crate whose compendium gave nothing, playable.js) stays off and is
+    named. Focus goes to the first game's row; the status line says how
+    many are out, and that the shop is closed if it is.
+  */
+  #shelfOffer = null;
+  static async #shelfAll() {
+    const ids = this.#shelfOffer ?? [];
+    this.#shelfOffer = null;
+    const kept = [];
+    const saved = await updateBoxes(ids, fresh => {
+      if (onShelf(fresh)) return fresh;
+      if (unplayableReason(fresh, getPools())) { kept.push(fresh.name); return fresh; }
+      return { ...fresh, rules: shelfRules(fresh.rules ?? {}, true) };
+    });
+    const on = saved.filter(onShelf).length;
+    if (ids[0]) this.#focusBox = ids[0];
+    await this.render();
+    const parts = [t(on === 1 ? "LOOTCRATES.Manager.ShelvedOne" : "LOOTCRATES.Manager.ShelvedMany", { count: on })];
+    if (on && !isShopOpen()) parts.push(t("LOOTCRATES.Manager.ShelvedClosed"));
+    if (kept.length) parts.push(t(kept.length === 1 ? "LOOTCRATES.Manager.ShelvedKeptOne" : "LOOTCRATES.Manager.ShelvedKeptMany", { names: listAnd(kept) }));
+    this.#announce(parts.join(" "));
+    return saved;
   }
 
   // The table's round from the Boxes tab: opened (or brought forward) as
@@ -814,12 +921,48 @@ export class CrateManager extends ApplicationV2 {
     try {
       const { item, folder } = await makeTicket(box);
       this.#announce(t("LOOTCRATES.Manager.TicketMade", { name: item.name, folder: folder?.name ?? t("LOOTCRATES.Ticket.Folder") }));
+      // And in the Items sidebar itself: its tab, its folder open, the new
+      // ticket in view and marked for a moment (tickets.js showInItems).
+      showInItems(item, folder).catch(err => console.warn("loot-crates | showing the ticket in the Items sidebar failed", err));
       return item;
     } catch (err) {
       console.error(`loot-crates | making a ticket for ${box.name} failed`, err);
       this.#announce(t("LOOTCRATES.Manager.TicketFailed", { name: box.name }));
       return null;
     }
+  }
+
+  /*
+    "Make a pool from a compendium" in a crate editor with no pool ticked
+    (poolpicker.js makePoolHTML): Add from compendium and its preview, as
+    on a pool's bar, into a new pool named for the crate (what the name
+    field says now). Once added, the picker is drawn again with the new
+    pool ticked and first, its checkbox focused, the odds redrawn, and the
+    line under the picker says what was made. The crate's draft is still
+    unsaved; the pool is the GM's like any other (a Cancel keeps it).
+    Cancelling the compendium or its preview makes nothing.
+  */
+  async #makePoolHere(form, box, poolIds, paint) {
+    const button = form.querySelector("[data-make-pool]");
+    const name = form.querySelector('input[name="name"]')?.value.trim() || box.name || t("LOOTCRATES.Pools.NewPool");
+    const plan = await this.#askCompendium([]);
+    if (!plan || !await this.#confirmPlan(name, plan)) return button?.focus?.();
+    const pool = await createPool({ name });
+    const added = await addEntries(pool.id, plan.entries);
+    this.#lastPool = pool.id;
+    poolIds.push(pool.id);
+    const fieldset = form.querySelector(".lc-pool-picks");
+    if (!fieldset) return paint();
+    const legend = fieldset.querySelector("legend");
+    fieldset.replaceChildren(...(legend ? [legend] : []));
+    fieldset.insertAdjacentHTML("beforeend", `${poolPickerHTML(Object.values(getPools()), [{ id: pool.id, share: 1 }], { esc, id: `lc-picks-${box.id}`, makePool: true })}<p class="lc-form__hint lc-pool-picker__made" role="status"></p>`);
+    wirePoolPicker(fieldset);
+    paint();
+    fieldset.querySelector(`input[name="pool.${CSS.escape(pool.id)}"]`)?.focus();
+    // Written a moment after the line is in the page, so it is read out.
+    const said = fieldset.querySelector(".lc-pool-picker__made");
+    setTimeout(() => { if (said) said.textContent = madeText(pool.name, added); }, 60);
+    return pool;
   }
 
   // The crate's editor; on a new draft nothing is written until Save.
@@ -829,7 +972,16 @@ export class CrateManager extends ApplicationV2 {
     const poolIds = pools.map(p => p.id);
     const data = await promptForm(editorTitle(box, isNew, opts.copy), editorHTML("crate", box, editorCtx(opts)), {
       // Restock fills the stored record at Save; a draft has none to fill.
-      onForm: form => { const shelf = wireShelf(form, isNew); wirePrice(form); wireStock(form, box); liveOdds(form, box, poolIds, cratePreview, draftBox, shelf); },
+      onForm: form => {
+        const shelf = wireShelf(form, isNew);
+        wirePrice(form);
+        wireStock(form, box);
+        const paint = liveOdds(form, box, poolIds, cratePreview, draftBox, shelf);
+        form.addEventListener("click", e => {
+          if (!e.target.closest?.("[data-make-pool]")) return;
+          this.#makePoolHere(form, box, poolIds, paint).catch(err => { console.error("loot-crates | making a pool from a compendium failed", err); ui.notifications.warn(t("LOOTCRATES.Manager.StarterFailed")); });
+        });
+      },
       position: { width: 460 },
       okLabel: saveLabel(isNew),
       guard: editorGuardOf(box, isNew, { free: true }),
@@ -1471,7 +1623,8 @@ export class CrateManager extends ApplicationV2 {
     // One status line for the whole tab: the source check, then what a
     // search, a chip or Show more did.
     return `
-      <div class="lc-toolbar"><button type="button" data-action="addPool"><i class="fas fa-plus"></i> ${t("LOOTCRATES.Pools.NewPool")}</button><span class="lc-pool__hint lc-manager__status" role="status">${this.checking ? t("LOOTCRATES.Manager.Checking") : ""}</span></div>
+      ${statusBarHTML(this.checking ? t("LOOTCRATES.Manager.Checking") : "", esc)}
+      <div class="lc-toolbar"><button type="button" data-action="addPool"><i class="fas fa-plus"></i> ${t("LOOTCRATES.Pools.NewPool")}</button></div>
       ${pools.length ? pools.map(p => {
         const rows = this.#rowsOf(p);
         const view = this.#viewOf(p);
@@ -1494,7 +1647,7 @@ export class CrateManager extends ApplicationV2 {
     const stored = getPools();
     const entries = Object.keys(stored).flatMap(id => flattenPool(id, stored, new Set(), { includeMissing: true }));
     const pools = withSources(stored, await this.#checkedSources(entries));
-    return boxesTabHTML({ boxes, pools, log: getLog(), rounds: getRounds(), recent: this.#recentBox, esc });
+    return boxesTabHTML({ boxes, pools, log: getLog(), rounds: getRounds(), recent: this.#recentBox, action: this.#shelfOffer ? shelfAllHTML() : "", esc });
   }
 
   // The Pull log (logtable.js): newest first, every game's misses folded per
@@ -1509,6 +1662,8 @@ export class CrateManager extends ApplicationV2 {
   // render (once), and the row keeps its mark until the next New or close.
   #focusBox = null;
   #recentBox = null;
+  // The pool New pool just made: scrolled to, its Add from compendium focused.
+  #focusPool = null;
 
   // A full render (a source check landing late, a rename, a refund) keeps
   // focus on the same control when it is drawn again, and the caret in a
@@ -1535,6 +1690,10 @@ export class CrateManager extends ApplicationV2 {
     // After a New, the row the game landed on: its Edit focused (the next
     // thing a GM does to a new game) and the row scrolled into view, so
     // the thing just made is the thing on screen, not the foot of a table.
+    const poolId = this.#focusPool;
+    this.#focusPool = null;
+    const add = poolId && content.querySelector(`.lc-pool__details[data-pool="${CSS.escape(poolId)}"] [data-action="bulkAdd"]`);
+    if (add) { add.focus({ preventScroll: true }); add.closest(".lc-pool")?.scrollIntoView?.({ block: "start" }); return; }
     const boxId = this.#focusBox;
     this.#focusBox = null;
     const edit = boxId && content.querySelector(`.lc-table [data-action="editBox"][data-box="${CSS.escape(boxId)}"]`);
@@ -1591,8 +1750,14 @@ function readForm(form) {
     else out[k] = v;
   }
   for (const sel of form.querySelectorAll("select[multiple]")) out[sel.name] = [...sel.selectedOptions].map(o => o.value);
-  for (const cb of form.querySelectorAll('input[type="checkbox"]')) out[cb.name] = cb.checked;
-  return out;
+  // A row of chips sharing one name (data-multi: Add from compendium's
+  // Types and Rarities) is the list of the ticked ones' values.
+  const multi = {};
+  for (const cb of form.querySelectorAll('input[type="checkbox"]')) {
+    if (cb.hasAttribute?.("data-multi")) (multi[cb.name] ??= []).push(...(cb.checked ? [cb.value] : []));
+    else out[cb.name] = cb.checked;
+  }
+  return Object.assign(out, multi);
 }
 
 // The price field's check (editors.js priceFieldHTML): while it can't be
@@ -1678,11 +1843,22 @@ function guardFor(form, { name, free = false }) {
   };
 }
 
+// A field the dialog focuses (its `autofocus`) with its text selected, to
+// type over: on the focus, or at once if it already has it (Foundry
+// focuses [autofocus] after the first render, before or after this runs).
+function selectOnFocus(el) {
+  if (!el) return;
+  const pick = () => el.select?.();
+  el.addEventListener("focus", pick, { once: true });
+  if (el.ownerDocument?.activeElement === el) pick();
+}
+
 // `onForm(form)` runs once, with the dialog's <form>, when it is first on
 // screen; `okLabel` is the default button's words (Save unless said);
 // `guard` ({ name, free }, guardFor) asks before a changed form is thrown
-// away, from the form as onForm left it.
-async function promptForm(title, fieldsHtml, { onForm, position, okLabel = t("LOOTCRATES.Common.Save"), guard = null } = {}) {
+// away, from the form as onForm left it; `select` is a field to select on
+// its first focus (selectOnFocus).
+async function promptForm(title, fieldsHtml, { onForm, position, okLabel = t("LOOTCRATES.Common.Save"), guard = null, select = null } = {}) {
   const result = await EditorDialog.wait({
     window: { title },
     classes: ["loot-crates", "lc-dialog"],
@@ -1695,12 +1871,13 @@ async function promptForm(title, fieldsHtml, { onForm, position, okLabel = t("LO
       { action: "cancel", label: t("LOOTCRATES.Common.Cancel"), callback: () => null },
     ],
     rejectClose: false,
-    render: onForm || guard ? (_e, dialog) => {
+    render: onForm || guard || select ? (_e, dialog) => {
       const form = dialog.element?.querySelector(".lc-form")?.closest("form");
       if (!form || form.dataset.lcReady) return;
       form.dataset.lcReady = "1";
       onForm?.(form);
       if (guard) dialog.lcGuard = guardFor(form, guard);
+      if (select) selectOnFocus(form.querySelector(select));
     } : undefined,
   });
   // DialogV2 resolves a button whose callback gives nothing to its action

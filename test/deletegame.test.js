@@ -118,7 +118,7 @@ describe("Delete on a table game with a live round", () => {
     const app = await manager();
     await pressDelete(app, "w1");
     expect(confirms).toHaveLength(1);
-    expect(confirms[0].window.title).toBe("Delete wheel");
+    expect(confirms[0].window.title).toBe("Delete Roulette wheel");
     expect(confirms[0].content).toBe("<p>Delete <strong>Wheel of Fate</strong>? Its round still holds 3 stakes (35 gp); they are refunded first.</p>");
     // No: nothing is called off and nothing is deleted.
     expect(table.cancelRound).not.toHaveBeenCalled();
@@ -162,7 +162,7 @@ describe("Delete on a game with no round", () => {
   it("asks only the name and removes it, as before", async () => {
     const app = await manager();
     await pressDelete(app, "c1");
-    expect(confirms[0].window.title).toBe("Delete box");
+    expect(confirms[0].window.title).toBe("Delete crate");
     expect(confirms[0].content).toBe("<p>Delete <strong>Goblin Crate</strong>?</p>");
     expect(table.cancelRound).not.toHaveBeenCalled();
     expect(calls).toEqual([["removeBox", "c1"]]);

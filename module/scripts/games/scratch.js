@@ -327,8 +327,8 @@ export function rollReason(game, pools, log = []) {
 
 /* ---------- The words for a prize and the odds ---------- */
 
-// One part's words: "25 gp", "Rare item", and the gem "Bonus, 25 gp" on
-// its own or "the gem (25 gp)" beside other parts.
+// One part's words: "25 gp", "Rare item", and the bonus spot "Bonus, 25 gp"
+// on its own or "the bonus spot (25 gp)" beside other parts.
 const partText = (p, alone = true) => {
   if (p.kind === "item") return t("LOOTCRATES.Scratch.ItemPrize", { rarity: RARITY_LABEL[p.rarity] ?? p.rarity });
   if (p.kind === "bonus") return t(alone ? "LOOTCRATES.Scratch.BonusPrize" : "LOOTCRATES.Scratch.GemPart", { price: formatPrice(p.gp) });
@@ -336,7 +336,7 @@ const partText = (p, alone = true) => {
 };
 
 // A prize line's words: "25 gp", "Rare item", "Bonus, 25 gp", or its
-// parts joined, "Rare item + 25 gp + the gem (25 gp)".
+// parts joined, "Rare item + 25 gp + the bonus spot (25 gp)".
 export function prizeText(p) {
   const parts = p.parts ?? [p];
   return parts.map(q => partText(q, parts.length === 1)).join(t("LOOTCRATES.Scratch.Plus"));

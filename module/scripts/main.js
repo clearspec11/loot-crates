@@ -15,7 +15,7 @@ import { registerSocket, requestPull, requestStake, requestRedeem, isActiveGM, r
 import { makeTicket, ticketUseHook } from "./foundry/tickets.js";
 import { registerKind, getKind, kindOf } from "./games/kinds.js";
 import { openShop, refreshShop, registerShopHooks } from "./foundry/shop.js";
-import { addDirectoryButtons } from "./views/route.js";
+import { addDirectoryButtons, placeMenuEntry } from "./views/route.js";
 import { openManager, refreshManager, CrateManager, makeCrateFromTable, makeCrateMenuEntry, addStarterCrates } from "./foundry/manager.js";
 import { storeRedraw } from "./core/redraw.js";
 import { performPull } from "./foundry/pull.js";
@@ -101,8 +101,9 @@ Hooks.on("renderItemDirectory", (_app, html) => {
   if (root) addDirectoryButtons(root, { isGM: !!game.user?.isGM, open: { shop: () => openShop(), manager: () => openManager() } });
 });
 
-// "Make a crate" on a roll table's menu in the Roll Tables sidebar (a GM's).
-Hooks.on("getRollTableContextOptions", (_app, options) => { if (Array.isArray(options)) options.push(makeCrateMenuEntry()); });
+// "Make a crate" on a roll table's menu in the Roll Tables sidebar (a GM's),
+// straight after the table's own Draw (route.js placeMenuEntry).
+Hooks.on("getRollTableContextOptions", (_app, options) => { placeMenuEntry(options, makeCrateMenuEntry()); });
 
 // Who the active GM is can change while the world runs: a GM joins or
 // leaves (userConnected, on connect and disconnect), or a user's role

@@ -93,7 +93,7 @@ describe("guardDialog: Cancel, X and Escape ask only once something changed", ()
     discards = 0;
     saves = 0;
     const result = Guarded.wait({
-      window: { title: "Edit box" },
+      window: { title: "Edit crate" },
       content: `<div class="lc-form"><input name="price" value="25 gp"></div>`,
       buttons: [{ action: "ok", label: "Save", default: true, callback: () => ({ saved: true }) }, { action: "cancel", label: "Cancel", callback: () => null }],
       render: (_e, dialog) => { dialog.lcGuard = { dirty: () => changed, discard: async () => { discards++; return answer; }, ...(beforeSave ? { beforeSave: async () => { saves++; return beforeSave(); } } : {}) }; },
@@ -143,7 +143,7 @@ describe("guardDialog: Cancel, X and Escape ask only once something changed", ()
     let release;
     changed = true;
     const result = Guarded.wait({
-      window: { title: "Edit box" }, content: "<div class=\"lc-form\"></div>",
+      window: { title: "Edit crate" }, content: "<div class=\"lc-form\"></div>",
       buttons: [{ action: "ok", label: "Save", callback: () => ({}) }, { action: "cancel", label: "Cancel", callback: () => null }],
       render: (_e, dialog) => { dialog.lcGuard = { dirty: () => true, discard: () => { discards++; return new Promise(r => { release = r; }); } }; },
     });
@@ -353,7 +353,7 @@ describe("a game that can't be played saves off the shelf", () => {
     expect(field("onShelf").checked).toBe(false);
     expect(field("onShelf").disabled).toBe(true);
     const why = open.element.querySelector("[data-shelf-why]");
-    expect(why.textContent).toBe("This box can drop nothing: tick a pool above.");
+    expect(why.textContent).toBe("This crate can drop nothing: tick a pool above.");
     expect(field("onShelf").getAttribute("aria-describedby")).toBe(why.id);
     tickBox("pool.p", true);
     expect(okWords()).toBe("Add to shelf");
@@ -377,7 +377,7 @@ describe("a game that can't be played saves off the shelf", () => {
     expect(made.rules.shelved).toBe(false);
     // A player's shop leaves it out.
     expect(shelf.shelfFor(Object.values(store.getBoxes())).map(b => b.name)).toEqual(["Goblin Crate"]);
-    expect(status(app)).toBe("Empty Crate added off the shelf. This box can drop nothing: tick a pool above.");
+    expect(status(app)).toBe("Empty Crate added off the shelf. This crate can drop nothing: tick a pool above.");
   });
 
   it("an edit that leaves a game on the shelf unplayable saves it off the shelf, and the status says why", async () => {
@@ -390,7 +390,7 @@ describe("a game that can't be played saves off the shelf", () => {
     await pending;
     await tick();
     expect(store.getBoxes().c1.rules.shelved).toBe(false);
-    expect(status(app)).toBe("Goblin Crate is saved off the shelf. This box can drop nothing: tick a pool above.");
+    expect(status(app)).toBe("Goblin Crate is saved off the shelf. This crate can drop nothing: tick a pool above.");
   });
 
   it("the save path holds even when the form's box says on the shelf", async () => {

@@ -16,8 +16,8 @@ const withPool = { pools: [{ id: "p", share: 1 }] };
 
 describe("unplayableReason", () => {
   it("a crate that can drop nothing: no pool ticked, or pools with nothing in them", () => {
-    expect(unplayableReason(draft("crate"), POOLS)).toBe("This box can drop nothing: tick a pool above.");
-    expect(unplayableReason(draft("crate", { pools: [{ id: "empty", share: 1 }] }), POOLS)).toBe("This box can drop nothing: its pools have no item that can drop.");
+    expect(unplayableReason(draft("crate"), POOLS)).toBe("This crate can drop nothing: tick a pool above.");
+    expect(unplayableReason(draft("crate", { pools: [{ id: "empty", share: 1 }] }), POOLS)).toBe("This crate can drop nothing: its pools have no item that can drop.");
     expect(unplayableReason(draft("crate", withPool), POOLS)).toBe("");
     // A price of 0 is the GM's choice (asked once in the editor), not a broken game.
     expect(unplayableReason(draft("crate", { ...withPool, price: 0 }), POOLS)).toBe("");

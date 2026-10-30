@@ -34,7 +34,7 @@ describe("the defaults per kind", () => {
   });
 
   it("are what each New wrote before: the crate's price, the well's silver and cap, the dice, the deck's cards, the wheel", () => {
-    expect(NEW_DEFAULTS.crate()).toEqual({ name: "New box", price: DEFAULT_PRICE_GP, pools: [], weights: DEFAULT_WEIGHTS, rules: {} });
+    expect(NEW_DEFAULTS.crate()).toEqual({ name: "New crate", price: DEFAULT_PRICE_GP, pools: [], weights: DEFAULT_WEIGHTS, rules: {} });
     expect(NEW_DEFAULTS.well()).toMatchObject({ kind: "well", price: WELL_DEFAULTS.price, odds: WELL_DEFAULTS.odds, rules: { cap: WELL_DEFAULTS.cap } });
     expect(NEW_DEFAULTS.dice()).toMatchObject({ kind: "dice", price: DICE_DEFAULTS.price, dice: { formula: "3d6", target: 12, multiplier: 3 }, rules: { prize: false } });
     expect(NEW_DEFAULTS.deck()).toMatchObject({ kind: "deck", price: DECK_DEFAULTS.price, deck: { step: DECK_DEFAULTS.step, shuffledAt: 0, cards: DECK_DEFAULTS.cards } });
@@ -206,11 +206,11 @@ describe("the dialog's words", () => {
       expect(editorTitle(NEW_DEFAULTS[k](), false)).toBe(EDIT_TITLE[k]);
       expect(editorTitle(NEW_DEFAULTS[k](), true, true)).toBe(COPY_TITLE[k]);
     }
-    expect(editorTitle({ name: "Old", price: 5 }, false)).toBe("Edit box");
-    expect(editorTitle({ name: "Old", price: 5 }, true, true)).toBe("Copy box");
+    expect(editorTitle({ name: "Old", price: 5 }, false)).toBe("Edit crate");
+    expect(editorTitle({ name: "Old", price: 5 }, true, true)).toBe("Copy crate");
     expect(editorTitle({ kind: "raffle", name: "Lot" }, true, true)).toBe("Copy game");
-    expect(NEW_TITLE.dice).toBe("New dice game");
-    expect(COPY_TITLE.dice).toBe("Copy dice game");
+    expect(NEW_TITLE.dice).toBe("New Dragon's Teeth");
+    expect(COPY_TITLE.dice).toBe("Copy Dragon's Teeth");
   });
 
   it("put the game on the shelf, or only add it while the shop is closed", () => {
@@ -222,11 +222,11 @@ describe("the dialog's words", () => {
 describe("addedNotice", () => {
   it("says the game is on the shelf and what it costs", () => {
     expect(addedNotice({ name: "Gilded Crate", price: 250 }, { shopOpen: true })).toBe("Gilded Crate is on the shelf at 250 gp.");
-    expect(addedNotice(newDraft("well", { id: "w" }), { shopOpen: true })).toBe("New well is on the shelf at 1 sp.");
+    expect(addedNotice(newDraft("well", { id: "w" }), { shopOpen: true })).toBe("New Wishing Well is on the shelf at 1 sp.");
   });
 
   it("says a table game's bets, since a wheel isn't priced", () => {
-    expect(addedNotice(newDraft("roulette", { id: "r" }), { shopOpen: true })).toBe("New wheel is on the shelf; bets from 5 gp.");
+    expect(addedNotice(newDraft("roulette", { id: "r" }), { shopOpen: true })).toBe("New Roulette wheel is on the shelf; bets from 5 gp.");
   });
 
   it("says the shop is closed when players can't see it yet", () => {
@@ -241,11 +241,11 @@ describe("Delete's words", () => {
   const esc = s => String(s).replace(/</g, "&lt;");
   it("titles the confirm with the kind's word, as New, Edit and Copy do", () => {
     expect(Object.keys(DELETE_TITLE)).toEqual(KINDS);
-    expect(deleteTitle({ name: "Goblin Crate" })).toBe("Delete box");
-    expect(deleteTitle({ kind: "roulette" })).toBe("Delete wheel");
+    expect(deleteTitle({ name: "Goblin Crate" })).toBe("Delete crate");
+    expect(deleteTitle({ kind: "roulette" })).toBe("Delete Roulette wheel");
     expect(deleteTitle({ kind: "scratch" })).toBe("Delete scratch ticket");
     expect(deleteTitle({ kind: "auction" })).toBe("Delete auction");
-    expect(deleteTitle({ kind: "dice" })).toBe("Delete dice game");
+    expect(deleteTitle({ kind: "dice" })).toBe("Delete Dragon's Teeth");
     expect(deleteTitle({ kind: "someone-elses" })).toBe("Delete game");
   });
 

@@ -21,7 +21,7 @@
 //      the crate's price is still 13 gp.
 //   3. Click Edit again and press Escape with nothing changed: it closes at
 //      once, no question.
-//   4. Click New box: with no pool ticked its button reads "Save off the
+//   4. Click New crate: with no pool ticked its button reads "Save off the
 //      shelf" and the On the shelf box is unticked and off, the reason under
 //      it. Type a name and press that button: one box is added, off the
 //      shelf (rules.shelved false), the status line says why, and Player2's
@@ -177,7 +177,7 @@ const READ_SHOP = `globalThis.__lcCards = () => [...document.querySelectorAll("#
     await gm.page.waitForTimeout(800);
     out.unchanged = await read();
 
-    // 4. New box with no pool: Save off the shelf.
+    // 4. New crate with no pool: Save off the shelf.
     await gm.page.locator('[data-action="addBox"]').click();
     await editor().locator('input[name="name"]').waitFor({ timeout: 8000 });
     await gm.page.waitForTimeout(300);
@@ -219,8 +219,8 @@ const READ_SHOP = `globalThis.__lcCards = () => [...document.querySelectorAll("#
       cancelAsks: out.cancel.editor && !!out.cancel.question,
       discardCloses: !out.discarded.editor && !out.discarded.question && out.discarded.stored === 13,
       unchangedCloses: !out.unchanged.editor && !out.unchanged.question,
-      offShelfEditor: out.offShelf.ticked === 0 && out.offShelf.okLabel === "Save off the shelf" && out.offShelf.boxChecked === false && out.offShelf.boxDisabled === true && out.offShelf.why === "This box can drop nothing: tick a pool above." && out.offShelf.describedBy,
-      offShelfSaved: out.offShelf.saved.added.length === 1 && out.offShelf.saved.added[0].shelved === false && out.offShelf.saved.status === `${EMPTY} added off the shelf. This box can drop nothing: tick a pool above.`,
+      offShelfEditor: out.offShelf.ticked === 0 && out.offShelf.okLabel === "Save off the shelf" && out.offShelf.boxChecked === false && out.offShelf.boxDisabled === true && out.offShelf.why === "This crate can drop nothing: tick a pool above." && out.offShelf.describedBy,
+      offShelfSaved: out.offShelf.saved.added.length === 1 && out.offShelf.saved.added[0].shelved === false && out.offShelf.saved.status === `${EMPTY} added off the shelf. This crate can drop nothing: tick a pool above.`,
       notInShop: !out.offShelf.card.seen && out.offShelf.card.cards === out.shop.cards,
     };
     out.ok = Object.values(out.checks).every(Boolean);

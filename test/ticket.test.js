@@ -20,10 +20,10 @@ const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "
 const CRATE = { id: "box", name: "Gilded Crate", price: 25, pools: [], rules: {} };
 
 describe("ticketData", () => {
-  it("is a consumable with the game's name, its price as the value, quantity 1 and one utility activity", () => {
+  it("is a consumable named \"<game> ticket\", its price as the value, quantity 1 and one utility activity", () => {
     const data = ticketData(CRATE);
     expect(data).toMatchObject({
-      name: "Gilded Crate", type: "consumable", img: "icons/containers/chest/chest-reinforced-steel-brown.webp",
+      name: "Gilded Crate ticket", type: "consumable", img: "icons/containers/chest/chest-reinforced-steel-brown.webp",
       system: { quantity: 1, price: { value: 25, denomination: "gp" }, type: { value: "trinket" } },
       flags: { "loot-crates": { ticket: { boxId: "box", paid: 0 } } },
     });
@@ -37,7 +37,7 @@ describe("ticketData", () => {
   it("escapes the game's name in the description, which the sheet shows as HTML", () => {
     const data = ticketData({ ...CRATE, name: "Tom & Jerry's <Crate>" });
     expect(data.system.description.value).toContain("One play of Tom &amp; Jerry&#39;s &lt;Crate&gt;.");
-    expect(data.name).toBe("Tom & Jerry's <Crate>");
+    expect(data.name).toBe("Tom & Jerry's <Crate> ticket");
   });
 
   it("names the activity for each pulled game's play", () => {
@@ -88,7 +88,7 @@ describe("a ticket's mark", () => {
 describe("redeemRow", () => {
   it("keeps one ticket's data for a refund to make again, without its id, stats or folder", () => {
     const row = redeemRow({ _id: "tix", folder: "f", _stats: { a: 1 }, ...ticketData(CRATE, { paid: 20 }), system: { ...ticketData(CRATE).system, quantity: 3 } }, { boxId: "box", paid: 20 });
-    expect(row).toMatchObject({ itemId: "tix", itemName: "Gilded Crate", paid: 20 });
+    expect(row).toMatchObject({ itemId: "tix", itemName: "Gilded Crate ticket", paid: 20 });
     expect(row.data.system.quantity).toBe(1);
     expect(row.data).not.toHaveProperty("_id");
     expect(row.data).not.toHaveProperty("_stats");

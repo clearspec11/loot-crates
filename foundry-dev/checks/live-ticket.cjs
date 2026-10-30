@@ -245,7 +245,7 @@ async function pressUse(page, itemId) {
       __lc.click(__lc.app.element.querySelector('.lc-tabs [data-tab="log"]'));
       const btn = () => __lc.app.element?.querySelector(`button[data-action=refund][data-row="${rowId}"]`);
       if (!await __lc.until(() => __lc.app.tab === "log" && btn(), 8000)) throw new Error("the Pull log has no Refund for the ticket's row");
-      const cell = btn().closest("tr")?.querySelector('td[data-label="Box"]')?.textContent.trim() ?? null;
+      const cell = btn().closest("tr")?.querySelector('td[data-label="Game"]')?.textContent.trim() ?? null;
       __lc.click(btn());
       const dialog = () => [...document.querySelectorAll(".application.dialog")].pop();
       const yes = () => [...(dialog()?.querySelectorAll("button") ?? [])].find(b => /yes/i.test(b.dataset.action ?? b.textContent));
@@ -300,8 +300,8 @@ async function pressUse(page, itemId) {
     const sRow = scratchRows[0];
     out.checks = {
       madeScratch: out.make.scratch.items.length === 1 && out.make.scratch.items[0].type === "consumable" && out.make.scratch.items[0].folder != null && out.make.scratch.items[0].folderFlag && out.make.scratch.items[0].activity.join() === "utility:Scratch"
-        && out.make.scratch.label === `Make a ticket for ${SCRATCH}` && out.make.scratch.status === `A ${SCRATCH} ticket is in the Items sidebar, in the folder ${out.make.scratch.items[0].folder}. Drag it onto a character's sheet, a loot sheet or a pool.`,
-      madeCrate: out.make.crate.items.length === 1 && out.make.crate.items[0].activity.join() === "utility:Open" && out.make.crate.items[0].value === 5 && /^A Live ticket crate .+ ticket is in the Items sidebar/.test(out.make.crate.status ?? ""),
+        && out.make.scratch.label === `Make a ticket for ${SCRATCH}` && out.make.scratch.status === `${SCRATCH} ticket is in the Items sidebar, in the folder ${out.make.scratch.items[0].folder}. Drag it onto a character's sheet, a loot sheet or a pool.`,
+      madeCrate: out.make.crate.items.length === 1 && out.make.crate.items[0].activity.join() === "utility:Open" && out.make.crate.items[0].value === 5 && /^Live ticket crate .+ ticket is in the Items sidebar/.test(out.make.crate.status ?? ""),
       given: out.given.crateQty === 2 && out.given.scratchQty === 1,
       revealBoth: !!out.crateReveal.player && !!out.crateReveal.gm && out.crateReveal.player.price === "with a ticket" && out.crateReveal.gm.price === "with a ticket",
       spentOne: out.useCrate.before.qty === 2 && out.useCrate.after.qty === 1 && out.useCrate.after.ms != null,

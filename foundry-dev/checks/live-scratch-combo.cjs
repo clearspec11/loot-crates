@@ -289,7 +289,7 @@ const untilCard = async (pl, boxId, pred, ms = 5000) => {
 
     const line = out.made.roll?.prizes?.[0];
     out.checks = {
-      editor: out.editor.partLabels.join("|") === "What part 1 of prize 1 is|What part 2 of prize 1 is|What part 3 of prize 1 is" && /^1 in 2 tickets wins, the top prize \(.+ item \+ 5 gp \+ the gem \(10 gp\)\) 1 in 2/.test(out.editor.readout),
+      editor: out.editor.partLabels.join("|") === "What part 1 of prize 1 is|What part 2 of prize 1 is|What part 3 of prize 1 is" && /^1 in 2 tickets wins, the top prize \(.+ item \+ 5 gp \+ the bonus spot \(10 gp\)\) 1 in 2/.test(out.editor.readout),
       made: out.made.kind === "scratch" && out.made.price === 1 && out.made.showLeft === false && out.made.bonus?.on === true && out.made.bonus?.gp === 10 && out.made.roll?.size === 2
         && JSON.stringify(line) === JSON.stringify({ count: 1, parts: [{ item: { rarity } }, { gp: 5 }, { bonus: true }] }) && out.made.pools?.[0]?.id === poolId,
       playerHidden: out.playerCard.ms != null && out.playerCard.stock === null && !out.playerCard.prizes && !/tickets left|tickets wins/.test(out.playerCard.text) && /Buy a ticket for 1 gp/.test(out.playerCard.text) && !out.playerCard.off,

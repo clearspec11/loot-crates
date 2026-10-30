@@ -152,7 +152,7 @@ function makePlayable(kind) {
   dialog.form.dispatchEvent({ type: "change", target: el });
 }
 
-const NEWS = [["addBox", "crate", "New box"], ["addWell", "well", "New well"], ["addDice", "dice", "New dice game"], ["addDeck", "deck", "New deck"], ["addWheel", "roulette", "New wheel"], ["addAuction", "auction", "New auction"], ["addScratch", "scratch", "New scratch ticket"]];
+const NEWS = [["addBox", "crate", "New crate"], ["addWell", "well", "New Wishing Well"], ["addDice", "dice", "New Dragon's Teeth"], ["addDeck", "deck", "New Deck of Many Things"], ["addWheel", "roulette", "New Roulette wheel"], ["addAuction", "auction", "New auction"], ["addScratch", "scratch", "New scratch ticket"]];
 
 describe("New then Cancel", () => {
   for (const [action, kind, title] of NEWS) {
@@ -379,7 +379,7 @@ describe("New then Save", () => {
     form.dispatchEvent({ type: "change", target: gem });
     expect(parts[2].dataset.what).toBe("bonus");
     form.dispatchEvent({ type: "input" });
-    expect(readout()).toBe("1 in 2.3 tickets wins, the top prize (Rare item + 25 gp + the gem (25 gp)) 1 in 100, all prizes 5 gp or more");
+    expect(readout()).toBe("1 in 2.3 tickets wins, the top prize (Rare item + 25 gp + the bonus spot (25 gp)) 1 in 100, all prizes 5 gp or more");
     // A part's remove takes it, focus to the part before; the line keeps the rest.
     form.dispatchEvent({ type: "click", target: parts[2].querySelector(".lc-prize-part__remove") });
     expect(first.querySelectorAll(".lc-prize-part")).toHaveLength(2);
@@ -437,7 +437,7 @@ describe("New then Save", () => {
     dialog.save();
     await pending;
     await settle();
-    expect(status(app).textContent).toBe("New dice game added. The shop is closed, so players can't see it yet.");
+    expect(status(app).textContent).toBe("New Dragon's Teeth added. The shop is closed, so players can't see it yet.");
   });
 
   it("marks only the newest row, and lets the mark go when the manager closes", async () => {
@@ -481,7 +481,7 @@ describe("Copy", () => {
     }
   });
 
-  it("opens the crate's editor on a copy, titled Copy box with the name focused, and Cancel writes nothing", async () => {
+  it("opens the crate's editor on a copy, titled Copy crate with the name focused, and Cancel writes nothing", async () => {
     await store.saveBox(SOURCE);
     await history();
     const was = structuredClone(store.getBoxes());
@@ -491,7 +491,7 @@ describe("Copy", () => {
       const pending = act(app, "copyBox", { dataset: { box: "b1" } });
       await settle(2);
       expect(dialog).not.toBeNull();
-      expect(dialog.title).toBe("Copy box");
+      expect(dialog.title).toBe("Copy crate");
       expect(dialog.buttons.find(b => b.action === "ok").label).toBe("Add to shelf");
       expect(field("name").value).toBe("Goblin Crate (copy)");
       expect(field("name").hasAttribute("autofocus")).toBe(true);
@@ -563,7 +563,7 @@ describe("Copy", () => {
     const app = await manager();
     const pending = act(app, "copyBox", { dataset: { box: "k1" } });
     await settle(2);
-    expect(dialog.title).toBe("Copy deck");
+    expect(dialog.title).toBe("Copy Deck of Many Things");
     expect(field("name").value).toBe("Thornwick Deck (copy)");
     expect(dialog.form.querySelectorAll(".lc-card-row")).toHaveLength(3);
     dialog.save();
@@ -614,7 +614,7 @@ describe("Edit", () => {
     const app = await manager();
     const pending = act(app, "editBox", { dataset: { box: "b1" } });
     await settle(2);
-    expect(dialog.title).toBe("Edit box");
+    expect(dialog.title).toBe("Edit crate");
     expect(dialog.buttons.find(b => b.action === "ok").label).toBe("Save");
     expect(field("name").hasAttribute("autofocus")).toBe(false);
     field("price").value = "60";
@@ -651,7 +651,7 @@ describe("New crate from this pool", () => {
     const app = await manager("pools");
     const pending = act(app, "crateFromPool", { dataset: { pool: "p" } });
     await settle(2);
-    expect(dialog.title).toBe("New box");
+    expect(dialog.title).toBe("New crate");
     expect(field("name").value).toBe("Odds and ends");
     expect(field("name").hasAttribute("autofocus")).toBe(false);
     expect(field("price").hasAttribute("autofocus")).toBe(true);

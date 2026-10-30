@@ -332,7 +332,7 @@ const untilCard = (pl, boxId, pred, since) => pl.evaluate(async ({ boxId, pred, 
     const reused = before.present.pools.length;
     const missingPools = STARTER_POOLS.filter(n => !before.present.pools.includes(n));
     const parts = [missingPools.length ? `${missingPools.length} starter pool${missingPools.length === 1 ? "" : "s"}` : "", `${STARTER_GAMES.length} starter games`].filter(Boolean).join(" and ");
-    const said = `Added ${parts}${reused ? " as copies" : ""}, all off the shelf${reused ? ", drawing from the starter pools already here" : ""}. Players can't see them yet: look each one over, then press On the shelf on its row.`;
+    const said = `Added ${parts}${reused ? " as copies" : ""}, all off the shelf${reused ? ", drawing from the starter pools already here" : ""}. Players can't see them yet: look each one over and press On the shelf on its row, or Put all on the shelf.`;
     out.checks = {
       pressed: a.label === "Add starter crates",
       // The confirm appears exactly when the set is already here, and says so.
