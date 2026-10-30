@@ -67,13 +67,24 @@ const escHTML = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "
   ticket handed out); the item's value is that, or the game's price for
   one handed out, so a merchant or a loot sheet prices it as the game does.
 */
+/*
+  The ticket item's name, "<game> ticket": in the Items sidebar and on a
+  sheet it isn't mistaken for the game's crate or its pool, which share
+  the name. A game already named for its ticket ("Fortune ticket", "New
+  scratch ticket") keeps its name, not "Fortune ticket ticket".
+*/
+export function ticketName(box) {
+  const game = String(box?.name ?? "");
+  const word = t("LOOTCRATES.Ticket.Name", { game: "" }).trim().toLowerCase();
+  const name = game.trim().toLowerCase();
+  return word && (name === word || name.endsWith(` ${word}`)) ? game.trim() : t("LOOTCRATES.Ticket.Name", { game });
+}
+
 export function ticketData(box, { paid = 0, kept = false } = {}) {
   const verb = useWord(box);
   const price = gp(paid) || gp(box?.price);
   return {
-    // "<game> ticket": in the Items sidebar and on a sheet it isn't
-    // mistaken for the game's crate or its pool, which share the name.
-    name: t("LOOTCRATES.Ticket.Name", { game: String(box?.name ?? "") }),
+    name: ticketName(box),
     type: "consumable",
     img: ticketImg(box),
     system: {

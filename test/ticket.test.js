@@ -34,6 +34,12 @@ describe("ticketData", () => {
     expect(data.system.description.value).toContain("One play of Gilded Crate.");
   });
 
+  it("doesn't say ticket twice for a game already named for its ticket", () => {
+    expect(ticketData({ ...CRATE, name: "Fortune ticket" }).name).toBe("Fortune ticket");
+    expect(ticketData({ ...CRATE, name: "New scratch Ticket" }).name).toBe("New scratch Ticket");
+    expect(ticketData({ ...CRATE, name: "Bigticket" }).name).toBe("Bigticket ticket");
+  });
+
   it("escapes the game's name in the description, which the sheet shows as HTML", () => {
     const data = ticketData({ ...CRATE, name: "Tom & Jerry's <Crate>" });
     expect(data.system.description.value).toContain("One play of Tom &amp; Jerry&#39;s &lt;Crate&gt;.");
