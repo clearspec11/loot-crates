@@ -15,17 +15,17 @@ beforeAll(async () => {
 afterAll(() => vi.unstubAllGlobals());
 
 describe("tabAfter", () => {
-  const keys = ["pools", "boxes", "log"];
+  const keys = ["boxes", "pools", "log"];
   it("moves right and left, wrapping at the ends", () => {
-    expect(tabAfter(keys, "pools", "ArrowRight")).toBe("boxes");
-    expect(tabAfter(keys, "log", "ArrowRight")).toBe("pools");
-    expect(tabAfter(keys, "pools", "ArrowLeft")).toBe("log");
-    expect(tabAfter(keys, "boxes", "ArrowUp")).toBe("pools");
-    expect(tabAfter(keys, "boxes", "ArrowDown")).toBe("log");
+    expect(tabAfter(keys, "boxes", "ArrowRight")).toBe("pools");
+    expect(tabAfter(keys, "log", "ArrowRight")).toBe("boxes");
+    expect(tabAfter(keys, "boxes", "ArrowLeft")).toBe("log");
+    expect(tabAfter(keys, "pools", "ArrowUp")).toBe("boxes");
+    expect(tabAfter(keys, "pools", "ArrowDown")).toBe("log");
   });
   it("goes to the first and last on Home and End", () => {
-    expect(tabAfter(keys, "log", "Home")).toBe("pools");
-    expect(tabAfter(keys, "pools", "End")).toBe("log");
+    expect(tabAfter(keys, "log", "Home")).toBe("boxes");
+    expect(tabAfter(keys, "boxes", "End")).toBe("log");
   });
   it("ignores every other key, so Enter, Space and Tab do what they always do", () => {
     for (const k of ["Enter", " ", "Tab", "a"]) expect(tabAfter(keys, "boxes", k)).toBeNull();

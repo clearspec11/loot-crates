@@ -1,5 +1,5 @@
 // Live check: switch the manager's tabs the way a GM does, by pressing each
-// tab button (Pools -> Boxes -> Pull log -> Pools), and report for each press
+// tab button (Boxes -> Pools -> Pull log -> Boxes), and report for each press
 // whether the window shows that tab, the pressed tab keeps keyboard focus, and
 // nothing was thrown or logged as an error. Before 0.5.0 the buttons used the
 // action name "tab", which ApplicationV2 keeps for itself: a press threw "You
@@ -32,7 +32,7 @@ const app = openManager();
 try {
   for (let t = 0; t < 100 && !app.element?.querySelector(".lc-tabs [data-tab]"); t++) await wait(50);
   const steps = [];
-  for (const tab of ["pools", "boxes", "log", "pools"]) {
+  for (const tab of ["boxes", "pools", "log", "boxes"]) {
     const before = errors.length;
     const button = app.element.querySelector(`.lc-tabs [data-tab="${tab}"]`);
     button.focus();
@@ -54,10 +54,10 @@ try {
     step.ok = step.appTab === tab && step.active && step.selected === "true" && step.panelLabelledBy === `lc-manager-tab-${tab}` && step.focusOnTab && !step.errors.length;
     steps.push(step);
   }
-  // The keyboard: ArrowRight from the focused Pools tab opens Boxes and
+  // The keyboard: ArrowRight from the focused Boxes tab opens Pools and
   // keeps focus on it; End then opens the Pull log.
   const keys = [];
-  for (const [key, tab] of [["ArrowRight", "boxes"], ["End", "log"]]) {
+  for (const [key, tab] of [["ArrowRight", "pools"], ["End", "log"]]) {
     const before = errors.length;
     document.activeElement.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
     // app.tab changes at once; wait for the render that marks the tab selected.

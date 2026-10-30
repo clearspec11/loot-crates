@@ -7,7 +7,7 @@ The developer's map of the module: how each game runs on the one core, what the 
 A Foundry VTT module for dnd5e. The GM builds **pools** of items (dragged in from any compendium, the Items sidebar or another module's imports, or bulk-added by filter), prices **boxes** that draw from those pools at chosen rarity odds, and players buy a box with their character's coins. The pull plays as a crate-opening spin that everyone at the table watches, and the item lands in the character's inventory.
 
 - Players: the **Crates** button at the top of the Items sidebar opens the shop.
-- GM: **Manage crates** beside it opens the manager: pools, boxes, and the pull log with refunds (so does **Game Settings, Loot Crates**). The manager's **View shop** opens the shop, and the shop's header controls hold **Manage crates** for the way back.
+- GM: **Manage crates** beside it opens the manager on its Boxes tab: boxes, pools, and the pull log with refunds (so does **Game Settings, Loot Crates**). The manager's **View shop** opens the shop, and the shop's header controls hold **Manage crates** for the way back.
 - Prices are typed the way the shop shows them, "50 gp", "5 sp" or "12 gp 5 sp" (a bare number is gold), in each Boxes row's price field (saved on Enter or Tab) and in the editors.
 - Purchases go over the module socket to the active GM's client, which rolls, deducts, grants and broadcasts the reveal. No GM online means the shop is closed.
 
@@ -182,7 +182,7 @@ Setup, the harness, the smoke run, the live checks and what to run before a pull
 | `reveal.js` | The reveal window and its one hold until the spin lands |
 | `tablewindow.js` | The shared table window |
 | `shop.js` | The player's Crate Shop |
-| `manager.js` | The GM's manager: Pools, Boxes and Pull log |
+| `manager.js` | The GM's manager: Boxes, Pools and Pull log |
 | `chat.js` | The sealed chat card and Watch again |
 | `sound.js` | The synthesised sounds, on Foundry's interface channel |
 | `dicereveal.js` | The Dice So Nice bridge |

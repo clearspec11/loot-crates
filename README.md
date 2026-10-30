@@ -29,7 +29,7 @@ Players install nothing: Foundry serves the module to them when they join.
 
 The first time you load the world, a welcome window says where everything is. It offers **Add starter crates**, which builds a full set for you (see [Starter crates](#starter-crates)). To build your own instead:
 
-1. Open the **Items** sidebar and press **Manage crates** at the top. The manager has three tabs: **Pools**, **Boxes** and **Pull log**.
+1. Open the **Items** sidebar and press **Manage crates** at the top. The manager opens on **Boxes**, the games players can buy, beside **Pools** and **Pull log**.
 2. **Make a pool.** On the Pools tab press **New pool**, then drag items onto it from any compendium, a folder in the Items sidebar or a roll table. **Add from compendium** adds many at once, picked from a compendium by type, rarity and name. Each row's rarity decides the odds, and you can change it there.
 3. **Make a crate.** Press **New crate from this pool** on the pool's bar, or **New box** on the Boxes tab. Type a price such as "50 gp" or "12 gp 5 sp", set the rarity odds and press **Add to shelf**.
 4. **Open the shop.** **View shop** in the manager opens the shop as players see it. Players open it with the **Crates** button at the top of the Items sidebar. The shop starts open; the **Shop open** switch beside View shop closes it for a pause.

@@ -160,7 +160,7 @@ export class CrateManager extends ApplicationV2 {
 
   get title() { return t("LOOTCRATES.Manager.Title"); }
 
-  tab = "pools";
+  tab = "boxes";
 
   // The last finished source check, so a render never waits long on a cold
   // compendium index (a first getIndex can take seconds): after a short wait

@@ -96,7 +96,7 @@ describe("the manager's nav", () => {
     const nav = doc.createElement("div");
     nav.innerHTML = managerNavHTML({ tab: "boxes", shopOpen: false });
     const buttons = nav.querySelectorAll("button");
-    expect(buttons.map(b => b.textContent.trim())).toEqual(["Pools", "Boxes", "Pull log", "View shop", "Shop open"]);
+    expect(buttons.map(b => b.textContent.trim())).toEqual(["Boxes", "Pools", "Pull log", "View shop", "Shop open"]);
     expect(buttons.map(b => b.getAttribute("data-action"))).toEqual(["switchTab", "switchTab", "switchTab", "openShop", "toggleShop"]);
     expect(nav.querySelector('[role="tab"][aria-selected="true"]').textContent).toBe("Boxes");
     // View shop is a plain button; only the toggle is pressed or not.

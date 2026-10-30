@@ -54,6 +54,7 @@ beforeEach(() => {
 
 async function openPools() {
   const app = new CrateManager();
+  app.tab = "pools";
   const root = await app._renderHTML();
   document.body.appendChild(root);
   app.element = root;
