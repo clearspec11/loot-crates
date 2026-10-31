@@ -12,7 +12,7 @@ const postKeptCard = vi.fn(async () => null);
 vi.mock("../module/scripts/foundry/chat.js", () => ({ postPullCard: vi.fn(async () => null), postKeptCard: (...a) => postKeptCard(...a) }));
 
 const { registerSocket, requestKeep } = await import("../module/scripts/foundry/socket.js");
-const { registerSettings, setStoreListener, getLog, getBoxes } = await import("../module/scripts/foundry/store.js");
+const { registerSettings, setStoreListener, getLog, getBoxes, appendLog } = await import("../module/scripts/foundry/store.js");
 const { refundPull, describeRefund } = await import("../module/scripts/foundry/refund.js");
 const { ticketData, ticketOf, keptStack, keptTicketFor, keepRow, rowPriceTag } = await import("../module/scripts/games/ticket.js");
 const { cardShell } = await import("../module/scripts/views/boxcard.js");
@@ -126,12 +126,12 @@ describe("Buy to keep on the GM: the charge", () => {
     expect(toCopper(actor.system.currency)).toBe(9000);
     expect(actor.writes.filter(w => w.purse)).toHaveLength(1);
     const [ticket] = tickets(actor);
-    expect(ticket).toMatchObject({ name: "Test Crate", type: "consumable", system: { quantity: 1, price: { value: 10 } } });
+    expect(ticket).toMatchObject({ name: "Test Crate ticket", type: "consumable", system: { quantity: 1, price: { value: 10 } } });
     expect(ticketOf(ticket)).toEqual({ boxId: "box", paid: 10, kept: true });
     // No prize was granted: the ticket is the only item.
     expect(actor.items.size).toBe(1);
     const row = getLog()[0];
-    expect(row).toMatchObject({ kind: "crate", boxId: "box", actorId: "actor1", userId: "p1", price: 10, payoutCp: 0, itemId: null, keep: { itemId: ticket.id, itemName: "Test Crate", paid: 10 } });
+    expect(row).toMatchObject({ kind: "crate", boxId: "box", actorId: "actor1", userId: "p1", price: 10, payoutCp: 0, itemId: null, keep: { itemId: ticket.id, itemName: "Test Crate ticket", paid: 10 } });
     expect(row.uuid).toBeUndefined();
     // A purchase takes one from the stock.
     expect(getBoxes().box.rules.stock).toBe(3);
@@ -250,6 +250,51 @@ describe("Buy to keep on the GM: a purchase's guards, nothing moves when one ref
     expect(toCopper(actor.system.currency)).toBe(9000);
   });
 
+  it("refuses what the game itself would refuse on use, as its shop card says: a sold-out scratch roll", async () => {
+    const { actor, emitted, deliver } = makeWorld();
+    await seed([SCRATCH]);
+    // The roll's one ticket is sold (played): the roll is sold out.
+    await deliver({ type: "pull", requestId: "p1", boxId: "scratch", actorId: "actor1", userId: "p1", price: 5 });
+    expect(errorsTo(emitted)).toEqual([]);
+    const purse = toCopper(actor.system.currency);
+    const writes = actor.writes.length;
+    await deliver(keep({ boxId: "scratch", price: 5 }));
+    expect(errorsTo(emitted)).toEqual(["Fortune: Sold out. Nothing was charged."]);
+    expect(toCopper(actor.system.currency)).toBe(purse);
+    expect(actor.writes).toHaveLength(writes);
+    expect(tickets(actor)).toEqual([]);
+    expect(getLog().filter(r => r.keep)).toEqual([]);
+  });
+
+  it("refuses past the well's cap for today, with nothing charged", async () => {
+    const WELL = { id: "well", kind: "well", name: "Wishing Well", price: 1, pools: [], weights: {}, odds: { nothing: 1, coin: 0, item: 0 }, rules: { cap: 1 } };
+    const { actor, emitted, deliver } = makeWorld();
+    // A world clock, so the well counts throws by the day.
+    globalThis.game.time = { worldTime: 0 };
+    await seed([WELL]);
+    await deliver({ type: "pull", requestId: "w1", boxId: "well", actorId: "actor1", userId: "p1", price: 1 });
+    expect(errorsTo(emitted)).toEqual([]);
+    const purse = toCopper(actor.system.currency);
+    await deliver(keep({ boxId: "well", price: 1 }));
+    expect(errorsTo(emitted)).toEqual(["Wishing Well: The well is still until tomorrow (1 of 1 today). Nothing was charged."]);
+    expect(toCopper(actor.system.currency)).toBe(purse);
+    expect(tickets(actor)).toEqual([]);
+    expect(getLog().filter(r => r.keep)).toEqual([]);
+  });
+
+  it("judges the deck's price at the moment the pressed price was accepted (Copilot's review of PR #35)", async () => {
+    // A streak with 2 s left: the price is 15 gp now and 10 gp once it ends,
+    // inside PRICE_SKEW_MS. The buyer pressed 10 gp and holds exactly 10 gp.
+    const DECK = { id: "deck", kind: "deck", name: "Thornwick Deck", price: 10, pools: [], weights: {}, deck: { step: 1.5, streakMinutes: 1, shuffledAt: 0, cards: [{ id: "c1", kind: "coins", label: "Windfall", weight: 1, once: false, gp: 5, text: "" }] }, rules: {} };
+    const { actor, emitted, deliver } = makeWorld({ actor: makeActor({ gp: 10 }) });
+    await seed([DECK]);
+    await appendLog({ id: "d0", kind: "deck", boxId: "deck", boxName: "Thornwick Deck", actorId: "actor1", actorName: "Crate Tester", price: 10, cardId: "c1", at: Date.now() - 58000 });
+    await deliver(keep({ boxId: "deck", price: 10 }));
+    expect(errorsTo(emitted)).toEqual([]);
+    expect(toCopper(actor.system.currency)).toBe(0);
+    expect(tickets(actor)).toHaveLength(1);
+  });
+
   it("draws nothing from a scratch roll at buy time", async () => {
     const { actor, emitted, deliver } = makeWorld();
     await seed([SCRATCH]);
@@ -276,7 +321,7 @@ describe("refunding a Buy to keep", () => {
     expect(plan).toMatchObject({ status: "ready", coins: 1000, items: [], gone: [] });
     expect(plan.ticket.id).toBe(tickets(actor)[0].id);
     const out = await refundPull(getLog()[0].id);
-    expect(out).toMatchObject({ status: "refunded", keptBack: "Test Crate", removedItem: null });
+    expect(out).toMatchObject({ status: "refunded", keptBack: "Test Crate ticket", removedItem: null });
     expect(tickets(actor)[0].system.quantity).toBe(1);
     expect(toCopper(actor.system.currency)).toBe(9000);
     expect(getBoxes().box.rules.stock).toBe(3);

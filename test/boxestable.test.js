@@ -6,7 +6,7 @@
   still reads a table.
 */
 import { describe, it, expect } from "vitest";
-import { boxesTableHTML, boxesTabHTML, kindTag, cell, tableHTML, BOXES_COLUMNS, NEW_BUTTONS, UNNAMED_COLUMN } from "../module/scripts/views/boxestable.js";
+import { boxesTableHTML, boxesTabHTML, shelfAllHTML, kindTag, cell, tableHTML, BOXES_COLUMNS, NEW_BUTTONS, UNNAMED_COLUMN } from "../module/scripts/views/boxestable.js";
 import { BOXES, POOLS, deckDraws, rouletteRound } from "../harness/sample.js";
 
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -61,7 +61,7 @@ describe("the Boxes table", () => {
 
   it("names every column header, the buttons' one for a screen reader only", () => {
     const names = [...html.matchAll(/<th role="columnheader">(.*?)<\/th>/g)].map(m => m[1].replace(/<[^>]+>/g, ""));
-    expect(names).toEqual(["Box", "Price", "Pools", "Odds", "Rules", "Actions"]);
+    expect(names).toEqual(["Game", "Price", "Pools", "Odds", "Rules", "Actions"]);
     expect(html).toContain('<th role="columnheader"><span class="lc-sr-only">Actions</span></th>');
     // Its cells stay uncaptioned: a stacked row draws no "Actions" over its buttons.
     for (const tr of rows(html)) expect(tr).toMatch(/<td role="cell" data-label="">[\s\S]*data-action="editBox"/);
@@ -102,7 +102,7 @@ describe("the Boxes table", () => {
   it("marks the row a New just added", () => {
     const out = boxesTableHTML({ boxes: BOXES, pools: POOLS, recent: "royal", esc });
     expect((out.match(/class="lc-row--new"/g) ?? []).length).toBe(1);
-    expect(out).toMatch(/<tr class="lc-row--new" role="row">\s*<td role="cell" data-label="Box"><span class="lc-table__name">Royal Vault/);
+    expect(out).toMatch(/<tr class="lc-row--new" role="row">\s*<td role="cell" data-label="Game"><span class="lc-table__name">Royal Vault/);
   });
 
   it("gives every row its On the shelf toggle, pressed while players can see the game", () => {
@@ -141,12 +141,23 @@ describe("the Boxes table", () => {
 });
 
 describe("the tab", () => {
-  it("is the toolbar with every New and the status line, then the table", () => {
+  it("is the status line pinned first, then the toolbar with every New, then the table", () => {
     const html = boxesTabHTML({ boxes: BOXES, pools: POOLS, status: "Royal Vault is on the shelf at 1,200 gp.", esc });
-    expect(html).toMatch(/^<div class="lc-toolbar lc-toolbar--boxes">/);
+    expect(html).toMatch(/^<div class="lc-manager__statusbar"><span class="lc-pool__hint lc-manager__status" role="status">Royal Vault is on the shelf at 1,200 gp.<\/span><\/div><div class="lc-toolbar lc-toolbar--boxes">/);
     for (const [action, label] of NEW_BUTTONS) expect(html).toContain(`data-action="${action}"><i class="fas fa-plus"></i> ${label}</button>`);
-    expect(html).toContain('<span class="lc-pool__hint lc-manager__status" role="status">Royal Vault is on the shelf at 1,200 gp.</span>');
+    // One status line, and it is not in the toolbar any more.
+    expect(html.match(/lc-manager__status"/g)).toHaveLength(1);
     expect(html).toContain('<table class="lc-table lc-table--stack lc-table--boxes"');
+  });
+
+  it("names the New buttons and the column by the shop's own names", () => {
+    expect(NEW_BUTTONS.map(([, label]) => label)).toEqual(["New crate", "New Wishing Well", "New Dragon's Teeth", "New Deck of Many Things", "New Roulette wheel", "New auction", "New scratch ticket"]);
+    expect(BOXES_COLUMNS[0]).toBe("Game");
+  });
+
+  it("puts a button beside the status line when it is given one, outside the spoken region", () => {
+    const html = boxesTabHTML({ boxes: BOXES, pools: POOLS, status: "Added 10 starter games, all off the shelf.", action: shelfAllHTML(), esc });
+    expect(html).toContain('role="status">Added 10 starter games, all off the shelf.</span><button type="button" class="lc-manager__statusaction" data-action="shelfAll"><i class="fas fa-store" inert></i> Put all on the shelf</button></div>');
   });
 
   it("keeps Add starter crates on the toolbar once there are games, apart from the New buttons", () => {

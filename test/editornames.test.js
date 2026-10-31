@@ -37,6 +37,7 @@ class Dialog {
       const done = v => { form.remove(); dialog = null; resolve(v); };
       dialog = {
         title: config.window.title,
+        config,
         form,
         save: () => done(config.buttons.find(b => b.action === "ok").callback(null, { form })),
         cancel: () => done(config.buttons.find(b => b.action === "cancel").callback() ?? "cancel"),
@@ -295,6 +296,78 @@ describe("a pool's share is off while the pool is unticked", () => {
   });
 });
 
+describe("the editors with a world of pools (round 30, B2)", () => {
+  // Four more pools, made after the game's: the picker folds the rest.
+  const MORE = ["Sea chest", "Temple offerings", "Thieves' guild fence", "UX first pool"].map((name, i) => ({ id: `more${i}`, name, pools: [], entries: [entry(`Item.m${i}`, `Thing ${i}`, "uncommon")] }));
+  const addMore = async () => { for (const p of MORE) await store.savePool(p); sets = 0; };
+
+  it("New crate from this pool: the pool made last is first and ticked, the price focused, the rest under Add a pool", async () => {
+    await addMore();
+    const app = await manager();
+    const pending = act(app, "crateFromPool", { dataset: { pool: "more3" } });
+    await settle(2);
+    const rows = dialog.form.querySelectorAll(".lc-pool-pick");
+    expect(rows[0].querySelector('input[type="checkbox"]').getAttribute("name")).toBe("pool.more3");
+    expect(field("pool.more3").checked).toBe(true);
+    expect(dialog.form.querySelector(".lc-pool-picker__on").querySelectorAll(".lc-pool-pick").length).toBe(1);
+    expect(dialog.form.querySelector("[data-picker-add]").textContent).toBe("Add a pool (6 more)");
+    expect(field("price").hasAttribute("autofocus")).toBe(true);
+    // In the order a GM plans it: what's in it, the odds, then the price.
+    const order = [...dialog.form.querySelectorAll("[data-section]")].map(el => el.dataset.section);
+    expect(order.indexOf("pools")).toBeLessThan(order.indexOf("price"));
+    field("price").value = "25 gp";
+    dialog.save();
+    await pending;
+    await settle();
+    const made = Object.values(store.getBoxes()).find(b => b.name === "UX first pool");
+    expect(made.pools).toEqual([{ id: "more3", share: 1 }]);
+    expect(made.price).toBe(25);
+  });
+
+  for (const kind of Object.keys(GAMES)) {
+    it(`${kind}: with the rest folded under a search, every field still has a name of its own`, async () => {
+      await addMore();
+      const app = await manager();
+      const [pending] = await openEdit(app, kind);
+      const names = namesOf(dialog.form);
+      expect(names.filter(n => !n.name).map(n => n.field)).toEqual([]);
+      const seen = new Set();
+      expect(names.filter(n => { const dup = seen.has(n.name); seen.add(n.name); return dup; }).map(n => n.name)).toEqual([]);
+      if (kind !== "auction") expect(names.some(n => n.name === "Find a pool by name")).toBe(true);
+      else expect(names.some(n => n.name === "Find a lot by name")).toBe(true);
+      dialog.cancel();
+      await pending;
+      await settle();
+      expect(sets).toBe(0);
+    });
+  }
+
+  it("the deck opens wide enough for its whole card row", async () => {
+    const app = await manager();
+    const [pending] = await openEdit(app, "deck");
+    expect(dialog.config.position.width).toBeGreaterThanOrEqual(620);
+    dialog.cancel();
+    await pending;
+  });
+
+  it("a wheel's pools and a dice game's prize pools stand aside while the item prize is off, and Save keeps them", async () => {
+    const app = await manager();
+    const [pending] = await openEdit(app, "dice");
+    const pools = dialog.form.querySelector('[data-section="pools"]');
+    expect(pools.hidden).toBe(true);
+    field("prize").checked = true;
+    dialog.form.dispatchEvent({ type: "change", target: field("prize") });
+    expect(pools.hidden).toBe(false);
+    field("prize").checked = false;
+    dialog.form.dispatchEvent({ type: "change", target: field("prize") });
+    expect(pools.hidden).toBe(true);
+    dialog.save();
+    await pending;
+    await settle();
+    expect(store.getBoxes().dice.pools).toEqual(REFS);
+  });
+});
+
 describe("the shared field markup", () => {
   it("puts one control in each label", () => {
     const root = document.createElement("div");
@@ -374,10 +447,17 @@ describe("Restock in the editor is written by Save", () => {
     const [pending] = await openEdit(app, "crate");
     const left = dialog.form.querySelector(".lc-limits__left");
     const stock = field("stock");
-    // Typing before Restock says nothing new: the line is the stock left.
+    // Typing before Restock: the line says what Save will leave, by Save's
+    // own rule (raising 10 to 11 with 3 left leaves 4), not the saved state.
     stock.value = "11";
     stock.dispatchEvent({ type: "input" });
+    expect(left.textContent).toBe("4 of 11 left once you save");
+    // Back to the number it opened with: the stock as it is.
+    stock.value = "10";
+    stock.dispatchEvent({ type: "input" });
     expect(left.textContent).toBe("3 of 10 left");
+    stock.value = "11";
+    stock.dispatchEvent({ type: "input" });
     dialog.form.querySelector("[data-restock]").dispatchEvent({ type: "click" });
     expect(left.textContent).toBe("11 of 11 left once you save");
     stock.value = "15";

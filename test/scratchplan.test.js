@@ -157,8 +157,19 @@ describe("generatePrizeLines: every rule, seeded", () => {
 });
 
 describe("what the roll pays back", () => {
-  it("the readout says the coins paid back of the coins taken in, and the items apart", () => {
+  it("a New scratch ticket starts from Fill's own list: about 65% back, about 1 in 3.5 winning, a Rare item on top", () => {
     const game = NEW_DEFAULTS.scratch();
+    const pb = paybackOf(game);
+    expect(Math.abs(pb.pct - 65)).toBeLessThanOrEqual(3);
+    expect(pb.items).toBe(1);
+    expect(scratchPreview(game, {}).odds.oneIn).toMatch(/^3\.[3-7]$/);
+    expect(game.roll.prizes[0]).toEqual({ count: 1, parts: [{ item: { rarity: "rare" } }] });
+    // Seeded: every New starts from the same list.
+    expect(NEW_DEFAULTS.scratch().roll.prizes).toEqual(game.roll.prizes);
+  });
+
+  it("the readout says the coins paid back of the coins taken in, and the items apart", () => {
+    const game = { ...NEW_DEFAULTS.scratch(), roll: { id: 1, size: 100, prizes: MOCKUP_PRIZES } };
     // The mockup's ticket: 620 gp of prizes (the gem's 75 among them) on 100 tickets at 5 gp.
     expect(paybackOf(game)).toEqual({ pct: 124, paid: 620, taken: 500, items: 1 });
     expect(paybackText(paybackOf(game))).toBe("Pays back 124% in coins: 620 gp of the 500 gp the roll takes in, plus 1 item");
@@ -179,7 +190,10 @@ describe("what the roll pays back", () => {
 
 const POOLS = { p: { id: "p", name: "Hoard", pools: [], entries: [{ uuid: "Item.a", name: "Lucky Coin", img: "", rarity: "uncommon", weight: 1 }, { uuid: "Item.b", name: "Flame Tongue", img: "", rarity: "rare", weight: 1 }] } };
 
-function editor(game = { ...NEW_DEFAULTS.scratch(), id: "t", pools: [{ id: "p", share: 1 }] }, { answer = true, seed = 3 } = {}) {
+// The prize list a New started from before round 30 (the mockup's), which paid back 124%.
+const MOCKUP_PRIZES = [{ count: 1, parts: [{ item: { rarity: "rare" } }] }, { count: 2, parts: [{ gp: 100 }] }, { count: 5, parts: [{ gp: 25 }] }, { count: 12, parts: [{ gp: 10 }] }, { count: 20, parts: [{ gp: 5 }] }, { count: 3, parts: [{ bonus: true }] }];
+
+function editor(game = { ...NEW_DEFAULTS.scratch(), id: "t", pools: [{ id: "p", share: 1 }], roll: { id: 1, size: 100, prizes: MOCKUP_PRIZES } }, { answer = true, seed = 3 } = {}) {
   const doc = createDocument();
   const form = doc.createElement("form");
   doc.body.appendChild(form);

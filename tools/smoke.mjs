@@ -79,6 +79,14 @@ const STATES = [
   // The box editor's Limits group: the stock with what is left and
   // Restock, then the limit per character, each with its help.
   ["box-limits", "state=editor"],
+  // The guard rails (round 30, editorguard.js, playable.js) on the crate
+  // editor: a New crate with no pool ticked reads "Save off the shelf", its
+  // On the shelf box off with the reason under it (ticking a pool brings
+  // Add to shelf back); a stock of -3 refused under the field with Save
+  // off; and the discard question over an edited price, Keep editing focused.
+  ["editor-guard-offshelf", "state=editor&guard=offshelf"],
+  ["editor-guard-stock", "state=editor&guard=stock"],
+  ["editor-guard-discard", "state=editor&guard=discard"],
   // The deck editor's head (deck.js deckRiseFieldsHTML): the step, then
   // "Draws count as in a row within 2 minutes" with its hint.
   ["editor-deck", "state=editor&deck=1"],
@@ -140,7 +148,20 @@ const STATES = [
   // A dropped item on a big pool that was collapsed and filtered to Rare:
   // opened, the chip cleared, the row pinned first and focused, and said.
   ["manager-dropped", "state=manager&dropped=1"],
-  // The Boxes tab the moment "New box" was saved as the Royal Vault
+  // New pool just made "UX first pool" (round 30, B3, manager.js
+  // #addPool): every other pool collapsed, the tab scrolled to the new one
+  // at the foot, opened, its Add from compendium focused, and the status
+  // line pinned to the top of the pane saying what was made, in view.
+  ["manager-pool-made", "state=manager&made=1&height=460"],
+  // New pool's name dialog: the name focused and selected to type over,
+  // its button "Make the pool"; Add from compendium's filters as ticked
+  // chips in sight, dnd5e's item pack picked, its first button Preview.
+  ["prompt-newpool", "state=prompt&prompt=newpool"],
+  ["prompt-bulk", "state=prompt&prompt=bulk"],
+  // A New crate with no pool ticked: its picker offers "Make a pool from a
+  // compendium" (poolpicker.js makePoolHTML) under "No pool ticked yet".
+  ["editor-crate-makepool", "state=editor&kind=crate&nopool=1"],
+  // The Boxes tab the moment "New crate" was saved as the Royal Vault
   // (boxestable.js, manager.js #saveEditor): every kind's row in one table,
   // the status line saying it is on the shelf, the new row's edge and its
   // Edit focused and in view; the toolbar's five New buttons and the line
@@ -201,6 +222,20 @@ const STATES = [
   ["shop-scratch-hidden", "state=shop&scratch=hidden"],
   ["shop-scratch-soldout", "state=shop&scratch=soldout"],
   ["editor-scratch", "state=editor&scratch=1"],
+  // Every game's editor in the order a GM plans it (views/editors.js,
+  // round 30): what is in it first (the game's own pool first, ticked,
+  // with what it holds, the world's eight others folded under "Add a
+  // pool"), the odds, the price, Who can buy and Extras folded with their
+  // line, the shelf. The pools and weights only while an item prize is
+  // on; the weights only for rarities the pools hold. -picker opens Add a
+  // pool and searches it; the auction's -search finds a lot by name.
+  ["editor-crate", "state=editor&kind=crate"],
+  ["editor-crate-picker", "state=editor&kind=crate&picker=open"],
+  ["editor-well", "state=editor&kind=well"],
+  ["editor-dice", "state=editor&kind=dice"],
+  ["editor-wheel", "state=editor&kind=roulette"],
+  ["editor-auction", "state=editor&kind=auction"],
+  ["editor-auction-search", "state=editor&kind=auction&lot=search"],
   // Fill the prize list (scratchplan.js): its fields open, then after a
   // Fill (the Fortune Ticket's six rows replaced, the harness saying yes
   // to the confirm), the rows, the readout's payback and the status line.
@@ -391,6 +426,67 @@ function shelfEditorProblems() {
   return out;
 }
 
+// The crate editor while the game can't be played (editorguard.js
+// wireShelf): the default button says what Save will do, the On the shelf
+// box is unticked and off, described by the reason right under it, in view
+// and at the 11px floor or over.
+function offShelfEditorProblems() {
+  const out = [];
+  const ok = document.querySelector('button[data-action="ok"]');
+  const box = document.querySelector('.lc-form__shelf input[name="onShelf"]');
+  const why = document.querySelector("[data-shelf-why]");
+  if (ok?.textContent.trim() !== "Save off the shelf") out.push(`the default button reads "${ok?.textContent.trim()}"`);
+  if (!box || box.checked || !box.disabled) out.push("the On the shelf box isn't unticked and off");
+  if (why?.textContent.trim() !== "This crate can drop nothing: tick a pool above.") out.push(`the shelf's reason reads "${why?.textContent.trim()}"`);
+  if (!box || !why || box.getAttribute("aria-describedby") !== why.id) out.push("the On the shelf box isn't described by its reason");
+  if (why && parseFloat(getComputedStyle(why).fontSize) < 11) out.push("the shelf's reason is under 11px");
+  const r = why?.getBoundingClientRect(), c = document.querySelector(".dialog-content").getBoundingClientRect(), label = box?.closest("label").getBoundingClientRect();
+  if (!r || r.height < 8 || r.bottom > c.bottom + 1 || r.top < c.top - 1) out.push("the shelf's reason isn't in view");
+  else if (label && r.top - label.bottom > 8) out.push(`the reason sits ${Math.round(r.top - label.bottom)}px under its box`);
+  const o = ok?.getBoundingClientRect(), app = document.getElementById("app").getBoundingClientRect();
+  if (!o || o.height < 10 || o.bottom > app.bottom + 1 || o.right > app.right + 1) out.push("the default button isn't in the window");
+  return out;
+}
+
+// The stock refused (limits.js stockProblem, editorguard.js wireStock):
+// the reason under the field, the field invalid and described by it, Save
+// off, the line beside Restock still the saved state.
+function stockEditorProblems() {
+  const out = [];
+  const stock = document.querySelector('input[name="stock"]');
+  const why = document.querySelector("[data-stock-why]");
+  const ok = document.querySelector('button[data-action="ok"]');
+  if (stock?.value !== "-3" || stock.getAttribute("aria-invalid") !== "true") out.push(`the stock field is ${stock?.value}, aria-invalid ${stock?.getAttribute("aria-invalid")}`);
+  if (why?.textContent.trim() !== "Stock can't be below 0. Leave it blank for unlimited.") out.push(`the stock's reason reads "${why?.textContent.trim()}"`);
+  if (!stock?.getAttribute("aria-describedby")?.split(" ").includes(why?.id)) out.push("the stock field isn't described by its reason");
+  if (!ok?.disabled) out.push("Save is on with a stock of -3");
+  if (why && parseFloat(getComputedStyle(why).fontSize) < 11) out.push("the stock's reason is under 11px");
+  const r = why?.getBoundingClientRect(), c = document.querySelector(".dialog-content").getBoundingClientRect();
+  if (!r || r.height < 8 || r.bottom > c.bottom + 1 || r.top < c.top - 1) out.push("the stock's reason isn't in view");
+  if (document.querySelector(".lc-limits__left")?.textContent.trim() !== "3 of 10 left") out.push(`the stock line reads "${document.querySelector(".lc-limits__left")?.textContent.trim()}"`);
+  return out;
+}
+
+// The discard question over the editor: its title and words name the
+// game, Discard then Keep editing, Keep editing focused, all of it inside
+// the screen and at the 11px floor or over.
+function discardProblems() {
+  const out = [];
+  const box = document.querySelector(".harness-confirm");
+  if (!box) return ["no discard question"];
+  if (box.querySelector(".window-title")?.textContent.trim() !== "Discard changes?") out.push(`the question's title reads "${box.querySelector(".window-title")?.textContent.trim()}"`);
+  const text = box.querySelector(".dialog-content")?.textContent.replace(/\s+/g, " ").trim();
+  if (text !== "Discard your changes to Royal Vault? Nothing you changed has been saved.") out.push(`the question reads "${text}"`);
+  const words = [...box.querySelectorAll("button")].map(b => b.textContent.trim());
+  if (words.join("|") !== "Discard|Keep editing") out.push(`the question's buttons read ${words.join(", ")}`);
+  if (document.activeElement?.textContent.trim() !== "Keep editing") out.push("Keep editing isn't focused");
+  const r = box.getBoundingClientRect();
+  if (r.left < 0 || r.right > innerWidth + 1 || r.top < 0 || r.bottom > innerHeight) out.push("the question runs off the screen");
+  for (const el of box.querySelectorAll("p, button")) if (parseFloat(getComputedStyle(el).fontSize) < 11) { out.push("the question has text under 11px"); break; }
+  if (document.querySelector('input[name="price"]')?.value !== "1400 gp") out.push("the edited price isn't under the question");
+  return out;
+}
+
 // The Boxes tab with the Royal Vault off the shelf (shelf.js).
 function shelfBoxesProblems() {
   const out = [];
@@ -559,7 +655,7 @@ function boxesProblems(narrow) {
   const toolbar = document.querySelector(".lc-toolbar--boxes");
   if (!toolbar) return [...out, "no Boxes toolbar"];
   const news = [...toolbar.querySelectorAll('[data-action^="add"]')].map(b => b.textContent.trim());
-  if (news.join("|") !== "New box|New well|New dice game|New deck|New wheel|New auction|New scratch ticket") out.push(`the New buttons read ${news.join(", ")}`);
+  if (news.join("|") !== "New crate|New Wishing Well|New Dragon's Teeth|New Deck of Many Things|New Roulette wheel|New auction|New scratch ticket") out.push(`the New buttons read ${news.join(", ")}`);
   if (toolbar.scrollWidth > toolbar.clientWidth + 1 || toolbar.getBoundingClientRect().right > app.right + 1) out.push("the Boxes toolbar overflows the window");
   if (document.querySelectorAll('[role="status"]').length !== 1) out.push("expected one role=status");
   const status = document.querySelector(".lc-manager__status");
@@ -579,7 +675,8 @@ function boxesProblems(narrow) {
   if (document.activeElement !== edit) out.push("focus is not on the new row's Edit");
   const tab = document.querySelector(".lc-tab")?.getBoundingClientRect();
   const er = edit?.getBoundingClientRect();
-  if (tab && er && (er.top < tab.top - 1 || er.bottom > tab.bottom + 1)) out.push("the new row is out of view");
+  const under = document.querySelector(".lc-manager__statusbar")?.getBoundingClientRect().bottom ?? tab?.top;
+  if (tab && er && (er.top < under - 1 || er.bottom > tab.bottom + 1)) out.push("the new row is out of view");
   if (!document.querySelector('[data-action="openTable"]') || !document.querySelector('[data-action="reshuffle"]')) out.push("the wheel's Open a round or the deck's Reshuffle is missing");
   // Every row has a visible Copy naming its game, between Edit and Delete.
   for (const r of rows) {
@@ -623,7 +720,7 @@ function starterEmptyProblems(where) {
   const block = document.querySelector(".lc-tab .lc-starter");
   if (!block) return [...out, "no starter offer on the empty tab"];
   const line = block.querySelector(".lc-empty")?.textContent ?? "";
-  if (!(where === "pools" ? /^No pools yet\. A pool is the set of items a box can give out/ : /^No games yet\. A box prices a pull/).test(line)) out.push(`the empty line reads "${line}"`);
+  if (!(where === "pools" ? /^No pools yet\. A pool is the set of items a game can give out/ : /^No games yet\. A crate prices a pull/).test(line)) out.push(`the empty line reads "${line}"`);
   const offer = block.querySelector(".lc-starter__offer");
   if (!/added off the shelf/.test(offer?.textContent ?? "")) out.push("the offer doesn't say the games come off the shelf");
   if (block.getAttribute("aria-labelledby") !== offer?.id) out.push("the offer doesn't name its group");
@@ -710,15 +807,111 @@ function starterBoxesProblems() {
   const starter = document.querySelectorAll('.lc-toolbar--boxes [data-action="starterCrates"]');
   if (starter.length !== 1 || starter[0].textContent.trim() !== "Add starter crates") out.push("the toolbar has no Add starter crates");
   const news = [...document.querySelectorAll('.lc-toolbar--boxes [data-action^="add"]')].map(b => b.textContent.trim());
-  if (news.join("|") !== "New box|New well|New dice game|New deck|New wheel|New auction|New scratch ticket") out.push(`the New buttons read ${news.join(", ")}`);
+  if (news.join("|") !== "New crate|New Wishing Well|New Dragon's Teeth|New Deck of Many Things|New Roulette wheel|New auction|New scratch ticket") out.push(`the New buttons read ${news.join(", ")}`);
   const status = document.querySelector(".lc-manager__status")?.textContent ?? "";
-  if (status !== "Added 4 starter pools and 10 starter games, all off the shelf. Players can't see them yet: look each one over, then press On the shelf on its row.") out.push(`status line says "${status}"`);
+  if (status !== "Added 4 starter pools and 10 starter games, all off the shelf. Players can't see them yet: look each one over and press On the shelf on its row, or Put all on the shelf.") out.push(`status line says "${status}"`);
   const first = rows[0]?.querySelector('[data-action="editBox"]');
   if (document.activeElement !== first) out.push("focus is not on the first starter game's Edit");
   const pools = rows.map(r => r.querySelector('td[data-label="Pools"]')?.textContent.trim());
   if ([...pools.slice(0, 6), ...pools.slice(8)].some(p => !p || /none|missing/.test(p))) out.push(`a starter game draws from no pool: ${pools.join(" / ")}`);
   if (!/A sealed Dragon's hoard chest/.test(rows[7]?.textContent ?? "")) out.push("the auction's lot isn't the sealed hoard chest");
+  // Put all on the shelf, beside the sentence and outside its live region.
+  const all = document.querySelector('.lc-manager__statusbar > [data-action="shelfAll"]');
+  if (all?.textContent.trim() !== "Put all on the shelf") out.push("no Put all on the shelf beside the status line");
+  else if (all.closest('[role="status"]')) out.push("Put all on the shelf is inside the status region");
+  else if (all.getBoundingClientRect().right > document.getElementById("app").getBoundingClientRect().right + 1) out.push("Put all on the shelf is cut off");
   if (document.querySelectorAll('[role="status"]').length !== 1) out.push("expected one role=status");
+  return out;
+}
+
+/*
+  The tab's status line (round 30, B3, route.js statusBarHTML): the first
+  thing in the pane, pinned to its top (position: sticky), its words in
+  view and whole, and the focused control below it, not under it. With
+  `scrolled`, the pane must be scrolled down, so the line is shown to stay.
+*/
+function pinnedProblems(scrolled = false) {
+  const out = [];
+  const tab = document.querySelector(".lc-tab");
+  const bar = tab?.firstElementChild;
+  if (!bar?.classList.contains("lc-manager__statusbar")) return ["the status line is not the first thing in the tab's pane"];
+  if (getComputedStyle(bar).position !== "sticky") out.push("the status line isn't pinned (position sticky)");
+  const status = bar.querySelector('.lc-manager__status[role="status"]');
+  if (!status) return ["the status bar has no role=status line"];
+  // Nothing said yet: the line takes no room (and has nothing to pin).
+  if (!status.textContent.trim()) return bar.getBoundingClientRect().height > 1 && !bar.querySelector("button") ? ["the empty status line takes room"] : [];
+  if (scrolled && tab.scrollTop < 40) out.push(`the pane isn't scrolled (scrollTop ${Math.round(tab.scrollTop)}), so the pin is untested`);
+  const t = tab.getBoundingClientRect(), b = bar.getBoundingClientRect(), w = status?.getBoundingClientRect();
+  if (b.top < t.top - 1 || b.top > t.top + 2) out.push(`the status line is ${Math.round(b.top - t.top)} px from the pane's top`);
+  if (w && (w.bottom > t.bottom || w.right > t.right + 1 || status.scrollWidth > status.clientWidth + 1)) out.push("the status line's words are cut off");
+  if (getComputedStyle(bar).backgroundColor === "rgba(0, 0, 0, 0)") out.push("the pinned line has no background, so rows show through it");
+  const focus = document.activeElement;
+  if (focus && tab.contains(focus)) {
+    const f = focus.getBoundingClientRect();
+    if (f.top < b.bottom - 1) out.push("the focused control is under the pinned status line");
+    if (f.bottom > t.bottom + 1) out.push("the focused control is below the pane");
+  }
+  return out;
+}
+
+// New pool just made (manager.js #addPool), read from the DOM.
+function poolMadeProblems() {
+  const out = [];
+  const open = [...document.querySelectorAll(".lc-pool__details")].filter(d => d.open).map(d => d.dataset.pool);
+  if (open.join() !== "made") out.push(`open pools: ${open.join(", ") || "none"}; only the new one should be`);
+  const add = document.querySelector('.lc-pool__details[data-pool="made"] [data-action="bulkAdd"]');
+  if (!add || document.activeElement !== add) out.push("focus is not on the new pool's Add from compendium");
+  const status = document.querySelector(".lc-manager__status")?.textContent ?? "";
+  if (!/^Made the pool UX first pool\./.test(status)) out.push(`status line says "${status}"`);
+  const pencil = document.querySelector('.lc-pool__details[data-pool="made"] [data-action="editPool"]');
+  if (pencil?.getAttribute("data-tooltip") !== "Rename pool") out.push(`the pencil's tooltip reads "${pencil?.getAttribute("data-tooltip")}"`);
+  if (document.querySelectorAll('[role="status"]').length !== 1) out.push("expected one role=status");
+  return out;
+}
+
+// New pool's name and Add from compendium (?prompt=newpool|bulk).
+function promptProblems(kind) {
+  const out = [];
+  const app = document.getElementById("app").getBoundingClientRect();
+  const ok = document.querySelector('.form-footer [data-action="ok"]')?.textContent.trim();
+  if (kind === "newpool") {
+    if (document.getElementById("title").textContent !== "New pool") out.push("the dialog isn't titled New pool");
+    if (ok !== "Make the pool") out.push(`its button reads "${ok}"`);
+    const name = document.querySelector('input[name="name"]');
+    if (document.activeElement !== name) out.push("the name isn't focused");
+    else if (name.selectionStart !== 0 || name.selectionEnd !== name.value.length || name.value !== "New pool") out.push(`the name isn't selected to type over (${name.selectionStart}-${name.selectionEnd} of "${name.value}")`);
+    return out;
+  }
+  if (ok !== "Preview") out.push(`the first button reads "${ok}"`);
+  if (document.querySelector("select[multiple]")) out.push("a multi-select is back");
+  if (document.querySelector('select[name="pack"]')?.value !== "dnd5e.items") out.push("dnd5e's item pack isn't picked");
+  for (const [name, want, on] of [["types", 6, 4], ["rarities", 6, 5]]) {
+    const chips = [...document.querySelectorAll(`input[name="${name}"]`)];
+    if (chips.length !== want) out.push(`${name}: ${chips.length} chips, want ${want}`);
+    if (chips.filter(c => c.checked).length !== on) out.push(`${name}: ${chips.filter(c => c.checked).length} ticked, want ${on}`);
+    for (const c of chips) {
+      const label = c.closest("label"), r = label.getBoundingClientRect();
+      if (r.height < 24 || r.left < app.left - 1 || r.right > app.right + 1) { out.push(`${name}: the chip "${label.textContent.trim()}" isn't whole in the window`); break; }
+      if (r.bottom > app.bottom) { out.push(`${name}: the chip "${label.textContent.trim()}" is below the window`); break; }
+    }
+    const [a, b] = [chips.find(c => c.checked), chips.find(c => !c.checked)].map(c => c && getComputedStyle(c.closest("label")).backgroundColor);
+    if (a && b && a === b) out.push(`${name}: a ticked chip looks like an unticked one`);
+  }
+  return out;
+}
+
+// A New crate with no pool ticked offers Make a pool from a compendium.
+function makePoolProblems() {
+  const out = [];
+  const app = document.getElementById("app").getBoundingClientRect();
+  const button = document.querySelector("[data-make-pool]");
+  if (!button) return ["no Make a pool from a compendium"];
+  if (button.textContent.trim() !== "Make a pool from a compendium") out.push(`the offer reads "${button.textContent.trim()}"`);
+  const r = button.getBoundingClientRect();
+  if (!r.width || r.left < app.left - 1 || r.right > app.right + 1 || button.scrollWidth > button.clientWidth + 1) out.push("the offer isn't whole in the window");
+  if (button.closest("[hidden]")) out.push("the offer is hidden with no pool ticked");
+  if (!button.closest(".lc-pool-picks")) out.push("the offer isn't in the pool picker");
+  if (!document.querySelector(".lc-pool-picker__none:not([hidden])")) out.push("No pool ticked yet isn't said");
   return out;
 }
 
@@ -765,6 +958,9 @@ async function managerProblems(narrow) {
   if (usersOf("everything") !== "Not in any box") out.push(`the unused pool's line reads "${usersOf("everything")}"`);
   const everything = document.querySelector('.lc-pool__details[data-pool="everything"]');
   if (everything?.open) out.push("the 200-entry pool should start collapsed");
+  // Every pool collapsed but the one the GM last worked on (poolToOpen).
+  const opened = pools.filter(d => d.open).map(d => d.dataset.pool);
+  if (opened.join() !== "compendium") out.push(`open pools: ${opened.join(", ") || "none"}; only the last worked on should be`);
   if (document.querySelectorAll('[role="status"]').length !== 1) out.push("expected one role=status");
   if (document.querySelector(".lc-manager__body [aria-live]")) out.push("a per-pool aria-live region is back");
   const big = document.querySelector('.lc-pool__details[data-pool="compendium"]');
@@ -1707,6 +1903,92 @@ async function limitCardProblems({ reached, off, shelved = false }) {
 // period, and plain help tied to the fields.
 // The deck editor's streak window: a number field in its sentence, the
 // deck's 2 minutes, its hint named and at the 11px floor or over, inside the form.
+/*
+  An editor in the order a GM plans it (views/editors.js): its sections in
+  the kind's order, the game's own pool first and ticked with what it
+  holds, the others folded under "Add a pool (N more)", the parts that
+  don't apply hidden, the folds' lines, every control inside the form,
+  and the deck's whole card row with its heads where the window is wide.
+*/
+const EDITOR_KINDS = { "editor-crate": "crate", "editor-crate-picker": "crate", "editor-well": "well", "editor-dice": "dice", "editor-wheel": "roulette", "editor-auction": "auction", "editor-auction-search": "auction" };
+function editorOrderProblems(kind) {
+  const out = [];
+  const ORDER = {
+    crate: "name,pools,odds,weights,readout,price,limits,extras,shelf",
+    scratch: "name,price,roll,pools,prizes,readout,card,look,sees,shelf",
+    well: "name,outcomes,pools,weights,readout,price,cap,extras,shelf",
+    dice: "name,dragon,prize,pools,weights,readout,price,limits,shelf",
+    deck: "name,cards,pools,weights,readout,price,limits,shelf",
+    roulette: "name,pockets,payouts,prize,pools,readout,price,shelf",
+    auction: "name,lot,price,house,readout,shelf",
+  };
+  const form = document.querySelector(".lc-form");
+  const order = [...form.querySelectorAll("[data-section]")].map(el => el.dataset.section).join(",");
+  if (order !== ORDER[kind]) out.push(`the ${kind} editor's sections run ${order}`);
+  const picker = form.querySelector(".lc-pool-picks");
+  // (The wheel's pools stand aside while its item pocket is off.)
+  if (kind !== "auction" && picker?.checkVisibility()) {
+    const first = picker?.querySelector(".lc-pool-pick");
+    if (!first?.querySelector('input[type="checkbox"]')?.checked) out.push("the first pool in the picker isn't the game's own, ticked");
+    if (!/\d+ (common|uncommon|rare|very rare|legendary)/.test(first?.querySelector(".lc-pool-pick__mix")?.textContent ?? "")) out.push(`the game's pool doesn't say what it holds: "${first?.querySelector(".lc-pool-pick__mix")?.textContent}"`);
+    const add = picker?.querySelector("[data-picker-add]")?.textContent.trim();
+    if (add !== "Add a pool (9 more)") out.push(`the fold reads "${add}"`);
+    const shownRows = [...(picker?.querySelectorAll(".lc-pool-pick") ?? [])].filter(r => r.checkVisibility()).length;
+    if (!picker?.querySelector(".lc-pool-picker__more")?.open && shownRows !== 1) out.push(`${shownRows} pools show with the fold closed`);
+  }
+  // Rarities the pools don't hold step aside behind one button.
+  const weights = form.querySelector(".lc-form__weights");
+  if (weights && !weights.hidden && weights.getBoundingClientRect().height) {
+    const shown = [...weights.querySelectorAll("[data-weight]")].filter(r => r.checkVisibility()).map(r => r.dataset.weight);
+    const more = weights.querySelector(".lc-weights__more");
+    if (shown.length === 6 || !more || more.hidden || !/^Show .* too$/.test(more.textContent)) out.push(`the weights show ${shown.join(", ")} with "${more?.textContent}"`);
+  }
+  for (const fold of form.querySelectorAll("[data-fold]")) {
+    const said = fold.querySelector("[data-fold-said]")?.textContent.trim();
+    if (!said) out.push(`the ${fold.dataset.fold} fold says nothing`);
+  }
+  const fr = form.getBoundingClientRect();
+  const over = [...form.querySelectorAll("input, select, button")].filter(el => { const r = el.getBoundingClientRect(); return r.width && (r.right > fr.right + 1 || r.left < fr.left - 1); });
+  if (over.length) out.push(`${over.length} controls past the form's edge, e.g. ${over[0].name || over[0].className}`);
+  const small = [...form.querySelectorAll("*")].filter(el => [...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim()) && el.getBoundingClientRect().height && parseFloat(getComputedStyle(el).fontSize) < 11);
+  if (small.length) out.push(`${small.length} texts under 11px, e.g. "${small[0].textContent.trim().slice(0, 30)}"`);
+  if (kind === "deck") {
+    const head = form.querySelector(".lc-cards__head");
+    const wide = innerWidth > 700;
+    if (wide && !head?.getBoundingClientRect().height) out.push("the deck's column heads are gone at its own width");
+    if (!wide && [...form.querySelectorAll(".lc-card-row__cap")].filter(c => c.getBoundingClientRect().height).length < 2) out.push("the narrow deck rows don't caption weight and once");
+  }
+  return out;
+}
+
+// "Add a pool" open with "s" typed: the pools whose names hold an s, and the line saying how many.
+function pickerSearchProblems() {
+  const out = [];
+  const more = document.querySelector(".lc-pool-picker__more");
+  if (!more?.open) return ["Add a pool isn't open"];
+  const rows = [...more.querySelectorAll(".lc-pool-pick")];
+  const shown = rows.filter(r => r.checkVisibility());
+  if (shown.some(r => !r.dataset.poolName.includes("s"))) out.push("the search shows a pool without an s");
+  const said = more.querySelector(".lc-pool-picker__count")?.textContent;
+  if (said !== `${shown.length} pools match.`) out.push(`the search says "${said}" for ${shown.length} shown`);
+  if (shown.some(r => r.querySelector("input[data-share]")?.checkVisibility())) out.push("an unticked pool shows its share");
+  return out;
+}
+
+// The lot search with "cloak" typed: only cloaks, under the pools that hold them, and the lot still named.
+function lotSearchProblems() {
+  const out = [];
+  const pick = document.querySelector(".lc-auction-lot__pick");
+  const shown = [...pick.querySelectorAll("optgroup option")].filter(o => !o.hidden && !o.parentNode.hidden);
+  if (!shown.length || shown.some(o => !/cloak/i.test(o.textContent))) out.push(`the search shows ${shown.map(o => o.textContent).join(", ")}`);
+  const groups = [...pick.querySelectorAll("optgroup")].filter(g => !g.hidden).map(g => g.label);
+  if (!groups.includes("Core magic items") || groups.includes("Sealed crates")) out.push(`the search's groups are ${groups.join(", ")}`);
+  const said = document.querySelector("[data-lot-said]")?.textContent;
+  if (said !== "Flame Tongue, Rare is the lot.") out.push(`the lot line reads "${said}"`);
+  if (pick.size < 6) out.push(`the lot list shows ${pick.size} rows`);
+  return out;
+}
+
 function deckEditorProblems() {
   const out = [];
   const input = document.querySelector('input[name="streakMinutes"]');
@@ -1726,17 +2008,20 @@ function deckEditorProblems() {
 
 async function limitsEditorProblems() {
   const out = [];
-  const group = [...document.querySelectorAll(".lc-form fieldset")].find(f => f.querySelector("legend")?.textContent.trim() === "Limits");
-  if (!group) return ["no Limits group"];
+  const group = [...document.querySelectorAll(".lc-form fieldset")].find(f => f.querySelector("legend")?.textContent.trim() === "Who can buy");
+  if (!group) return ["no Who can buy group"];
   if (group.querySelector('input[name="stock"]')?.value !== "10") out.push("the stock field doesn't show the GM's 10");
   const left = group.querySelector('.lc-limits__left[role="status"]');
   if (left?.textContent.trim() !== "3 of 10 left") out.push(`the stock line reads "${left?.textContent}"`);
   const restock = group.querySelector("[data-restock]");
   if (!restock || restock.disabled || restock.getAttribute("aria-disabled") === "true") out.push("Restock isn't on with 3 of 10 left");
   if (group.querySelector('input[name="limitMax"]')?.value !== "1" || group.querySelector('select[name="limitPer"]')?.value !== "day") out.push("the limit per character isn't 1 a day");
+  // Described by its help (and the stock by its reason when it has one,
+  // empty until then): at least one of them says something.
   for (const input of group.querySelectorAll("input[aria-describedby]")) {
-    const help = document.getElementById(input.getAttribute("aria-describedby"));
-    if (!help?.textContent.trim()) out.push(`${input.name}'s help is missing`);
+    const helps = input.getAttribute("aria-describedby").split(/\s+/).map(id => document.getElementById(id));
+    if (helps.some(h => !h)) out.push(`${input.name} is described by an element that isn't there`);
+    if (!helps.some(h => h?.textContent.trim())) out.push(`${input.name}'s help is missing`);
   }
   const hints = [...group.querySelectorAll(".lc-form__hint")].filter(el => parseFloat(getComputedStyle(el).fontSize) < 11);
   if (hints.length) out.push("a hint is under 11px");
@@ -1874,7 +2159,7 @@ function scratchPrintProblems(mode) {
   if (!ribbon) out.push("no ribbon");
   else if (!/^Top prize/.test(ribbonText) || !/in prizes in this roll$/.test(ribbonText)) out.push(`the ribbon reads "${ribbonText}"`);
   else if (getComputedStyle(ribbon).clipPath === "none") out.push("the ribbon has no chevron ends");
-  const wantRibbon = mode === "combo" ? "Top prize Rare item + 25 gp + the gem (25 gp) 670 gp and 1 item in prizes in this roll" : "Top prize Rare item 620 gp and 1 item in prizes in this roll";
+  const wantRibbon = mode === "combo" ? "Top prize Rare item + 25 gp + the bonus spot (25 gp) 670 gp and 1 item in prizes in this roll" : "Top prize Rare item 620 gp and 1 item in prizes in this roll";
   if (!match3 && ribbonText !== wantRibbon) out.push(`the Fortune Ticket's ribbon reads "${ribbonText}"`);
   const caps = [...ticket.querySelectorAll(".lc-scratch__cap")].map(words);
   const wantCaps = match3 ? ["Three the same win that prize", "Your numbers"] : ["Lucky numbers Match any of yours to win its prize", "Your numbers Wins add up"];
@@ -1889,7 +2174,7 @@ function scratchPrintProblems(mode) {
     }
     const extra = ticket.querySelector(".lc-scratch__extra");
     if (!ticket.querySelector(".lc-scratch__bonus") || extra?.textContent.trim() !== "Extra 25 gp") out.push(`the EXTRA box reads "${extra?.textContent.trim()}"`);
-    if (ticket.querySelector(".lc-scratch__bonus p")?.textContent.trim() !== "Reveal the gem to win it on top of the card.") out.push("no line under Extra saying how");
+    if (ticket.querySelector(".lc-scratch__bonus p")?.textContent.trim() !== "Find the gem in the bonus spot to win it on top of the card.") out.push("no line under Extra saying how");
     const spot = ticket.querySelector(".lc-scratch__spot")?.getBoundingClientRect();
     if (!spot || Math.abs(spot.width - spot.height) > 1) out.push("the bonus spot isn't square");
   }
@@ -2362,7 +2647,7 @@ try {
       if (name.startsWith("scratch")) await page.waitForSelector(name === "scratch-unscratched" || name === "scratch-half" || name === "scratch-spectator" ? "body[data-ready]" : "body[data-landed]", { timeout: 10000 });
       // Mid auto-scratch: the coin has opened a few panels by itself.
       if (name === "scratch-spectator") await page.waitForFunction(() => document.querySelectorAll(".lc-scratch__panel--open").length >= 3, null, { timeout: 10000 });
-      if (name.startsWith("manager") || name === "box-limits" || name === "editor-deck" || name.startsWith("editor-scratch") || name === "box-odds" || name === "drop-preview") await page.waitForSelector("body[data-ready]", { timeout: 10000 });
+      if (name.startsWith("manager") || name === "box-limits" || name.startsWith("editor") || name === "box-odds" || name === "drop-preview") await page.waitForSelector("body[data-ready]", { timeout: 10000 });
       await page.waitForTimeout(500);
       const wide = await page.evaluate(() => document.scrollingElement.scrollWidth > document.scrollingElement.clientWidth + 1);
       if (name.startsWith("shop")) problems0.push(...await page.evaluate(shopControlProblems, name.endsWith("-gm")));
@@ -2391,9 +2676,35 @@ try {
         for (const v of ["12", "", "10"]) { await page.fill('input[name="stock"]', v); said.push((await page.textContent(".lc-limits__left")).trim()); }
         if (said.join(" | ") !== "12 of 12 left once you save | Unlimited once you save | 10 of 10 left once you save") problems0.push(`the Restock line reads ${said.join(" | ")}`);
       }
-      else if (name === "editor-deck") problems0.push(...await page.evaluate(deckEditorProblems), ...await page.evaluate(shelfEditorProblems));
-      else if (name === "editor-scratch") problems0.push(...await page.evaluate(scratchEditorProblems), ...await page.evaluate(shelfEditorProblems));
+      else if (name === "editor-guard-offshelf") {
+        problems0.push(...await page.evaluate(offShelfEditorProblems));
+        // Ticking a pool (a click, as a GM does) brings Add to shelf and the
+        // box back; unticking it takes them away again.
+        await page.click('input[name="pool.core"]');
+        const on = await page.evaluate(() => [document.querySelector('button[data-action="ok"]').textContent.trim(), document.querySelector('input[name="onShelf"]').checked, document.querySelector('input[name="onShelf"]').disabled, document.querySelector("[data-shelf-why]").textContent]);
+        if (on.join("|") !== "Add to shelf|true|false|") problems0.push(`with a pool ticked the editor reads ${on.join(", ")}`);
+        await page.click('input[name="pool.core"]');
+        await page.evaluate(() => { const c = document.querySelector(".dialog-content"); c.scrollTop = c.scrollHeight; });
+        problems0.push(...await page.evaluate(offShelfEditorProblems));
+      }
+      else if (name === "editor-guard-stock") {
+        problems0.push(...await page.evaluate(stockEditorProblems));
+        // Typed back to a good number: Save on, the line says what Save will leave.
+        await page.fill('input[name="stock"]', "12");
+        const good = await page.evaluate(() => [document.querySelector("[data-stock-why]").textContent, document.querySelector('button[data-action="ok"]').disabled, document.querySelector(".lc-limits__left").textContent.trim()]);
+        if (good.join("|") !== "|false|5 of 12 left once you save") problems0.push(`with a stock of 12 the editor reads ${good.join(", ")}`);
+        await page.fill('input[name="stock"]', "-3");
+        problems0.push(...await page.evaluate(stockEditorProblems));
+      }
+      else if (name === "editor-guard-discard") problems0.push(...await page.evaluate(discardProblems));
+      else if (name === "editor-deck") problems0.push(...await page.evaluate(deckEditorProblems), ...await page.evaluate(shelfEditorProblems), ...await page.evaluate(editorOrderProblems, "deck"));
+      else if (name === "editor-scratch") problems0.push(...await page.evaluate(scratchEditorProblems), ...await page.evaluate(shelfEditorProblems), ...await page.evaluate(editorOrderProblems, "scratch"));
       else if (name.startsWith("editor-scratch-fill")) problems0.push(...await page.evaluate(scratchFillProblems, name === "editor-scratch-filled"));
+      else if (EDITOR_KINDS[name]) {
+        problems0.push(...await page.evaluate(editorOrderProblems, EDITOR_KINDS[name]), ...await page.evaluate(shelfEditorProblems));
+        if (name === "editor-crate-picker") problems0.push(...await page.evaluate(pickerSearchProblems));
+        if (name === "editor-auction-search") problems0.push(...await page.evaluate(lotSearchProblems));
+      }
       else if (name === "box-odds") problems0.push(...await page.evaluate(oddsEditorProblems));
       else if (name === "drop-preview") problems0.push(...await page.evaluate(dropPreviewProblems));
       else if (name === "landed-nothing") problems0.push(...await page.evaluate(nothingRevealProblems));
@@ -2411,7 +2722,10 @@ try {
       else if (name.startsWith("table") || name.startsWith("roulette")) problems0.push(...await page.evaluate(tableProblems, { phase: { "table-betting": "betting", "table-waiting": "waiting", "table-closed": "closed", "roulette-spinning": "spinning", "roulette-won": "landed", "roulette-lost": "landed" }[name], outcome: name === "roulette-lost" ? "lose" : "win", gm: name === "table-waiting" }));
       else if (name.startsWith("dice")) problems0.push(...await page.evaluate(diceProblems, { "dice-rolling": "rolling", "dice-won": "win", "dice-lost": "lose" }[name]));
       else if (name.startsWith("deck")) problems0.push(...await page.evaluate(deckProblems, { "deck-held": "held", "deck-boon": "item", "deck-bane": "loss", "deck-effect": "effect" }[name]));
-      else if (name === "manager-dropped") problems0.push(...await page.evaluate(droppedProblems));
+      else if (name === "manager-dropped") problems0.push(...await page.evaluate(droppedProblems), ...await page.evaluate(pinnedProblems, false));
+      else if (name === "manager-pool-made") problems0.push(...await page.evaluate(poolMadeProblems), ...await page.evaluate(pinnedProblems, true));
+      else if (name.startsWith("prompt-")) problems0.push(...await page.evaluate(promptProblems, name.slice(7)));
+      else if (name === "editor-crate-makepool") problems0.push(...await page.evaluate(makePoolProblems));
       else if (name === "manager-empty") problems0.push(...await page.evaluate(starterEmptyProblems, "pools"));
       else if (name === "manager-boxes-empty") problems0.push(...await page.evaluate(starterEmptyProblems, "boxes"));
       else if (name === "manager-boxes-starter") problems0.push(...await page.evaluate(starterBoxesProblems), ...await page.evaluate(panelProblems));
@@ -2424,7 +2738,7 @@ try {
       else if (name.startsWith("well")) problems0.push(...await page.evaluate(wellProblems, { "well-missed": "nothing", "well-coin": "coin", "well-won": "item" }[name]));
       else problems0.push(...await page.evaluate(revealProblems, name === "landed-buyer" || name === "landed-missed"));
       if (name.startsWith("manager")) problems0.push(...await page.evaluate(navProblems));
-      if (name.startsWith("manager-boxes") && name !== "manager-boxes-empty") problems0.push(...await page.evaluate(priceProblems));
+      if (name.startsWith("manager-boxes") && name !== "manager-boxes-empty") problems0.push(...await page.evaluate(priceProblems), ...await page.evaluate(pinnedProblems, false));
       if (name === "landed-missed") problems0.push(...await page.evaluate(missedProblems));
       if (name === "shop-short") {
         const grid = await page.$(".lc-shop__grid");

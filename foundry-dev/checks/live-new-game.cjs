@@ -10,22 +10,26 @@
 // branch's code (as live-limits.cjs does). Player2's shop is open on Crate
 // Tester. Then, as a GM does, on the Boxes tab:
 //
-//   1. Click "New dice game": the dialog "New dice game" opens with the name
+//   1. Click "New Dragon's Teeth": the dialog "New Dragon's Teeth" opens with the name
 //      focused and its default button reading "Add to shelf" (the shop is
 //      open), no record is written, and the player's shop shows no new card
 //      while it is open. Cancel: still nothing written, the Boxes table has
 //      the rows it had.
 //   1b. Click "New scratch ticket": the dialog "New scratch ticket" opens on
-//      the draft (six prize rows, the readout "1 in 2.3 tickets wins, ..."),
-//      the name focused; Cancel: nothing written.
-//   2. Click "New box": the dialog "New box"; type a name and a price, tick
-//      "Live UI pool", press "Add to shelf". Exactly one box is added, the
+//      the draft (Fill's list at its defaults: seven prize rows, the readout
+//      "1 in 3.4 tickets wins, ...", 65% back), the name focused, its button
+//      "Save off the shelf" (the Rare item has no pool yet); Cancel, nothing
+//      typed: closes with no question, nothing written.
+//   2. Click "New crate": the dialog "New crate", its button "Save off the
+//      shelf" while no pool is ticked; type a name and a price, tick
+//      "Live UI pool" (the button reads "Add to shelf" again), press "Add to
+//      shelf". Exactly one box is added, the
 //      player's shop shows its card within 2 s, the manager is on the Boxes
 //      tab with focus on that row's Edit, the row is marked new and the
 //      status line reads "<name> is on the shelf at <price>."
-//   3. Click "New box" and Cancel: the box count and the table are unchanged.
+//   3. Click "New crate" and Cancel: the box count and the table are unchanged.
 //   4. On the Pools tab, click "New crate from this pool" on Live UI pool:
-//      the dialog "New box" with the pool's name, the pool ticked and the
+//      the dialog "New crate" with the pool's name, the pool ticked and the
 //      price focused; type a price and press "Add to shelf": one more box,
 //      drawing from that pool, the Boxes tab with its row focused.
 //
@@ -155,7 +159,7 @@ const untilCards = (pl, pred, since, ms = 4000) => pl.evaluate(async ({ pred, si
       await __lc.wait(300);
     }, { base: MODULE_BASE, helpers: GM_HELPERS });
 
-    // 1. New dice game, then Cancel.
+    // 1. New Dragon's Teeth, then Cancel.
     out.dice = await gm.page.evaluate(async base => {
       const store = await import(base + "scripts/foundry/store.js");
       const rows = __lc.rows();
@@ -197,6 +201,7 @@ const untilCards = (pl, pred, since, ms = 4000) => pl.evaluate(async ({ pred, si
         name: d?.querySelector('input[name="name"]')?.value,
         prizeRows: d?.querySelectorAll(".lc-prize-row").length ?? 0,
         readout: d?.querySelector(".lc-scratch-form__readout")?.textContent.trim() ?? null,
+        payback: d?.querySelector(".lc-scratch-form__payback")?.textContent.trim() ?? null,
         boxes: Object.keys(store.getBoxes()).length,
       };
       __lc.click(__lc.cancel());
@@ -205,7 +210,7 @@ const untilCards = (pl, pred, since, ms = 4000) => pl.evaluate(async ({ pred, si
       return { rowsBefore: rows, open, after: { boxes: Object.keys(store.getBoxes()).length, rows: __lc.rows(), dialog: !!__lc.dialog() } };
     }, MODULE_BASE);
 
-    // 2. New box: type, tick, Add to shelf.
+    // 2. New crate: type, tick, Add to shelf.
     const crateName = `Live new crate ${STAMP}`;
     out.crate = await gm.page.evaluate(async () => {
       const btn = __lc.app.element.querySelector('[data-action="addBox"]');
@@ -218,8 +223,11 @@ const untilCards = (pl, pred, since, ms = 4000) => pl.evaluate(async ({ pred, si
     const dlg = gm.page.locator(".application.lc-dialog").last();
     await dlg.locator('input[name="name"]').fill(crateName);
     await dlg.locator('input[name="price"]').fill("7");
+    // The world's other pools are folded under "Add a pool" (poolpicker.js): open it, as a GM does.
+    if (await dlg.locator(".lc-pool-picker__add").count()) await dlg.locator(".lc-pool-picker__add").click();
     await dlg.locator(`.lc-pool-pick:has-text("Live UI pool") input[type="checkbox"]`).check();
     out.crate.previewTicked = (await dlg.locator(".lc-form__preview").textContent()).trim();
+    out.crate.okTicked = (await dlg.locator('button[data-action="ok"]').textContent()).trim();
     const t2save = Date.now();
     await dlg.locator('button[data-action="ok"]').click();
     out.crate.saved = await gm.page.evaluate(async ({ base, before, name }) => {
@@ -256,7 +264,7 @@ const untilCards = (pl, pred, since, ms = 4000) => pl.evaluate(async ({ pred, si
       return { shown: false, ms: null, cards: globalThis.__lcCards().length };
     }, { id: crateId, since: t2save });
 
-    // 3. New box, then Cancel.
+    // 3. New crate, then Cancel.
     out.cancel = await gm.page.evaluate(async base => {
       const store = await import(base + "scripts/foundry/store.js");
       const before = { boxes: Object.keys(store.getBoxes()).length, rows: __lc.rows(), html: __lc.app.element.querySelector(".lc-table")?.innerHTML.length };
@@ -309,19 +317,19 @@ const untilCards = (pl, pred, since, ms = 4000) => pl.evaluate(async ({ pred, si
     const d = out.dice, c = out.crate, f = out.fromPool;
     const poolRef = [{ id: out.before.poolId, share: 1 }];
     out.checks = {
-      diceDialog: d.open.title === "New dice game" && d.open.okLabel === addLabel && d.open.nameFocused && d.open.name === "New dice game",
+      diceDialog: d.open.title === "New Dragon's Teeth" && d.open.okLabel === addLabel && d.open.nameFocused && d.open.name === "New Dragon's Teeth",
       diceWritesNothing: d.open.boxes === out.before.boxIds.length && d.open.boxesLater === out.before.boxIds.length && d.open.rows === d.rowsBefore,
       diceNoCard: out.diceCards.cards.length === out.shop.cards,
       diceCancel: d.after.boxes === out.before.boxIds.length && d.after.rows === d.rowsBefore && !d.after.dialog,
-      scratchDialog: !out.scratch.missing && out.scratch.open.button === "New scratch ticket" && out.scratch.open.title === "New scratch ticket" && out.scratch.open.okLabel === addLabel && out.scratch.open.nameFocused && out.scratch.open.name === "New scratch ticket" && out.scratch.open.prizeRows === 6 && out.scratch.open.readout === "1 in 2.3 tickets wins, the top prize (Rare item) 1 in 100, all prizes 5 gp or more",
+      scratchDialog: !out.scratch.missing && out.scratch.open.button === "New scratch ticket" && out.scratch.open.title === "New scratch ticket" && out.scratch.open.okLabel === "Save off the shelf" && out.scratch.open.nameFocused && out.scratch.open.name === "New scratch ticket" && out.scratch.open.prizeRows === 7 && out.scratch.open.readout === "1 in 3.4 tickets wins, the top prize (Rare item) 1 in 100, all prizes 5 gp or more" && /^Pays back 6[2-8]% in coins/.test(out.scratch.open.payback ?? ""),
       scratchCancel: !out.scratch.missing && out.scratch.open.boxes === out.before.boxIds.length && out.scratch.after.boxes === out.before.boxIds.length && out.scratch.after.rows === out.scratch.rowsBefore && !out.scratch.after.dialog,
-      crateDialog: c.title === "New box" && c.okLabel === addLabel && c.nameFocused && /drop nothing/.test(c.preview ?? "") && /\d+%/.test(c.previewTicked ?? ""),
+      crateDialog: c.title === "New crate" && c.okLabel === "Save off the shelf" && c.okTicked === addLabel && c.nameFocused && /drop nothing/.test(c.preview ?? "") && /\d+%/.test(c.previewTicked ?? ""),
       crateAdded: c.saved.added.length === 1 && c.saved.added[0].name === crateName && c.saved.added[0].price === 7 && JSON.stringify(c.saved.added[0].pools) === JSON.stringify(poolRef),
       crateShown: c.saved.tab === "boxes" && c.saved.focusOnEdit && c.saved.editLabel === `Edit ${crateName}` && c.saved.rowNew && c.saved.rowInView && c.saved.rows === d.rowsBefore + 1,
       crateSaid: c.saved.status === (out.before.shopOpen ? `${crateName} is on the shelf at 7 gp.` : `${crateName} added. The shop is closed, so players can't see it yet.`),
       crateCard: out.crateCard.shown && out.crateCard.ms <= 2000 && out.crateCard.cards === out.shop.cards + 1,
       cancel: out.cancel.after.boxes === out.cancel.before.boxes && out.cancel.after.rows === out.cancel.before.rows && out.cancel.after.html === out.cancel.before.html,
-      fromPoolDialog: f.label === "New crate from Live UI pool" && f.title === "New box" && f.okLabel === addLabel && f.name === "Live UI pool" && f.poolTicked === true && f.priceFocused && /\d+%/.test(f.preview ?? ""),
+      fromPoolDialog: f.label === "New crate from Live UI pool" && f.title === "New crate" && f.okLabel === addLabel && f.name === "Live UI pool" && f.poolTicked === true && f.priceFocused && /\d+%/.test(f.preview ?? ""),
       fromPoolAdded: f.saved.added.length === 1 && f.saved.added[0].name === "Live UI pool" && f.saved.added[0].price === 9 && JSON.stringify(f.saved.added[0].pools) === JSON.stringify(poolRef) && f.saved.tab === "boxes" && f.saved.focusOnEdit && /^Live UI pool is on the shelf at 9 gp\.$|^Live UI pool added\./.test(f.saved.status ?? ""),
     };
     out.ok = Object.values(out.checks).every(Boolean);

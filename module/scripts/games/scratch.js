@@ -115,12 +115,11 @@ export const themeOf = game => (THEMES.includes(game?.theme) ? game.theme : "hoa
 /*
   What a New scratch ticket starts as: the approved mockup's Fortune
   Ticket, 5 gp a ticket, lucky numbers on a 4 x 3 grid with a 25 gp bonus
-  spot, a roll of 100: one Rare item, two 100 gp, five 25 gp, twelve
-  10 gp, twenty 5 gp and three bonus tickets, the other 57 duds.
+  spot, a roll of 100. Its prize list is Fill the prize list's at its own
+  defaults (newgame.js, scratchplan.js generatePrizeLines).
 */
 export const SCRATCH_DEFAULTS = {
   price: 5, layout: "lucky", bonusGp: 25, size: 100, theme: "hoard",
-  prizes: [{ count: 1, parts: [{ item: { rarity: "rare" } }] }, { count: 2, parts: [{ gp: 100 }] }, { count: 5, parts: [{ gp: 25 }] }, { count: 12, parts: [{ gp: 10 }] }, { count: 20, parts: [{ gp: 5 }] }, { count: 3, parts: [{ bonus: true }] }],
 };
 
 const clampInt = (v, [lo, hi], fallback) => {
@@ -328,8 +327,8 @@ export function rollReason(game, pools, log = []) {
 
 /* ---------- The words for a prize and the odds ---------- */
 
-// One part's words: "25 gp", "Rare item", and the gem "Bonus, 25 gp" on
-// its own or "the gem (25 gp)" beside other parts.
+// One part's words: "25 gp", "Rare item", and the bonus spot "Bonus, 25 gp"
+// on its own or "the bonus spot (25 gp)" beside other parts.
 const partText = (p, alone = true) => {
   if (p.kind === "item") return t("LOOTCRATES.Scratch.ItemPrize", { rarity: RARITY_LABEL[p.rarity] ?? p.rarity });
   if (p.kind === "bonus") return t(alone ? "LOOTCRATES.Scratch.BonusPrize" : "LOOTCRATES.Scratch.GemPart", { price: formatPrice(p.gp) });
@@ -337,7 +336,7 @@ const partText = (p, alone = true) => {
 };
 
 // A prize line's words: "25 gp", "Rare item", "Bonus, 25 gp", or its
-// parts joined, "Rare item + 25 gp + the gem (25 gp)".
+// parts joined, "Rare item + 25 gp + the bonus spot (25 gp)".
 export function prizeText(p) {
   const parts = p.parts ?? [p];
   return parts.map(q => partText(q, parts.length === 1)).join(t("LOOTCRATES.Scratch.Plus"));
@@ -1234,31 +1233,48 @@ export function prizeRowHTML(p, n, id, esc = s => String(s ?? "")) {
       <input class="lc-prize-row__count" name="z.${esc(id)}.count" type="number" min="0" step="1" value="${esc(p?.count ?? 1)}" aria-label="${esc(PRIZE_FIELDS.count(n))}">
       <div class="lc-prize-row__parts">
         ${list.map((part, i) => prizePartHTML(part, n, many ? i + 1 : 0, id, `${id}q${i}`, esc)).join("")}
-        <button type="button" class="lc-prize-row__and" aria-label="${esc(t("LOOTCRATES.Scratch.AddPartTo", { n }))}"${full ? ` aria-disabled="true" title="${esc(t("LOOTCRATES.Scratch.PartsFull", { max: MAX_PARTS }))}"` : ""}><i class="fas fa-plus" inert></i> ${t("LOOTCRATES.Scratch.AddPart")}</button>
+        <button type="button" class="lc-prize-row__and" aria-label="${esc(t("LOOTCRATES.Scratch.AddPartTo", { n }))}" data-tooltip="${t("LOOTCRATES.Scratch.AddPart")}"${full ? ` aria-disabled="true" title="${esc(t("LOOTCRATES.Scratch.PartsFull", { max: MAX_PARTS }))}"` : ""}><i class="fas fa-plus" inert></i> <span class="lc-prize-row__and-text">${t("LOOTCRATES.Scratch.AddPart")}</span></button>
       </div>
       <button type="button" class="lc-prize-row__remove" aria-label="${esc(t("LOOTCRATES.Scratch.RemovePrize", { n }))}" data-tooltip="${t("LOOTCRATES.Pools.Remove")}"><i class="fas fa-xmark" inert></i></button>
     </div>`;
 }
 
 /*
-  The editor's own fields, between the price and the pools: the layout,
-  the grid, the bonus spot (lucky numbers only), the ticket's colours
-  (Printed in, one of THEMES), the roll's size, the Fill the prize list
-  fields when given (`fill`, scratchplan.js fillFieldsHTML) and the prize
-  list as rows (Add prize, a remove on each), then the readout the live
-  preview fills.
+  The scratch ticket's editor sections (views/editors.js), in
+  the order a GM plans a ticket: the roll's size, then (after the pools
+  the item prizes come from) the prizes with Fill above the rows, then
+  the card (layout, grid, bonus spot), how it looks (the theme) and who
+  sees what (whether players see what is left). `sold` is the live
+  roll's tickets sold (its note says the prizes left follow the list);
+  `fill` is Fill the prize list's fields (scratchplan.js fillFieldsHTML).
   The manager and the harness draw this one copy and wire it with
   wireScratchEditor.
 */
-export function scratchFieldsHTML(game, { esc = s => String(s ?? ""), sold = 0, fill = "" } = {}) {
+export function scratchRollHTML(game, { esc = s => String(s ?? ""), sold = 0 } = {}) {
+  return `<div class="lc-scratch-form__roll" data-section="roll" role="group" aria-label="${t("LOOTCRATES.Scratch.RollLegend")}">
+        <label class="lc-row">${t("LOOTCRATES.Scratch.RollSize", { input: `<input name="size" type="number" min="1" step="1" value="${esc(rollOf(game).size)}">` })}</label>
+        ${sold ? `<p class="lc-form__hint">${t("LOOTCRATES.Scratch.LiveRoll", { roll: rollName(rollOf(game).id), sold })}</p>` : ""}
+      </div>`;
+}
+
+export function scratchPrizesHTML(game, { esc = s => String(s ?? ""), fill = "" } = {}) {
+  const roll = game?.roll ?? {};
+  return `<fieldset class="lc-prizes" data-section="prizes"><legend>${t("LOOTCRATES.Scratch.PrizesLegend")}</legend>
+        ${fill}
+        <div class="lc-prizes__head" aria-hidden="true"><span>${t("LOOTCRATES.Scratch.HeadTickets")}</span><span>${t("LOOTCRATES.Scratch.HeadPrize")}</span><span>${t("LOOTCRATES.Manager.GoldHead")}</span><span></span></div>
+        <div class="lc-prizes__rows">${(roll.prizes ?? []).map((p, i) => prizeRowHTML(p, i + 1, `p${i}`, esc)).join("")}</div>
+        <div class="lc-prizes__foot"><button type="button" class="lc-prizes__add"><i class="fas fa-plus"></i> ${t("LOOTCRATES.Scratch.AddPrize")}</button></div>
+        <p class="lc-form__hint">${t("LOOTCRATES.Scratch.PrizesHint")}</p>
+      </fieldset>`;
+}
+
+export function scratchCardHTML(game, { esc = s => String(s ?? "") } = {}) {
   const layout = layoutOf(game);
   const { cols, rows } = gridOf(game);
   const bonus = { on: !!game?.bonus?.on, gp: toGp(game?.bonus?.gp) || SCRATCH_DEFAULTS.bonusGp };
-  const roll = game?.roll ?? {};
   const id = esc(game?.id ?? "new");
   const lim = GRID_LIMITS[layout];
-  return `
-      <fieldset class="lc-scratch-form__layout"><legend>${t("LOOTCRATES.Scratch.LayoutLegend")}</legend>
+  return `<fieldset class="lc-scratch-form__layout"><legend>${t("LOOTCRATES.Scratch.LayoutLegend")}</legend>
         ${LAYOUTS.map(l => `<div class="lc-mode"><label class="lc-row lc-mode__pick"><input type="radio" name="layout" value="${l}"${l === layout ? " checked" : ""} aria-describedby="lc-layout-${id}-${l}"> ${LAYOUT_LABEL[l]}</label>
           <p class="lc-form__hint lc-mode__hint" id="lc-layout-${id}-${l}">${t(l === "lucky" ? "LOOTCRATES.Scratch.LayoutLuckyHint" : "LOOTCRATES.Scratch.LayoutMatch3Hint")}</p></div>`).join("")}
         <div class="lc-row lc-row--wrap">${t("LOOTCRATES.Scratch.GridRow", {
@@ -1266,19 +1282,47 @@ export function scratchFieldsHTML(game, { esc = s => String(s ?? ""), sold = 0, 
           rows: `<input name="rows" type="number" min="${lim.rows[0]}" max="${lim.rows[1]}" step="1" value="${rows}" aria-label="${t("LOOTCRATES.Scratch.GridRows")}">`,
         })}</div>
         <div class="lc-row lc-row--wrap lc-scratch-form__bonus"${layout === "lucky" ? "" : " hidden"}><label class="lc-field"><input type="checkbox" name="bonusOn"${bonus.on ? " checked" : ""}> ${t("LOOTCRATES.Scratch.BonusField")}</label> <input name="bonusGp" type="number" min="0" step="1" value="${esc(bonus.gp)}" aria-label="${t("LOOTCRATES.Scratch.BonusGp")}"> gp</div>
-        <label class="lc-row lc-scratch-form__theme">${t("LOOTCRATES.Scratch.ThemeField")} <select name="theme">${THEMES.map(th => `<option value="${th}"${th === themeOf(game) ? " selected" : ""}>${esc(THEME_LABEL[th])}</option>`).join("")}</select></label>
-      </fieldset>
-      <fieldset class="lc-prizes"><legend>${t("LOOTCRATES.Scratch.RollLegend")}</legend>
-        <label class="lc-row">${t("LOOTCRATES.Scratch.RollSize", { input: `<input name="size" type="number" min="1" step="1" value="${esc(rollOf(game).size)}">` })}</label>
-        ${sold ? `<p class="lc-form__hint">${t("LOOTCRATES.Scratch.LiveRoll", { roll: rollName(rollOf(game).id), sold })}</p>` : ""}
-        <div class="lc-scratch-form__left"><label class="lc-field"><input type="checkbox" name="showLeft"${showsLeft(game) ? " checked" : ""} aria-describedby="lc-left-${id}"> ${t("LOOTCRATES.Scratch.ShowLeftField")}</label>
-          <p class="lc-form__hint" id="lc-left-${id}">${t("LOOTCRATES.Scratch.ShowLeftHint")}</p></div>
-        ${fill}
-        <div class="lc-prizes__head" aria-hidden="true"><span>${t("LOOTCRATES.Scratch.HeadTickets")}</span><span>${t("LOOTCRATES.Scratch.HeadPrize")}</span><span>${t("LOOTCRATES.Manager.GoldHead")}</span><span></span></div>
-        <div class="lc-prizes__rows">${(roll.prizes ?? []).map((p, i) => prizeRowHTML(p, i + 1, `p${i}`, esc)).join("")}</div>
-        <div class="lc-prizes__foot"><button type="button" class="lc-prizes__add"><i class="fas fa-plus"></i> ${t("LOOTCRATES.Scratch.AddPrize")}</button></div>
-        <p class="lc-form__hint">${t("LOOTCRATES.Scratch.PrizesHint")}</p>
       </fieldset>`;
+}
+
+export function scratchLookHTML(game, { esc = s => String(s ?? "") } = {}) {
+  return `<fieldset class="lc-scratch-form__look" data-section="look"><legend>${t("LOOTCRATES.Scratch.LookLegend")}</legend>
+        <label class="lc-row lc-scratch-form__theme">${t("LOOTCRATES.Scratch.ThemeField")} <select name="theme">${THEMES.map(th => `<option value="${th}"${th === themeOf(game) ? " selected" : ""}>${esc(THEME_LABEL[th])}</option>`).join("")}</select></label>
+      </fieldset>`;
+}
+
+export function scratchSeesHTML(game, { esc = s => String(s ?? "") } = {}) {
+  const id = esc(game?.id ?? "new");
+  return `<div class="lc-scratch-form__left"><label class="lc-field"><input type="checkbox" name="showLeft"${showsLeft(game) ? " checked" : ""} aria-describedby="lc-left-${id}"> ${t("LOOTCRATES.Scratch.ShowLeftField")}</label>
+          <p class="lc-form__hint" id="lc-left-${id}">${t("LOOTCRATES.Scratch.ShowLeftHint")}</p></div>`;
+}
+
+// What the card's fold says (views/editors.js): "Lucky numbers, 4 by 3
+// panels, a bonus spot paying 25 gp", from the form's values.
+export function cardSaid(values = {}) {
+  const layout = LAYOUTS.includes(values.layout) ? values.layout : "lucky";
+  const { cols, rows } = gridOf({ layout, grid: { cols: values.cols, rows: values.rows } });
+  const on = values.bonusOn === true || values.bonusOn === "on";
+  return layout === "lucky" && on
+    ? t("LOOTCRATES.Fold.CardBonus", { layout: LAYOUT_LABEL[layout], cols, rows, gp: toGp(values.bonusGp) })
+    : t("LOOTCRATES.Fold.Card", { layout: LAYOUT_LABEL[layout], cols, rows });
+}
+
+// The card's values as its form starts them.
+export const cardValues = game => ({ layout: layoutOf(game), cols: gridOf(game).cols, rows: gridOf(game).rows, bonusOn: !!game?.bonus?.on, bonusGp: toGp(game?.bonus?.gp) || SCRATCH_DEFAULTS.bonusGp });
+
+// Every section but the pools, the card's and Who sees what's folds and
+// the limits, in the editor's order, with `pools` (the picker's markup)
+// where the editor puts it: above Fill. `card` and `sees` wrap the card's
+// fields and "Players see what is left" (views/editors.js folds them).
+export function scratchFieldsHTML(game, { esc = s => String(s ?? ""), sold = 0, fill = "", pools = "", card = html => html, sees = html => html } = {}) {
+  return `
+      ${scratchRollHTML(game, { esc, sold })}
+      ${pools}
+      ${scratchPrizesHTML(game, { esc, fill })}
+      ${card(scratchCardHTML(game, { esc }))}
+      ${scratchLookHTML(game, { esc })}
+      ${sees(scratchSeesHTML(game, { esc }))}`;
 }
 
 // A part as the editor's fields say it: the gem, an item at a rarity, or coins.

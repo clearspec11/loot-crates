@@ -31,8 +31,61 @@ export const OPEN_UP_TO = 60;
 export const FALLBACK_IMG = "icons/svg/item-bag.svg";
 
 // What the GM last did to a pool's view; kept by the manager per pool.
-// `recent` lists the uuids just dropped on the pool, newest first.
-export const defaultView = pool => ({ open: (pool?.entries?.length ?? 0) <= OPEN_UP_TO, q: "", chip: null, shown: PAGE_ROWS, recent: [] });
+// `recent` lists the uuids just dropped on the pool, newest first. `open`
+// says whether it starts open (the manager's Pools tab: poolToOpen); left
+// out, a pool of up to OPEN_UP_TO entries does.
+export const defaultView = (pool, open) => ({ open: open ?? (pool?.entries?.length ?? 0) <= OPEN_UP_TO, q: "", chip: null, shown: PAGE_ROWS, recent: [] });
+
+/*
+  The one pool the Pools tab opens with: the one the GM last worked on in
+  this session (`last`, while it exists), else the newest (pools are kept
+  in the order they were made), which is also the only one in a world with
+  one. Every other pool starts collapsed to its summary line, so a 6-item
+  pool isn't under three 800-item ones (the tab was 8,472 px tall with
+  every pool open).
+*/
+export function poolToOpen(pools, last = null) {
+  const list = Array.isArray(pools) ? pools : Object.values(pools ?? {});
+  if (last && list.some(p => p.id === last)) return last;
+  return list.at(-1)?.id ?? null;
+}
+
+/*
+  New pool's dialog: the name, focused and selected (manager.js
+  promptForm's `select`), "New pool" until the GM types over it. And the
+  pencil's Rename pool, the same field with the pool's name.
+*/
+export function poolNameHTML(name, esc) {
+  return `<label>${t("LOOTCRATES.Manager.Name")} <input name="name" value="${esc(name)}" autocomplete="off" spellcheck="false" autofocus></label>`;
+}
+
+/*
+  Add from compendium's filters: the compendium (dnd5e's own item pack
+  picked when the world has it, the pack a first crate is most likely
+  built from), then Types and Rarities as rows of ticked chips, every
+  choice and its state in sight (they were 32 px multi-selects whose
+  pre-picked options sat out of view, with nothing saying Ctrl-click),
+  then Name contains. `packs` [{ id, label }], `types` [{ key, label }].
+  The dialog's first button reads Preview: nothing is added until the
+  preview's Add.
+*/
+export const BULK_TYPES = ["weapon", "equipment", "consumable", "tool"];
+export const BULK_PACK = "dnd5e.items";
+const chip = (name, value, label, on, esc) => `<label class="lc-chipbox"><input type="checkbox" name="${name}" value="${esc(value)}" data-multi${on ? " checked" : ""}> <span>${esc(label)}</span></label>`;
+export function bulkAddHTML({ packs = [], types = [], picked = BULK_TYPES, esc }) {
+  const pack = packs.some(p => p.id === BULK_PACK) ? BULK_PACK : packs[0]?.id;
+  return `
+      <label>${t("LOOTCRATES.Manager.Compendium")} <select name="pack">${packs.map(p => `<option value="${esc(p.id)}"${p.id === pack ? " selected" : ""}>${esc(p.label)} (${esc(p.id)})</option>`).join("")}</select></label>
+      <fieldset class="lc-chipset" aria-describedby="lc-bulk-types-hint"><legend>${t("LOOTCRATES.Manager.Types")}</legend>
+        <div class="lc-chipset__chips">${types.map(k => chip("types", k.key, k.label, picked.includes(k.key), esc)).join("")}</div>
+        <p class="lc-form__hint" id="lc-bulk-types-hint">${t("LOOTCRATES.Manager.TypesHint")}</p>
+      </fieldset>
+      <fieldset class="lc-chipset" aria-describedby="lc-bulk-rarities-hint"><legend>${t("LOOTCRATES.Manager.Rarities")}</legend>
+        <div class="lc-chipset__chips">${RARITIES.map(r => chip("rarities", r, RARITY_LABEL[r], r !== "common", esc)).join("")}</div>
+        <p class="lc-form__hint" id="lc-bulk-rarities-hint">${t("LOOTCRATES.Manager.RaritiesHint")}</p>
+      </fieldset>
+      <label>${t("LOOTCRATES.Manager.NameContains")} <input name="name" placeholder="${t("LOOTCRATES.Manager.NameContainsPlaceholder")}" autocomplete="off"></label>`;
+}
 
 /*
   Whether an entry's source has no rarity at all. An entry added before
@@ -345,7 +398,7 @@ export function poolBody(pool, rows, view, esc) {
       <span class="lc-tabs__spacer"></span>
       <button type="button" data-action="bulkAdd" data-pool="${id}" title="${t("LOOTCRATES.Pools.BulkAddTip")}"><i class="fas fa-book"></i> ${t("LOOTCRATES.Pools.BulkAdd")}</button>
       <button type="button" data-action="crateFromPool" data-pool="${id}" aria-label="${t("LOOTCRATES.Pools.CrateFromLabel", { name: esc(pool.name) })}" title="${t("LOOTCRATES.Pools.CrateFromTip")}"><i class="fas fa-box-open"></i> ${t("LOOTCRATES.Pools.CrateFrom")}</button>
-      <button type="button" data-action="editPool" data-pool="${id}" aria-label="${t("LOOTCRATES.Pools.RenameLabel", { name: esc(pool.name) })}"><i class="fas fa-pen"></i></button>
+      <button type="button" data-action="editPool" data-pool="${id}" aria-label="${t("LOOTCRATES.Pools.RenameLabel", { name: esc(pool.name) })}" data-tooltip="${t("LOOTCRATES.Manager.EditPool")}"><i class="fas fa-pen" inert></i></button>
       <button type="button" data-action="deletePool" data-pool="${id}" aria-label="${t("LOOTCRATES.Boxes.DeleteLabel", { name: esc(pool.name) })}"><i class="fas fa-trash"></i></button>
     </div>
     ${has ? `<div class="lc-pool__chips" role="group" aria-label="${t("LOOTCRATES.Pools.FilterLabel", { name: esc(pool.name) })}">${chipsHTML(pool, rows, view, esc)}</div>` : ""}

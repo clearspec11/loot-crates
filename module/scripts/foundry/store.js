@@ -242,6 +242,23 @@ export function updateBox(id, edit) {
   });
 }
 
+// Several boxes in one write (Put all on the shelf after the starter
+// crates), so every open shop redraws once, not once a game. `edit` as
+// updateBox's; a box deleted meanwhile is skipped. Returns the ones written.
+export function updateBoxes(ids, edit) {
+  return enqueueWrite(async () => {
+    const boxes = getBoxes();
+    const out = [];
+    for (const id of ids ?? []) {
+      if (!boxes[id]) continue;
+      boxes[id] = { ...edit(boxes[id]), id };
+      out.push(boxes[id]);
+    }
+    if (out.length) await set(SETTINGS.BOXES, boxes);
+    return out;
+  });
+}
+
 export function getActorState(actorId, boxId) {
   return get(SETTINGS.STATE)[`${actorId}.${boxId}`] ?? {};
 }

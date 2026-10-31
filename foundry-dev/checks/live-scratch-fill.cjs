@@ -198,6 +198,12 @@ const lineText = line => [line.count, ...line.parts.map(q => (q.item ? `item.${q
     await dlg.locator('input[name="name"]').fill(NAME);
     await dlg.locator('input[name="price"]').fill("5 gp");
     await dlg.locator('input[name="size"]').fill("100");
+    // The pools sit right above Fill, the world's others folded under
+    // "Add a pool" with a search (poolpicker.js): open it, find the pool, tick it.
+    if (await dlg.locator(".lc-pool-picker__add").count()) {
+      await dlg.locator(".lc-pool-picker__add").click();
+      await dlg.locator(".lc-pool-picker__search").fill(POOL);
+    }
     await dlg.locator(`input[name="pool.${poolId}"]`).check();
     const startRows = await rowsOf(dlg);
     await dlg.locator(".lc-fill__toggle").click();
@@ -230,6 +236,8 @@ const lineText = line => [line.count, ...line.parts.map(q => (q.item ? `item.${q
     await gm.page.waitForFunction(() => /^Shuffled/.test(document.querySelector(".application.lc-dialog .lc-fill__said")?.textContent ?? ""), null, { timeout: 8000 });
     out.shuffled = await read();
     out.secondConfirm = (await gm.page.locator(".application.dialog").count()) > dialogsBefore;
+    // "Players see what is left" is in the folded Who sees what (views/editors.js).
+    if (!(await dlg.locator('input[name="showLeft"]').isVisible())) await dlg.locator('[data-fold="sees"] > summary').click();
     await dlg.locator('input[name="showLeft"]').uncheck();
     const known = await gm.page.evaluate(() => Object.keys(game.settings.get("loot-crates", "boxes")));
     await dlg.locator('button[data-action="ok"]').click();
@@ -289,7 +297,7 @@ const lineText = line => [line.count, ...line.parts.map(q => (q.item ? `item.${q
     const pct = s => Number(s.match(/Pays back (\d+)% in coins/)?.[1]);
     out.checks = {
       fields: out.fields.expanded === "true" && out.fields.payback === "65" && out.fields.winEvery === "3.5" && out.fields.shuffleOff === "true",
-      confirmed: /Replace the 6 prizes in the list with a new list\?/.test(out.confirmAsk ?? ""),
+      confirmed: /Replace the \d+ prizes in the list with a new list\?/.test(out.confirmAsk ?? ""),
       filled: JSON.stringify(out.filled.rows) !== JSON.stringify(startRows) && out.filled.rows[0] === "1 item.rare:" && /prizes filled in/.test(out.filled.said),
       oneIn35: Number(oneIn) >= 3.3 && Number(oneIn) <= 3.7 && /the top prize \(Rare item\) 1 in 100/.test(out.filled.readout),
       payback65: Math.abs(pct(out.filled.payback) - 65) <= 3 && Math.abs(pct(out.shuffled.payback) - 65) <= 3,

@@ -110,6 +110,7 @@ afterAll(() => vi.unstubAllGlobals());
 
 const POOL = { id: "p", name: "Odds and ends", pools: [], entries: [{ uuid: "Item.a", name: "Rope", img: "", rarity: "common", weight: 1 }, { uuid: "Item.b", name: "Flame Tongue", img: "", rarity: "rare", weight: 1 }] };
 beforeEach(async () => {
+  vi.restoreAllMocks();
   settings = new Map();
   sets = 0;
   store.registerSettings();
@@ -134,7 +135,24 @@ const field = name => dialog.form.querySelector(`[name="${name}"]`);
 const status = app => app.element.querySelector(".lc-manager__status");
 const focused = () => document.activeElement;
 
-const NEWS = [["addBox", "crate", "New box"], ["addWell", "well", "New well"], ["addDice", "dice", "New dice game"], ["addDeck", "deck", "New deck"], ["addWheel", "roulette", "New wheel"], ["addAuction", "auction", "New auction"], ["addScratch", "scratch", "New scratch ticket"]];
+// The rows a New scratch ticket opened on before round 30 (the mockup's
+// list), for the tests that walk its rows; a New now starts from Fill's.
+const MOCKUP_PRIZES = [{ count: 1, parts: [{ item: { rarity: "rare" } }] }, { count: 2, parts: [{ gp: 100 }] }, { count: 5, parts: [{ gp: 25 }] }, { count: 12, parts: [{ gp: 10 }] }, { count: 20, parts: [{ gp: 5 }] }, { count: 3, parts: [{ bonus: true }] }];
+function mockupList() {
+  const make = newgame.NEW_DEFAULTS.scratch;
+  vi.spyOn(newgame.NEW_DEFAULTS, "scratch").mockImplementation(() => ({ ...make(), roll: { id: 1, size: 100, prizes: structuredClone(MOCKUP_PRIZES) } }));
+}
+// What a New's default draft lacks before it can be played (views/playable.js),
+// put right as the GM would: the auction's lot picked, the scratch ticket's pool ticked.
+function makePlayable(kind) {
+  const el = kind === "auction" ? field("lot") : kind === "scratch" ? field("pool.p") : null;
+  if (!el) return;
+  if (kind === "auction") el.value = "item:Item.a";
+  else el.checked = true;
+  dialog.form.dispatchEvent({ type: "change", target: el });
+}
+
+const NEWS = [["addBox", "crate", "New crate"], ["addWell", "well", "New Wishing Well"], ["addDice", "dice", "New Dragon's Teeth"], ["addDeck", "deck", "New Deck of Many Things"], ["addWheel", "roulette", "New Roulette wheel"], ["addAuction", "auction", "New auction"], ["addScratch", "scratch", "New scratch ticket"]];
 
 describe("New then Cancel", () => {
   for (const [action, kind, title] of NEWS) {
@@ -198,6 +216,9 @@ describe("New then Save", () => {
       const pending = act(app, action);
       await settle(2);
       field("name").value = `My ${kind}`;
+      // The auction's draft has no lot and the scratch ticket's Rare item no
+      // pool: Save writes them off the shelf and the status says why.
+      const why = { auction: "Pick a lot: an auction with none can't be opened.", scratch: "Tick a pool for the item prizes, or those tickets can't be sold." }[kind];
       dialog.save();
       await pending;
       await settle();
@@ -207,7 +228,10 @@ describe("New then Save", () => {
       expect(boxes[0]).toMatchObject({ kind, name: `My ${kind}` });
       expect(boxes[0].price).toBe(newgame.NEW_DEFAULTS[kind]().price);
       expect(focused()?.getAttribute("aria-label")).toBe(`Edit My ${kind}`);
-      expect(status(app).textContent).toBe(newgame.addedNotice(boxes[0], { shopOpen: true }));
+      if (why) {
+        expect(boxes[0].rules.shelved).toBe(false);
+        expect(status(app).textContent).toBe(`My ${kind} added off the shelf. ${why}`);
+      } else expect(status(app).textContent).toBe(newgame.addedNotice(boxes[0], { shopOpen: true }));
     });
   }
 
@@ -221,6 +245,7 @@ describe("New then Save", () => {
     expect(options).toEqual(["", "crate:crate1", "item:Item.a", "item:Item.b"]);
     field("name").value = "The Flame Tongue";
     field("lot").value = "item:Item.b";
+    dialog.form.dispatchEvent({ type: "change", target: field("lot") });
     field("price").value = "20 gp";
     field("increment").value = "2";
     field("reserve").value = "40";
@@ -237,6 +262,7 @@ describe("New then Save", () => {
   });
 
   it("addScratch: the readout follows the prize list, Add prize and remove change it, the layout moves the grid, and Save writes the roll", async () => {
+    mockupList();
     const app = await manager();
     const pending = act(app, "addScratch");
     await settle(2);
@@ -283,6 +309,7 @@ describe("New then Save", () => {
   });
 
   it("addScratch: Fill the prize list asks before replacing the rows, fills them for a rare top prize at about 1 in 3.5 and 65% back, Shuffle changes them, and only Save writes them", async () => {
+    mockupList();
     const app = await manager();
     const pending = act(app, "addScratch");
     await settle(2);
@@ -325,6 +352,7 @@ describe("New then Save", () => {
   });
 
   it("addScratch: Add a part makes a prize line pay several parts at once, and the switch hides what is left from players", async () => {
+    mockupList();
     const app = await manager();
     const pending = act(app, "addScratch");
     await settle(2);
@@ -351,7 +379,7 @@ describe("New then Save", () => {
     form.dispatchEvent({ type: "change", target: gem });
     expect(parts[2].dataset.what).toBe("bonus");
     form.dispatchEvent({ type: "input" });
-    expect(readout()).toBe("1 in 2.3 tickets wins, the top prize (Rare item + 25 gp + the gem (25 gp)) 1 in 100, all prizes 5 gp or more");
+    expect(readout()).toBe("1 in 2.3 tickets wins, the top prize (Rare item + 25 gp + the bonus spot (25 gp)) 1 in 100, all prizes 5 gp or more");
     // A part's remove takes it, focus to the part before; the line keeps the rest.
     form.dispatchEvent({ type: "click", target: parts[2].querySelector(".lc-prize-part__remove") });
     expect(first.querySelectorAll(".lc-prize-part")).toHaveLength(2);
@@ -409,7 +437,7 @@ describe("New then Save", () => {
     dialog.save();
     await pending;
     await settle();
-    expect(status(app).textContent).toBe("New dice game added. The shop is closed, so players can't see it yet.");
+    expect(status(app).textContent).toBe("New Dragon's Teeth added. The shop is closed, so players can't see it yet.");
   });
 
   it("marks only the newest row, and lets the mark go when the manager closes", async () => {
@@ -453,7 +481,7 @@ describe("Copy", () => {
     }
   });
 
-  it("opens the crate's editor on a copy, titled Copy box with the name focused, and Cancel writes nothing", async () => {
+  it("opens the crate's editor on a copy, titled Copy crate with the name focused, and Cancel writes nothing", async () => {
     await store.saveBox(SOURCE);
     await history();
     const was = structuredClone(store.getBoxes());
@@ -463,7 +491,7 @@ describe("Copy", () => {
       const pending = act(app, "copyBox", { dataset: { box: "b1" } });
       await settle(2);
       expect(dialog).not.toBeNull();
-      expect(dialog.title).toBe("Copy box");
+      expect(dialog.title).toBe("Copy crate");
       expect(dialog.buttons.find(b => b.action === "ok").label).toBe("Add to shelf");
       expect(field("name").value).toBe("Goblin Crate (copy)");
       expect(field("name").hasAttribute("autofocus")).toBe(true);
@@ -527,6 +555,20 @@ describe("Copy", () => {
     expect(notifications.warn).not.toHaveBeenCalled();
   });
 
+  it("Reshuffle on a deck with a card drawn asks with the count and puts it back (it used to throw)", async () => {
+    const cards = [{ id: "a", label: "Sun", kind: "item", weight: 2, once: true, gp: 0, text: "" }, { id: "b", label: "Ruin", kind: "loss", weight: 1, once: false, gp: 25, text: "" }];
+    await store.saveBox({ id: "k1", kind: "deck", name: "Thornwick Deck", price: 10, pools: [{ id: "p", share: 1 }], weights: { common: 0, uncommon: 2, rare: 1, veryRare: 0, legendary: 0, artifact: 0 }, deck: { step: 1.5, shuffledAt: 1000, cards }, rules: {} });
+    await store.appendLog({ id: "row1", kind: "deck", boxId: "k1", boxName: "Thornwick Deck", actorId: "A", actorName: "Tam", price: 10, cardId: "a", at: 2000 });
+    const app = await manager();
+    Dialog.asked = [];
+    Dialog.answer = true;
+    await act(app, "reshuffle", { dataset: { box: "k1" }, focus() {} });
+    await settle();
+    expect(Dialog.asked).toHaveLength(1);
+    expect(Dialog.asked[0].content).toMatch(/1/);
+    expect(store.getBoxes().k1.deck.shuffledAt).toBeGreaterThan(2000);
+  });
+
   it("copies a deck with its cards, the shuffle mark fresh so nothing counts as drawn", async () => {
     const cards = [{ id: "a", label: "Sun", kind: "item", weight: 2, once: true, gp: 0, text: "" }, { id: "b", label: "Ruin", kind: "loss", weight: 1, once: false, gp: 25, text: "" }, { id: "c", label: "Fates", kind: "effect", weight: 1, once: true, gp: 0, text: "Undo one thing." }];
     await store.saveBox({ id: "k1", kind: "deck", name: "Thornwick Deck", price: 10, pools: [{ id: "p", share: 1 }], weights: { common: 0, uncommon: 2, rare: 1, veryRare: 0, legendary: 0, artifact: 0 }, deck: { step: 1.5, shuffledAt: 1000, cards }, rules: {} });
@@ -535,7 +577,7 @@ describe("Copy", () => {
     const app = await manager();
     const pending = act(app, "copyBox", { dataset: { box: "k1" } });
     await settle(2);
-    expect(dialog.title).toBe("Copy deck");
+    expect(dialog.title).toBe("Copy Deck of Many Things");
     expect(field("name").value).toBe("Thornwick Deck (copy)");
     expect(dialog.form.querySelectorAll(".lc-card-row")).toHaveLength(3);
     dialog.save();
@@ -586,7 +628,7 @@ describe("Edit", () => {
     const app = await manager();
     const pending = act(app, "editBox", { dataset: { box: "b1" } });
     await settle(2);
-    expect(dialog.title).toBe("Edit box");
+    expect(dialog.title).toBe("Edit crate");
     expect(dialog.buttons.find(b => b.action === "ok").label).toBe("Save");
     expect(field("name").hasAttribute("autofocus")).toBe(false);
     field("price").value = "60";
@@ -623,7 +665,7 @@ describe("New crate from this pool", () => {
     const app = await manager("pools");
     const pending = act(app, "crateFromPool", { dataset: { pool: "p" } });
     await settle(2);
-    expect(dialog.title).toBe("New box");
+    expect(dialog.title).toBe("New crate");
     expect(field("name").value).toBe("Odds and ends");
     expect(field("name").hasAttribute("autofocus")).toBe(false);
     expect(field("price").hasAttribute("autofocus")).toBe(true);
@@ -664,6 +706,7 @@ describe("On the shelf", () => {
       const pending = act(app, action);
       await settle(2);
       expect(dialog.title).toBe(title);
+      makePlayable(kind);
       expect(field("onShelf").checked).toBe(true);
       field("onShelf").checked = false;
       dialog.save();
@@ -731,6 +774,18 @@ describe("On the shelf", () => {
     expect(toggle().getAttribute("aria-pressed")).toBe("true");
     expect(focused()).toBe(toggle());
     expect(status(app).textContent).toBe("Gilded Crate is on the shelf; players can see it.");
+  });
+
+  it("the row's toggle won't put out a game that can't be played, and says why", async () => {
+    await store.saveBox({ id: "b2", name: "Empty Crate", price: 50, pools: [], weights: {}, rules: { shelved: false } });
+    const app = await manager();
+    const toggle = () => app.element.querySelector('.lc-table [data-action="toggleShelf"][data-box="b2"]');
+    expect(toggle().getAttribute("aria-pressed")).toBe("false");
+    await act(app, "toggleShelf", toggle());
+    await settle();
+    expect(store.getBoxes().b2.rules.shelved).toBe(false);
+    expect(toggle().getAttribute("aria-pressed")).toBe("false");
+    expect(status(app).textContent).toMatch(/^Empty Crate stays off the shelf: /);
   });
 
   it("a new crate draws from the world's one pool, already ticked", async () => {

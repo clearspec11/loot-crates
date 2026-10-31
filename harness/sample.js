@@ -52,6 +52,25 @@ export const POOLS = {
 };
 
 /*
+  The world the editors' harness states draw on (views/editors.js): the
+  two sample pools plus eight more, as a GM has after a few sessions, so
+  the pool picker folds the ones a game doesn't use under "Add a pool"
+  with its search (poolpicker.js).
+*/
+const more = (id, name, entries) => ({ id, name, pools: [], entries });
+export const EDITOR_POOLS = {
+  ...POOLS,
+  potions: more("potions", "Potions and scrolls", [item("Potion of Healing", "common", 4), item("Spell Scroll (Cantrip)", "common", 2)]),
+  trinkets: more("trinkets", "Wondrous trinkets", [item("Cloak of Billowing", "common"), item("Candle of the Deep", "common"), item("Goggles of Night", "uncommon")]),
+  arms: more("arms", "Arms and armour", [item("Moon-Touched Sword", "common"), item("Flame Tongue", "rare"), item("Oathbow", "veryRare")]),
+  hoard: more("hoard", "Dragon's hoard", [item("Staff of Power", "veryRare"), item("Holy Avenger", "legendary"), item("Ring of Three Wishes", "legendary")]),
+  goblin: more("goblin", "Goblin's purse", [item("Bag of Holding", "uncommon"), item("Immovable Rod", "uncommon")]),
+  sea: more("sea", "Sea chest", [item("Cloak of Protection", "uncommon"), item("Boots of Speed", "rare")]),
+  temple: more("temple", "Temple offerings", [item("Ring of Regeneration", "veryRare")]),
+  fence: more("fence", "Thieves' guild fence", [item("Boots of Elvenkind", "uncommon"), item("Wand of Magic Missiles", "uncommon"), item("Ring of Spell Storing", "rare")]),
+};
+
+/*
   A crate made from a roll table (newgame.js crateFromTable): "Goblin's
   Pockets", its items copied into a pool of their own at the table's
   weights (a nested table of trinkets flattened into it), drawn at the

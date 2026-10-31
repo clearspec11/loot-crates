@@ -12,7 +12,7 @@
 // opens the shop on Crate Tester and leaves it open throughout. Then, as
 // people do:
 //
-//   1. The GM opens the manager, clicks the Boxes tab and New box, types the
+//   1. The GM opens the manager, clicks the Boxes tab and New crate, types the
 //      crate's name and a 1 gp price, ticks "Live UI pool", unticks "On the
 //      shelf" (the default button must turn from "Add to shelf" to "Add")
 //      and presses Add. The row must read "Off the shelf" with its toggle
@@ -205,7 +205,7 @@ const pressToggle = (gm, boxId) => gm.evaluate(async ({ boxId }) => {
       return { cards: app.element.querySelectorAll(".lc-box").length };
     }, { base: MODULE_BASE });
 
-    // 1. New box, off the shelf, through the editor.
+    // 1. New crate, off the shelf, through the editor.
     out.add = await gm.page.evaluate(async ({ base, name, poolId }) => {
       const wait = ms => new Promise(r => setTimeout(r, ms));
       const until = async (fn, ms = 10000) => { for (let t = 0; t < ms && !fn(); t += 50) await wait(50); return fn(); };
@@ -217,19 +217,24 @@ const pressToggle = (gm, boxId) => gm.evaluate(async ({ boxId }) => {
       const app = openManager();
       await until(() => app.element?.querySelector('.lc-tabs [data-tab="boxes"]'));
       click(app.element.querySelector('.lc-tabs [data-tab="boxes"]'));
-      if (!await until(() => app.tab === "boxes" && app.element.querySelector('button[data-action="addBox"]'))) throw new Error("no New box on the Boxes tab");
+      if (!await until(() => app.tab === "boxes" && app.element.querySelector('button[data-action="addBox"]'))) throw new Error("no New crate on the Boxes tab");
       click(app.element.querySelector('button[data-action="addBox"]'));
       const dialog = () => [...document.querySelectorAll(".application.dialog")].find(d => d.querySelector('input[name="onShelf"]'));
-      if (!await until(() => dialog())) throw new Error("New box opened no editor with an On the shelf box");
+      if (!await until(() => dialog())) throw new Error("New crate opened no editor with an On the shelf box");
       const d = dialog();
       const ok = () => d.querySelector('button[data-action="ok"]');
       const shelf = d.querySelector('input[name="onShelf"]');
-      const tickedAtFirst = shelf.checked;
-      const okBefore = ok().textContent.trim();
+      // A new crate with no pool ticked can't be played, so it starts as
+      // "Save off the shelf" (round 30's guard rails); ticking the pool
+      // puts it back on the shelf, and the GM then takes it off.
+      const noPool = { ticked: shelf.checked, ok: ok().textContent.trim() };
       type(d.querySelector('input[name="name"]'), name);
       type(d.querySelector('input[name="price"]'), "1");
       const pool = d.querySelector(`input[name="pool.${poolId}"]`);
       if (!pool.checked) click(pool);
+      await wait(100);
+      const tickedAtFirst = shelf.checked;
+      const okBefore = ok().textContent.trim();
       click(shelf);
       await wait(100);
       const okAfter = ok().textContent.trim();
@@ -241,7 +246,7 @@ const pressToggle = (gm, boxId) => gm.evaluate(async ({ boxId }) => {
       const t = app.element.querySelector(`button[data-action="toggleShelf"][data-box="${id}"]`);
       const row = t?.closest("tr");
       return {
-        id, tickedAtFirst, okBefore, okAfter, record: structuredClone(store.getBoxes()[id]),
+        id, noPool, tickedAtFirst, okBefore, okAfter, record: structuredClone(store.getBoxes()[id]),
         toggle: { pressed: t?.getAttribute("aria-pressed"), label: t?.textContent.trim() }, offTag: row?.querySelector(".lc-kind--off")?.textContent.trim() ?? "",
         dimmed: !!row?.classList.contains("lc-row--off"),
         status: app.element.querySelector(".lc-manager__status")?.textContent.trim(), count: app.element.querySelector(".lc-shelf-count")?.textContent.trim(),

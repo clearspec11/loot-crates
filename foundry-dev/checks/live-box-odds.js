@@ -23,8 +23,10 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 const until = async (fn, ms = 20000) => { for (let t = 0; t < ms && !fn(); t += 50) await wait(50); return fn(); };
 
 const pools = store.getPools();
-// The first box with a pool that can drop something.
-const box = Object.values(store.getBoxes()).find(b => b.pools?.some(ref => pools[ref.id]?.entries?.some(e => !e.missing)));
+// The first crate with a pool that can drop something (a well's or a
+// deck's preview always has its Nothing or its cards, so it can't show
+// "drops nothing"; the world now holds those too).
+const box = Object.values(store.getBoxes()).find(b => (b.kind ?? "crate") === "crate" && !b.fromTable && b.pools?.some(ref => pools[ref.id]?.entries?.some(e => !e.missing)));
 if (!box) return { ok: false, error: "no box with a live pool in the world" };
 const storedBefore = JSON.stringify(store.getBoxes()[box.id]);
 

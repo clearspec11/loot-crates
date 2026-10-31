@@ -21,7 +21,8 @@ const { NEW_DEFAULTS } = await import("../module/scripts/views/newgame.js");
 const { seededRng } = await import("../module/scripts/core/odds.js");
 const sound = await import("../module/scripts/foundry/sound.js");
 
-const GAME = { ...NEW_DEFAULTS.scratch(), id: "fortune", name: "Fortune Ticket", price: 5 };
+// The mockup's prize list (a New now starts from Fill's).
+const GAME = { ...NEW_DEFAULTS.scratch(), id: "fortune", name: "Fortune Ticket", price: 5, roll: { id: 1, size: 100, prizes: [{ count: 1, parts: [{ item: { rarity: "rare" } }] }, { count: 2, parts: [{ gp: 100 }] }, { count: 5, parts: [{ gp: 25 }] }, { count: 12, parts: [{ gp: 10 }] }, { count: 20, parts: [{ gp: 5 }] }, { count: 3, parts: [{ bonus: true }] }] } };
 const MATCH3 = { ...GAME, id: "m3", name: "Market Scratchie", price: 1, layout: "match3", grid: { cols: 3, rows: 2 }, bonus: { on: false, gp: 0 }, roll: { id: 1, size: 50, prizes: [{ count: 1, item: { rarity: "uncommon" } }, { count: 4, gp: 5 }, { count: 10, gp: 1 }] } };
 const reveal = (over = {}) => ({
   kind: "scratch", actorName: "Tam", userId: "u1", box: { id: "fortune", name: "Fortune Ticket", price: 5 },

@@ -357,13 +357,17 @@ function showsAll(lines, s) {
 
 /* ---------- The editor's Fill ---------- */
 
-// What the top prize field starts at: the roll's own top prize when it is
-// one item or one coin amount, else worked out.
-function topOf(game) {
+// What the top prize field starts at, the same in a New and an Edit: the
+// roll's own top prize when it is one item or one coin amount, else a
+// Rare item (FILL_TOP), as a new ticket's list has it. An emptied list
+// used to start the field at coins worked out, which quietly gave a
+// 125 gp top prize where the GM had an item before.
+export const FILL_TOP = "item.rare";
+export function topOf(game) {
   const [first] = [...(game?.roll?.prizes ?? [])].map(p => lineOf(p, bonusOf(game))).filter(Boolean).sort((a, b) => (b.items.length ? 1e9 : b.gp) - (a.items.length ? 1e9 : a.gp));
   if (first?.parts.length === 1 && first.kind === "item") return { what: `item.${first.rarity}`, gp: "" };
   if (first?.parts.length === 1 && first.kind === "gp") return { what: "gp", gp: first.gp };
-  return { what: "auto", gp: "" };
+  return { what: FILL_TOP, gp: "" };
 }
 
 /*
@@ -425,6 +429,9 @@ export function fillFrom(values) {
 // The prize rows' values in order, to tell rows the GM typed from the ones Fill wrote.
 const rowsSig = rows => [...rows.querySelectorAll(".lc-prize-row")].map(r => [r.querySelector(".lc-prize-row__count")?.value, ...[...r.querySelectorAll(".lc-prize-part")].map(p => `${p.querySelector(".lc-prize-row__what")?.value}:${p.querySelector(".lc-prize-row__gp")?.value}`)].join(" ")).join("|");
 
+// Scrolls `el` into view in the dialog, where there is one to scroll.
+const reveal = (el, block) => el?.scrollIntoView?.({ block, behavior: "instant" });
+
 /*
   The Fill fields' moving parts. The toggle opens and closes them; the top
   prize shows its gold field for coins only. Fill builds a prize list
@@ -450,7 +457,11 @@ export function wireFill(form, { read, items = () => [], newId, confirm = async 
     const open = toggle.getAttribute("aria-expanded") !== "true";
     toggle.setAttribute("aria-expanded", String(open));
     body.hidden = !open;
-    if (open) body.querySelector('input[name="fillPayback"]')?.focus();
+    if (!open) return;
+    body.querySelector('input[name="fillPayback"]')?.focus({ preventScroll: true });
+    // The whole panel, down to Fill and Shuffle, clear of the pinned
+    // readout (the dialog's scroll padding is the readout's height).
+    reveal(box.querySelector(".lc-fill__go"), "nearest");
   });
   box.addEventListener("change", e => {
     if (!e.target.matches?.('select[name="fillTop"]')) return;
@@ -484,6 +495,10 @@ export function wireFill(form, { read, items = () => [], newId, confirm = async 
     shuffle.removeAttribute("title");
     const pb = paybackOf({ price: settings.price, roll: { size: Number(size?.value) || settings.size, prizes: lines }, layout: settings.layout, grid: settings.grid, bonus: { on: !!settings.bonus, gp: settings.bonus?.gp ?? 0 } });
     said.textContent = t(again ? "LOOTCRATES.Scratch.FillShuffled" : "LOOTCRATES.Scratch.FillDone", { count: lines.length, payback: paybackText(pb) });
+    // Focus on the first new prize, and the line saying what Fill did at
+    // the top of the view with the new rows under it, not under the readout.
+    rows.firstElementChild?.querySelector(".lc-prize-row__count")?.focus({ preventScroll: true });
+    reveal(said, "start");
   };
   box.querySelector(".lc-fill__fill").addEventListener("click", () => fill(false));
   shuffle.addEventListener("click", () => {

@@ -40,8 +40,10 @@ const POOLS = { p: { id: "p", name: "The hoard", pools: [], entries: [
   { uuid: "Item.a", name: "Lucky Coin", img: "a.webp", rarity: "uncommon", weight: 1 },
   { uuid: "Item.b", name: "Flame Tongue", img: "b.webp", rarity: "rare", weight: 1 },
 ] } };
-// The mockup's Fortune Ticket on the hoard: 5 gp, lucky numbers, roll 1 of 100.
-const GAME = { ...NEW_DEFAULTS.scratch(), id: "fortune", name: "Fortune Ticket", pools: [{ id: "p", share: 1 }] };
+// The mockup's Fortune Ticket on the hoard: 5 gp, lucky numbers, roll 1 of
+// 100 with the mockup's prize list (a New now starts from Fill's).
+const MOCKUP_PRIZES = [{ count: 1, parts: [{ item: { rarity: "rare" } }] }, { count: 2, parts: [{ gp: 100 }] }, { count: 5, parts: [{ gp: 25 }] }, { count: 12, parts: [{ gp: 10 }] }, { count: 20, parts: [{ gp: 5 }] }, { count: 3, parts: [{ bonus: true }] }];
+const GAME = { ...NEW_DEFAULTS.scratch(), id: "fortune", name: "Fortune Ticket", pools: [{ id: "p", share: 1 }], roll: { id: 1, size: 100, prizes: MOCKUP_PRIZES } };
 // A small roll for walking through whole: 1 rare, 2 x 10 gp, 1 bonus, 2 duds.
 const SMALL = { ...GAME, id: "small", name: "Small Ticket", roll: { id: 1, size: 6, prizes: [{ count: 1, item: { rarity: "rare" } }, { count: 2, gp: 10 }, { count: 1, bonus: true }] } };
 const MATCH3 = { ...GAME, id: "m3", name: "Market Scratchie", price: 1, layout: "match3", grid: { cols: 3, rows: 2 }, bonus: { on: false, gp: 0 }, roll: { id: 1, size: 50, prizes: [{ count: 1, item: { rarity: "uncommon" } }, { count: 4, gp: 5 }, { count: 10, gp: 1 }] } };
@@ -97,9 +99,10 @@ describe("the record", () => {
 
   it("starts a New as the mockup's Fortune Ticket, and a Print a new roll moves to the next roll with the same prizes", () => {
     const d = NEW_DEFAULTS.scratch();
-    expect(d).toMatchObject({ kind: "scratch", name: "New scratch ticket", price: 5, layout: "lucky", grid: { cols: 4, rows: 3 }, bonus: { on: true, gp: 25 }, roll: { id: 1, size: 100 } });
-    expect(d.roll.prizes).toEqual(SCRATCH_DEFAULTS.prizes);
-    expect(d.roll.prizes).not.toBe(SCRATCH_DEFAULTS.prizes);
+    expect(d).toMatchObject({ kind: "scratch", name: "New scratch ticket", price: SCRATCH_DEFAULTS.price, layout: "lucky", grid: { cols: 4, rows: 3 }, bonus: { on: true, gp: 25 }, roll: { id: 1, size: 100 } });
+    // Fill's list at its defaults, the same every time, each New its own copy.
+    expect(NEW_DEFAULTS.scratch().roll.prizes).toEqual(d.roll.prizes);
+    expect(NEW_DEFAULTS.scratch().roll.prizes).not.toBe(d.roll.prizes);
     expect(nextRoll(GAME)).toEqual({ ...GAME.roll, id: 2 });
     expect(copyOf({ ...GAME, roll: { ...GAME.roll, id: 4 } }, { id: "x" }).roll.id).toBe(1);
   });
@@ -478,7 +481,7 @@ describe("the words", () => {
     const html = ticketHTML({ ...coins, box: { name: "Fortune Ticket" } }, { esc });
     expect(html).toContain("Roll 1, ticket 44 of 100");
     expect((html.match(/lc-scratch__panel--win/g) ?? []).length).toBe(cardWins(card).winners.length);
-    expect(html).toContain('<div class="lc-scratch__extra">Extra 25 gp</div><p>Reveal the gem to win it on top of the card.</p>');
+    expect(html).toContain('<div class="lc-scratch__extra">Extra 25 gp</div><p>Find the gem in the bonus spot to win it on top of the card.</p>');
     expect(miniHTML(card).match(/<i/g)).toHaveLength(12);
     // A coin win's four rising notes (the rarity sting at Rare), a dud's two falling ones.
     k.sting(coins); expect(sound.playReveal).toHaveBeenLastCalledWith("rare");
@@ -571,7 +574,7 @@ describe("the words", () => {
   as rare as the GM printed it.
 */
 describe("prize lines: tickets that pay like real ones", () => {
-  // A roll of 6: one "Rare item + 5 gp + the gem (10 gp)", one "Rare item
+  // A roll of 6: one "Rare item + 5 gp + the bonus spot (10 gp)", one "Rare item
   // + Uncommon item", two of 10 gp, two duds.
   const LINES = { ...GAME, id: "lines", name: "Lines Ticket", bonus: { on: true, gp: 10 }, roll: { id: 1, size: 6, prizes: [
     { count: 1, parts: [{ gp: 5 }, { item: { rarity: "rare" } }, { bonus: true }] },
@@ -620,7 +623,7 @@ describe("prize lines: tickets that pay like real ones", () => {
     expect(lines.map(l => `${l.key} x${l.count}`)).toEqual([`${PAIR} x1`, `${COMBO} x1`, "gp.10 x2"]);
     expect(lines[1]).toMatchObject({ kind: "line", items: ["rare"], gp: 15, rarity: "rare" });
     expect(lines[0]).toMatchObject({ kind: "line", items: ["rare", "uncommon"], gp: 0 });
-    expect(lines.map(prizeText)).toEqual(["Rare item + Uncommon item", "Rare item + 5 gp + the gem (10 gp)", "10 gp"]);
+    expect(lines.map(prizeText)).toEqual(["Rare item + Uncommon item", "Rare item + 5 gp + the bonus spot (10 gp)", "10 gp"]);
     // The same parts in another order are the same line.
     const twice = { ...LINES, roll: { ...LINES.roll, prizes: [...LINES.roll.prizes, { count: 2, parts: [{ bonus: true }, { item: { rarity: "rare" } }, { gp: 5 }] }] } };
     expect(prizesOf(twice).find(l => l.key === COMBO).count).toBe(3);
@@ -743,7 +746,7 @@ describe("prize lines: tickets that pay like real ones", () => {
     expect(cleanCard(card).prizes.top).toEqual({ parts: [{ item: "rare" }, { item: "uncommon" }] });
     expect(cleanCard({ ...card, prizes: { ...card.prizes, top: { parts: [{ item: "mythic" }] } } }).prizes.top).toBeNull();
     // The shop's rows and the Boxes pills name each line in full.
-    expect(prizeListHTML(rollState(LINES, []), esc)).toContain("Rare item + 5 gp + the gem (10 gp)");
+    expect(prizeListHTML(rollState(LINES, []), esc)).toContain("Rare item + 5 gp + the bonus spot (10 gp)");
     expect(scratchOddsHTML(LINES, [])).toContain(`<span class="lc-odd lc-odd--wrap lc-rarity-rare">Rare item + Uncommon item 1/1</span>`);
   });
 

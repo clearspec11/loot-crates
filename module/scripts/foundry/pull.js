@@ -11,7 +11,7 @@
   payout are one settle(), and a grant that fails after the charge puts the
   coins back. A purchase either charges and grants, or does neither.
 */
-import { kindFor, grantsOf, readyToGrant } from "../games/kinds.js";
+import { kindFor, grantsOf, readyToGrant, getKind, DEFAULT_KIND } from "../games/kinds.js";
 // The crate, the well and the dice register themselves when imported: a
 // direct caller of performPull (a live check, the module API) finds them
 // without loading main.js.
@@ -267,17 +267,23 @@ async function playTicket({ actor, ticket, purse, nextPurse, delta, datas, resul
   into the character's pack (tickets.js keepTicket: onto a kept stack of
   the same game at the same price, else a new item) in place of a roll.
   Nothing is rolled: a scratch roll's ticket is drawn when the ticket is
-  used, and the game's own reasons (the well's cap, a sold-out roll) are
-  the shop's to show and the use's to check. A ticket that can't be put
-  in the pack puts the coins back. The caller writes the log row in the
-  same task, and undoes both (`undo`, then `before`) if it can't.
+  used. The game's own reasons are asked too, before anything is charged
+  (keepReason: the reason the shop card gives its Buy, such as a sold-out
+  scratch roll or the well's cap for today), so no ticket is sold that
+  the game would refuse on use. A ticket that can't be put in the pack
+  puts the coins back. The caller writes the log row in the same task,
+  and undoes both (`undo`, then `before`) if it can't.
 
   Returns { purse, before, price, priceNote, kind, item, stacked, undo }:
   `item` the ticket stack it went onto.
 */
-export async function performKeep({ box, actor, state = {}, expectedPrice, log = [], today = null }) {
-  const { kind, price, purse, priceNote } = guardPlay({ box, actor, state, expectedPrice, log, today });
+export async function performKeep({ box, pools = {}, actor, state = {}, expectedPrice, log = [], today = null }) {
+  const { kind, price, purse, now, priceNote } = guardPlay({ box, actor, state, expectedPrice, log, today });
   if (kind.table) throw new PullError(t("LOOTCRATES.Error.TableGame", { name: box.name }));
+  // Asked at the moment guardPlay accepted the price (a deck's streak can
+  // turn within PRICE_SKEW_MS), so the shop reason judges the same price.
+  const why = keepReason(kind, { box, pools, actor, state, log, today, purse, now });
+  if (why) throw new PullError(t("LOOTCRATES.Keep.Refused", { name: box.name, reason: why }));
   const nextPurse = settle(purse, -Math.round(price * 100));
   if (!nextPurse) throw new PullError(t("LOOTCRATES.Error.CantAfford", { actor: actor.name, name: box.name }));
   const charge = Math.round(price * 100) > 0;
@@ -294,6 +300,19 @@ export async function performKeep({ box, actor, state = {}, expectedPrice, log =
     throw new PullError(t("LOOTCRATES.Keep.Failed"));
   }
   return { purse: charge ? nextPurse : purse, before: purse, price, priceNote, kind: kind.id, ...kept };
+}
+
+/*
+  Why the kind would not sell this play now, as its shop card says it
+  (kinds.js shop.reason; a kind without one has the crate's), or "". Asked
+  as the GM sees the buyer: the shop open, a GM online, this character and
+  purse, the log and the day as they stand, and nothing still spinning
+  (the buyer's own hold is the shop's to show).
+*/
+function keepReason(kind, { box, pools, actor, state, log, today, purse, now = Date.now() }) {
+  const reason = kind.shop?.reason ?? getKind(DEFAULT_KIND)?.shop?.reason;
+  if (!reason) return "";
+  return reason(box, pools ?? {}, { log, today, actorId: actor.id, actorName: actor.name, purse, hasActor: true, open: true, gmOnline: true, isGM: false, now, stateOf: () => state ?? {} }) || "";
 }
 
 /*

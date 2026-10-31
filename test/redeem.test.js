@@ -246,10 +246,10 @@ describe("a redeem on the GM", () => {
     expect(granted).toHaveLength(1);
 
     const reveal = emitted.find(m => m.type === "reveal");
-    expect(reveal).toMatchObject({ userId: "p1", actorId: "actor1", box: { id: "box", price: 0 }, redeem: { itemName: "Test Crate", paid: 0 } });
+    expect(reveal).toMatchObject({ userId: "p1", actorId: "actor1", box: { id: "box", price: 0 }, redeem: { itemName: "Test Crate ticket", paid: 0 } });
     expect(JSON.stringify(reveal)).not.toContain("activities");
     const row = getLog()[0];
-    expect(row).toMatchObject({ boxId: "box", price: 0, payoutCp: 0, redeem: { itemId: "tix", itemName: "Test Crate", paid: 0 } });
+    expect(row).toMatchObject({ boxId: "box", price: 0, payoutCp: 0, redeem: { itemId: "tix", itemName: "Test Crate ticket", paid: 0 } });
     expect(row.redeem.data.system.quantity).toBe(1);
     // A ticket was sold (or given) already: its play takes no stock.
     expect(getBoxes().box.rules.stock).toBe(4);
@@ -314,7 +314,7 @@ describe("refunding a ticket's play", () => {
     expect(out.ticketBack).toBe("made");
     const back = [...actor.items.values()];
     expect(back).toHaveLength(1);
-    expect(back[0]).toMatchObject({ name: "Test Crate", type: "consumable", system: { quantity: 1 }, flags: { "loot-crates": { ticket: { boxId: "box", paid: 0 } } } });
+    expect(back[0]).toMatchObject({ name: "Test Crate ticket", type: "consumable", system: { quantity: 1 }, flags: { "loot-crates": { ticket: { boxId: "box", paid: 0 } } } });
   });
 });
 
@@ -325,7 +325,7 @@ describe("the ticket helpers", () => {
     const { item, box, row } = ticketToRedeem(actor, "tix", { box: CRATE });
     expect(item.id).toBe("tix");
     expect(box).toBe(CRATE);
-    expect(row).toMatchObject({ itemId: "tix", itemName: "Test Crate", paid: 0 });
+    expect(row).toMatchObject({ itemId: "tix", itemName: "Test Crate ticket", paid: 0 });
     expect(row.data.system.quantity).toBe(1);
     expect(row.data._id).toBeUndefined();
   });

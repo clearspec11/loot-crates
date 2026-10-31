@@ -31,7 +31,7 @@ describe("the Pull log table", () => {
   it("folds the round's stakes under its line and the well's misses into one, newest first", () => {
     const got = rows(html).map(tr => tr.match(/data-label="Got"[^>]*><span class="lc-dot"><\/span>(?:<s>)?([^<]*)/)[1]);
     expect(got).toEqual(["Staff of Power", "Cloak of Elvenkind · pity", "Club", "Beat the dragon", "The Flames", "5 stakes, settled", "Abjuration black", "Even", "Rare", "7", "Evocation red", "5 throws, nothing", "Rope"]);
-    expect(html).toContain('<td role="cell" data-label="Who">Round</td><td role="cell" data-label="Box">Wheel of Fate (45 gp staked)</td>');
+    expect(html).toContain('<td role="cell" data-label="Who">Round</td><td role="cell" data-label="Game">Wheel of Fate (45 gp staked)</td>');
     expect(html).toContain("Hide misses");
     expect(html).toContain("5 throws that gave nothing, folded by day");
     expect(html).toContain('aria-label="Refund one of 5 throws">Refund one</button>');

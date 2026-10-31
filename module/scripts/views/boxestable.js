@@ -1,8 +1,8 @@
 /*
   The manager's Boxes tab as markup, drawn by the manager (manager.js
-  _boxes) and by the harness: the toolbar with one New button per kind and
-  the tab's status line (the manager writes there what a New did), then one
-  row per game the shop sells.
+  _boxes) and by the harness: the tab's status line, pinned to the top of
+  the pane (the manager writes there what a New did), the toolbar with one
+  New button per kind, then one row per game the shop sells.
 
   Every row's name carries its kind's tag (Crate, Well, Dice, Deck, Wheel),
   so the six kinds read the same way in one table and a crate is told from
@@ -57,6 +57,7 @@ import { formatPrice } from "../core/currency.js";
 import { limitsText } from "../core/limits.js";
 import { onShelf, shelfCountText, shelfToggleHTML } from "../core/shelf.js";
 import { starterCallHTML, STARTER_LABEL } from "./starter.js";
+import { statusBarHTML } from "./route.js";
 import { t, words, onStrings } from "../core/i18n.js";
 import { ticketable } from "../games/ticket.js";
 
@@ -99,13 +100,21 @@ export function tableHTML(cls, columns, rowsHTML) {
 }
 
 // The toolbar: every New, "Add starter crates" once there are games (an
-// empty tab offers it in its body, starter.js starterCallHTML), how many
-// games players can see, then the one status line the tab speaks through.
-export function boxesToolbarHTML(status = "", esc = s => String(s ?? ""), boxes = []) {
+// empty tab offers it in its body, starter.js starterCallHTML) and how many
+// games players can see. The tab's status line is above it, pinned to the
+// top of the pane (route.js statusBarHTML).
+export function boxesToolbarHTML(esc = s => String(s ?? ""), boxes = []) {
   const count = shelfCountText(boxes);
   const starter = boxes.length ? `<button type="button" class="lc-toolbar__starter" data-action="starterCrates"><i class="fas fa-box-open" inert></i> ${STARTER_LABEL}</button>` : "";
-  return `<div class="lc-toolbar lc-toolbar--boxes">${NEW_BUTTONS.map(([action, label]) => `<button type="button" data-action="${action}"><i class="fas fa-plus"></i> ${label}</button>`).join("")}${starter}${count ? `<span class="lc-shelf-count">${esc(count)}</span>` : ""}<span class="lc-pool__hint lc-manager__status" role="status">${esc(status)}</span></div>`;
+  return `<div class="lc-toolbar lc-toolbar--boxes">${NEW_BUTTONS.map(([action, label]) => `<button type="button" data-action="${action}"><i class="fas fa-plus"></i> ${label}</button>`).join("")}${starter}${count ? `<span class="lc-shelf-count">${esc(count)}</span>` : ""}</div>`;
 }
+
+/*
+  "Put all on the shelf", beside the status line once starter crates came
+  in off the shelf (manager.js #shelfAll): one press does what On the
+  shelf on each new row would, for the games that can be played.
+*/
+export const shelfAllHTML = () => `<button type="button" class="lc-manager__statusaction" data-action="shelfAll"><i class="fas fa-store" inert></i> ${t("LOOTCRATES.Manager.ShelfAll")}</button>`;
 
 export function boxesTableHTML({ boxes, pools, log = [], rounds = {}, recent = null, esc }) {
   if (!boxes.length) return starterCallHTML("boxes", esc);
@@ -170,9 +179,10 @@ export function priceInputHTML(b, esc = s => String(s ?? "")) {
 // makeCrateFromTable): the tab takes a dropped table, as a pool takes items.
 export const tableDropHint = () => t("LOOTCRATES.Boxes.TableDropHint");
 
-// The whole tab. An empty one says where a dropped table goes in its own
+// The whole tab: the status line (with `action` beside it), the toolbar,
+// the table. An empty one says where a dropped table goes in its own
 // first line, so the hint under the table is left out.
-export function boxesTabHTML({ status = "", ...rest }) {
+export function boxesTabHTML({ status = "", action = "", ...rest }) {
   const hint = rest.boxes?.length ? `<p class="lc-form__hint lc-boxes__drop">${tableDropHint()}</p>` : "";
-  return `${boxesToolbarHTML(status, rest.esc, rest.boxes)}${boxesTableHTML(rest)}${hint}`;
+  return `${statusBarHTML(status, rest.esc, action)}${boxesToolbarHTML(rest.esc, rest.boxes)}${boxesTableHTML(rest)}${hint}`;
 }

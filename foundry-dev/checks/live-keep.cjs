@@ -192,7 +192,7 @@ const logRows = (page, boxId) => page.evaluate(async ({ base, boxId }) => (await
       __lc.click(__lc.app.element.querySelector('.lc-tabs [data-tab="log"]'));
       const btn = () => __lc.app.element?.querySelector(`button[data-action=refund][data-row="${rowId}"]`);
       if (!await __lc.until(() => __lc.app.tab === "log" && btn(), 8000)) throw new Error("the Pull log has no Refund for the kept row");
-      const cell = btn().closest("tr")?.querySelector('td[data-label="Box"]')?.textContent.trim() ?? null;
+      const cell = btn().closest("tr")?.querySelector('td[data-label="Game"]')?.textContent.trim() ?? null;
       __lc.click(btn());
       const dialog = () => [...document.querySelectorAll(".application.dialog")].pop();
       const yes = () => [...(dialog()?.querySelectorAll("button") ?? [])].find(b => /yes/i.test(b.dataset.action ?? b.textContent));

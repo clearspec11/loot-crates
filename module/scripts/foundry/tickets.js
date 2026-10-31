@@ -3,10 +3,12 @@
   on a game's Boxes row, the sheet's Use, and the GM's side of spending
   one and giving one back.
 
-    makeTicket(box)        the GM's Make a ticket: a world Item in the Items
-                           folder "Loot Crates tickets" (made when missing),
-                           for the GM to drag to a sheet, a loot sheet, a
-                           merchant or a pool
+    makeTicket(box)        the GM's Make a ticket: a world Item named
+                           "<game> ticket" in the Items folder "Loot Crates
+                           tickets" (made when missing), for the GM to drag
+                           to a sheet, a loot sheet, a merchant or a pool
+    showInItems(item)      that item shown in the Items sidebar: its tab,
+                           its folder open, the row in view and marked
     ticketUseHook(request) the dnd5e.preUseActivity handler main.js
                            registers: a ticket's Use is cancelled before
                            dnd5e consumes or posts anything (returns false)
@@ -53,6 +55,34 @@ export async function makeTicket(box) {
   const item = await Item.create({ ...ticketData(box), folder: folder?.id ?? null });
   if (!item) throw new Error(`the ticket for ${box?.name} was not created (another module's preCreateItem hook cancelled it)`);
   return { item, folder };
+}
+
+/*
+  Make a ticket's ticket, shown where it is: the Items sidebar's tab (a GM
+  on Chat or Actors saw nothing happen), its folder opened, the item
+  scrolled into view and marked for a few seconds (module.css
+  .loot-crates-made). The directory redraws on its own when an item is
+  made, which can land after ours, so the mark is put back once more a
+  moment later. Best effort: false when there is no sidebar to show it in.
+*/
+const MADE_MS = 4000;
+export async function showInItems(item, folder = null) {
+  const dir = globalThis.ui?.items;
+  if (!dir || !item?.id) return false;
+  if (folder?.uuid && game.folders?._expanded) game.folders._expanded[folder.uuid] = true;
+  dir.activate?.();
+  await dir.render?.();
+  const mark = () => {
+    const li = dir.element?.querySelector?.(`[data-entry-id="${CSS.escape(item.id)}"]`);
+    if (!li) return false;
+    if (!li.classList.contains("loot-crates-made")) li.scrollIntoView?.({ block: "nearest" });
+    li.classList.add("loot-crates-made");
+    setTimeout(() => li.classList.remove("loot-crates-made"), MADE_MS);
+    return true;
+  };
+  const shown = mark();
+  setTimeout(mark, 300);
+  return shown;
 }
 
 /*

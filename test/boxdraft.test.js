@@ -58,14 +58,14 @@ describe("boxPreview", () => {
   it("says when the box can drop nothing", () => {
     const none = preview({ "pool.core": false, "pool.homebrew": false });
     expect(none.empty).toBe(true);
-    expect(none.note).toBe("This box can drop nothing: tick a pool above.");
+    expect(none.note).toBe("This crate can drop nothing: tick a pool above.");
     expect(boxPreviewHTML(none)).not.toContain("lc-ribbon");
     expect(boxPreviewHTML(none)).toContain("lc-form__hint--warn");
 
     const gone = { ...POOLS, homebrew: { ...POOLS.homebrew, entries: POOLS.homebrew.entries.map(e => ({ ...e, missing: true })) } };
     const dead = boxPreview(draftBox(BOX, form({ "pool.core": false }), IDS), gone);
     expect(dead.empty).toBe(true);
-    expect(dead.note).toBe("This box can drop nothing: its pools have no item that can drop.");
+    expect(dead.note).toBe("This crate can drop nothing: its pools have no item that can drop.");
   });
 
   it("says an all-zero box treats what it holds as equal, as draw() does", () => {
@@ -78,7 +78,7 @@ describe("boxPreview", () => {
 
   it("escapes through the caller's function", () => {
     const none = preview({ "pool.core": false, "pool.homebrew": false });
-    expect(boxPreviewHTML(none, s => `[${s}]`)).toContain("[This box can drop nothing: tick a pool above.]");
+    expect(boxPreviewHTML(none, s => `[${s}]`)).toContain("[This crate can drop nothing: tick a pool above.]");
   });
 });
 
@@ -94,7 +94,7 @@ describe("the box editor's spoken odds", () => {
   });
 
   it("carries the note, or is only the note when the box drops nothing", () => {
-    expect(oddsSummary(preview({ "pool.core": false, "pool.homebrew": false }))).toBe("This box can drop nothing: tick a pool above.");
+    expect(oddsSummary(preview({ "pool.core": false, "pool.homebrew": false }))).toBe("This crate can drop nothing: tick a pool above.");
     const zero = Object.fromEntries(["common", "uncommon", "rare", "veryRare", "legendary", "artifact"].map(r => [`w.${r}`, "0"]));
     expect(oddsSummary(preview({ ...zero, "pool.core": false }))).toBe("Uncommon 34%, Rare 33%, Legendary 33%. Every rarity these pools hold weighs 0, so each is equally likely.");
   });
