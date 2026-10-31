@@ -12,7 +12,7 @@ const postKeptCard = vi.fn(async () => null);
 vi.mock("../module/scripts/foundry/chat.js", () => ({ postPullCard: vi.fn(async () => null), postKeptCard: (...a) => postKeptCard(...a) }));
 
 const { registerSocket, requestKeep } = await import("../module/scripts/foundry/socket.js");
-const { registerSettings, setStoreListener, getLog, getBoxes } = await import("../module/scripts/foundry/store.js");
+const { registerSettings, setStoreListener, getLog, getBoxes, appendLog } = await import("../module/scripts/foundry/store.js");
 const { refundPull, describeRefund } = await import("../module/scripts/foundry/refund.js");
 const { ticketData, ticketOf, keptStack, keptTicketFor, keepRow, rowPriceTag } = await import("../module/scripts/games/ticket.js");
 const { cardShell } = await import("../module/scripts/views/boxcard.js");
@@ -280,6 +280,19 @@ describe("Buy to keep on the GM: a purchase's guards, nothing moves when one ref
     expect(toCopper(actor.system.currency)).toBe(purse);
     expect(tickets(actor)).toEqual([]);
     expect(getLog().filter(r => r.keep)).toEqual([]);
+  });
+
+  it("judges the deck's price at the moment the pressed price was accepted (Copilot's review of PR #35)", async () => {
+    // A streak with 2 s left: the price is 15 gp now and 10 gp once it ends,
+    // inside PRICE_SKEW_MS. The buyer pressed 10 gp and holds exactly 10 gp.
+    const DECK = { id: "deck", kind: "deck", name: "Thornwick Deck", price: 10, pools: [], weights: {}, deck: { step: 1.5, streakMinutes: 1, shuffledAt: 0, cards: [{ id: "c1", kind: "coins", label: "Windfall", weight: 1, once: false, gp: 5, text: "" }] }, rules: {} };
+    const { actor, emitted, deliver } = makeWorld({ actor: makeActor({ gp: 10 }) });
+    await seed([DECK]);
+    await appendLog({ id: "d0", kind: "deck", boxId: "deck", boxName: "Thornwick Deck", actorId: "actor1", actorName: "Crate Tester", price: 10, cardId: "c1", at: Date.now() - 58000 });
+    await deliver(keep({ boxId: "deck", price: 10 }));
+    expect(errorsTo(emitted)).toEqual([]);
+    expect(toCopper(actor.system.currency)).toBe(0);
+    expect(tickets(actor)).toHaveLength(1);
   });
 
   it("draws nothing from a scratch roll at buy time", async () => {

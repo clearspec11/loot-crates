@@ -32,6 +32,19 @@ describe("unplayableReason", () => {
     expect(unplayableReason(draft("scratch", { roll: { id: 1, size: 10, prizes: [{ count: 2, parts: [{ gp: 5 }] }] } }), POOLS)).toBe("");
   });
 
+  it("a scratch roll no ticked pool can give a prize from is unplayable; one undrawable prize beside a drawable one only warns", () => {
+    // Copilot's review of PR #35: ten rare items in a roll of ten, from a pool that holds no rare item.
+    const commonOnly = { ...POOLS, c: { id: "c", name: "Commons", pools: [], entries: [{ uuid: "Item.a", name: "Rope", img: "", rarity: "common", weight: 1 }] } };
+    const rares = draft("scratch", { pools: [{ id: "c", share: 1 }], roll: { id: 1, size: 10, prizes: [{ count: 10, parts: [{ item: { rarity: "rare" } }] }] } });
+    expect(unplayableReason(rares, commonOnly)).toBe("The ticked pools can't give any prize on this roll: tick a pool that holds the prizes' rarities.");
+    // With duds beside them, every ticket sold would still be a dud.
+    expect(unplayableReason({ ...rares, roll: { id: 1, size: 50, prizes: [{ count: 2, parts: [{ item: { rarity: "rare" } }] }] } }, commonOnly)).not.toBe("");
+    // A coin prize can still be won: the rare item only waits in the roll.
+    expect(unplayableReason({ ...rares, roll: { id: 1, size: 50, prizes: [{ count: 2, parts: [{ item: { rarity: "rare" } }] }, { count: 5, parts: [{ gp: 5 }] }] } }, commonOnly)).toBe("");
+    // The pool that holds a rare makes it playable.
+    expect(unplayableReason({ ...rares, pools: [{ id: "p", share: 1 }] }, POOLS)).toBe("");
+  });
+
   it("an auction with no lot", () => {
     expect(unplayableReason(draft("auction"), POOLS)).toBe("Pick a lot: an auction with none can't be opened.");
     expect(unplayableReason(draft("auction", { auction: { ...draft("auction").auction, lot: { type: "item", uuid: "Item.b", name: "Flame Tongue", rarity: "rare" } } }), POOLS)).toBe("");

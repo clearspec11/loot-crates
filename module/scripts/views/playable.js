@@ -39,8 +39,15 @@ const VERDICTS = {
   auction: game => { const p = auctionPreview(game); return p.warn ? p.note : ""; },
   scratch: (game, pools) => {
     const p = scratchPreview(game, pools);
+    // Item prizes with no pool ticked at all: the top prize printed on the
+    // ticket could never be won.
     if (p.roll.prizes.some(line => line.items.length) && !game.pools?.length) return t("LOOTCRATES.Scratch.NoPool");
-    return p.odds.wins ? "" : t("LOOTCRATES.Scratch.AllDudsWhy");
+    if (!p.odds.wins) return t("LOOTCRATES.Scratch.AllDudsWhy");
+    // With pools ticked, a prize at a rarity they don't hold waits in the
+    // roll undrawn: a soft warning while another prize can still be won.
+    // When none can, every ticket is refused or a dud.
+    const drawable = line => line.count > 0 && line.items.every(r => p.held.has(r));
+    return p.roll.prizes.some(drawable) ? "" : t("LOOTCRATES.Scratch.NoDrawable");
   },
 };
 

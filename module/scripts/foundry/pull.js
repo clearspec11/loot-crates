@@ -278,9 +278,11 @@ async function playTicket({ actor, ticket, purse, nextPurse, delta, datas, resul
   `item` the ticket stack it went onto.
 */
 export async function performKeep({ box, pools = {}, actor, state = {}, expectedPrice, log = [], today = null }) {
-  const { kind, price, purse, priceNote } = guardPlay({ box, actor, state, expectedPrice, log, today });
+  const { kind, price, purse, now, priceNote } = guardPlay({ box, actor, state, expectedPrice, log, today });
   if (kind.table) throw new PullError(t("LOOTCRATES.Error.TableGame", { name: box.name }));
-  const why = keepReason(kind, { box, pools, actor, state, log, today, purse });
+  // Asked at the moment guardPlay accepted the price (a deck's streak can
+  // turn within PRICE_SKEW_MS), so the shop reason judges the same price.
+  const why = keepReason(kind, { box, pools, actor, state, log, today, purse, now });
   if (why) throw new PullError(t("LOOTCRATES.Keep.Refused", { name: box.name, reason: why }));
   const nextPurse = settle(purse, -Math.round(price * 100));
   if (!nextPurse) throw new PullError(t("LOOTCRATES.Error.CantAfford", { actor: actor.name, name: box.name }));
@@ -307,10 +309,10 @@ export async function performKeep({ box, pools = {}, actor, state = {}, expected
   purse, the log and the day as they stand, and nothing still spinning
   (the buyer's own hold is the shop's to show).
 */
-function keepReason(kind, { box, pools, actor, state, log, today, purse }) {
+function keepReason(kind, { box, pools, actor, state, log, today, purse, now = Date.now() }) {
   const reason = kind.shop?.reason ?? getKind(DEFAULT_KIND)?.shop?.reason;
   if (!reason) return "";
-  return reason(box, pools ?? {}, { log, today, actorId: actor.id, actorName: actor.name, purse, hasActor: true, open: true, gmOnline: true, isGM: false, now: Date.now(), stateOf: () => state ?? {} }) || "";
+  return reason(box, pools ?? {}, { log, today, actorId: actor.id, actorName: actor.name, purse, hasActor: true, open: true, gmOnline: true, isGM: false, now, stateOf: () => state ?? {} }) || "";
 }
 
 /*
