@@ -245,6 +245,12 @@ describe("a reveal closes by itself once landed", () => {
   });
 });
 
+describe("Foundry v14's Detach", () => {
+  it("is not offered on the table window: it reads the main page's hidden tab and focus", () => {
+    expect(new TableWindow("R1", "w1")._canDetach()).toBe(false);
+  });
+});
+
 describe("a table window closes by itself once its round is over", () => {
   const ROUND = { id: "R1", boxId: "w1", status: "open", closesAt: null };
   const resolve = () => ({ type: "round", event: "resolve", roundId: "R1", boxId: "w1", kind: "tableish", box: { id: "w1", name: "Wheel" }, outcome: { index: 0 }, stakes: [] });

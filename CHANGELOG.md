@@ -14,6 +14,15 @@ The newest numbered entry's version is the one in `module/module.json`, and its 
 - A player's browser no longer hears the other players' purchases being asked for, only their results.
 - After updating, every player should reload Foundry once; a browser still running the old version is told to.
 - The README no longer says players never see an auction's reserve: no screen shows it, but Foundry sends every world setting to every player's browser, so a player who opens the console can read it.
+- Make a pool from a compendium, in an empty crate's editor, can't be pressed twice while it is working, so it no longer makes two pools. The pool it makes is named for the crate ("Goblin hoard pool"), or for the compendium while the crate is still called New crate; it was named "New crate".
+- New pool asks "Discard your changes to <name>?" before Cancel, X or Escape throws away a name you typed, as every editor does since 1.6.0.
+- With two crate editors open, each Make a pool button is described by its own hint for a screen reader, not the other window's.
+- On Foundry v14, the reveal, the table window and the shop no longer offer Detach Window in their header menu: they work only in Foundry's main window. The manager and the editors can still be detached.
+- Draw again in a deck's reveal says a changed price on the line beside the button, as the shop does, instead of in a toast.
+- A replay's title uses the game's own words ("Replay: Brinn scratches Fortune Ticket", not "opens").
+- The Pull log folds a scratch ticket's duds as "3 tickets, nothing" rather than "3 pulls, nothing".
+- Dropping items from dnd5e 6.1 that aren't loot says "3 renown items skipped", not "3 renowns".
+- docs/COMPATIBILITY.md is refreshed for Foundry 14.369, dnd5e 6.0.6 and the dnd5e 6.1.0 pre-release, with rows for the request query and the Detach control.
 
 ## 1.6.0
 

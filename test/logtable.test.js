@@ -72,6 +72,17 @@ describe("the Pull log table", () => {
     expect(logLateNote({ lateCancel: 1, refunded: 1 })).toBe("");
   });
 
+  it("folds a scratch ticket's duds as tickets, not pulls, and its Refund says ticket", () => {
+    const dud = (id, at) => ({ id, at, kind: "scratch", outcome: "nothing", boxId: "s", boxName: "Fortune Ticket", actorId: "a", actorName: "Brinn", day: "d", price: 5, name: "Dud" });
+    const out = logTableHTML({ log: [dud("t1", NOW), dud("t2", NOW - 1000)], esc });
+    expect(out).toContain("2 tickets, nothing");
+    expect(out).not.toContain("pulls, nothing");
+    expect(out).toContain('aria-label="Refund one of 2 tickets"');
+    const one = logTableHTML({ log: [dud("t1", NOW)], esc });
+    expect(one).toContain("1 ticket, nothing");
+    expect(one).toContain('aria-label="Refund the ticket"');
+  });
+
   it("says so when there are no pulls, or only misses hidden", () => {
     expect(logTableHTML({ log: [], esc })).toBe('<p class="lc-empty">No pulls yet.</p>');
     const miss = { id: "n", at: NOW, kind: "well", outcome: "nothing", boxId: "w", boxName: "Well", actorId: "a", actorName: "A", day: "d", price: 0.1, name: "Nothing" };

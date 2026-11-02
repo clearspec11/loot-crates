@@ -1174,7 +1174,8 @@ function renderTableEditor(esc) {
 
 /*
   The guard rails (round 30; editorguard.js, playable.js), on the crate
-  editor wired as the manager wires it:
+  editor the manager opens (views/editors.js editorHTML, wired by
+  renderKindEditor as the manager wires it):
   ?guard=offshelf  a New crate with no pool ticked: the default button reads
                    "Save off the shelf", the On the shelf box is off with
                    the reason under it; ticking a pool brings Add to shelf
@@ -1187,67 +1188,43 @@ function renderTableEditor(esc) {
                    Keep editing focused.
 */
 function renderGuardEditor(esc, mode) {
-  const royal = BOXES.find(b => b.id === "royal");
   const isNew = mode === "offshelf";
-  const box = isNew ? { id: "new", name: "New crate", price: 100, pools: [], weights: { ...DEFAULT_WEIGHTS }, rules: {} } : { ...royal, pools: [{ id: "core", share: 2 }] };
-  stage.innerHTML = `
-    <div class="dialog-form">
-      <div class="dialog-content"><div class="lc-form">
-        <label>Name <input name="name" value="${esc(box.name)}"></label>
-        <label class="lc-form__price">Price <input name="price" type="text" data-price-field value="${esc(formatPrice(box.price))}" placeholder="50 gp, 5 sp or 12 gp 5 sp" autocomplete="off" spellcheck="false"></label>
-        ${poolsFieldset("Pools and their share of pulls", Object.values(POOLS), box.pools, { esc })}
-        <div class="lc-form__odds" role="group" aria-labelledby="lc-odds-h"><div class="lc-form__label" id="lc-odds-h">Chances a player sees</div><div class="lc-form__preview"></div></div>
-        ${limitsFieldset(box, { draft: isNew, hasClock: true, esc })}
-        ${shelfFieldHTML(box, { isNew, esc })}
-      </div></div>
-      <footer class="form-footer"><button type="submit" data-action="ok"><span>${isNew ? "Add to shelf" : "Save"}</span></button><button type="button" data-action="cancel"><span>Cancel</span></button></footer>
-    </div>`;
-  const form = stage.querySelector(".dialog-form");
-  const shelf = wireShelf(form, { isNew, shopOpen: true });
-  wireStock(form, box);
-  const read = () => {
-    const out = {};
-    for (const el of form.querySelectorAll("input, select")) {
-      if (el.type === "checkbox") out[el.name] = el.checked;
-      else if (el.type === "radio") { if (el.checked) out[el.name] = el.value; }
-      else out[el.name] = el.value;
+  const box = isNew ? { ...KIND_GAMES().crate, id: "new", name: "New crate", price: 100, pools: [], weights: { ...DEFAULT_WEIGHTS }, rules: {} } : KIND_GAMES().crate;
+  // The sample's two pools, so both are in sight without the fold.
+  renderKindEditor(esc, "crate", { box, isNew, pools: POOLS, then: async form => {
+    const scroller = form.closest(".dialog-form").querySelector(".dialog-content");
+    // Laid out first: the readout pins itself to the foot once drawn.
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+    if (mode === "offshelf") scroller.scrollTop = scroller.scrollHeight;
+    if (mode === "stock") {
+      const stock = form.querySelector('input[name="stock"]');
+      stock.value = "-3";
+      stock.dispatchEvent(new Event("input", { bubbles: true }));
+      stock.scrollIntoView({ block: "center" });
+      stock.focus();
     }
-    return out;
-  };
-  const paint = () => {
-    syncShares(form);
-    const draft = draftBox(box, read(), Object.keys(POOLS));
-    form.querySelector(".lc-form__preview").innerHTML = boxPreviewHTML(boxPreview(draft, POOLS), esc);
-    shelf(unplayableReason(draft, POOLS));
-  };
-  form.addEventListener("input", paint);
-  form.addEventListener("change", paint);
-  paint();
-  const scroller = form.querySelector(".dialog-content");
-  if (mode === "offshelf") scroller.scrollTop = scroller.scrollHeight;
-  if (mode === "stock") {
-    const stock = form.querySelector('input[name="stock"]');
-    stock.value = "-3";
-    stock.dispatchEvent(new Event("input", { bubbles: true }));
-    stock.scrollIntoView({ block: "center" });
-    stock.focus();
-  }
-  if (mode === "discard") {
-    const price = form.querySelector('input[name="price"]');
-    price.value = "1400 gp";
-    price.dispatchEvent(new Event("input", { bubbles: true }));
-    const words = discardLabels();
-    const confirm = document.createElement("div");
-    confirm.className = "application harness-confirm";
-    confirm.setAttribute("role", "dialog");
-    confirm.setAttribute("aria-labelledby", "harness-confirm-title");
-    confirm.innerHTML = `<header class="window-header"><h2 class="window-title" id="harness-confirm-title">${esc(discardTitle())}</h2></header>
-      <section class="window-content"><div class="dialog-content">${discardHTML(box.name, esc)}</div>
+    if (mode === "discard") {
+      const price = form.querySelector('input[name="price"]');
+      price.value = "1400 gp";
+      price.dispatchEvent(new Event("input", { bubbles: true }));
+      discardOver(box.name, esc);
+    }
+  } });
+}
+
+// Foundry's discard confirm over an open dialog (editorguard.js words),
+// drawn as a stand-in window, Keep editing focused.
+function discardOver(name, esc) {
+  const words = discardLabels();
+  const confirm = document.createElement("div");
+  confirm.className = "application harness-confirm";
+  confirm.setAttribute("role", "dialog");
+  confirm.setAttribute("aria-labelledby", "harness-confirm-title");
+  confirm.innerHTML = `<header class="window-header"><h2 class="window-title" id="harness-confirm-title">${esc(discardTitle())}</h2></header>
+      <section class="window-content"><div class="dialog-content">${discardHTML(name, esc)}</div>
         <footer class="form-footer"><button type="button" data-action="yes"><span>${esc(words.yes)}</span></button><button type="button" data-action="no" autofocus><span>${esc(words.no)}</span></button></footer></section>`;
-    document.querySelector(".page").append(confirm);
-    confirm.querySelector('[data-action="no"]').focus();
-  }
-  document.body.dataset.ready = "1";
+  document.querySelector(".page").append(confirm);
+  confirm.querySelector('[data-action="no"]').focus();
 }
 
 /*
@@ -1274,6 +1251,14 @@ function renderPrompt() {
   const first = stage.querySelector("[autofocus]");
   first?.focus();
   if (first?.matches("input")) first.select();
+  // ?guard=discard: a name typed in New pool, then Escape: the same
+  // question every editor asks (manager.js guardFor), naming the pool by
+  // what was typed, Keep editing focused.
+  if (kind === "newpool" && q.get("guard") === "discard") {
+    first.value = "Dragon hoard";
+    first.dispatchEvent(new Event("input", { bubbles: true }));
+    discardOver(first.value, esc);
+  }
   document.body.dataset.ready = "1";
 }
 
@@ -1342,11 +1327,14 @@ function heldOf(draft, pools) {
   return held;
 }
 
-function renderKindEditor(esc, kind) {
+// `given` draws a game other than the sample's (`isNew` for a New's
+// draft) against `pools`; `then(form)` runs once it is wired, before the
+// page is ready.
+function renderKindEditor(esc, kind, { box: given = null, isNew = false, pools: worldPools = EDITOR_POOLS, then = null } = {}) {
   // ?nopool=1: a New crate with no pool ticked, offering "Make a pool from
   // a compendium" in its picker (poolpicker.js makePoolHTML).
-  const box = q.get("nopool") === "1" ? { ...KIND_GAMES().crate, id: "new", name: "New crate", pools: [] } : KIND_GAMES()[kind] ?? KIND_GAMES().crate;
-  const pools = EDITOR_POOLS;
+  const box = given ?? (q.get("nopool") === "1" ? { ...KIND_GAMES().crate, id: "new", name: "New crate", pools: [] } : KIND_GAMES()[kind] ?? KIND_GAMES().crate);
+  const pools = worldPools;
   const poolIds = Object.keys(pools);
   const lots = lotChoices(BOXES, pools, lotOf(box));
   if (!(Number(q.get("width")) > 0)) Object.assign(document.getElementById("app").style, { width: `${WIDTH_OF[kind] ?? 460}px`, maxWidth: "100%" });
@@ -1355,7 +1343,7 @@ function renderKindEditor(esc, kind) {
   stage.innerHTML = `
     <div class="dialog-form">
       <div class="dialog-content"><div class="lc-form">
-      ${editorHTML(kind, box, { esc, pools: Object.values(pools), sold, newId: () => `pocket${++n}`, lots, hasClock: true })}
+      ${editorHTML(kind, box, { esc, pools: Object.values(pools), sold, newId: () => `pocket${++n}`, lots, hasClock: true, isNew })}
       </div></div>
       <footer class="form-footer"><button type="submit" data-action="ok"><span>Save</span></button><button type="button" data-action="cancel"><span>Cancel</span></button></footer>
     </div>`;
@@ -1373,7 +1361,9 @@ function renderKindEditor(esc, kind) {
   };
   const [draftOf0, htmlOf, heldOf0 = heldOf] = KIND_PREVIEW[kind] ?? KIND_PREVIEW.crate;
   const draftOf = draftOf0 ?? ((game, values) => draftAuction({ ...game, price: parsePrice(values.price) ?? game.price }, { ...values, price: parsePrice(values.price) ?? game.price }, key => lots.choices.get(key)));
-  const shelf = wireShelf(dialog, { isNew: false, shopOpen: true });
+  const shelf = wireShelf(dialog, { isNew, shopOpen: true });
+  // Restock and the stock line as the manager wires them (editorguard.js).
+  if (kind === "crate") wireStock(dialog, box);
   const paint = () => {
     syncShares(form);
     const draft = draftOf(box, read(), poolIds);
@@ -1423,7 +1413,38 @@ function renderKindEditor(esc, kind) {
     ready();
     return;
   }
+  if (q.get("second") === "1") secondEditor(esc, pools);
+  if (then) return void Promise.resolve(then(form)).then(() => { document.body.dataset.ready = "1"; });
   document.body.dataset.ready = "1";
+}
+
+/*
+  ?second=1 (with ?nopool=1): a second New crate's editor open beside the
+  first, as a GM gets by pressing New crate twice. Each picker offers Make
+  a pool from a compendium with its own hint (poolpicker.js makePoolHTML
+  ids from the draft's id), so neither button is described by the other's.
+*/
+function secondEditor(esc, pools) {
+  const box = { ...KIND_GAMES().crate, id: "new2", name: "New crate", pools: [] };
+  const win = document.createElement("div");
+  win.className = "application loot-crates lc-dialog harness-second";
+  win.setAttribute("role", "dialog");
+  win.setAttribute("aria-labelledby", "harness-second-title");
+  win.style.width = document.getElementById("app").style.width;
+  win.style.maxWidth = "100%";
+  win.innerHTML = `<header class="window-header"><h2 class="window-title" id="harness-second-title">New crate</h2></header>
+      <section class="window-content"><form class="dialog-form">
+        <div class="dialog-content"><div class="lc-form">${editorHTML("crate", box, { esc, pools: Object.values(pools), hasClock: true, isNew: true })}</div></div>
+        <footer class="form-footer"><button type="button" data-action="ok"><span>Save off the shelf</span></button><button type="button" data-action="cancel"><span>Cancel</span></button></footer>
+      </form></section>`;
+  document.getElementById("app").after(win);
+  const form = win.querySelector(".lc-form");
+  // Its own <form>, as each Foundry dialog has, so its Odds radios are a
+  // group apart from the first editor's; the same empty readout.
+  form.querySelector(".lc-form__preview").innerHTML = document.querySelector("#stage .lc-form__preview")?.innerHTML ?? "";
+  wirePoolPicker(form);
+  wireEditor(form, { read: () => ({}), repaint: () => {}, noun: "pulls" });
+  wireReadout(form);
 }
 
 /*

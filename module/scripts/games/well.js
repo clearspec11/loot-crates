@@ -157,8 +157,10 @@ function logRow(ctx) {
 */
 // A ticket's play stands alone too: its Refund gives the ticket back.
 export const isMiss = r => r?.outcome === "nothing" && !r.roundId && !r.redeem;
-// What one play is called on a folded line: a throw at the well, a pull elsewhere.
-export const missNoun = kind => (kind === "well" ? "throw" : "pull");
+// What one play is called on a folded line: a throw at the well, a ticket
+// for a scratch ticket's dud, a pull elsewhere.
+const MISS_NOUN = { well: "throw", scratch: "ticket" };
+export const missNoun = kind => MISS_NOUN[kind] ?? "pull";
 
 export function collapseMisses(log = []) {
   const groups = new Map();
@@ -181,6 +183,7 @@ export function collapseMisses(log = []) {
 const MISS_WORDS = {
   throw: { one: "LOOTCRATES.Well.ThrowsOne", many: "LOOTCRATES.Well.ThrowsMany", nothingOne: "LOOTCRATES.Well.ThrowsNothingOne", nothingMany: "LOOTCRATES.Well.ThrowsNothingMany" },
   pull: { one: "LOOTCRATES.Well.PullsOne", many: "LOOTCRATES.Well.PullsMany", nothingOne: "LOOTCRATES.Well.PullsNothingOne", nothingMany: "LOOTCRATES.Well.PullsNothingMany" },
+  ticket: { one: "LOOTCRATES.Well.TicketsOne", many: "LOOTCRATES.Well.TicketsMany", nothingOne: "LOOTCRATES.Well.TicketsNothingOne", nothingMany: "LOOTCRATES.Well.TicketsNothingMany" },
 };
 const missWords = noun => MISS_WORDS[noun] ?? MISS_WORDS.throw;
 export const throwsText = (n, noun = "throw") => t(n === 1 ? missWords(noun).nothingOne : missWords(noun).nothingMany, { count: n });

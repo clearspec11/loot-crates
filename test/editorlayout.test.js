@@ -12,7 +12,7 @@
 import { describe, it, expect, beforeAll, vi } from "vitest";
 import { createDocument } from "./minidom.js";
 
-const { poolPickerHTML, pickerOrder, rarityMix, wirePoolPicker, matchText, FOLD_AFTER } = await import("../module/scripts/views/poolpicker.js");
+const { poolPickerHTML, pickerOrder, rarityMix, wirePoolPicker, matchText, FOLD_AFTER, madePoolName } = await import("../module/scripts/views/poolpicker.js");
 const { editorHTML, sectionsOf, itemsOn, showWhen, foldWeights, foldSaid, foldLine, wireEditor, lotChoices, lotPickerHTML, wireLotSearch, lotKey } = await import("../module/scripts/views/editors.js");
 const { poolsFieldset, syncShares } = await import("../module/scripts/views/editorfields.js");
 const { fillFieldsHTML, topOf, FILL_TOP } = await import("../module/scripts/games/scratchplan.js");
@@ -147,6 +147,24 @@ describe("the pool picker", () => {
 
 const ctx = { esc, pools: LIST, hasClock: true };
 const sections = (kind, box, extra = {}) => sectionsOf(root(editorHTML(kind, box, { ...ctx, ...extra })));
+
+describe("Make a pool from a compendium", () => {
+  it("gives each open editor's offer its own hint id, and its button is described by that one", () => {
+    const page = document.createElement("div");
+    page.innerHTML = [poolPickerHTML(LIST, [], { esc, id: "lc-picks-a1", makePool: true }), poolPickerHTML(LIST, [], { esc, id: "lc-picks-b2", makePool: true })].join("");
+    const hints = page.querySelectorAll(".lc-pool-picker__make .lc-form__hint").map(h => h.id);
+    expect(hints).toEqual(["lc-picks-a1-make-hint", "lc-picks-b2-make-hint"]);
+    expect(page.querySelectorAll("[data-make-pool]").map(b => b.getAttribute("aria-describedby"))).toEqual(hints);
+    expect(page.querySelectorAll("[id]").map(n => n.id).filter(id => id === "lc-make-pool-hint")).toEqual([]);
+  });
+
+  it("names the pool for the game once it has a name, else for the compendium, never New crate", () => {
+    expect(madePoolName("Goblin hoard", "Items (SRD)", "New crate")).toBe("Goblin hoard pool");
+    expect(madePoolName("New crate", "Items (SRD)", "New crate")).toBe("Items (SRD)");
+    expect(madePoolName("  ", "Items (SRD)", "New crate")).toBe("Items (SRD)");
+    expect(madePoolName("", "", "New crate")).toBe("New pool");
+  });
+});
 
 describe("each editor in the order a GM plans it", () => {
   it("a crate: name, what's in it, odds, the readout, price, who can buy, extras, the shelf", () => {

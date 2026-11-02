@@ -64,6 +64,10 @@ export class TableWindow extends ApplicationV2 {
     actions: { spin: TableWindow.#spin, cancelRound: TableWindow.#cancel, dismiss: TableWindow.#dismiss, skip: TableWindow.#skip },
   };
 
+  // No Detach (v14), as the reveal (reveal.js _canDetach): the table reads
+  // the main page's hidden tab and focus, and the shop's countdowns.
+  _canDetach() { return false; }
+
   #ctrl = null;
   #spinning = null;
   #values = {};

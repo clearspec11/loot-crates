@@ -12,7 +12,7 @@ import { createDocument } from "./minidom.js";
 vi.mock("../module/scripts/foundry/reveal.js", () => ({ showReveal: vi.fn(async () => ({ landed: Promise.resolve() })), heldState: () => null, boxHeld: () => false, onHold: () => () => {}, onRelease: () => () => {} }));
 vi.mock("../module/scripts/foundry/sound.js", () => ({ playTick: vi.fn(), playSlow: vi.fn(), playReveal: vi.fn(), playPlop: vi.fn(), playPlink: vi.fn(), playCoinBack: vi.fn() }));
 
-const { WELL, WELL_DEFAULTS, WELL_TIMING, wellOdds, throwsToday, capOf, stillLine, noClockNote, collapseMisses, throwsText, mountWell, wellRulesText, stakeCoins, stakeGp, draftWell, wellPreview, wellPreviewHTML, wellSummary, wellOddsHTML } = await import("../module/scripts/games/well.js");
+const { WELL, WELL_DEFAULTS, WELL_TIMING, wellOdds, throwsToday, capOf, stillLine, noClockNote, collapseMisses, throwsText, missCountText, mountWell, wellRulesText, stakeCoins, stakeGp, draftWell, wellPreview, wellPreviewHTML, wellSummary, wellOddsHTML } = await import("../module/scripts/games/well.js");
 const { dayKeyOf } = await import("../module/scripts/core/clock.js");
 const { getKind } = await import("../module/scripts/games/kinds.js");
 const { performPull, PullError } = await import("../module/scripts/foundry/pull.js");
@@ -313,7 +313,15 @@ describe("the Pull log's folded misses", () => {
     expect(throwsText(1)).toBe("1 throw, nothing");
     expect(throwsText(2, "pull")).toBe("2 pulls, nothing");
     expect(throwsText(7)).toBe("7 throws, nothing");
+    expect(throwsText(3, "ticket")).toBe("3 tickets, nothing");
     expect(collapseMisses([])).toEqual([]);
+  });
+
+  it("calls a scratch ticket's dud a ticket and every other kind's miss a pull, and counts them apart", () => {
+    const miss = (id, kind) => ({ id, kind, outcome: "nothing", actorId: "a1", boxId: kind, day: "y1d7", at: 1 });
+    const groups = collapseMisses([miss("s1", "scratch"), miss("s2", "scratch"), miss("c1", "crate"), miss("w1", "well")]);
+    expect(groups.map(g => g.noun)).toEqual(["ticket", "pull", "throw"]);
+    expect(missCountText(groups)).toBe("2 tickets and 1 pull and 1 throw");
   });
 });
 

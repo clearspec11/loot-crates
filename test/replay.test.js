@@ -76,6 +76,16 @@ describe("replayReveal", () => {
     expect(replayWindowId("msg1")).toBe("loot-crates-reveal-replay-msg1");
   });
 
+  it("titles a replay in its own game's verb, a crate's (and an unknown kind's) opens", () => {
+    const of = kind => replayTitle({ kind, actorName: "Brinn", box: { name: "The Game" } });
+    expect(of("scratch")).toBe("Replay: Brinn scratches The Game");
+    expect(of("well")).toBe("Replay: Brinn throws a coin into The Game");
+    expect(of("dice")).toBe("Replay: Brinn rolls at The Game");
+    expect(of("deck")).toBe("Replay: Brinn draws from The Game");
+    expect(of("crate")).toBe("Replay: Brinn opens The Game");
+    expect(of(undefined)).toBe("Replay: Brinn opens The Game");
+  });
+
   it("refuses a snapshot it can't play, and never trusts a stored rarity", () => {
     const snap = replaySnapshot(pull());
     expect(replayReveal(null, "m")).toBeNull();
@@ -108,7 +118,7 @@ describe("the reveal's buttons", () => {
     expect(buttons.map(b => b.text)).toEqual(["Draw again", "Open item", "Watch again", "Skip"]);
     expect(buttons.map(b => b.attrs.match(/data-action="(\w+)"/)[1])).toEqual(["drawAgain", "openItem", "watchAgain", "skip"]);
     expect(buttons.map(b => / hidden$/.test(b.attrs))).toEqual([true, true, true, false]);
-    expect(html.indexOf('class="lc-reveal__why" hidden')).toBeLessThan(html.indexOf("lc-reveal__again"));
+    expect(html.indexOf('class="lc-reveal__why" role="status" hidden')).toBeLessThan(html.indexOf("lc-reveal__again"));
     expect(buttons.every(b => /type="button"/.test(b.attrs))).toBe(true);
   });
 });

@@ -157,8 +157,15 @@ export function replayReveal(snapshot, key) {
 }
 
 // The replay window's title: says it is a replay, so nobody takes it for a
-// second purchase.
-export const replayTitle = reveal => t("LOOTCRATES.Reveal.ReplayTitle", { actor: reveal.actorName, box: reveal.box.name });
+// second purchase, in the game's own verb ("scratches Fortune Ticket", not
+// "opens"); a crate's, and any kind without its own, "opens".
+const REPLAY_TITLE = {
+  scratch: "LOOTCRATES.Reveal.ReplayTitleScratch",
+  well: "LOOTCRATES.Reveal.ReplayTitleWell",
+  dice: "LOOTCRATES.Reveal.ReplayTitleDice",
+  deck: "LOOTCRATES.Reveal.ReplayTitleDeck",
+};
+export const replayTitle = reveal => t(REPLAY_TITLE[reveal.kind] ?? "LOOTCRATES.Reveal.ReplayTitle", { actor: reveal.actorName, box: reveal.box.name });
 export const replayWindowId = key => `loot-crates-reveal-replay-${key}`;
 
 /*
@@ -172,7 +179,7 @@ export const replayWindowId = key => `loot-crates-reveal-replay-${key}`;
   actions on the window, like Close, needing no new pattern.
 */
 export const revealActionsHTML = () => `<div class="lc-reveal__actions">
-        <span class="lc-reveal__why" hidden></span>
+        <span class="lc-reveal__why" role="status" hidden></span>
         <button type="button" class="lc-reveal__again" data-action="drawAgain" hidden>${t("LOOTCRATES.Reveal.DrawAgain")}</button>
         <button type="button" class="lc-reveal__open" data-action="openItem" hidden>${t("LOOTCRATES.Reveal.OpenItem")}</button>
         <button type="button" class="lc-reveal__watch" data-action="watchAgain" hidden>${t("LOOTCRATES.Reveal.WatchAgain")}</button>

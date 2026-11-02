@@ -365,6 +365,16 @@ export class CrateReveal extends ApplicationV2 {
     actions: { dismiss: CrateReveal.#dismiss, skip: CrateReveal.#skip, openItem: CrateReveal.#openItem, watchAgain: CrateReveal.#watchAgain, drawAgain: CrateReveal.#drawAgain },
   };
 
+  /*
+    No Detach (Foundry v14 offers one on every ApplicationV2, ApplicationV2
+    _canDetach; v13 has none and never asks). The reveal reads the main
+    page: whether its tab is hidden (pageHidden, the visibilitychange that
+    skips a spin), where focus is (focusIsFree), the shop's Buy and the
+    chat card's Watch again it hands focus back to. In a window of its own
+    every one of them would read the wrong page.
+  */
+  _canDetach() { return false; }
+
   #resolveLanded;
   #spin = null;
   #kind;
@@ -464,7 +474,10 @@ export class CrateReveal extends ApplicationV2 {
   // The buyer's next play of the same game, from this window: a pull at the
   // price the kind names now (not at landing: the price can have fallen
   // since, and the GM would refuse the stale one), then this window goes
-  // once the next has opened. A refusal is said and the button comes back.
+  // once the next has opened. A refusal is said and the button comes back:
+  // a stale price (err.stalePrice: the GM changed it, or the streak ran
+  // out) on the reason line beside the button, as the shop says it in its
+  // notice line; anything else as a toast.
   #drawing = false;
   static async #drawAgain(_event, button) {
     if (this.#drawing || this.#closed || button.getAttribute("aria-disabled") === "true") return;
@@ -480,10 +493,11 @@ export class CrateReveal extends ApplicationV2 {
       const sent = await requestPull({ boxId: this.reveal.box.id, actorId: this.reveal.actorId, price: again.price });
       await this.#handOver(sent?.requestId);
     } catch (err) {
-      globalThis.ui?.notifications?.warn(err.message);
+      const stale = err?.stalePrice != null;
+      if (!stale) globalThis.ui?.notifications?.warn(err.message);
       this.#drawing = false;
       this.linger.resume("drawing");
-      if (!this.#closed) this.#showAgain(this.#againOffer());
+      if (!this.#closed) this.#showAgain(this.#againOffer(), stale ? err.message : "");
     }
   }
 
@@ -523,25 +537,25 @@ export class CrateReveal extends ApplicationV2 {
     }
   }
 
-  // The again button and its reason line, from an offer (or none).
-  #showAgain(again) {
+  // The again button and its reason line, from an offer (or none). `said`
+  // is the GM's refusal of the last press, on the line while the button,
+  // pressable again at the offer's price now, is not off.
+  #showAgain(again, said = "") {
     const root = this.element;
     const btn = root?.querySelector(".lc-reveal__again");
     const why = root?.querySelector(".lc-reveal__why");
     if (!btn || !why) return;
     btn.hidden = !again;
-    why.hidden = !again?.off;
+    const line = again?.off || said;
+    why.hidden = !line;
     if (!again) return;
     btn.textContent = again.label;
-    why.textContent = again.off ?? "";
+    why.textContent = line ?? "";
     why.id = `lc-reveal-why-${this.reveal.requestId ?? "x"}`;
-    if (again.off) {
-      btn.setAttribute("aria-disabled", "true");
-      btn.setAttribute("aria-describedby", why.id);
-    } else {
-      btn.removeAttribute("aria-disabled");
-      btn.removeAttribute("aria-describedby");
-    }
+    if (again.off) btn.setAttribute("aria-disabled", "true");
+    else btn.removeAttribute("aria-disabled");
+    if (line) btn.setAttribute("aria-describedby", why.id);
+    else btn.removeAttribute("aria-describedby");
   }
 
   static async #openItem(_event, button) {

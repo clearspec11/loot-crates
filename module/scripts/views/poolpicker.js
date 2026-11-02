@@ -77,7 +77,7 @@ function pickRow(p, { on, share, shares, esc, id, all }) {
 export function poolPickerHTML(pools, refs = [], { share = true, esc = plain, id = "lc-picks", makePool = false } = {}) {
   const all = asMap(pools);
   const { on, rest } = pickerOrder(pools, refs);
-  const make = makePool ? makePoolHTML(on.length > 0) : "";
+  const make = makePool ? makePoolHTML(on.length > 0, esc(id)) : "";
   if (!on.length && !rest.length) return `<p>${t("LOOTCRATES.Editor.NoPools")}</p>${make}`;
   const shares = Object.fromEntries((refs ?? []).map(p => [p.id, p.share ?? 1]));
   const opts = { share, shares, esc, id: esc(id), all };
@@ -98,8 +98,23 @@ export function poolPickerHTML(pools, refs = [], { share = true, esc = plain, id
 
 // The crate's offer while nothing is ticked: one button and what it does.
 // The line under it is where the manager says what it made (role=status).
-export function makePoolHTML(hidden = false) {
-  return `<div class="lc-pool-picker__make"${hidden ? " hidden" : ""}><button type="button" data-make-pool aria-describedby="lc-make-pool-hint"><i class="fas fa-book" inert></i> ${t("LOOTCRATES.Picker.MakePool")}</button> <span class="lc-form__hint" id="lc-make-pool-hint">${t("LOOTCRATES.Picker.MakePoolHint")}</span></div>`;
+// `id` is the picker's prefix (poolPickerHTML), so two open editors' hints
+// don't share an id and each button is described by its own.
+export function makePoolHTML(hidden = false, id = "lc-picks") {
+  const hint = `${id}-make-hint`;
+  return `<div class="lc-pool-picker__make"${hidden ? " hidden" : ""}><button type="button" data-make-pool aria-describedby="${hint}"><i class="fas fa-book" inert></i> ${t("LOOTCRATES.Picker.MakePool")}</button> <span class="lc-form__hint" id="${hint}">${t("LOOTCRATES.Picker.MakePoolHint")}</span></div>`;
+}
+
+/*
+  The name Make a pool gives the pool it makes: the game's name and "pool"
+  ("Goblin hoard pool") once the GM has named the game, else the
+  compendium's own label ("Items (SRD)"). Never the draft's "New crate",
+  which would read as a game in every pool list.
+*/
+export function madePoolName(gameName, label, draftName = "") {
+  const name = String(gameName ?? "").trim();
+  if (name && name !== draftName) return t("LOOTCRATES.Picker.PoolOf", { name });
+  return String(label ?? "").trim() || t("LOOTCRATES.Pools.NewPool");
 }
 
 // What the offer says once it made the pool.

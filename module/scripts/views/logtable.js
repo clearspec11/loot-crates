@@ -79,6 +79,7 @@ export function logLateNote(row) {
 const REFUND_LABEL = {
   throw: ["LOOTCRATES.Log.RefundTheThrow", "LOOTCRATES.Log.RefundOneOfThrows"],
   pull: ["LOOTCRATES.Log.RefundThePull", "LOOTCRATES.Log.RefundOneOfPulls"],
+  ticket: ["LOOTCRATES.Log.RefundTheTicket", "LOOTCRATES.Log.RefundOneOfTickets"],
 };
 const refundLabel = (n, noun) => t((REFUND_LABEL[noun] ?? REFUND_LABEL.throw)[n === 1 ? 0 : 1], { count: n });
 

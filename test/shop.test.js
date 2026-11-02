@@ -68,6 +68,12 @@ beforeEach(() => {
   globalThis.game.user.character = actor;
 });
 
+describe("Foundry v14's Detach", () => {
+  it("is not offered on the shop: the reveal and the table look for its Buy and countdowns in the main page", () => {
+    expect(new CrateShop()._canDetach()).toBe(false);
+  });
+});
+
 describe("the shop's Buy action", () => {
   it("asks the GM for a crate that can be bought", async () => {
     const app = new CrateShop();

@@ -121,6 +121,11 @@ export class CrateShop extends ApplicationV2 {
     actions: { buy: CrateShop.#buy, keep: CrateShop.#keep, openManager: CrateShop.#openManager },
   };
 
+  // No Detach (v14), as the reveal (reveal.js _canDetach): the reveal hands
+  // focus back to this window's Buy, and the table window ticks its
+  // countdowns, by looking in the main page.
+  _canDetach() { return false; }
+
   get title() { return t("LOOTCRATES.Shop.Title"); }
 
   // A GM's way to the manager from here: "Manage crates" in the window's

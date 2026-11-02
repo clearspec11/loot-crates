@@ -158,9 +158,16 @@ const STATES = [
   // chips in sight, dnd5e's item pack picked, its first button Preview.
   ["prompt-newpool", "state=prompt&prompt=newpool"],
   ["prompt-bulk", "state=prompt&prompt=bulk"],
+  // A name typed in New pool, then Escape: the editors' own question
+  // (manager.js guardFor) names the pool by what was typed, Keep editing
+  // focused, the typed name still under it.
+  ["prompt-newpool-discard", "state=prompt&prompt=newpool&guard=discard"],
   // A New crate with no pool ticked: its picker offers "Make a pool from a
   // compendium" (poolpicker.js makePoolHTML) under "No pool ticked yet".
   ["editor-crate-makepool", "state=editor&kind=crate&nopool=1"],
+  // Two New crates open at once: each offer described by its own hint,
+  // every id on the page once (poolpicker.js makePoolHTML).
+  ["editor-crate-makepool-two", "state=editor&kind=crate&nopool=1&second=1"],
   // The Boxes tab the moment "New crate" was saved as the Royal Vault
   // (boxestable.js, manager.js #saveEditor): every kind's row in one table,
   // the status line saying it is on the shelf, the new row's edge and its
@@ -912,6 +919,45 @@ function makePoolProblems() {
   if (button.closest("[hidden]")) out.push("the offer is hidden with no pool ticked");
   if (!button.closest(".lc-pool-picks")) out.push("the offer isn't in the pool picker");
   if (!document.querySelector(".lc-pool-picker__none:not([hidden])")) out.push("No pool ticked yet isn't said");
+  return out;
+}
+
+// Two New crate editors open: each Make a pool is described by the hint in
+// its own window, and no id is on the page twice.
+function twoMakePoolProblems() {
+  const out = [];
+  const buttons = [...document.querySelectorAll("[data-make-pool]")];
+  if (buttons.length !== 2) return [`expected two Make a pool offers, got ${buttons.length}`];
+  const seen = new Map();
+  for (const el of document.querySelectorAll("[id]")) seen.set(el.id, (seen.get(el.id) ?? 0) + 1);
+  const twice = [...seen].filter(([, n]) => n > 1).map(([id]) => id);
+  if (twice.length) out.push(`ids on the page more than once: ${twice.join(", ")}`);
+  for (const b of buttons) {
+    const hint = document.getElementById(b.getAttribute("aria-describedby") ?? "");
+    if (!hint) { out.push("a Make a pool button names no hint"); continue; }
+    if (hint.closest(".application") !== b.closest(".application")) out.push(`the hint ${hint.id} is in the other editor`);
+    if (hint.textContent.trim() !== "A pool named for this crate, filled from a compendium and ticked here.") out.push(`the hint reads "${hint.textContent.trim()}"`);
+    if (parseFloat(getComputedStyle(hint).fontSize) < 11) out.push("the hint is under 11px");
+  }
+  return out;
+}
+
+// New pool's discard question: it names the typed pool, Discard then Keep
+// editing, Keep editing focused, the typed name under it, inside the screen.
+function newPoolDiscardProblems() {
+  const out = [];
+  const box = document.querySelector(".harness-confirm");
+  if (!box) return ["no discard question"];
+  if (box.querySelector(".window-title")?.textContent.trim() !== "Discard changes?") out.push(`the question's title reads "${box.querySelector(".window-title")?.textContent.trim()}"`);
+  const text = box.querySelector(".dialog-content")?.textContent.replace(/\s+/g, " ").trim();
+  if (text !== "Discard your changes to Dragon hoard? Nothing you changed has been saved.") out.push(`the question reads "${text}"`);
+  const words = [...box.querySelectorAll("button")].map(b => b.textContent.trim());
+  if (words.join("|") !== "Discard|Keep editing") out.push(`the question's buttons read ${words.join(", ")}`);
+  if (document.activeElement?.textContent.trim() !== "Keep editing") out.push("Keep editing isn't focused");
+  const r = box.getBoundingClientRect();
+  if (r.left < 0 || r.right > innerWidth + 1 || r.top < 0 || r.bottom > innerHeight) out.push("the question runs off the screen");
+  for (const el of box.querySelectorAll("p, button")) if (parseFloat(getComputedStyle(el).fontSize) < 11) { out.push("the question has text under 11px"); break; }
+  if (document.querySelector('#stage input[name="name"]')?.value !== "Dragon hoard") out.push("the typed name isn't under the question");
   return out;
 }
 
@@ -2724,8 +2770,10 @@ try {
       else if (name.startsWith("deck")) problems0.push(...await page.evaluate(deckProblems, { "deck-held": "held", "deck-boon": "item", "deck-bane": "loss", "deck-effect": "effect" }[name]));
       else if (name === "manager-dropped") problems0.push(...await page.evaluate(droppedProblems), ...await page.evaluate(pinnedProblems, false));
       else if (name === "manager-pool-made") problems0.push(...await page.evaluate(poolMadeProblems), ...await page.evaluate(pinnedProblems, true));
+      else if (name === "prompt-newpool-discard") problems0.push(...await page.evaluate(newPoolDiscardProblems));
       else if (name.startsWith("prompt-")) problems0.push(...await page.evaluate(promptProblems, name.slice(7)));
       else if (name === "editor-crate-makepool") problems0.push(...await page.evaluate(makePoolProblems));
+      else if (name === "editor-crate-makepool-two") problems0.push(...await page.evaluate(makePoolProblems), ...await page.evaluate(twoMakePoolProblems));
       else if (name === "manager-empty") problems0.push(...await page.evaluate(starterEmptyProblems, "pools"));
       else if (name === "manager-boxes-empty") problems0.push(...await page.evaluate(starterEmptyProblems, "boxes"));
       else if (name === "manager-boxes-starter") problems0.push(...await page.evaluate(starterBoxesProblems), ...await page.evaluate(panelProblems));

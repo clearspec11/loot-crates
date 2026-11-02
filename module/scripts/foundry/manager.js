@@ -115,7 +115,7 @@ const cancelTableRound = roundId => import("./table.js").then(m => m.cancelRound
 const openShopWindow = () => import("./shop.js").then(m => m.openShop());
 import { getRounds, getPools, getBoxes, getLog, getTally, dayMode, newId, createPool, updatePool, removePool, createBox, updateBox, updateBoxes, removeBox, entryFromItem, entriesFromDrop, addEntries, packHasLoot, LOOT_TYPES, isLootType, isShopOpen, setShopOpen, checkSources, sweepPools, removeEntry, patchEntry } from "./store.js";
 import { flattenPool, withSources, entryWeight, curateEntries, oddsModeOf } from "../core/odds.js";
-import { SKIPPED_NOUN, describeSkipped, dropPreviewHTML, savedNotice, PAGE_ROWS, defaultView, poolToOpen, poolNameHTML, bulkAddHTML, poolRows, sortRows, filterRows, pageRows, nextRows, poolCount, poolSummary, poolBody, chipsHTML, unsetButton, footHTML, entryRow, entryParts, pinRecent, dropNotice, poolUsers, usersText, deleteImpact, removeImpact, deletePoolText, removeEntryText } from "../views/poolview.js";
+import { skippedNoun, describeSkipped, dropPreviewHTML, savedNotice, PAGE_ROWS, defaultView, poolToOpen, poolNameHTML, bulkAddHTML, poolRows, sortRows, filterRows, pageRows, nextRows, poolCount, poolSummary, poolBody, chipsHTML, unsetButton, footHTML, entryRow, entryParts, pinRecent, dropNotice, poolUsers, usersText, deleteImpact, removeImpact, deletePoolText, removeEntryText } from "../views/poolview.js";
 import { formatPrice, parsePrice, unreadablePrice } from "../core/currency.js";
 import { managerNavHTML, MANAGER_TABS, directoryMenuEntry, statusBarHTML } from "../views/route.js";
 import { describeRefund, refundPull } from "./refund.js";
@@ -131,7 +131,7 @@ import { starterPresent, hasStarter, starterAgainText, starterNotice, starterCal
 import { addStarterSet } from "./starterbuild.js";
 import { syncShares, renumberCards } from "../views/editorfields.js";
 import { editorHTML, cardRow, pocketRow, lotKey, lotChoices, lotOptionHTML, wireLotSearch, showWhen, foldWeights, wireEditor, wireReadout } from "../views/editors.js";
-import { wirePoolPicker, poolPickerHTML, madeText } from "../views/poolpicker.js";
+import { wirePoolPicker, poolPickerHTML, madeText, madePoolName } from "../views/poolpicker.js";
 import { t, listAnd } from "../core/i18n.js";
 
 const { ApplicationV2, DialogV2 } = foundry.applications.api;
@@ -429,11 +429,14 @@ export class CrateManager extends ApplicationV2 {
     scrolled to it, opened, its Add from compendium focused (the next thing
     a new pool needs), and the status line saying so. Cancel makes nothing.
     It used to append an unnamed "New pool" at the foot of a 17-screen tab
-    with nothing said, and cc-dev had two stray empty ones from it.
+    with nothing said, and cc-dev had two stray empty ones from it. A name
+    typed and then Cancel, X or Escape asks first, as every editor does
+    (guardFor), naming the pool by what was typed.
   */
   static async #addPool(_e, target) {
     const data = await promptForm(t("LOOTCRATES.Manager.NewPoolTitle"), poolNameHTML(t("LOOTCRATES.Pools.NewPool"), esc), {
       okLabel: t("LOOTCRATES.Manager.NewPoolCreate"), select: 'input[name="name"]', position: { width: 380 },
+      guard: { name: form => form.querySelector('input[name="name"]')?.value.trim() || t("LOOTCRATES.Pools.NewPool") },
     });
     if (!data) return target?.focus?.();
     const pool = await createPool({ name: String(data.name ?? "").trim() || t("LOOTCRATES.Pools.NewPool") });
@@ -936,18 +939,33 @@ export class CrateManager extends ApplicationV2 {
   /*
     "Make a pool from a compendium" in a crate editor with no pool ticked
     (poolpicker.js makePoolHTML): Add from compendium and its preview, as
-    on a pool's bar, into a new pool named for the crate (what the name
-    field says now). Once added, the picker is drawn again with the new
-    pool ticked and first, its checkbox focused, the odds redrawn, and the
-    line under the picker says what was made. The crate's draft is still
-    unsaved; the pool is the GM's like any other (a Cancel keeps it).
-    Cancelling the compendium or its preview makes nothing.
+    on a pool's bar, into a new pool named for the crate ("<name> pool",
+    from what the name field says now) or, while the crate is still "New
+    crate", for the compendium (poolpicker.js madePoolName). Once added,
+    the picker is drawn again with the new pool ticked and first, its
+    checkbox focused, the odds redrawn, and the line under the picker says
+    what was made. The crate's draft is still unsaved; the pool is the GM's
+    like any other (a Cancel keeps it). Cancelling the compendium or its
+    preview makes nothing. The button is off (disabled) from the press
+    until then, so a second press can't make a second pool.
   */
   async #makePoolHere(form, box, poolIds, paint) {
     const button = form.querySelector("[data-make-pool]");
-    const name = form.querySelector('input[name="name"]')?.value.trim() || box.name || t("LOOTCRATES.Pools.NewPool");
-    const plan = await this.#askCompendium([]);
-    if (!plan || !await this.#confirmPlan(name, plan)) return button?.focus?.();
+    if (!button || button.disabled) return null;
+    button.disabled = true;
+    try {
+      const plan = await this.#askCompendium([]);
+      const typed = form.querySelector('input[name="name"]')?.value.trim();
+      const name = plan ? madePoolName(typed || box.name, plan.label, t("LOOTCRATES.Boxes.NewBox")) : "";
+      if (plan && await this.#confirmPlan(name, plan)) return await this.#fillMadePool(form, box, poolIds, paint, name, plan);
+    } finally {
+      button.disabled = false;
+    }
+    return button.focus?.();
+  }
+
+  // The made pool, filled and ticked in the editor's picker (#makePoolHere).
+  async #fillMadePool(form, box, poolIds, paint, name, plan) {
     const pool = await createPool({ name });
     const added = await addEntries(pool.id, plan.entries);
     this.#lastPool = pool.id;
@@ -1589,7 +1607,7 @@ export class CrateManager extends ApplicationV2 {
         return ui.notifications.info(t("LOOTCRATES.Manager.AlreadyIn", { name: plan.label, pool: pool.name }));
       }
       const type = Object.keys(plan.skipped.notLoot)[0];
-      return ui.notifications.warn(t("LOOTCRATES.Manager.NotLootType", { name: plan.label, type: SKIPPED_NOUN[type] ?? type }));
+      return ui.notifications.warn(t("LOOTCRATES.Manager.NotLootType", { name: plan.label, type: skippedNoun(type) }));
     }
     if (await addEntries(poolId, plan.entries)) this.#pinDrop(poolId, plan.entries.map(e => e.uuid));
   }
