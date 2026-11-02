@@ -175,11 +175,11 @@ describe("the editors' notes about the day", () => {
     const game = { id: "d", rules: { perCharacter: { max: 2, per: "day" } } };
     const rest = limitsFieldset(game, { stock: false, hasClock: true, day: "rest" });
     expect(rest).toContain(`<p class="lc-form__hint">${REST}</p>`);
-    expect(rest).toContain("so a refund gives the purchase back.</p>");
+    expect(rest).toContain("and a refund gives the purchase back.</p>");
     expect(rest).not.toContain("world's calendar");
     expect(rest).not.toContain("--warn");
     const calendar = limitsFieldset(game, { stock: false, hasClock: true, day: "calendar" });
-    expect(calendar).toContain("so a refund gives the purchase back; a day ends on the world's calendar or at the character's long rest.</p>");
+    expect(calendar).toContain("and a refund gives the purchase back; a day ends on the world's calendar or at the character's long rest.</p>");
     expect(limitsFieldset(game, { stock: false, hasClock: false, day: null })).toContain("No calendar: a limit per day will not apply.");
   });
 });
