@@ -14,6 +14,7 @@ vi.mock("../module/scripts/foundry/reveal.js", () => ({ showReveal: vi.fn(async 
 const { registerKind, getKind, kindOf, kindIds, kindFor, gotText, PullError, _resetKinds } = await import("../module/scripts/games/kinds.js");
 const { performPull } = await import("../module/scripts/foundry/pull.js");
 const { registerSocket } = await import("../module/scripts/foundry/socket.js");
+const { deliverTo } = await import("./requests.js");
 const { registerSettings, appendLog, getLog, getActorState } = await import("../module/scripts/foundry/store.js");
 const { refundPull, describeRefund, refundCoins } = await import("../module/scripts/foundry/refund.js");
 const { postPullCard } = await import("../module/scripts/foundry/chat.js");
@@ -73,7 +74,7 @@ function makeWorld({ user = GM, actor = makeActor() } = {}) {
   globalThis.ChatMessage = { create: vi.fn(async data => data), getSpeaker: () => ({ actor: actor.id }) };
   registerSettings();
   registerSocket();
-  return { game, actor, emitted, deliver: msg => Promise.all(handlers.map(h => h(msg))) };
+  return { game, actor, emitted, deliver: deliverTo(handlers) };
 }
 
 beforeEach(() => { registerKind(WELL); registerKind(FLIP); });

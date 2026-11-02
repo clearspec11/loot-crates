@@ -17,6 +17,7 @@ const { dayKeyOf } = await import("../module/scripts/core/clock.js");
 const { getKind } = await import("../module/scripts/games/kinds.js");
 const { performPull, PullError } = await import("../module/scripts/foundry/pull.js");
 const { registerSocket } = await import("../module/scripts/foundry/socket.js");
+const { deliverTo } = await import("./requests.js");
 const { registerSettings, appendLog, getLog, getTally, getActorState, todayKey } = await import("../module/scripts/foundry/store.js");
 const { tallyOf } = await import("../module/scripts/core/tally.js");
 const { refundPull, describeRefund } = await import("../module/scripts/foundry/refund.js");
@@ -197,7 +198,7 @@ function makeWorld({ actor = actorOf(), time = { components: { year: 1, day: 7 }
   globalThis.ChatMessage = { create: vi.fn(async data => data), getSpeaker: () => ({ actor: actor.id }) };
   registerSettings();
   registerSocket();
-  return { game, actor, emitted, deliver: msg => Promise.all(handlers.map(h => h(msg))) };
+  return { game, actor, emitted, deliver: deliverTo(handlers) };
 }
 const throwOnce = async (world, rng, requestId = "t1") => {
   globalThis.CONFIG = { Dice: { randomUniform: rng } };

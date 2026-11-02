@@ -514,7 +514,11 @@
       "CountGone": "{count} belonged to a character that is gone",
       "DeletedWithRound": "Loot Crates: {name} was deleted with its round open; {back}.",
       "GavelJammed": "Loot Crates: the gavel jammed. Check the console; it is tried again shortly.",
-      "Staked": "staked {price}"
+      "Staked": "staked {price}",
+      "NotSender": "That request named someone other than the player who sent it, so the GM refused it. Nothing was charged.",
+      "ForgedGM": "Loot Crates: {sender} sent a request in {claimed}'s name. It was refused and nothing was charged.",
+      "Reload": "Your Loot Crates is out of date. Reload Foundry (F5), then try again.",
+      "NoQuery": "Your Foundry permissions don't let you send the GM a request. The GM can turn on Query Users for your role in Configure Permissions."
     },
     "Crate": {
       "ChatHead": "{actor} opened {box} {price}",

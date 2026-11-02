@@ -16,6 +16,7 @@ vi.mock("../module/scripts/foundry/reveal.js", () => ({ showReveal: vi.fn(async 
 vi.mock("../module/scripts/foundry/chat.js", () => ({ postPullCard: vi.fn(async () => null) }));
 
 const { registerSocket } = await import("../module/scripts/foundry/socket.js");
+const { deliverTo, withQuery } = await import("./requests.js");
 const { registerSettings, getLog, getRounds, enqueueWrite, saveRound } = await import("../module/scripts/foundry/store.js");
 const { openRound, resolveRound, recoverRounds, cancelRound, tableTick, stopWatching, onTable } = await import("../module/scripts/foundry/table.js");
 const { refundPull } = await import("../module/scripts/foundry/refund.js");
@@ -74,7 +75,7 @@ function makeWorld() {
   const notes = { warn: vi.fn(), error: vi.fn(), info: vi.fn() };
   const game = {
     user: GM,
-    users: { activeGM: GM, get: id => USERS.find(u => u.id === id) ?? null },
+    users: { activeGM: withQuery(GM, emitted), get: id => USERS.find(u => u.id === id) ?? null },
     actors: { get: id => actors.get(id) ?? null },
     messages: { contents: [] },
     settings: {
@@ -90,7 +91,7 @@ function makeWorld() {
   globalThis.fromUuid = async uuid => SOURCES[uuid] ?? null;
   registerSettings();
   registerSocket();
-  const deliver = msg => Promise.all(handlers.map(h => h(msg)));
+  const deliver = deliverTo(handlers);
   return { game, actors, emitted, deliver, notes };
 }
 
@@ -277,6 +278,25 @@ describe("the hammer", () => {
     const row = rowsOf(round)[0];
     expect(row).toMatchObject({ status: "refunded", refundReason: "reserve" });
     expect(stakeNote(row)).toBe("Refunded at the hammer: the reserve wasn't met.");
+  });
+
+  // Every client hears the round's messages (open, staked, resolve, the
+  // house's bids): the reserve's amount and the house's budget are never in
+  // them, whether the reserve is met or not (socket.js, table.js).
+  it("never sends the reserve's amount or the house's budget to the table", async () => {
+    await seed(world, { lot: AUCTION({ reserve: 77, house: { count: 1, budget: 33, chance: 100 } }) });
+    const round = await openRound("lot");
+    await world.deliver(bid(round, "a1", "p1", 20));
+    await tableTick(round.id, { rng: () => 0 });
+    await world.deliver(bid(round, "a2", "p2", 40));
+    await resolveRound(round.id);
+    const sent = world.emitted.filter(m => ["round", "staked", "error"].includes(m.type));
+    expect(sent.map(m => m.event ?? m.type)).toEqual(expect.arrayContaining(["open", "staked", "resolve"]));
+    const keys = [];
+    const walk = v => { if (v && typeof v === "object") for (const [k, x] of Object.entries(v)) { keys.push([k, x]); walk(x); } };
+    walk(sent);
+    expect(keys.filter(([k, x]) => (k === "reserve" || k === "budget") && typeof x === "number")).toEqual([]);
+    expect(JSON.stringify(sent)).not.toContain('"budget"');
   });
 
   it("sells nothing on a house win: every player's bid came back and no purse moved", async () => {

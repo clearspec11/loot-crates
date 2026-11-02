@@ -15,6 +15,7 @@ vi.mock("../module/scripts/foundry/chat.js", () => ({ postPullCard: vi.fn(async 
 vi.mock("../module/scripts/foundry/sound.js", () => ({ playTick: vi.fn(), playSlow: vi.fn(), playReveal: vi.fn(), playPlop: vi.fn(), playPlink: vi.fn(), playCoinBack: vi.fn(), playBane: vi.fn(), playDrop: vi.fn() }));
 
 const { registerSocket } = await import("../module/scripts/foundry/socket.js");
+const { deliverTo } = await import("./requests.js");
 const { registerSettings, getLog, getRounds } = await import("../module/scripts/foundry/store.js");
 const { openRound, resolveRound } = await import("../module/scripts/foundry/table.js");
 const { refundPull, describeRefund } = await import("../module/scripts/foundry/refund.js");
@@ -87,7 +88,7 @@ function makeWorld() {
   };
   registerSettings();
   registerSocket();
-  return { game, actors, emitted, deliver: msg => Promise.all(handlers.map(h => h(msg))), notes };
+  return { game, actors, emitted, deliver: deliverTo(handlers), notes };
 }
 
 const stakeMsg = (round, actorId, userId, bet, stake = 10) => ({ type: "stake", requestId: `r-${actorId}-${Math.random()}`, boxId: "wheel", roundId: round.id, actorId, userId, price: stake, bet: { ...bet, stake } });

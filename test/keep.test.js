@@ -12,6 +12,7 @@ const postKeptCard = vi.fn(async () => null);
 vi.mock("../module/scripts/foundry/chat.js", () => ({ postPullCard: vi.fn(async () => null), postKeptCard: (...a) => postKeptCard(...a) }));
 
 const { registerSocket, requestKeep } = await import("../module/scripts/foundry/socket.js");
+const { deliverTo, withQuery } = await import("./requests.js");
 const { registerSettings, setStoreListener, getLog, getTally, getBoxes, appendLog } = await import("../module/scripts/foundry/store.js");
 const { tallyOf } = await import("../module/scripts/core/tally.js");
 const { refundPull, describeRefund } = await import("../module/scripts/foundry/refund.js");
@@ -75,7 +76,7 @@ function makeWorld({ user = GM, actor = makeActor() } = {}) {
   const emitted = [];
   globalThis.game = {
     user,
-    users: { activeGM: GM, get: id => [GM, PLAYER, STRANGER].find(u => u.id === id) ?? null },
+    users: { activeGM: withQuery(GM, emitted), get: id => [GM, PLAYER, STRANGER].find(u => u.id === id) ?? null },
     actors: { get: id => (id === actor.id ? actor : null) },
     settings: {
       register: (ns, key, { default: def, onChange: fn }) => { settings.set(`${ns}.${key}`, def); if (fn) onChange.set(`${ns}.${key}`, fn); },
@@ -89,7 +90,7 @@ function makeWorld({ user = GM, actor = makeActor() } = {}) {
   globalThis.fromUuid = async uuid => ({ name: `Item ${uuid}`, img: "", toObject: () => ({ name: `Item ${uuid}`, type: "loot", flags: {} }) });
   registerSettings();
   registerSocket();
-  const deliver = msg => Promise.all(handlers.map(h => h(msg)));
+  const deliver = deliverTo(handlers);
   return { actor, emitted, deliver };
 }
 

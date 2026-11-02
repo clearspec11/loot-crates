@@ -10,6 +10,7 @@ vi.mock("../module/scripts/foundry/reveal.js", () => ({ showReveal: vi.fn(async 
 vi.mock("../module/scripts/foundry/chat.js", () => ({ postPullCard: vi.fn(async () => null) }));
 
 const { registerSocket, requestRedeem } = await import("../module/scripts/foundry/socket.js");
+const { deliverTo, withQuery } = await import("./requests.js");
 const { registerSettings, setStoreListener, getLog, getTally, appendLog, getBoxes } = await import("../module/scripts/foundry/store.js");
 const { refundPull } = await import("../module/scripts/foundry/refund.js");
 const { ticketUseHook, ticketToRedeem, spendTicket, returnTicket } = await import("../module/scripts/foundry/tickets.js");
@@ -80,7 +81,7 @@ function makeWorld({ user = GM, actor = makeActor() } = {}) {
   const emitted = [];
   globalThis.game = {
     user,
-    users: { activeGM: GM, get: id => [GM, PLAYER, STRANGER].find(u => u.id === id) ?? null },
+    users: { activeGM: withQuery(GM, emitted), get: id => [GM, PLAYER, STRANGER].find(u => u.id === id) ?? null },
     actors: { get: id => (id === actor.id ? actor : null) },
     settings: {
       register: (ns, key, { default: def, onChange: fn }) => { settings.set(`${ns}.${key}`, def); if (fn) onChange.set(`${ns}.${key}`, fn); },
@@ -94,7 +95,7 @@ function makeWorld({ user = GM, actor = makeActor() } = {}) {
   globalThis.fromUuid = async uuid => ({ name: `Item ${uuid}`, img: "", toObject: () => ({ name: `Item ${uuid}`, type: "loot", flags: {} }) });
   registerSettings();
   registerSocket();
-  const deliver = msg => Promise.all(handlers.map(h => h(msg)));
+  const deliver = deliverTo(handlers);
   return { actor, emitted, deliver };
 }
 

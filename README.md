@@ -115,7 +115,7 @@ Already have loot tables? Right-click a table in the **Roll Tables** sidebar and
 
 ## What players see
 
-Players press **Crates** at the top of the Items sidebar. The shop shows every game on the shelf with its price and the odds *for their character*: items they already own are left out of a no-duplicates crate, and a pity countdown says how close a guarantee is. A game they can't afford says how much more they need. When someone opens a crate, every player sees the same spin, and the chat card stays sealed until their own spin lands, so nobody spoils it. The found item appears on the character sheet when the spin ends. Players never see the GM's manager or an auction's reserve.
+Players press **Crates** at the top of the Items sidebar. The shop shows every game on the shelf with its price and the odds *for their character*: items they already own are left out of a no-duplicates crate, and a pity countdown says how close a guarantee is. A game they can't afford says how much more they need. When someone opens a crate, every player sees the same spin, and the chat card stays sealed until their own spin lands, so nobody spoils it. The found item appears on the character sheet when the spin ends. Players never see the GM's manager, and no screen shows them an auction's reserve, the house bidders' budget or a hidden scratch roll's counts. These are not secret from the browser's console, though: Foundry sends every world setting to every player, and offers no storage that it keeps from them.
 
 ## FAQ
 

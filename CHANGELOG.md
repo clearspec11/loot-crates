@@ -10,6 +10,10 @@ The newest numbered entry's version is the one in `module/module.json`, and its 
 - A table round's stakes are never trimmed off the log while the round is open or a stake is still held, so the GM's refunds and the stale refund at load always find them, however many plays happen meanwhile.
 - A scratch ticket's prize tier, number and winning panels are no longer written on its Pull log row; the GM's copy is kept beside the counts.
 - On the first load after updating, the GM's Foundry moves the counts over from the log once (the same numbers as before); nothing to do by hand, and loading with two GMs or an empty log is fine.
+- A player can no longer buy, use a ticket, bid or call a purchase off in someone else's name. Before, a player who sent the module's message by hand from the browser console could name another player as the buyer and spend their character's coins, and could call off another player's purchase. Requests now go to the GM through Foundry's own query, which tells the GM who really sent them: one naming anyone else is refused, nothing is charged and the GM is told. Players need Foundry's Query Users permission, which every role has unless the GM turned it off.
+- A player's browser no longer hears the other players' purchases being asked for, only their results.
+- After updating, every player should reload Foundry once; a browser still running the old version is told to.
+- The README no longer says players never see an auction's reserve: no screen shows it, but Foundry sends every world setting to every player's browser, so a player who opens the console can read it.
 
 ## 1.6.0
 

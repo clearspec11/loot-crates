@@ -21,6 +21,7 @@ const { DICE, parseFormula, winChance, resolve, facesOf, rollData, rollFaces, di
 const { getKind } = await import("../module/scripts/games/kinds.js");
 const { performPull, PullError } = await import("../module/scripts/foundry/pull.js");
 const { registerSocket } = await import("../module/scripts/foundry/socket.js");
+const { deliverTo } = await import("./requests.js");
 const { registerSettings, appendLog, getLog } = await import("../module/scripts/foundry/store.js");
 const { refundPull, describeRefund, refundCoins, shortMessage } = await import("../module/scripts/foundry/refund.js");
 const { showReveal } = await import("../module/scripts/foundry/reveal.js");
@@ -83,7 +84,7 @@ function makeWorld({ user = GM, actor = actorOf() } = {}) {
   globalThis.ChatMessage = { create: vi.fn(async data => data), getSpeaker: () => ({ actor: actor.id }) };
   registerSettings();
   registerSocket();
-  return { actor, emitted, deliver: msg => Promise.all(handlers.map(h => h(msg))) };
+  return { actor, emitted, deliver: deliverTo(handlers) };
 }
 
 beforeEach(() => { globalThis.fromUuid = source; });

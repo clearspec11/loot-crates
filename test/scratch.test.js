@@ -24,6 +24,7 @@ const { SCRATCH, SCRATCH_DEFAULTS, SYMBOLS, THEMES, MAX_PRIZES, rowParts, showsL
 const { getKind, gotText } = await import("../module/scripts/games/kinds.js");
 const { performPull, PullError } = await import("../module/scripts/foundry/pull.js");
 const { registerSocket } = await import("../module/scripts/foundry/socket.js");
+const { deliverTo } = await import("./requests.js");
 const { registerSettings, getLog, getTally } = await import("../module/scripts/foundry/store.js");
 const { tallyOf, emptyTally, applyRow } = await import("../module/scripts/core/tally.js");
 const { readHidden } = await import("../module/scripts/foundry/hidden.js");
@@ -348,7 +349,7 @@ function makeWorld({ actor = actorOf() } = {}) {
   globalThis.ChatMessage = { create: vi.fn(async data => data), getSpeaker: () => ({ actor: actor.id }) };
   registerSettings();
   registerSocket();
-  return { game, actor, emitted, deliver: msg => Promise.all(handlers.map(h => h(msg))) };
+  return { game, actor, emitted, deliver: deliverTo(handlers) };
 }
 const buyOnce = async (world, seed, { requestId = "s1", boxId = "small", price = 5 } = {}) => {
   globalThis.CONFIG = { Dice: { randomUniform: seededRng(seed) } };
