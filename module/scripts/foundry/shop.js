@@ -39,7 +39,7 @@
   the character's pack, and the notice says where it went, so the player
   hears it without a reveal.
 */
-import { getBoxes, getPools, getLog, getRounds, getActorState, isShopOpen, todayKey } from "./store.js";
+import { getBoxes, getPools, getLog, getTally, getRounds, getActorState, isShopOpen, todayKey } from "./store.js";
 import { formatGold } from "../core/currency.js";
 import { actorPicker, boxCard, buyReason, changedCharacterLine, crateReason, refusalLine, shopHTML, shopNotice, shopReason, patchShop, pickActor } from "../views/boxcard.js";
 import { shopOdds } from "../core/odds.js";
@@ -102,7 +102,7 @@ function forSale() {
 function priceNow(game, ctx) {
   const own = getKind(kindOf(game))?.priceOf;
   if (!own) return Number(game.price);
-  return Number(own({ game, actor: { id: ctx.actorId }, state: ctx.stateOf(game.id) ?? {}, log: ctx.log, today: ctx.today, now: ctx.now }) ?? game.price);
+  return Number(own({ game, actor: { id: ctx.actorId }, state: ctx.stateOf(game.id) ?? {}, log: ctx.log, tally: ctx.tally, today: ctx.today, now: ctx.now }) ?? game.price);
 }
 
 export function buyableActors(user = game.user) {
@@ -359,18 +359,20 @@ export class CrateShop extends ApplicationV2 {
   // What decides whether a crate can be bought, for the cards and for #buy.
   // stateOf reads this character's pity count and owned items per box (a
   // world setting, so a player's client can read it), so each card shows
-  // the odds draw() will use for them. `today` and `log` are for a game
-  // that counts plays per in-game day (the well's cap, well.js) or per
-  // row (the deck's streak); the log is a deep clone of the whole setting
-  // (store.js), so it is read once per context and only when a kind asks.
+  // the odds draw() will use for them. `today` and `tally` are for a game
+  // that counts plays per in-game day (the well's cap, well.js), per
+  // character (the limit) or what is left (a deck's once cards, a scratch
+  // roll; core/tally.js); `log` is for a table game's round. Each is a
+  // deep clone of a whole setting (store.js), so it is read once per
+  // context and only when a kind asks.
   #ctx() {
     const actor = this.actor;
     const gm = !!game.users.activeGM;
-    let log, rounds;
+    let log, tally, rounds;
     return {
       purse: actor?.system?.currency ?? {}, open: isShopOpen() && gm, gmOnline: gm, hasActor: !!actor,
       actorId: actor?.id ?? null, actorName: actor?.name ?? "", stateOf: boxId => (actor ? heldState(actor.id, boxId) ?? getActorState(actor.id, boxId) : {}),
-      today: todayKey(actor?.id), get log() { return (log ??= getLog()); },
+      today: todayKey(actor?.id), get log() { return (log ??= getLog()); }, get tally() { return (tally ??= getTally()); },
       // A table game's card says what its round is doing (roulette.js).
       get rounds() { return (rounds ??= getRounds()); }, isGM: !!game.user.isGM, now: Date.now(),
       // This character's pull still spinning here, or a table game's round

@@ -14,7 +14,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 vi.mock("../module/scripts/foundry/sound.js", () => ({ playTick: vi.fn(), playSlow: vi.fn(), playReveal: vi.fn() }));
 vi.mock("../module/scripts/foundry/socket.js", () => ({ requestPull: vi.fn() }));
-vi.mock("../module/scripts/foundry/store.js", () => ({ getBoxes: vi.fn(() => ({})), getPools: vi.fn(() => ({})), getLog: vi.fn(() => []), getRounds: vi.fn(() => ({})), todayKey: vi.fn(() => null), isShopOpen: vi.fn(() => true) }));
+vi.mock("../module/scripts/foundry/store.js", () => ({ getBoxes: vi.fn(() => ({})), getPools: vi.fn(() => ({})), getLog: vi.fn(() => []), getTally: vi.fn(() => null), getRounds: vi.fn(() => ({})), todayKey: vi.fn(() => null), isShopOpen: vi.fn(() => true) }));
 
 const fakeElement = () => {
   const el = {
@@ -87,6 +87,7 @@ beforeEach(() => {
   vi.stubGlobal("fromUuidSync", () => null);
   store.getBoxes.mockReturnValue({ d1: GAME });
   store.getLog.mockReturnValue([{ id: "x" }]);
+  store.getTally.mockReturnValue({ v: 1, buyers: { "a.d1": { bought: 1 } } });
   requestPull.mockReset();
   again.mockClear();
   registerKind(DECK);
@@ -95,7 +96,7 @@ beforeEach(() => {
 afterEach(() => { _resetHolds(); _resetKinds(["crate"]); vi.unstubAllGlobals(); });
 
 describe("Draw again", () => {
-  it("shows the kind's offer to the buyer on landing, with the record, log, purse and shop state", async () => {
+  it("shows the kind's offer to the buyer on landing, with the record, log, tallies, purse and shop state", async () => {
     const app = await showReveal(reveal());
     await app.landed;
     const btn = app.element.querySelector(".lc-reveal__again");
@@ -103,7 +104,7 @@ describe("Draw again", () => {
     expect(btn.textContent).toBe("Draw again for 15 gp");
     expect(btn.getAttribute("aria-disabled")).toBeNull();
     expect(app.element.querySelector(".lc-reveal__why").hidden).toBe(true);
-    expect(again).toHaveBeenCalledWith(expect.objectContaining({ requestId: "r1" }), expect.objectContaining({ game: GAME, log: [{ id: "x" }], purse: { gp: 40 }, open: true, gmOnline: true }));
+    expect(again).toHaveBeenCalledWith(expect.objectContaining({ requestId: "r1" }), expect.objectContaining({ game: GAME, log: [{ id: "x" }], tally: { v: 1, buyers: { "a.d1": { bought: 1 } } }, purse: { gp: 40 }, open: true, gmOnline: true }));
     expect(typeof again.mock.calls[0][1].now).toBe("number");
   });
 

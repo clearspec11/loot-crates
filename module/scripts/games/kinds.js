@@ -14,7 +14,7 @@
                 row and the held shop odds until this client's reveal lands
   The kind supplies what differs, through the contract below. The crate
   (crate.js) is the first kind and the Wishing Well (well.js) the second;
-  scratch tickets (scratch.js) count a printed roll from the log. The
+  scratch tickets (scratch.js) count a printed roll in the tallies. The
   module API's registerKind lets another module add one.
 
   Contract (every field but roll is optional; the crate shows each):
@@ -22,7 +22,7 @@
     noun          what a player buys, for messages: "The crate jammed."
     priceOf(ctx)  the price of this play in gp, when it isn't the record's
                   (the deck's draw price rises with each draw in a row);
-                  ctx: { game, actor, state, log, today, now }. The core
+                  ctx: { game, actor, state, tally, log, today, now }. The core
                   checks the Buy's price against it, charges it, and writes
                   it to the row and the reveal, so a refund gives back what
                   was paid. A kind without one plays at game.price. A Buy
@@ -32,11 +32,14 @@
                   gets that moment as `now`.
     roll(ctx)     GM side, before anything is charged, so a failed roll costs
                   nothing. ctx: { game, pools, actor, state, rng,
-                  resolveSource, onMissing, log, today, now, price }: `log`
-                  is the pull log as it stands, `today` the in-game day's
-                  key (clock.js; null without a clock), for a game that
-                  counts plays per day (the well's cap), `price` what this
-                  play costs. Resolves to the outcome:
+                  resolveSource, onMissing, tally, log, today, now, price }:
+                  `tally` the counts as they stand (core/tally.js: a
+                  character's purchases and plays per day, a scratch
+                  roll's tickets, a deck's draws), `log` the pull log
+                  (for display; a rule counts from the tally), `today`
+                  the in-game day's key (clock.js; null without a clock),
+                  for a game that counts plays per day (the well's cap),
+                  `price` what this play costs. Resolves to the outcome:
                     result    what was won, { name, img, rarity?, ... }, or
                               null for nothing (a miss)
                     grant     Item data to create on the actor, or null
@@ -61,6 +64,9 @@
                   { game, state, out }; the core writes id, kind, boxId,
                   boxName, actorId, actorName, userId, itemId (the
                   first item), itemIds (every item), price and payoutCp.
+    hiddenRow(ctx) columns from the same ctx that a player's client must
+                  not read (the scratch ticket's tier): kept off the row
+                  by foundry/hidden.js, and given to the tallies with it.
     revealExtra(ctx) the fields this kind adds to the reveal broadcast,
                   from the same ctx (the crate: its odds ribbon and the
                   buyer's state before the pull, which the shop holds).
@@ -85,7 +91,7 @@
                   window (the deck's "Draw again for 15 gp"): { price,
                   label, off } with `off` why it can't be played now or "",
                   or null for none; ctx: { game (the record as it stands),
-                  log, pools, purse, now, open, gmOnline }. The core shows it to the buyer alone, sends
+                  log, tally, pools, purse, now, open, gmOnline }. The core shows it to the buyer alone, sends
                   the play as a pull at that price and closes the window
                   once the next one has opened. replayable,
                   snapshot(reveal) -> what the chat card keeps so Watch

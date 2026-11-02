@@ -34,7 +34,7 @@ const VERDICTS = {
   crate: (game, pools) => { const p = boxPreview(game, pools); return p.empty ? p.note : ""; },
   well: (game, pools) => { const p = wellPreview(game, pools); return p.dry ? p.note : ""; },
   dice: (game, pools) => { const p = dicePreview(game, pools); return p.warn ? p.note : ""; },
-  deck: (game, pools) => { const p = deckPreview(game, pools, []); return p.warn ? p.note : ""; },
+  deck: (game, pools) => { const p = deckPreview(game, pools, null); return p.warn ? p.note : ""; },
   roulette: (game, pools) => { const p = roulettePreview(game, pools); return p.warn ? p.note : ""; },
   auction: game => { const p = auctionPreview(game); return p.warn ? p.note : ""; },
   scratch: (game, pools) => {

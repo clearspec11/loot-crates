@@ -10,7 +10,7 @@ vi.mock("../module/scripts/foundry/reveal.js", () => ({ showReveal: vi.fn(async 
 vi.mock("../module/scripts/foundry/chat.js", () => ({ postPullCard: vi.fn(async () => null) }));
 
 const { registerSocket, requestRedeem } = await import("../module/scripts/foundry/socket.js");
-const { registerSettings, setStoreListener, getLog, appendLog, getBoxes } = await import("../module/scripts/foundry/store.js");
+const { registerSettings, setStoreListener, getLog, getTally, appendLog, getBoxes } = await import("../module/scripts/foundry/store.js");
 const { refundPull } = await import("../module/scripts/foundry/refund.js");
 const { ticketUseHook, ticketToRedeem, spendTicket, returnTicket } = await import("../module/scripts/foundry/tickets.js");
 const { ticketData } = await import("../module/scripts/games/ticket.js");
@@ -228,7 +228,7 @@ describe("the GM's guards on a redeem: nothing is spent", () => {
     await deliver(redeem());
     expect(errorsTo(emitted)).toEqual([]);
     expect(emitted.filter(m => m.type === "reveal")).toHaveLength(2);
-    expect(boughtBy(getLog(), { boxId: "box", actorId: "actor1" })).toBe(1);
+    expect(boughtBy(getTally(), { boxId: "box", actorId: "actor1" })).toBe(1);
   });
 });
 

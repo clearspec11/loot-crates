@@ -587,8 +587,8 @@ describe("Copy", () => {
     expect(copy).toMatchObject({ kind: "deck", name: "Thornwick Deck (copy)", price: 10, deck: { step: 1.5, cards } });
     expect(copy.deck.shuffledAt).toBeGreaterThanOrEqual(before);
     const { drawnIds } = await import("../module/scripts/games/deck.js");
-    expect(drawnIds(store.getBoxes().k1, store.getLog())).toEqual(new Set(["a"]));
-    expect(drawnIds(copy, store.getLog())).toEqual(new Set());
+    expect(drawnIds(store.getBoxes().k1, store.getTally())).toEqual(new Set(["a"]));
+    expect(drawnIds(copy, store.getTally())).toEqual(new Set());
     expect(store.getBoxes().k1.deck.shuffledAt).toBe(1000);
     expect(status(app).textContent).toBe("Thornwick Deck (copy) is on the shelf at 10 gp.");
   });

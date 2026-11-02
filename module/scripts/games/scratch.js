@@ -14,12 +14,15 @@
   (scratchplan.js) builds a prize list from a few numbers for the GM to
   edit.
 
-  - Nothing is stored for the roll beyond its definition and its id: the
-    tickets sold are the unrefunded log rows at this game for this roll
-    id, each naming its prize tier, the way the well's cap and the deck's
-    once cards are counted (rollState). So a refund puts the ticket, and
-    its prize, back in the roll by itself, and two Buys in the GM's write
-    queue never draw the same last ticket.
+  - The record keeps the roll's definition and its id; the tickets sold and
+    the prize lines paid are counted in the tallies by roll id
+    (core/tally.js rolls, written with each ticket's log row), the way the
+    well's cap and the deck's once cards are (rollState). So a refund puts
+    the ticket, and its prize, back in the roll by itself, two Buys in the
+    GM's write queue never draw the same last ticket, and a long roll
+    whose first rows were trimmed off the log never sells a prize again.
+    A ticket's tier, number and winning panels are kept off its row
+    (hiddenRow; foundry/hidden.js), since every client reads the log.
   - The card is decided in the roll and never by the scratching: the GM
     draws the ticket, then lays the card out from it (layCard) with the
     roll's rng, and the card rides the reveal broadcast so every client
@@ -73,7 +76,7 @@
   as a line of its one part (rowParts). A roll's duds are its size less
   its prizes.
 
-  No Foundry globals: the core passes the log, the pools and the rng, so
+  No Foundry globals: the core passes the tallies, the pools and the rng, so
   Vitest runs the ledger, the draw and the card as they are.
 */
 import { RARITIES, RARITY_LABEL } from "../core/config.js";
@@ -87,6 +90,7 @@ import { drawItem, grantData, crateLogRow } from "./crate.js";
 import { PullError, registerKind } from "./kinds.js";
 import { priceTag } from "./ticket.js";
 import { t, words, listAnd } from "../core/i18n.js";
+import { rollTally } from "../core/tally.js";
 
 export const LAYOUTS = ["lucky", "match3"];
 export const LAYOUT_LABEL = words({ lucky: "LOOTCRATES.Scratch.LayoutLucky", match3: "LOOTCRATES.Scratch.LayoutMatch3" });
@@ -263,29 +267,27 @@ export function rollOf(game) {
   return { id: Math.max(1, Math.floor(Number(game?.roll?.id) || 1)), size, prizes, duds: size - won };
 }
 
-/* ---------- The ledger, from the log ---------- */
+/* ---------- The ledger, from the tallies ---------- */
 
-// The unrefunded rows of this roll at this game: the tickets sold. A
-// ticket bought to keep (row.keep) is drawn from the roll when it is used,
-// not when it is bought.
-export const rollRows = (log, { boxId, rollId }) => (log ?? []).filter(r => r?.kind === "scratch" && r.boxId === boxId && Number(r.rollId) === rollId && !r.refunded && !r.keep);
-export const ticketsSold = (log, { boxId, rollId }) => rollRows(log, { boxId, rollId }).length;
+// The tickets sold from this roll at this game (core/tally.js). A ticket
+// bought to keep (row.keep) is drawn from the roll when it is used, not
+// when it is bought.
+export const ticketsSold = (tally, { boxId, rollId }) => rollTally(tally, { boxId, rollId }).sold;
 
 /*
   What is left of the game's roll now: { id, size, sold, left, soldOut,
   prizes: [{ ...tier, left }], duds: { count, left } }. A tier's left is
-  its count less the rows naming it; the duds are whatever tickets are
-  left past the prizes. A prize list edited after tickets sold counts
+  its count less the tickets paid on it; the duds are whatever tickets
+  are left past the prizes. A prize list edited after tickets sold counts
   against what is left (a tier's left never below 0).
 */
-export function rollState(game, log = []) {
+export function rollState(game, tally = null) {
   const roll = rollOf(game);
-  const rows = rollRows(log, { boxId: game?.id, rollId: roll.id });
-  const of = key => rows.filter(r => r.tier === key).length;
-  const left = Math.max(0, roll.size - rows.length);
-  const prizes = roll.prizes.map(p => ({ ...p, left: Math.max(0, p.count - of(p.key)) }));
+  const { sold, tiers } = rollTally(tally, { boxId: game?.id, rollId: roll.id });
+  const left = Math.max(0, roll.size - sold);
+  const prizes = roll.prizes.map(p => ({ ...p, left: Math.max(0, p.count - (Number(tiers[p.key]) || 0)) }));
   const prizeLeft = prizes.reduce((n, p) => n + p.left, 0);
-  return { id: roll.id, size: roll.size, sold: rows.length, left, soldOut: left <= 0, prizes, duds: { count: roll.duds, left: Math.max(0, left - prizeLeft) } };
+  return { id: roll.id, size: roll.size, sold, left, soldOut: left <= 0, prizes, duds: { count: roll.duds, left: Math.max(0, left - prizeLeft) } };
 }
 
 // The rarities the game's ticked pools can give an item at (missing entries out).
@@ -302,8 +304,8 @@ export function poolRarities(game, pools = {}) {
   rarities), and the duds. `blocked` counts the tickets left whose items
   the pools can't give, which wait in the roll.
 */
-export function drawBag(game, pools, log = []) {
-  const st = rollState(game, log);
+export function drawBag(game, pools, tally = null) {
+  const st = rollState(game, tally);
   const held = poolRarities(game, pools);
   const bag = [];
   let blocked = 0;
@@ -318,8 +320,8 @@ export function drawBag(game, pools, log = []) {
 
 // Why no ticket can be sold now, or "": the roll is empty, or what is left
 // waits on an item the pools can't give.
-export function rollReason(game, pools, log = []) {
-  const { state, bag } = drawBag(game, pools, log);
+export function rollReason(game, pools, tally = null) {
+  const { state, bag } = drawBag(game, pools, tally);
   if (state.soldOut) return t("LOOTCRATES.Card.SoldOut");
   if (!bag.length) return t("LOOTCRATES.Scratch.Waiting");
   return "";
@@ -608,7 +610,7 @@ export function cardWins(card) {
 
 /*
   The draw, on the GM, before anything is charged: the roll's state from
-  the log as it stands inside the write queue, one ticket drawn from what
+  the tallies as they stand inside the write queue, one ticket drawn from what
   is left by weight (each prize line as many times as it has tickets
   left, the duds as many), then the card laid out for it. A line wins
   every one of its parts: each item drawn from the pools at its rarity
@@ -621,8 +623,8 @@ export function cardWins(card) {
   player's browser is sent them.
 */
 async function roll(ctx) {
-  const { game, rng, log = [] } = ctx;
-  const { state, bag } = drawBag(game, ctx.pools, log);
+  const { game, rng, tally = null } = ctx;
+  const { state, bag } = drawBag(game, ctx.pools, tally);
   if (state.soldOut) throw new PullError(t("LOOTCRATES.Scratch.SoldOutError", { name: game.name }));
   if (!bag.length) throw new PullError(t("LOOTCRATES.Scratch.WaitingError", { name: game.name }));
   const line = weightedPick(bag, p => p.weight, rng) ?? bag[0];
@@ -659,17 +661,21 @@ async function roll(ctx) {
   return { ...common, outcome: "coins", card, result: { name: formatPrice(line.gp), outcome: "coins" }, payoutCp };
 }
 
+// The row's GM-only columns (foundry/hidden.js keeps them by row id).
+const hiddenRow = ({ out }) => ({ tier: out.ticket.tier, ticketNo: out.ticket.no, winners: cardWins(out.card).winners });
+
 // What the shop shows of a roll: its counts as they stood, by tier key.
 const leftOf = st => ({ rollId: st.id, size: st.size, left: st.left, prizes: Object.fromEntries(st.prizes.map(p => [p.key, p.left])) });
 
-// The row: the roll and the tier it took (what rollState counts), the
-// winning panels, and for an item the crate's columns so the one refund
-// finds and removes it; a line of several items is named by them all
-// ("Flame Tongue and Lucky Coin"), so the Pull log says what was won.
-// A dud is the core's miss (the Pull log folds them).
+// The row: the roll it came from, and for an item the crate's columns so
+// the one refund finds and removes it; a line of several items is named
+// by them all ("Flame Tongue and Lucky Coin"), so the Pull log says what
+// was won. A dud is the core's miss (the Pull log folds them). The tier
+// it took (what the roll's tally counts), its number and the winning
+// panels are hiddenRow's, kept off the row every client reads.
 function logRow(ctx) {
   const { out } = ctx;
-  const base = { rollId: out.ticket.rollId, tier: out.ticket.tier, ticketNo: out.ticket.no, winners: cardWins(out.card).winners };
+  const base = { rollId: out.ticket.rollId };
   const names = itemsWon(out).map(i => i.name);
   if (out.outcome === "item") return { ...base, ...crateLogRow(ctx), ...(names.length > 1 ? { name: listAnd(names) } : {}) };
   if (out.outcome === "coins") return { ...base, outcome: "coins", swatch: "coin", name: out.result.name };
@@ -1043,14 +1049,14 @@ const notice = reveal => (outcomeOf(reveal) === "nothing" && !reveal.replay ? t(
   Another ticket from the window (the core's again button): "Another ticket
   for 5 gp" while the roll has tickets, off with the reason when it is sold
   out, the shop is shut or the purse is short. The tickets left are the
-  log's, or this reveal's own count when the log hasn't caught up yet.
+  tallies', or this reveal's own count when they haven't caught up yet.
 */
-function again(reveal, { game = null, log = [], pools = {}, purse = {}, open = true, gmOnline = true } = {}) {
+function again(reveal, { game = null, tally = null, pools = {}, purse = {}, open = true, gmOnline = true } = {}) {
   if (!game || reveal.replay) return null;
-  const st = rollState(game, log);
+  const st = rollState(game, tally);
   const sameRoll = reveal.ticket && reveal.ticket.rollId === st.id;
   const soldOut = st.soldOut || (sameRoll && reveal.ticket.no >= reveal.ticket.size);
-  const why = soldOut ? t("LOOTCRATES.Card.SoldOut") : rollReason(game, pools, log);
+  const why = soldOut ? t("LOOTCRATES.Card.SoldOut") : rollReason(game, pools, tally);
   const price = Number(game.price) || 0;
   const off = why || shopReason({ hasActor: true, open, gmOnline }) || (!canAfford(purse, price) ? t("LOOTCRATES.Card.Needs", { price: formatPrice(shortfall(purse, price)) }) : "");
   return { price, label: t("LOOTCRATES.Scratch.AnotherFor", { price: formatPrice(price) }), off };
@@ -1106,12 +1112,12 @@ export function prizeListHTML(st, esc = s => String(s ?? "")) {
   return `<ul class="lc-scratch__prizes" aria-label="${esc(t("LOOTCRATES.Scratch.PrizesLeft"))}">${st.prizes.map(p => row(prizeText(p), p.left, p.count, `lc-rarity-${prizeSwatch(p)}`)).join("")}</ul>`;
 }
 
-// The roll's state as this client should show it: the log's, or the
+// The roll's state as this client should show it: the tallies', or the
 // counts from before the oldest ticket of it still being opened here,
 // whoever bought it (reveal.js heldBefore: the shop's hold), so the table's
 // shops don't strike a prize from the list before the card is open.
 export function shownState(game, ctx = {}) {
-  const st = rollState(game, ctx.log ?? []);
+  const st = rollState(game, ctx.tally);
   const held = ctx.heldBefore?.(game.id)?.scratch ?? (ctx.held?.(game.id) ? ctx.stateOf?.(game.id)?.scratch : null);
   if (!held || held.rollId !== st.id) return st;
   return { ...st, left: held.left, soldOut: held.left <= 0, prizes: st.prizes.map(p => ({ ...p, left: held.prizes?.[p.key] ?? p.left })) };
@@ -1121,7 +1127,7 @@ export function shownState(game, ctx = {}) {
 // being opened here, the roll sold out, or what is left waiting on items.
 function scratchState(game, pools, ctx) {
   if (ctx.held?.(game.id)) return t("LOOTCRATES.Scratch.StillScratching");
-  return rollReason(game, pools, ctx.log ?? []);
+  return rollReason(game, pools, ctx.tally);
 }
 
 /*
@@ -1163,9 +1169,9 @@ const reason = (game, pools, ctx) => scratchState(game, pools, ctx) || shopReaso
 /* ---------- The manager's words ---------- */
 
 // "Lucky numbers 4 × 3, bonus 25 gp, roll 2: 43 of 100 left": the rules cell.
-export function scratchRulesText(game, log = []) {
+export function scratchRulesText(game, tally = null) {
   const { cols, rows } = gridOf(game);
-  const st = rollState(game, log);
+  const st = rollState(game, tally);
   const bonus = bonusOf(game);
   return [
     t("LOOTCRATES.Scratch.RuleLayout", { layout: LAYOUT_LABEL[layoutOf(game)], cols, rows }),
@@ -1179,8 +1185,8 @@ export function scratchRulesText(game, log = []) {
 // item or bonus prize's pill ("Very rare item 1/1", "Bonus, 25 gp 3/3")
 // wraps inside itself, as an auction's lot does, so it never widens the
 // table past where its rows stack.
-export function scratchOddsHTML(game, log = []) {
-  const st = rollState(game, log);
+export function scratchOddsHTML(game, tally = null) {
+  const st = rollState(game, tally);
   if (!st.prizes.length) return "";
   return `<div class="lc-box__odds">${st.prizes.map(p => `<span class="lc-odd${p.kind === "gp" ? "" : " lc-odd--wrap"} lc-rarity-${prizeSwatch(p)}">${prizeText(p)} ${p.left}/${p.count}</span>`).join("")}</div>`;
 }
@@ -1524,6 +1530,7 @@ export const SCRATCH = registerKind({
   noun: "scratch",
   roll,
   logRow,
+  hiddenRow,
   revealExtra,
   gotText,
   reveal: {

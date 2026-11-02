@@ -24,7 +24,9 @@ const { SCRATCH, SCRATCH_DEFAULTS, SYMBOLS, THEMES, MAX_PRIZES, rowParts, showsL
 const { getKind, gotText } = await import("../module/scripts/games/kinds.js");
 const { performPull, PullError } = await import("../module/scripts/foundry/pull.js");
 const { registerSocket } = await import("../module/scripts/foundry/socket.js");
-const { registerSettings, getLog } = await import("../module/scripts/foundry/store.js");
+const { registerSettings, getLog, getTally } = await import("../module/scripts/foundry/store.js");
+const { tallyOf, emptyTally, applyRow } = await import("../module/scripts/core/tally.js");
+const { readHidden } = await import("../module/scripts/foundry/hidden.js");
 const { refundPull } = await import("../module/scripts/foundry/refund.js");
 const { NEW_DEFAULTS, copyOf } = await import("../module/scripts/views/newgame.js");
 const { boxesTableHTML } = await import("../module/scripts/views/boxestable.js");
@@ -111,33 +113,33 @@ describe("the record", () => {
 describe("the ledger, from the log", () => {
   it("counts the tickets sold as the unrefunded rows of this roll at this game, and what is left of each prize", () => {
     const log = [row({ tier: "gp.100" }), row({ tier: "gp.5" }), row({ tier: "dud" }), row({ tier: "gp.100", refunded: 9 }), row({ tier: "gp.100", rollId: 2 }), row({ tier: "gp.100", boxId: "other" }), row({ tier: "gp.100", kind: "deck" })];
-    expect(ticketsSold(log, { boxId: "fortune", rollId: 1 })).toBe(3);
-    const st = rollState(GAME, log);
+    expect(ticketsSold(tallyOf(log), { boxId: "fortune", rollId: 1 })).toBe(3);
+    const st = rollState(GAME, tallyOf(log));
     expect(st).toMatchObject({ id: 1, size: 100, sold: 3, left: 97, soldOut: false, duds: { count: 57, left: 56 } });
     expect(Object.fromEntries(st.prizes.map(p => [p.key, `${p.left}/${p.count}`]))).toEqual({ "item.rare": "1/1", "gp.100": "1/2", "gp.25": "5/5", "gp.10": "12/12", "gp.5": "19/20", bonus: "3/3" });
     // The next roll starts whole; the old roll's rows stay where they are.
-    expect(rollState({ ...GAME, roll: nextRoll(GAME) }, log)).toMatchObject({ id: 2, sold: 1, left: 99 });
+    expect(rollState({ ...GAME, roll: nextRoll(GAME) }, tallyOf(log))).toMatchObject({ id: 2, sold: 1, left: 99 });
   });
 
   it("is sold out when every ticket is sold, and a refund puts a ticket back by itself", () => {
     const sold = Array.from({ length: 6 }, (_, i) => row({ boxId: "small", tier: ["item.rare", "gp.10", "gp.10", "bonus", "dud", "dud"][i] }));
-    expect(rollState(SMALL, sold)).toMatchObject({ sold: 6, left: 0, soldOut: true });
-    expect(rollReason(SMALL, POOLS, sold)).toBe("Sold out");
+    expect(rollState(SMALL, tallyOf(sold))).toMatchObject({ sold: 6, left: 0, soldOut: true });
+    expect(rollReason(SMALL, POOLS, tallyOf(sold))).toBe("Sold out");
     sold[1].refunded = 5;
-    const back = rollState(SMALL, sold);
+    const back = rollState(SMALL, tallyOf(sold));
     expect(back).toMatchObject({ sold: 5, left: 1, soldOut: false });
     expect(back.prizes.find(p => p.key === "gp.10").left).toBe(1);
-    expect(drawBag(SMALL, POOLS, sold).bag.map(b => `${b.key}:${b.weight}`)).toEqual(["gp.10:1"]);
+    expect(drawBag(SMALL, POOLS, tallyOf(sold)).bag.map(b => `${b.key}:${b.weight}`)).toEqual(["gp.10:1"]);
   });
 
   it("leaves an item prize the pools can't give in the roll, undrawn, and says why when nothing else is left", () => {
     const noRare = { p: { ...POOLS.p, entries: [POOLS.p.entries[0]] } };
-    const { bag, blocked } = drawBag(SMALL, noRare, []);
+    const { bag, blocked } = drawBag(SMALL, noRare, tallyOf([]));
     expect(bag.map(b => b.key)).toEqual(["gp.10", "bonus", "dud"]);
     expect(blocked).toBe(1);
     const allButRare = ["gp.10", "gp.10", "bonus", "dud", "dud"].map(tier => row({ boxId: "small", tier }));
-    expect(rollReason(SMALL, noRare, allButRare)).toBe("The prizes left need items the pools don't hold");
-    expect(rollReason(SMALL, POOLS, allButRare)).toBe("");
+    expect(rollReason(SMALL, noRare, tallyOf(allButRare))).toBe("The prizes left need items the pools don't hold");
+    expect(rollReason(SMALL, POOLS, tallyOf(allButRare))).toBe("");
   });
 });
 
@@ -148,20 +150,28 @@ describe("the draw without replacement, through performPull", () => {
     const actor = actorOf({ gp: 10000 });
     const log = [];
     const outs = [];
+    // The tallies as the GM keeps them: each row's tier off the row (hiddenRow), counted with it.
+    const tally = emptyTally();
+    const hidden = {};
     for (let i = 0; i < rollOf(game).size; i++) {
-      const out = await performPull({ box: game, pools: POOLS, actor, rng, log });
+      const out = await performPull({ box: game, pools: POOLS, actor, rng, log, tally });
       outs.push(out);
-      log.unshift({ id: `r${i}`, kind: "scratch", boxId: game.id, actorId: actor.id, ...SCRATCH.logRow({ game, state: {}, out }) });
+      const row = { id: `r${i}`, kind: "scratch", boxId: game.id, actorId: actor.id, ...SCRATCH.logRow({ game, state: {}, out }) };
+      hidden[row.id] = SCRATCH.hiddenRow({ game, state: {}, out });
+      log.unshift(row);
+      applyRow(tally, row, 1, hidden[row.id]);
     }
-    return { outs, log, actor };
+    return { outs, log, hidden, tally, actor };
   }
 
   it("deals every prize of a whole roll exactly its count of times, then refuses the next Buy as sold out before anything is charged", async () => {
     for (const [game, seed] of [[GAME, 1], [GAME, 2], [MATCH3, 3], [SMALL, 4]]) {
-      const { outs, log, actor } = await buyAll(game, seed);
+      const { outs, log, hidden, tally, actor } = await buyAll(game, seed);
       const roll = rollOf(game);
       const counts = {};
-      for (const r of log) counts[r.tier] = (counts[r.tier] ?? 0) + 1;
+      for (const r of log) counts[hidden[r.id].tier] = (counts[hidden[r.id].tier] ?? 0) + 1;
+      // The row every client reads names no tier.
+      expect(log.some(r => "tier" in r || "ticketNo" in r || "winners" in r)).toBe(false);
       expect(counts).toEqual({ ...Object.fromEntries(roll.prizes.map(p => [p.key, p.count])), ...(roll.duds ? { dud: roll.duds } : {}) });
       // The ticket numbers run 1 to the size, each the roll's.
       expect(outs.map(o => o.ticket.no)).toEqual(Array.from({ length: roll.size }, (_, i) => i + 1));
@@ -169,7 +179,7 @@ describe("the draw without replacement, through performPull", () => {
       expect(paid).toBe(roll.prizes.filter(p => p.kind !== "item").reduce((n, p) => n + p.gp * p.count * 100, 0));
       expect(outs.filter(o => o.itemId).length).toBe(roll.prizes.filter(p => p.kind === "item").reduce((n, p) => n + p.count, 0));
       const writes = actor.writes.length;
-      await expect(performPull({ box: game, pools: POOLS, actor, rng: seededRng(9), log })).rejects.toThrow(`${game.name} is sold out. Ask the GM to print a new roll.`);
+      await expect(performPull({ box: game, pools: POOLS, actor, rng: seededRng(9), log, tally })).rejects.toThrow(`${game.name} is sold out. Ask the GM to print a new roll.`);
       expect(actor.writes).toHaveLength(writes);
     }
   });
@@ -357,37 +367,41 @@ describe("the GM's socket path and the one refund", () => {
     expect(reveals[0]).toMatchObject({ kind: "scratch", box: { id: "small", price: 5 }, ticket: { rollId: 1, no: 1, size: 6 }, stateBefore: { scratch: { rollId: 1, size: 6, left: 6, prizes: { "item.rare": 1, "gp.10": 2, bonus: 1 } } } });
     expect(reveals[5].ticket.no).toBe(6);
     // Each reveal's card wins exactly what its row says it paid.
+    // The row every client reads names the roll; its tier, number and
+    // winning panels are kept off it, beside the tallies (hidden.js).
     const log = getLog();
+    const tierOf = r => readHidden(r.id)?.tier;
     for (const r of reveals) {
       const row = log.find(l => l.id === r.logId);
       expect(cardWins(r.card).cp).toBe(row.payoutCp);
-      expect(row.winners).toEqual(cardWins(r.card).winners);
-      expect(row).toMatchObject({ kind: "scratch", rollId: 1, ticketNo: r.ticket.no, tier: r.ticket.tier });
+      expect(row).toMatchObject({ kind: "scratch", rollId: 1 });
+      for (const k of ["tier", "ticketNo", "winners"]) expect(row).not.toHaveProperty(k);
+      expect(readHidden(row.id)).toEqual({ tier: r.ticket.tier, ticketNo: r.ticket.no, winners: cardWins(r.card).winners });
     }
-    expect(log.filter(r => r.tier === "dud").every(r => r.outcome === "nothing" && r.name === "A dud")).toBe(true);
-    expect(log.find(r => r.tier === "gp.10")).toMatchObject({ outcome: "coins", swatch: "coin", name: "10 gp", payoutCp: 1000 });
-    expect(log.find(r => r.tier === "item.rare")).toMatchObject({ name: "Flame Tongue", uuid: "Item.b", rarity: "rare" });
+    expect(log.filter(r => tierOf(r) === "dud").every(r => r.outcome === "nothing" && r.name === "A dud")).toBe(true);
+    expect(log.find(r => tierOf(r) === "gp.10")).toMatchObject({ outcome: "coins", swatch: "coin", name: "10 gp", payoutCp: 1000 });
+    expect(log.find(r => tierOf(r) === "item.rare")).toMatchObject({ name: "Flame Tongue", uuid: "Item.b", rarity: "rare" });
     // Every ticket posts a card, a dud too.
     expect(globalThis.ChatMessage.create).toHaveBeenCalledTimes(6);
-    expect(rollState(SMALL, getLog())).toMatchObject({ sold: 6, soldOut: true });
+    expect(rollState(SMALL, getTally())).toMatchObject({ sold: 6, soldOut: true });
     // The seventh Buy is refused as sold out, nothing charged.
     const purse = toCopper(world.actor.system.currency);
     await buyOnce(world, 99, { requestId: "s7" });
     expect(world.emitted.find(m => m.type === "error" && m.requestId === "s7")).toMatchObject({ message: "Small Ticket is sold out. Ask the GM to print a new roll." });
     expect(toCopper(world.actor.system.currency)).toBe(purse);
     // A refund of a coin ticket: the stake back less what it paid, and the ticket and its prize back in the roll.
-    const coin = getLog().find(r => r.tier === "gp.10");
+    const coin = getLog().find(r => tierOf(r) === "gp.10");
     world.actor.system.currency = { pp: 0, gp: 500, ep: 0, sp: 0, cp: 0 };
     expect((await refundPull(coin.id)).status).toBe("refunded");
     expect(toCopper(world.actor.system.currency)).toBe(50000 + 500 - 1000);
-    const back = rollState(SMALL, getLog());
+    const back = rollState(SMALL, getTally());
     expect(back).toMatchObject({ sold: 5, left: 1, soldOut: false });
     expect(back.prizes.find(p => p.key === "gp.10").left).toBe(1);
     // An item ticket's refund removes the item it granted.
-    const item = getLog().find(r => r.tier === "item.rare");
+    const item = getLog().find(r => tierOf(r) === "item.rare");
     const out = await refundPull(item.id);
     expect(out).toMatchObject({ status: "refunded", removedItem: "Flame Tongue" });
-    expect(rollState(SMALL, getLog()).prizes.find(p => p.key === "item.rare").left).toBe(1);
+    expect(rollState(SMALL, getTally()).prizes.find(p => p.key === "item.rare").left).toBe(1);
   });
 
   it("a game whose players don't see what is left sends no counts to anyone's browser: no left, no held counts, no place in the roll, in the reveal or the chat card's replay", async () => {
@@ -407,11 +421,13 @@ describe("the GM's socket path and the one refund", () => {
       // The card still wins what the row paid, and the log keeps the GM's counts.
       const logged = getLog().find(l => l.id === r.logId);
       expect(cardWins(r.card).cp).toBe(logged.payoutCp);
-      expect(logged).toMatchObject({ rollId: 1, tier: expect.any(String), ticketNo: expect.any(Number) });
+      expect(logged).toMatchObject({ rollId: 1 });
+      expect(logged).not.toHaveProperty("tier");
+      expect(readHidden(logged.id)).toMatchObject({ tier: expect.any(String), ticketNo: expect.any(Number) });
     }
     const snaps = globalThis.ChatMessage.create.mock.calls.map(c => JSON.stringify(c[0].flags ?? {}));
     for (const snap of snaps) for (const k of ['"no":', '"left"', '"size":6']) expect(snap).not.toContain(k);
-    // The roll still sells out from the log, before anything is charged.
+    // The roll still sells out from its tally, before anything is charged.
     await buyOnce(world, 99, { requestId: "h7" });
     expect(world.emitted.find(m => m.type === "error" && m.requestId === "h7")?.message).toContain("sold out");
     // A shown game still sends its counts, which every shop holds until the card is open.
@@ -497,18 +513,18 @@ describe("the words", () => {
 
   it("Another ticket for 5 gp while the roll has tickets, off with the reason when it is sold out or the purse is short", () => {
     const again = SCRATCH.reveal.again;
-    expect(again(reveal(), { game: GAME, log: [], purse: { gp: 50 } })).toEqual({ price: 5, label: "Another ticket for 5 gp", off: "" });
-    expect(again(reveal(), { game: GAME, log: [], purse: { gp: 2 } }).off).toBe("Needs 3 gp more");
+    expect(again(reveal(), { game: GAME, tally: null, purse: { gp: 50 } })).toEqual({ price: 5, label: "Another ticket for 5 gp", off: "" });
+    expect(again(reveal(), { game: GAME, tally: null, purse: { gp: 2 } }).off).toBe("Needs 3 gp more");
     // The last ticket of the roll, before the log has caught up.
-    expect(again(reveal({ ticket: { rollId: 1, no: 100, size: 100 } }), { game: GAME, log: [], purse: { gp: 50 } }).off).toBe("Sold out");
-    expect(again(reveal(), { game: GAME, log: [], purse: { gp: 50 }, open: false, gmOnline: true }).off).toBe("The GM has closed the shop.");
+    expect(again(reveal({ ticket: { rollId: 1, no: 100, size: 100 } }), { game: GAME, tally: null, purse: { gp: 50 } }).off).toBe("Sold out");
+    expect(again(reveal(), { game: GAME, tally: null, purse: { gp: 50 }, open: false, gmOnline: true }).off).toBe("The GM has closed the shop.");
     expect(again(reveal({ replay: true }), { game: GAME })).toBeNull();
     expect(again(reveal(), { game: null })).toBeNull();
   });
 
   it("the shop card: the price, the tickets and each prize left, the odds of what is left and the guarantee; struck through when gone", () => {
     const log = [row({ tier: "gp.100" }), row({ tier: "gp.100" }), row({ tier: "dud" })];
-    const ctx = { esc, purse: { gp: 50 }, hasActor: true, actorId: "a1", log, open: true, gmOnline: true };
+    const ctx = { esc, purse: { gp: 50 }, hasActor: true, actorId: "a1", tally: tallyOf(log), open: true, gmOnline: true };
     const html = SCRATCH.shop.card(GAME, POOLS, ctx);
     expect(html).toContain("97 of 100 tickets left");
     expect(html).toContain("<span class=\"lc-sr-only\">Fortune Ticket: </span>Buy a ticket for 5 gp");
@@ -519,12 +535,12 @@ describe("the words", () => {
     expect(html).toContain("lc-rarity-rare");
     expect(html).not.toContain("aria-disabled");
     expect(SCRATCH.shop.reason(GAME, POOLS, ctx)).toBe("");
-    expect(prizeListHTML(rollState(GAME, log), esc).match(/<li class="lc-scratch__tier/g)).toHaveLength(6);
+    expect(prizeListHTML(rollState(GAME, tallyOf(log)), esc).match(/<li class="lc-scratch__tier/g)).toHaveLength(6);
   });
 
   it("the shop card sold out: Sold out under an off Buy, the roll said sold out, no odds", () => {
     const log = Array.from({ length: 6 }, (_, i) => row({ boxId: "small", tier: ["item.rare", "gp.10", "gp.10", "bonus", "dud", "dud"][i] }));
-    const ctx = { esc, purse: { gp: 50 }, hasActor: true, actorId: "a1", log, open: true, gmOnline: true };
+    const ctx = { esc, purse: { gp: 50 }, hasActor: true, actorId: "a1", tally: tallyOf(log), open: true, gmOnline: true };
     const html = SCRATCH.shop.card(SMALL, POOLS, ctx);
     expect(html).toContain("Roll 1 is sold out");
     expect(html).toContain(`<div class="lc-box__why" id="lc-why-small">Sold out</div>`);
@@ -536,13 +552,13 @@ describe("the words", () => {
   it("holds the counts from before a ticket still being opened here, whoever bought it, and the buyer's Buy says Still scratching", () => {
     const log = [row({ tier: "item.rare" })];
     const before = { rollId: 1, size: 100, left: 100, prizes: { "item.rare": 1, "gp.100": 2 } };
-    expect(shownState(GAME, { log }).prizes[0].left).toBe(0);
-    const spectator = shownState(GAME, { log, heldBefore: () => ({ scratch: before }) });
+    expect(shownState(GAME, { tally: tallyOf(log) }).prizes[0].left).toBe(0);
+    const spectator = shownState(GAME, { tally: tallyOf(log), heldBefore: () => ({ scratch: before }) });
     expect(spectator.prizes[0].left).toBe(1);
     expect(spectator.left).toBe(100);
     // A hold from an older roll is no hold.
-    expect(shownState({ ...GAME, roll: nextRoll(GAME) }, { log, heldBefore: () => ({ scratch: before }) }).left).toBe(100);
-    const buyer = { esc, log, purse: { gp: 50 }, hasActor: true, actorId: "a1", held: () => true, stateOf: () => ({ scratch: before }) };
+    expect(shownState({ ...GAME, roll: nextRoll(GAME) }, { tally: tallyOf(log), heldBefore: () => ({ scratch: before }) }).left).toBe(100);
+    const buyer = { esc, tally: tallyOf(log), purse: { gp: 50 }, hasActor: true, actorId: "a1", held: () => true, stateOf: () => ({ scratch: before }) };
     const html = SCRATCH.shop.card(GAME, POOLS, buyer);
     expect(html).toContain("Still scratching");
     expect(html).toContain("1 of 1");
@@ -550,13 +566,14 @@ describe("the words", () => {
 
   it("the Boxes row: each prize left of its count, the layout and the roll, and Print a new roll", () => {
     const log = [row({ tier: "gp.100" })];
-    expect(scratchRulesText(GAME, log)).toBe("Lucky numbers 4 × 3, bonus 25 gp, Roll 1: 99 of 100 tickets left");
-    expect(scratchRulesText(MATCH3, [])).toBe("Match 3 3 × 2, Roll 1: 50 of 50 tickets left");
-    expect(scratchOddsHTML(GAME, log)).toContain(`<span class="lc-odd lc-rarity-coin">100 gp 1/2</span>`);
+    expect(scratchRulesText(GAME, tallyOf(log))).toBe("Lucky numbers 4 × 3, bonus 25 gp, Roll 1: 99 of 100 tickets left");
+    expect(scratchRulesText(MATCH3, tallyOf([]))).toBe("Match 3 3 × 2, Roll 1: 50 of 50 tickets left");
+    expect(scratchOddsHTML(GAME, tallyOf(log))).toContain(`<span class="lc-odd lc-rarity-coin">100 gp 1/2</span>`);
     // An item or bonus prize's pill wraps inside itself, so the table never widens past where its rows stack.
-    expect(scratchOddsHTML(GAME, log)).toContain(`<span class="lc-odd lc-odd--wrap lc-rarity-rare">Rare item 1/1</span>`);
-    expect(scratchOddsHTML(GAME, log)).toContain(`<span class="lc-odd lc-odd--wrap lc-rarity-coin">Bonus, 25 gp 3/3</span>`);
-    const html = boxesTableHTML({ boxes: [GAME], pools: POOLS, log, esc });
+    expect(scratchOddsHTML(GAME, tallyOf(log))).toContain(`<span class="lc-odd lc-odd--wrap lc-rarity-rare">Rare item 1/1</span>`);
+    expect(scratchOddsHTML(GAME, tallyOf(log))).toContain(`<span class="lc-odd lc-odd--wrap lc-rarity-coin">Bonus, 25 gp 3/3</span>`);
+    const html = boxesTableHTML({ boxes: [GAME], pools: POOLS, tally: tallyOf(log), esc });
+    expect(html).toContain(`<span class="lc-odd lc-rarity-coin">100 gp 1/2</span>`);
     expect(html).toContain(`data-action="printRoll" data-box="fortune" aria-label="Print a new roll of Fortune Ticket">Print a new roll</button>`);
     expect(html).toContain(`<span class="lc-kind">Scratch</span>`);
     expect(html).toContain(`aria-label="Ticket price at Fortune Ticket"`);
@@ -615,7 +632,7 @@ describe("prize lines: tickets that pay like real ones", () => {
     expect(prizesOf({ ...legacy, roll: { ...legacy.roll, prizes: [{ count: 2, parts: [{ gp: 10 }] }, { count: 1, parts: [{ item: { rarity: "rare" } }] }, { count: 3, parts: [{ bonus: true }] }] } })).toEqual(lines);
     // Reading changed nothing on the record, and an old row of the log still counts against its line.
     expect(legacy).toEqual(before);
-    expect(rollState({ ...legacy, id: "fortune" }, [row({ tier: "gp.10" })]).prizes.find(p => p.key === "gp.10").left).toBe(1);
+    expect(rollState({ ...legacy, id: "fortune" }, tallyOf([row({ tier: "gp.10" })])).prizes.find(p => p.key === "gp.10").left).toBe(1);
   });
 
   it("names a line by its parts best first, merges lines that pay the same, and ranks lines by their best item, then items, then coins", () => {
@@ -746,8 +763,8 @@ describe("prize lines: tickets that pay like real ones", () => {
     expect(cleanCard(card).prizes.top).toEqual({ parts: [{ item: "rare" }, { item: "uncommon" }] });
     expect(cleanCard({ ...card, prizes: { ...card.prizes, top: { parts: [{ item: "mythic" }] } } }).prizes.top).toBeNull();
     // The shop's rows and the Boxes pills name each line in full.
-    expect(prizeListHTML(rollState(LINES, []), esc)).toContain("Rare item + 5 gp + the bonus spot (10 gp)");
-    expect(scratchOddsHTML(LINES, [])).toContain(`<span class="lc-odd lc-odd--wrap lc-rarity-rare">Rare item + Uncommon item 1/1</span>`);
+    expect(prizeListHTML(rollState(LINES, tallyOf([])), esc)).toContain("Rare item + 5 gp + the bonus spot (10 gp)");
+    expect(scratchOddsHTML(LINES, tallyOf([]))).toContain(`<span class="lc-odd lc-odd--wrap lc-rarity-rare">Rare item + Uncommon item 1/1</span>`);
   });
 
   it("deals every line of a whole roll exactly its count, pays a line's coins and gem in one settle, and grants a line's two items in one creation", async () => {
@@ -757,13 +774,19 @@ describe("prize lines: tickets that pay like real ones", () => {
       const actor = actorMany({ gp: 1000 });
       const log = [];
       const outs = [];
+      const tally = emptyTally();
+      const tiers = {};
       for (let i = 0; i < 6; i++) {
-        const out = await performPull({ box: LINES, pools: twoPools, actor, rng, log });
+        const out = await performPull({ box: LINES, pools: twoPools, actor, rng, log, tally });
         outs.push(out);
-        log.unshift({ id: `r${i}`, kind: "scratch", boxId: LINES.id, actorId: actor.id, ...SCRATCH.logRow({ game: LINES, state: {}, out }) });
+        const row = { id: `r${i}`, kind: "scratch", boxId: LINES.id, actorId: actor.id, ...SCRATCH.logRow({ game: LINES, state: {}, out }) };
+        const cols = SCRATCH.hiddenRow({ game: LINES, state: {}, out });
+        tiers[row.id] = cols.tier;
+        log.unshift(row);
+        applyRow(tally, row, 1, cols);
       }
       const counts = {};
-      for (const r of log) counts[r.tier] = (counts[r.tier] ?? 0) + 1;
+      for (const r of log) counts[tiers[r.id]] = (counts[tiers[r.id]] ?? 0) + 1;
       expect(counts).toEqual({ [PAIR]: 1, [COMBO]: 1, "gp.10": 2, dud: 2 });
       const combo = outs.find(o => o.ticket.tier === COMBO);
       expect(combo).toMatchObject({ outcome: "item", payoutCp: 1500, result: { name: "Flame Tongue", rarity: "rare" }, wonItems: [{ name: "Flame Tongue", rarity: "rare" }] });
@@ -795,8 +818,8 @@ describe("prize lines: tickets that pay like real ones", () => {
     const reveals = world.emitted.filter(m => m.type === "reveal");
     expect(reveals).toHaveLength(6);
     const log = getLog();
-    const pairRow = log.find(r => r.tier === PAIR);
-    const comboRow = log.find(r => r.tier === COMBO);
+    const pairRow = log.find(r => readHidden(r.id)?.tier === PAIR);
+    const comboRow = log.find(r => readHidden(r.id)?.tier === COMBO);
     expect(pairRow).toMatchObject({ name: "Flame Tongue and Lucky Coin", itemNames: ["Flame Tongue", "Lucky Coin"] });
     expect(pairRow.itemIds).toHaveLength(2);
     expect(comboRow).toMatchObject({ name: "Flame Tongue", rarity: "rare", payoutCp: 1500 });
@@ -835,7 +858,7 @@ describe("prize lines: tickets that pay like real ones", () => {
     expect((await refundPull(comboRow.id)).status).toBe("refunded");
     expect(toCopper(world.actor.system.currency)).toBe(purse + 500 - 1500);
     expect(world.actor.items.size).toBe(before - 3);
-    const st = rollState(LINES, getLog());
+    const st = rollState(LINES, getTally());
     expect(st.prizes.find(p => p.key === PAIR).left).toBe(1);
     expect(st.prizes.find(p => p.key === COMBO).left).toBe(1);
   });
@@ -844,7 +867,7 @@ describe("prize lines: tickets that pay like real ones", () => {
     const hidden = { ...GAME, showLeft: false };
     expect([showsLeft(GAME), showsLeft(hidden), showsLeft({ showLeft: true })]).toEqual([true, false, true]);
     const log = [row({ tier: "gp.100" }), row({ tier: "gp.100" }), row({ tier: "dud" })];
-    const ctx = { esc, purse: { gp: 50 }, hasActor: true, actorId: "a1", log, open: true, gmOnline: true };
+    const ctx = { esc, purse: { gp: 50 }, hasActor: true, actorId: "a1", tally: tallyOf(log), open: true, gmOnline: true };
     const player = SCRATCH.shop.card(hidden, POOLS, { ...ctx, isGM: false });
     for (const gone of ["tickets left", "0 of 2", "lc-scratch__prizes", "tickets wins", "Players don't see"]) expect(player).not.toContain(gone);
     expect(player).toContain(`<div class="lc-box__rule">Top prize: Rare item</div>`);
@@ -862,11 +885,11 @@ describe("prize lines: tickets that pay like real ones", () => {
     expect(shown).not.toContain("Players don't see");
     // Sold out still says so; the counts still don't show.
     const allSold = Array.from({ length: 6 }, (_, i) => row({ boxId: "small", tier: ["item.rare", "gp.10", "gp.10", "bonus", "dud", "dud"][i] }));
-    const soldOut = SCRATCH.shop.card({ ...SMALL, showLeft: false }, POOLS, { ...ctx, log: allSold, isGM: false });
+    const soldOut = SCRATCH.shop.card({ ...SMALL, showLeft: false }, POOLS, { ...ctx, tally: tallyOf(allSold), isGM: false });
     expect(soldOut).toContain("Roll 1 is sold out");
     expect(soldOut).toContain(`aria-disabled="true"`);
     expect(soldOut).not.toContain("of 1");
-    expect(scratchRulesText(hidden, log)).toBe("Lucky numbers 4 × 3, bonus 25 gp, Roll 1: 97 of 100 tickets left, hidden from players");
+    expect(scratchRulesText(hidden, tallyOf(log))).toBe("Lucky numbers 4 × 3, bonus 25 gp, Roll 1: 97 of 100 tickets left, hidden from players");
     // The ticket and the reveal say no counts either: the roll by name alone.
     const out = await performPull({ box: { ...SMALL, showLeft: false }, pools: POOLS, actor: actorOf(), rng: seededRng(5), log: [] });
     expect(out.ticket).toMatchObject({ rollId: 1, no: 1, size: 6, hidden: true });

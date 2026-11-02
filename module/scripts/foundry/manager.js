@@ -113,7 +113,7 @@ const cancelTableRound = roundId => import("./table.js").then(m => m.cancelRound
 // The shop, opened from the nav's "View shop"; loaded when pressed, as the
 // table is (shop.js reaches back here for its own "Manage crates").
 const openShopWindow = () => import("./shop.js").then(m => m.openShop());
-import { getRounds, getPools, getBoxes, getLog, dayMode, newId, createPool, updatePool, removePool, createBox, updateBox, updateBoxes, removeBox, entryFromItem, entriesFromDrop, addEntries, packHasLoot, LOOT_TYPES, isLootType, isShopOpen, setShopOpen, checkSources, sweepPools, removeEntry, patchEntry } from "./store.js";
+import { getRounds, getPools, getBoxes, getLog, getTally, dayMode, newId, createPool, updatePool, removePool, createBox, updateBox, updateBoxes, removeBox, entryFromItem, entriesFromDrop, addEntries, packHasLoot, LOOT_TYPES, isLootType, isShopOpen, setShopOpen, checkSources, sweepPools, removeEntry, patchEntry } from "./store.js";
 import { flattenPool, withSources, entryWeight, curateEntries, oddsModeOf } from "../core/odds.js";
 import { SKIPPED_NOUN, describeSkipped, dropPreviewHTML, savedNotice, PAGE_ROWS, defaultView, poolToOpen, poolNameHTML, bulkAddHTML, poolRows, sortRows, filterRows, pageRows, nextRows, poolCount, poolSummary, poolBody, chipsHTML, unsetButton, footHTML, entryRow, entryParts, pinRecent, dropNotice, poolUsers, usersText, deleteImpact, removeImpact, deletePoolText, removeEntryText } from "../views/poolview.js";
 import { formatPrice, parsePrice, unreadablePrice } from "../core/currency.js";
@@ -857,11 +857,12 @@ export class CrateManager extends ApplicationV2 {
   }
 
   // Every once card drawn goes back in: the mark the drawn count is read
-  // from (deck.js drawnIds) moves to now. The log keeps its rows.
+  // against (deck.js drawnIds) moves to now. The log and the tallies keep
+  // their draws.
   static async #reshuffle(_e, target) {
     const box = getBoxes()[target.dataset.box];
     if (!box) return this.render();
-    const drawn = deckOdds(box, getPools(), getLog()).drawn;
+    const drawn = deckOdds(box, getPools(), getTally()).drawn;
     const ok = await DialogV2.confirm({ window: { title: t("LOOTCRATES.Boxes.Reshuffle") }, content: `<p>${t("LOOTCRATES.Manager.ReshuffleAsk", { name: `<strong>${esc(box.name)}</strong>` })} ${drawn ? t(drawn === 1 ? "LOOTCRATES.Manager.ReshuffleOne" : "LOOTCRATES.Manager.ReshuffleMany", { count: drawn }) : t("LOOTCRATES.Manager.ReshuffleNone")}</p>` });
     if (!ok) return target.focus?.();
     const saved = await updateBox(box.id, fresh => ({ ...fresh, deck: { ...(fresh.deck ?? {}), shuffledAt: Date.now() } }));
@@ -871,15 +872,15 @@ export class CrateManager extends ApplicationV2 {
 
   /*
     Print a new roll of a scratch ticket: the next roll id, the same prize
-    list, every ticket on sale again; the old roll's rows stay in the log,
-    counted against the old roll. A roll that still has tickets asks
+    list, every ticket on sale again; the old roll's rows stay in the log
+    and its tally under the old roll's id. A roll that still has tickets asks
     first, naming them; a sold-out one is printed at once. The Boxes
     tab's status line says so.
   */
   static async #printRoll(_e, target) {
     const box = getBoxes()[target.dataset.box];
     if (!box) return this.render();
-    const st = rollState(box, getLog());
+    const st = rollState(box, getTally());
     if (!st.soldOut) {
       const ok = await DialogV2.confirm({ window: { title: t("LOOTCRATES.Boxes.PrintRoll") }, content: `<p>${t("LOOTCRATES.Manager.PrintRollAsk", { name: `<strong>${esc(box.name)}</strong>`, roll: esc(rollName(st.id)), left: esc(ticketsLeftText(st.left, st.size)) })}</p>` });
       if (!ok) return target.focus?.();
@@ -887,7 +888,7 @@ export class CrateManager extends ApplicationV2 {
     const saved = await updateBox(box.id, fresh => ({ ...fresh, roll: nextRoll(fresh) }));
     await this.render();
     if (saved) {
-      const now = rollState(saved, getLog());
+      const now = rollState(saved, getTally());
       this.#announce(t("LOOTCRATES.Manager.RollPrinted", { name: saved.name, roll: rollName(now.id), size: now.size }));
     }
   }
@@ -1112,7 +1113,7 @@ export class CrateManager extends ApplicationV2 {
         const shelf = wireShelf(form, isNew);
         wirePrice(form);
         const paint = liveOdds(form, box, poolIds, (draft, live) => {
-          const preview = deckPreview(draft, live, getLog());
+          const preview = deckPreview(draft, live, getTally());
           return { html: deckPreviewHTML(preview, esc), summary: deckSummary(preview), held: heldRarities(draft, live) };
         }, draftDeck, shelf);
         const rows = form.querySelector(".lc-cards__rows");
@@ -1177,7 +1178,7 @@ export class CrateManager extends ApplicationV2 {
     const { isNew } = opts;
     const pools = Object.values(getPools());
     const poolIds = pools.map(p => p.id);
-    const sold = isNew ? 0 : rollState(box, getLog()).sold;
+    const sold = isNew ? 0 : rollState(box, getTally()).sold;
     const data = await promptForm(editorTitle(box, isNew, opts.copy), editorHTML("scratch", box, editorCtx(opts, { sold })), {
       onForm: form => {
         const shelf = wireShelf(form, isNew);
@@ -1653,7 +1654,7 @@ export class CrateManager extends ApplicationV2 {
     const stored = getPools();
     const entries = Object.keys(stored).flatMap(id => flattenPool(id, stored, new Set(), { includeMissing: true }));
     const pools = withSources(stored, await this.#checkedSources(entries));
-    return boxesTabHTML({ boxes, pools, log: getLog(), rounds: getRounds(), recent: this.#recentBox, action: this.#shelfOffer ? shelfAllHTML() : "", esc });
+    return boxesTabHTML({ boxes, pools, tally: getTally(), rounds: getRounds(), recent: this.#recentBox, action: this.#shelfOffer ? shelfAllHTML() : "", esc });
   }
 
   // The Pull log (logtable.js): newest first, every game's misses folded per
@@ -1970,9 +1971,10 @@ function heldRarities(draft, pools) {
   (CrateManager.patchUsers). The pity state shows nowhere here (each
   buyer's shop shows their own). The log shows on the Boxes tab too while
   a deck or a scratch ticket is on it: a deck's row reads its cards drawn
-  and its odds from the log (deck.js deckOdds), a scratch ticket's its
-  roll's tickets and prizes left (scratch.js rollState), so a play or a
-  refund redraws it there and then.
+  and its odds from the tallies (deck.js deckOdds), a scratch ticket's its
+  roll's tickets and prizes left (scratch.js rollState), which are written
+  with every log row (store.js), so a play or a refund redraws it there
+  and then.
   The rounds show there too while a wheel is on it: its row's button reads
   "Open a round" or "Go to the table" from them (round.js liveRoundOf), so
   a round opened or spun from the table window changes it there and then.

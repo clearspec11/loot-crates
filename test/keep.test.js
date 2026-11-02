@@ -12,14 +12,15 @@ const postKeptCard = vi.fn(async () => null);
 vi.mock("../module/scripts/foundry/chat.js", () => ({ postPullCard: vi.fn(async () => null), postKeptCard: (...a) => postKeptCard(...a) }));
 
 const { registerSocket, requestKeep } = await import("../module/scripts/foundry/socket.js");
-const { registerSettings, setStoreListener, getLog, getBoxes, appendLog } = await import("../module/scripts/foundry/store.js");
+const { registerSettings, setStoreListener, getLog, getTally, getBoxes, appendLog } = await import("../module/scripts/foundry/store.js");
+const { tallyOf } = await import("../module/scripts/core/tally.js");
 const { refundPull, describeRefund } = await import("../module/scripts/foundry/refund.js");
 const { ticketData, ticketOf, keptStack, keptTicketFor, keepRow, rowPriceTag } = await import("../module/scripts/games/ticket.js");
 const { cardShell } = await import("../module/scripts/views/boxcard.js");
 const { boughtBy } = await import("../module/scripts/core/limits.js");
 const { throwsToday } = await import("../module/scripts/games/well.js");
 const { streakOf, nextPrice, drawnIds } = await import("../module/scripts/games/deck.js");
-const { rollRows } = await import("../module/scripts/games/scratch.js");
+const { ticketsSold } = await import("../module/scripts/games/scratch.js");
 const { toCopper } = await import("../module/scripts/core/currency.js");
 
 const tick = () => new Promise(r => setTimeout(r, 0));
@@ -216,7 +217,7 @@ describe("Buy to keep on the GM: a purchase's guards, nothing moves when one ref
     expect(errorsTo(emitted)).toHaveLength(1);
     expect(emitted.filter(m => m.type === "reveal")).toHaveLength(1);
     expect(getLog()[0].redeem).toMatchObject({ paid: 10, kept: true });
-    expect(boughtBy(getLog(), { boxId: "box", actorId: "actor1" })).toBe(1);
+    expect(boughtBy(getTally(), { boxId: "box", actorId: "actor1" })).toBe(1);
   });
 
   it("refuses a game off the shelf and a table game", async () => {
@@ -302,11 +303,11 @@ describe("Buy to keep on the GM: a purchase's guards, nothing moves when one ref
     expect(errorsTo(emitted)).toEqual([]);
     expect(getLog()[0]).not.toHaveProperty("rollId");
     expect(getLog()[0]).not.toHaveProperty("tier");
-    expect(rollRows(getLog(), { boxId: "scratch", rollId: 1 })).toHaveLength(0);
+    expect(ticketsSold(getTally(), { boxId: "scratch", rollId: 1 })).toBe(0);
     // The roll's one ticket is still there for the kept ticket's use.
     await deliver({ type: "redeem", requestId: "r1", actorId: "actor1", itemId: tickets(actor)[0].id, userId: "p1" });
     expect(errorsTo(emitted)).toEqual([]);
-    expect(rollRows(getLog(), { boxId: "scratch", rollId: 1 })).toHaveLength(1);
+    expect(ticketsSold(getTally(), { boxId: "scratch", rollId: 1 })).toBe(1);
   });
 });
 
@@ -377,9 +378,9 @@ describe("a kept row is a sale, not a play", () => {
 
   it("isn't a throw at the well, a draw at the deck, or a ticket sold from a scratch roll", () => {
     const log = [row({ kind: "well", keep: { paid: 1 } }), row({ kind: "well" })];
-    expect(throwsToday(log, { boxId: "g", actorId: "a", day: "y1d1" })).toBe(1);
-    expect(drawnIds({ id: "g", deck: { cards: [{ id: "c1", kind: "blank", label: "x", weight: 1, once: true }] } }, [row({ kind: "deck", keep: { paid: 1 } })]).size).toBe(0);
-    expect(rollRows([row({ kind: "scratch", rollId: 1, keep: { paid: 1 } })], { boxId: "g", rollId: 1 })).toHaveLength(0);
+    expect(throwsToday(tallyOf(log), { boxId: "g", actorId: "a", day: "y1d1" })).toBe(1);
+    expect(drawnIds({ id: "g", deck: { cards: [{ id: "c1", kind: "blank", label: "x", weight: 1, once: true }] } }, tallyOf([row({ kind: "deck", keep: { paid: 1 } })])).size).toBe(0);
+    expect(ticketsSold(tallyOf([row({ kind: "scratch", rollId: 1, keep: { paid: 1 } })]), { boxId: "g", rollId: 1 })).toBe(0);
   });
 
   it("raises the deck's price as a draw does, and its ticket's later use doesn't raise it again", () => {
@@ -387,22 +388,23 @@ describe("a kept row is a sale, not a play", () => {
     const log = [];
     const paid = [];
     for (let i = 0; i < 4; i++) {
-      const price = nextPrice(game, log, { actorId: "a", now: 1000 + i });
+      const price = nextPrice(game, tallyOf(log), { actorId: "a", now: 1000 + i });
       paid.push(price);
       log.push(row({ kind: "deck", at: 1000 + i, price, keep: { paid: price } }));
     }
     // Four kept tickets cost what four draws in a row do, not the base price four times.
     expect(paid).toEqual([10, 20, 40, 80]);
     const used = [row({ kind: "deck", at: 1000, keep: { paid: 10 } }), row({ kind: "deck", at: 1001, price: 0, redeem: { paid: 10, kept: true } })];
-    expect(streakOf(used, { boxId: "g", actorId: "a", now: 1100, within: 60000 })).toBe(1);
+    expect(streakOf(tallyOf(used), { boxId: "g", actorId: "a", now: 1100, within: 60000 })).toBe(1);
     const given = [row({ kind: "deck", at: 1001, price: 0, redeem: { paid: 0 } })];
-    expect(streakOf(given, { boxId: "g", actorId: "a", now: 1100, within: 60000 })).toBe(1);
+    expect(streakOf(tallyOf(given), { boxId: "g", actorId: "a", now: 1100, within: 60000 })).toBe(1);
   });
 
   it("counts toward the limit per character on the day it was bought; no ticket's play does", () => {
     const log = [row({ keep: { paid: 1 } }), row({ redeem: { paid: 1, kept: true } }), row({ redeem: { paid: 0 } })];
-    expect(boughtBy(log, { boxId: "g", actorId: "a" })).toBe(1);
-    expect(boughtBy(log, { boxId: "g", actorId: "a", per: "day", today: "y1d2" })).toBe(0);
+    expect(boughtBy(tallyOf(log), { boxId: "g", actorId: "a" })).toBe(1);
+    expect(boughtBy(tallyOf(log), { boxId: "g", actorId: "a", per: "day", today: "y1d1" })).toBe(1);
+    expect(boughtBy(tallyOf(log), { boxId: "g", actorId: "a", per: "day", today: "y1d2" })).toBe(0);
   });
 
   it("says what it cost and that it was kept in the Pull log", () => {

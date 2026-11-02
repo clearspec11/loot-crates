@@ -109,7 +109,7 @@
 import { SOCKET } from "../core/config.js";
 import { performPull, performStake, performKeep, PullError } from "./pull.js";
 import { getKind, kindOf, gotText, nounText } from "../games/kinds.js";
-import { getBoxes, getPools, getLog, getActorState, setActorState, appendLog, updateLog, newId, isShopOpen, saveBox, enqueueWrite, refreshMissing, markMissing, reportMissing, todayKey, dayMode, countRest, restInto, dayAt, getRounds, saveRound } from "./store.js";
+import { getBoxes, getPools, getLog, getTally, getActorState, recordPlay, appendLog, updateLog, newId, isShopOpen, saveBox, enqueueWrite, refreshMissing, markMissing, reportMissing, todayKey, dayMode, countRest, restInto, dayAt, getRounds, saveRound } from "./store.js";
 import { byRest } from "../core/clock.js";
 import { formatPrice } from "../core/currency.js";
 import { stakeReason, stakesOf } from "../core/round.js";
@@ -401,22 +401,23 @@ async function sweepBox(box) {
 }
 
 /*
-  The pull's bookkeeping, after the reveal: three settings, each its own key,
-  written together. The coins are taken and the item is on the sheet by now,
-  so a failure here is the GM's to fix (the buyer has their item); it is
-  reported, not thrown back at the buyer as a failed purchase.
+  The pull's bookkeeping, after the reveal: the row, the tallies it moves
+  (core/tally.js), the buyer's state and the stock, in one write
+  (store.js recordPlay). The coins are taken and the item is on the sheet
+  by now, so a failure here is the GM's to fix (the buyer has their item);
+  it is reported, not thrown back at the buyer as a failed purchase.
 */
-async function recordPull({ msg, box, actor, out, log }) {
-  const writes = [appendLog(log)];
-  // A kind with no per-buyer state (nothing to count between plays) writes none.
-  if (out.state != null) writes.unshift(setActorState(msg.actorId, box.id, out.state));
-  // A ticket was sold (or given) already: its play takes no stock.
-  if (box.rules?.stock != null && !log.redeem) writes.push(saveBox({ ...box, rules: { ...box.rules, stock: Math.max(0, box.rules.stock - 1) } }));
-  const failed = (await Promise.allSettled(writes)).filter(r => r.status === "rejected");
-  if (!failed.length) return;
-  const got = out.result?.name ?? t("LOOTCRATES.Common.NothingWord");
-  for (const f of failed) console.error(`loot-crates | recording ${actor.name}'s pull of ${got} from ${box.name} failed`, f.reason);
-  globalThis.ui?.notifications?.error(t("LOOTCRATES.Error.LogFailed", { actor: actor.name, got, box: box.name }));
+async function recordPull({ box, actor, out, log, hidden = null }) {
+  // A kind with no per-buyer state (nothing to count between plays) writes
+  // none. A ticket was sold (or given) already: its play takes no stock.
+  const stock = box.rules?.stock != null && !log.redeem ? Math.max(0, box.rules.stock - 1) : null;
+  try {
+    await recordPlay({ row: log, hidden, state: out.state ?? null, box, stock });
+  } catch (err) {
+    const got = out.result?.name ?? t("LOOTCRATES.Common.NothingWord");
+    console.error(`loot-crates | recording ${actor.name}'s pull of ${got} from ${box.name} failed`, err);
+    globalThis.ui?.notifications?.error(t("LOOTCRATES.Error.LogFailed", { actor: actor.name, got, box: box.name }));
+  }
 }
 
 /*
@@ -459,12 +460,12 @@ async function doPull(msg, timer, sent, stopWatching) {
         reportMissing([{ poolId: entry.poolId, poolName: getPools()[entry.poolId]?.name ?? entry.poolId, uuid: entry.uuid, name: entry.name }]);
       } catch (err) { console.error(`loot-crates | could not flag ${entry.uuid} as missing`, err); }
     };
-    // The log and the day reach the guards and the roll for anything
-    // counted per character or per day (the limit per character, the
-    // well's cap), read here inside the queue so two quick buys can't both
-    // pass.
+    // The tallies and the day reach the guards and the roll for anything
+    // counted per character, per day or per roll (the limit per character,
+    // the well's cap, a scratch roll, a deck's once cards; core/tally.js),
+    // read here inside the queue so two quick buys can't both pass.
     const today = todayKey(actor.id);
-    const out = await performPull({ box, pools: getPools(), actor, state, onMissing, expectedPrice: redeem ? undefined : msg.price, log: getLog(), today, ticket: ticket?.item ?? null });
+    const out = await performPull({ box, pools: getPools(), actor, state, onMissing, expectedPrice: redeem ? undefined : msg.price, log: getLog(), tally: getTally(), today, ticket: ticket?.item ?? null });
     // What the reveal and the chat card say in place of the price.
     if (ticket) out.redeem = { itemName: ticket.row.itemName, paid: ticket.row.paid };
     const kind = getKind(out.kind);
@@ -507,7 +508,9 @@ async function doPull(msg, timer, sent, stopWatching) {
     // (limits.js); none in a world with no clock. itemId is the first
     // item, as rows from before several items read; itemColumns the rest.
     const log = { id: logId, kind: out.kind, boxId: box.id, boxName: box.name, actorId: actor.id, actorName: actor.name, userId: msg.userId, itemId: out.itemId, ...itemColumns(out), price: out.price, payoutCp: out.payoutCp, ...(today ? { day: today } : {}), ...(kind.logRow?.(ctx) ?? {}), ...(ticket ? { redeem: ticket.row } : {}) };
-    await recordPull({ msg, box, actor, out, log });
+    // The kind's GM-only columns (the scratch ticket's tier) are kept off
+    // the row, which every client reads (hidden.js).
+    await recordPull({ box, actor, out, log, hidden: kind.hiddenRow?.(ctx) ?? null });
     timer.mark("record");
     return reveal;
   } catch (err) {
@@ -709,7 +712,7 @@ async function doKeep(msg, timer, sent, stopWatching) {
     const { actor, buyer } = guardBuyer(msg);
     box = getBoxes()[msg.boxId];
     const today = todayKey(actor.id);
-    const out = await performKeep({ box, pools: getPools(), actor, state: getActorState(msg.actorId, msg.boxId), expectedPrice: msg.price, log: getLog(), today });
+    const out = await performKeep({ box, pools: getPools(), actor, state: getActorState(msg.actorId, msg.boxId), expectedPrice: msg.price, log: getLog(), tally: getTally(), today });
     timer.mark("charge");
 
     const logId = newId();

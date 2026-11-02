@@ -256,7 +256,8 @@ const untilCard = async (pl, boxId, pred, ms = 5000) => {
       });
       const rowNow = await gm.page.evaluate(async ({ base, boxId }) => {
         const r = (await import(base + "scripts/foundry/store.js")).getLog().filter(x => x.boxId === boxId)[0];
-        return r ? { id: r.id, tier: r.tier, itemId: r.itemId ?? null, itemIds: r.itemIds ?? [], payoutCp: r.payoutCp, price: r.price } : null;
+        const { readHidden } = await import(base + "scripts/foundry/hidden.js");
+        return r ? { id: r.id, tier: readHidden(r.id)?.tier, itemId: r.itemId ?? null, itemIds: r.itemIds ?? [], payoutCp: r.payoutCp, price: r.price } : null;
       }, { base: MODULE_BASE, boxId });
       const buy = { before: before.purseCp, after: after.purseCp, row: rowNow, reveal, newItems: after.items.filter(id => !before.items.includes(id)) };
       out.buys.push(buy);

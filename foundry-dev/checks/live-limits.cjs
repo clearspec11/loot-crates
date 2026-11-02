@@ -106,7 +106,7 @@ async function seed(gm) {
     const pool = Object.values(store.getPools()).find(p => p.name === "Live UI pool");
     if (!pool) throw new Error("no Live UI pool: run live-ui.js first");
     const old = Object.values(store.getBoxes()).find(b => b.name === name) ?? null;
-    const already = old ? boughtBy(store.getLog(), { boxId: old.id, actorId: actor.id }) : 0;
+    const already = old ? boughtBy(store.getTally(), { boxId: old.id, actorId: actor.id }) : 0;
     const box = await store.createBox({
       ...(old ? { id: old.id } : {}), name, price: 1, pools: [{ id: pool.id, share: 1 }],
       weights: { common: 1, uncommon: 1, rare: 1, veryRare: 1, legendary: 1 },

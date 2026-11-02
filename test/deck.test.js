@@ -23,6 +23,7 @@ const { getKind } = await import("../module/scripts/games/kinds.js");
 const { performPull, PullError, PRICE_SKEW_MS } = await import("../module/scripts/foundry/pull.js");
 const { registerSocket } = await import("../module/scripts/foundry/socket.js");
 const { registerSettings, appendLog, getLog } = await import("../module/scripts/foundry/store.js");
+const { tallyOf } = await import("../module/scripts/core/tally.js");
 const { refundPull, describeRefund, refundCoins } = await import("../module/scripts/foundry/refund.js");
 const { postPullCard, postRefundCard } = await import("../module/scripts/foundry/chat.js");
 // manager.js reads foundry.applications.api when it is imported.
@@ -80,39 +81,39 @@ describe("the deck as written", () => {
   });
 
   it("plans a draw from the cards that weigh more than 0, leaving out drawn once cards and item cards with nothing to give", () => {
-    const plan = deckPlan(GAME, POOLS, []);
+    const plan = deckPlan(GAME, POOLS, tallyOf([]));
     expect(plan).toMatchObject({ size: 5, left: 5, drawn: 0, empty: false, reason: "", canItem: true });
     expect(plan.live.map(c => c.id)).toEqual(["fortune", "windfall", "ruin", "omen", "blank"]);
     // The omen was drawn: out until a reshuffle; a refunded draw doesn't count, nor a draw before the last reshuffle.
-    const drawn = deckPlan(GAME, POOLS, [row({ cardId: "omen" }), row({ cardId: "omen", refunded: 1, at: NOW })]);
+    const drawn = deckPlan(GAME, POOLS, tallyOf([row({ cardId: "omen" }), row({ cardId: "omen", refunded: 1, at: NOW })]));
     expect(drawn).toMatchObject({ left: 4, drawn: 1 });
     expect(drawn.live.map(c => c.id)).toEqual(["fortune", "windfall", "ruin", "blank"]);
-    expect(drawnIds(GAME, [row({ cardId: "omen" }), row({ cardId: "windfall" })])).toEqual(new Set(["omen"]));
-    expect(deckPlan({ ...GAME, deck: { ...GAME.deck, shuffledAt: NOW } }, POOLS, [row({ cardId: "omen" })])).toMatchObject({ left: 5, drawn: 0 });
+    expect(drawnIds(GAME, tallyOf([row({ cardId: "omen" }), row({ cardId: "windfall" })]))).toEqual(new Set(["omen"]));
+    expect(deckPlan({ ...GAME, deck: { ...GAME.deck, shuffledAt: NOW } }, POOLS, tallyOf([row({ cardId: "omen" })]))).toMatchObject({ left: 5, drawn: 0 });
     // Weight 0 is not in the deck; no pools: the item card can't be drawn but still counts as left.
-    expect(deckPlan({ ...GAME, deck: { ...GAME.deck, cards: CARDS.map(c => (c.id === "ruin" ? { ...c, weight: 0 } : c)) } }, POOLS, []).size).toBe(4);
-    const noPools = deckPlan({ ...GAME, pools: [] }, POOLS, []);
+    expect(deckPlan({ ...GAME, deck: { ...GAME.deck, cards: CARDS.map(c => (c.id === "ruin" ? { ...c, weight: 0 } : c)) } }, POOLS, tallyOf([])).size).toBe(4);
+    const noPools = deckPlan({ ...GAME, pools: [] }, POOLS, tallyOf([]));
     expect(noPools).toMatchObject({ size: 5, left: 5, canItem: false, empty: false });
     expect(noPools.live.map(c => c.id)).toEqual(["windfall", "ruin", "omen", "blank"]);
   });
 
   it("says why nothing can be drawn: no cards, every card drawn, or only item cards with nowhere to draw from", () => {
-    expect(deckPlan({ ...GAME, deck: { cards: [] } }, POOLS, [])).toMatchObject({ empty: true, reason: "The deck has no cards" });
-    expect(deckPlan({ ...GAME, deck: { cards: CARDS.map(c => ({ ...c, weight: 0 })) } }, POOLS, [])).toMatchObject({ empty: true, reason: "The deck has no cards" });
+    expect(deckPlan({ ...GAME, deck: { cards: [] } }, POOLS, tallyOf([]))).toMatchObject({ empty: true, reason: "The deck has no cards" });
+    expect(deckPlan({ ...GAME, deck: { cards: CARDS.map(c => ({ ...c, weight: 0 })) } }, POOLS, tallyOf([]))).toMatchObject({ empty: true, reason: "The deck has no cards" });
     const once = { ...GAME, deck: { ...GAME.deck, cards: CARDS.map(c => ({ ...c, once: true })) } };
-    expect(deckPlan(once, POOLS, CARDS.map(c => row({ cardId: c.id })))).toMatchObject({ empty: true, left: 0, reason: "Every card is drawn" });
-    expect(deckPlan({ ...GAME, pools: [], deck: { cards: [CARDS[0]] } }, POOLS, [])).toMatchObject({ empty: true, left: 1, reason: "Nothing in the deck can be drawn" });
+    expect(deckPlan(once, POOLS, tallyOf(CARDS.map(c => row({ cardId: c.id }))))).toMatchObject({ empty: true, left: 0, reason: "Every card is drawn" });
+    expect(deckPlan({ ...GAME, pools: [], deck: { cards: [CARDS[0]] } }, POOLS, tallyOf([]))).toMatchObject({ empty: true, left: 1, reason: "Nothing in the deck can be drawn" });
   });
 
   it("names the odds by kind of card as whole percents summing to 100, never 0%, a drawn kind dropping out", () => {
-    const odds = deckOdds(GAME, POOLS, []);
+    const odds = deckOdds(GAME, POOLS, tallyOf([]));
     expect(odds.rows.map(r => `${r.name} ${r.label}`)).toEqual(["Item 20%", "Coins 20%", "Loss 20%", "Effect 10%", "Blank 30%"]);
     expect(odds.rows.reduce((n, r) => n + Number(r.label.replace("%", "")), 0)).toBe(100);
-    const after = deckOdds(GAME, POOLS, [row({ cardId: "omen" })]);
+    const after = deckOdds(GAME, POOLS, tallyOf([row({ cardId: "omen" })]));
     expect(after.rows.map(r => r.name)).toEqual(["Item", "Coins", "Loss", "Blank"]);
     expect(after.rows.map(r => r.label)).toEqual(["22%", "22%", "22%", "34%"]);
-    expect(deckOdds({ ...GAME, deck: { cards: [{ id: "a", kind: "blank", weight: 999 }, { id: "b", kind: "coins", weight: 1, gp: 1 }] } }, POOLS, []).rows.map(r => r.label)).toEqual(["<1%", ">99%"]);
-    expect(deckOddsHTML(deckOdds({ ...GAME, deck: { cards: [] } }, POOLS, []))).toBe("");
+    expect(deckOdds({ ...GAME, deck: { cards: [{ id: "a", kind: "blank", weight: 999 }, { id: "b", kind: "coins", weight: 1, gp: 1 }] } }, POOLS, tallyOf([])).rows.map(r => r.label)).toEqual(["<1%", ">99%"]);
+    expect(deckOddsHTML(deckOdds({ ...GAME, deck: { cards: [] } }, POOLS, tallyOf([])))).toBe("");
     const html = deckOddsHTML(odds);
     expect(html).toContain(`<span class="lc-odd lc-rarity-legendary">Item 20%</span>`);
     expect(html).toContain(`<span class="lc-odd lc-rarity-coin">Coins 20%</span>`);
@@ -137,17 +138,17 @@ describe("the deck as written", () => {
 describe("the rising price", () => {
   it("counts the draws in a row from the log, each within two minutes of the last, and prices the next at base x step^n to the copper", () => {
     const log = [row({ at: NOW - 10_000 }), row({ at: NOW - 100_000 }), row({ at: NOW - 100_000 - STREAK_MS - 1 }), row({ at: NOW - 20_000, actorId: "a2" }), row({ at: NOW - 15_000, boxId: "other" }), row({ at: NOW - 5_000, refunded: 1 })];
-    expect(streakOf(log, { boxId: "deck", actorId: "a1", now: NOW })).toBe(2);
-    expect(streakOf(log, { boxId: "deck", actorId: "a1", now: NOW + STREAK_MS + 1 })).toBe(0);
-    expect(streakOf([], { boxId: "deck", actorId: "a1", now: NOW })).toBe(0);
+    expect(streakOf(tallyOf(log), { boxId: "deck", actorId: "a1", now: NOW })).toBe(2);
+    expect(streakOf(tallyOf(log), { boxId: "deck", actorId: "a1", now: NOW + STREAK_MS + 1 })).toBe(0);
+    expect(streakOf(tallyOf([]), { boxId: "deck", actorId: "a1", now: NOW })).toBe(0);
     expect(priceAt(GAME, 0)).toBe(10);
     expect(priceAt(GAME, 1)).toBe(15);
     expect(priceAt(GAME, 2)).toBe(22.5);
     expect(priceAt(GAME, 3)).toBe(33.75);
     expect(priceAt({ ...GAME, deck: { step: 2 } }, 3)).toBe(80);
     expect(priceAt({ ...GAME, deck: {} }, 1)).toBe(15);
-    expect(nextPrice(GAME, log, { actorId: "a1", now: NOW })).toBe(22.5);
-    expect(nextPrice(GAME, log, { actorId: "a2", now: NOW })).toBe(15);
+    expect(nextPrice(GAME, tallyOf(log), { actorId: "a1", now: NOW })).toBe(22.5);
+    expect(nextPrice(GAME, tallyOf(log), { actorId: "a2", now: NOW })).toBe(15);
     expect(ordinal(1)).toBe("1st"); expect(ordinal(2)).toBe("2nd"); expect(ordinal(3)).toBe("3rd"); expect(ordinal(4)).toBe("4th"); expect(ordinal(11)).toBe("11th"); expect(ordinal(22)).toBe("22nd");
     expect(streakLine(GAME, 1)).toBe("2nd draw in a row: 15 gp (back to 10 gp after 2 minutes)");
     expect(streakLine(GAME, 0)).toBe("");
@@ -178,16 +179,16 @@ describe("the rising price", () => {
     const one = { ...GAME, deck: { ...GAME.deck, streakMinutes: 1 } };
     const log = [row({ at: NOW - 50_000 }), row({ at: NOW - 90_000 }), row({ at: NOW - 10_000, refunded: 1 }), row({ at: NOW - 5_000, actorId: "a2" })];
     // The newest unrefunded draw of this character plus the window.
-    expect(streakEndsAt(GAME, log, { actorId: "a1", now: NOW })).toBe(NOW - 50_000 + 120_000);
-    expect(streakEndsAt(one, log, { actorId: "a1", now: NOW })).toBe(NOW + 10_000);
+    expect(streakEndsAt(GAME, tallyOf(log), { actorId: "a1", now: NOW })).toBe(NOW - 50_000 + 120_000);
+    expect(streakEndsAt(one, tallyOf(log), { actorId: "a1", now: NOW })).toBe(NOW + 10_000);
     // The streak's last moment; the price is back a moment after.
-    expect(nextPrice(one, log, { actorId: "a1", now: NOW + 10_000 })).toBe(22.5);
-    expect(nextPrice(one, log, { actorId: "a1", now: NOW + 10_001 })).toBe(10);
+    expect(nextPrice(one, tallyOf(log), { actorId: "a1", now: NOW + 10_000 })).toBe(22.5);
+    expect(nextPrice(one, tallyOf(log), { actorId: "a1", now: NOW + 10_001 })).toBe(10);
     // No streak running (past the window, a window of 0, no draws): nothing to wait for.
-    expect(streakEndsAt(one, log, { actorId: "a1", now: NOW + 10_001 })).toBeNull();
-    expect(streakEndsAt({ ...GAME, deck: { ...GAME.deck, streakMinutes: 0 } }, log, { actorId: "a1", now: NOW })).toBeNull();
-    expect(streakEndsAt(GAME, [], { actorId: "a1", now: NOW })).toBeNull();
-    expect(DECK.shop.changesAt(one, { log, actorId: "a1", now: NOW })).toBe(NOW + 10_000);
+    expect(streakEndsAt(one, tallyOf(log), { actorId: "a1", now: NOW + 10_001 })).toBeNull();
+    expect(streakEndsAt({ ...GAME, deck: { ...GAME.deck, streakMinutes: 0 } }, tallyOf(log), { actorId: "a1", now: NOW })).toBeNull();
+    expect(streakEndsAt(GAME, tallyOf([]), { actorId: "a1", now: NOW })).toBeNull();
+    expect(DECK.shop.changesAt(one, { tally: tallyOf(log), actorId: "a1", now: NOW })).toBe(NOW + 10_000);
   });
 
   it("counts draws in a row within the deck's own window, and none with a window of 0", () => {
@@ -195,24 +196,24 @@ describe("the rising price", () => {
     const none = { ...GAME, deck: { ...GAME.deck, streakMinutes: 0 } };
     // 50 s and 90 s ago: both in a row by 2 minutes, only the newer by 1.
     const log = [row({ at: NOW - 50_000 }), row({ at: NOW - 90_000 })];
-    expect(streakAt(GAME, log, { actorId: "a1", now: NOW })).toBe(2);
-    expect(streakAt(one, log, { actorId: "a1", now: NOW })).toBe(2);
-    expect(streakAt(one, log, { actorId: "a1", now: NOW + 15_000 })).toBe(0);
-    expect(streakAt(one, [row({ at: NOW - 50_000 }), row({ at: NOW - 120_000 })], { actorId: "a1", now: NOW })).toBe(1);
-    expect(streakAt(none, log, { actorId: "a1", now: NOW })).toBe(0);
-    expect(streakOf(log, { boxId: "deck", actorId: "a1", now: NOW, within: 0 })).toBe(0);
-    expect(nextPrice(GAME, log, { actorId: "a1", now: NOW + 60_000 })).toBe(22.5);
-    expect(nextPrice(one, log, { actorId: "a1", now: NOW + 60_000 })).toBe(10);
-    expect(nextPrice(none, log, { actorId: "a1", now: NOW })).toBe(10);
+    expect(streakAt(GAME, tallyOf(log), { actorId: "a1", now: NOW })).toBe(2);
+    expect(streakAt(one, tallyOf(log), { actorId: "a1", now: NOW })).toBe(2);
+    expect(streakAt(one, tallyOf(log), { actorId: "a1", now: NOW + 15_000 })).toBe(0);
+    expect(streakAt(one, tallyOf([row({ at: NOW - 50_000 }), row({ at: NOW - 120_000 })]), { actorId: "a1", now: NOW })).toBe(1);
+    expect(streakAt(none, tallyOf(log), { actorId: "a1", now: NOW })).toBe(0);
+    expect(streakOf(tallyOf(log), { boxId: "deck", actorId: "a1", now: NOW, within: 0 })).toBe(0);
+    expect(nextPrice(GAME, tallyOf(log), { actorId: "a1", now: NOW + 60_000 })).toBe(22.5);
+    expect(nextPrice(one, tallyOf(log), { actorId: "a1", now: NOW + 60_000 })).toBe(10);
+    expect(nextPrice(none, tallyOf(log), { actorId: "a1", now: NOW })).toBe(10);
     expect(streakLine(one, 1)).toBe("2nd draw in a row: 15 gp (back to 10 gp after 1 minute)");
   });
 
   it("is what the core charges with a window of 1 minute: the second draw past it is a first draw again", async () => {
     const one = { ...GAME, deck: { ...GAME.deck, streakMinutes: 1 } };
     const priceOf = DECK.priceOf;
-    expect(priceOf({ game: one, actor: { id: "a1" }, log: [row({ at: NOW - 59_000 })], now: NOW })).toBe(15);
-    expect(priceOf({ game: one, actor: { id: "a1" }, log: [row({ at: NOW - 61_000 })], now: NOW })).toBe(10);
-    expect(priceOf({ game: GAME, actor: { id: "a1" }, log: [row({ at: NOW - 61_000 })], now: NOW })).toBe(15);
+    expect(priceOf({ game: one, actor: { id: "a1" }, tally: tallyOf([row({ at: NOW - 59_000 })]), now: NOW })).toBe(15);
+    expect(priceOf({ game: one, actor: { id: "a1" }, tally: tallyOf([row({ at: NOW - 61_000 })]), now: NOW })).toBe(10);
+    expect(priceOf({ game: GAME, actor: { id: "a1" }, tally: tallyOf([row({ at: NOW - 61_000 })]), now: NOW })).toBe(15);
   });
 
   it("draws the editor's two fields in their sentences, the window's hint named", () => {
@@ -401,7 +402,10 @@ describe("the GM's socket path", () => {
     expect(log.map(r => r.price)).toEqual([15, 10]);
     expect(log[0]).toMatchObject({ kind: "deck", cardId: "blank", card: "A blank card", cardKind: "blank", once: false, tone: "blank", streak: 2, swatch: "none", name: "A blank card", payoutCp: 0, itemId: null });
     expect(toCopper(world.actor.system.currency)).toBe(7500);
-    expect(world.game.settings.get("loot-crates", "actorState")).toEqual({});
+    // No per-buyer state: the deck's draws are its tallies, written with each row.
+    const state = world.game.settings.get("loot-crates", "actorState");
+    expect(Object.keys(state)).toEqual(["tally"]);
+    expect(Object.values(state.tally.buyers["a1.deck"].priced).sort()).toEqual(log.map(r => r.at).sort());
     // Every draw posts a card, with the deck's words and the row's id.
     expect(globalThis.ChatMessage.create).toHaveBeenCalledTimes(2);
     const [msg] = globalThis.ChatMessage.create.mock.calls[1];
@@ -439,7 +443,7 @@ describe("the GM's socket path", () => {
     expect(reveal).toMatchObject({ tone: "effect", text: "The next long rest is interrupted.", cardsLeft: 4, card: { id: "omen", once: true } });
     const [omen] = world.game.settings.get("loot-crates", "pullLog");
     expect(omen).toMatchObject({ cardId: "omen", once: true, text: "The next long rest is interrupted.", swatch: "none" });
-    expect(deckOdds(GAME, POOLS, getLog()).rows.map(r => r.name)).toEqual(["Item", "Coins", "Loss", "Blank"]);
+    expect(deckOdds(GAME, POOLS, tallyOf(getLog())).rows.map(r => r.name)).toEqual(["Item", "Coins", "Loss", "Blank"]);
     // The effect card's text rides in the chat card, inside the block the core seals.
     const [msg] = globalThis.ChatMessage.create.mock.calls[0];
     expect(msg.content).toContain(`<div class="lc-chat__text">The next long rest is interrupted.</div>`);
@@ -448,7 +452,7 @@ describe("the GM's socket path", () => {
     await drawOnce(world, rngOf(0.68), { requestId: "d2", price: 15 });
     expect(world.emitted.filter(m => m.type === "reveal")[1]).toMatchObject({ tone: "blank", cardsLeft: 4 });
     await refundPull(omen.id);
-    expect(deckOdds(GAME, POOLS, getLog()).rows.map(r => r.name)).toEqual(["Item", "Coins", "Loss", "Effect", "Blank"]);
+    expect(deckOdds(GAME, POOLS, tallyOf(getLog())).rows.map(r => r.name)).toEqual(["Item", "Coins", "Loss", "Effect", "Blank"]);
   });
 
   it("a loss card's row says what the card took, and an item card's row is the crate's", async () => {
@@ -520,12 +524,12 @@ describe("the one refund, for a card", () => {
     const at = NOW - 5000;
     await seed(actor, [{ ...LOSS, at: NOW - 60_000, payoutCp: 0, lossCp: undefined, takenCp: undefined, cardId: "blank", cardKind: "blank", tone: "blank", name: "A blank card", swatch: "none" }, { ...LOSS, at, cardId: "fortune", card: "Fortune", cardKind: "item", tone: "boon", name: "Ring of Wishes", uuid: "Item.b", rarity: "legendary", itemId: "item1", price: 15, payoutCp: 0, swatch: undefined, lossCp: undefined, takenCp: undefined, streak: 2 }]);
     const [second] = getLog();
-    expect(nextPrice(GAME, getLog(), { actorId: "a1", now: NOW })).toBe(22.5);
+    expect(nextPrice(GAME, tallyOf(getLog()), { actorId: "a1", now: NOW })).toBe(22.5);
     const out = await refundPull(second.id);
     expect(out).toMatchObject({ status: "refunded", removedItem: "Ring of Wishes" });
     expect(actor.items.has("item1")).toBe(false);
     expect(toCopper(actor.system.currency)).toBe(10000);
-    expect(nextPrice(GAME, getLog(), { actorId: "a1", now: NOW })).toBe(15);
+    expect(nextPrice(GAME, tallyOf(getLog()), { actorId: "a1", now: NOW })).toBe(15);
   });
 });
 
@@ -685,14 +689,14 @@ describe("the words", () => {
 
   it("offers the next draw from the window at the price the log says now, and says why it is off", () => {
     const log = [row({ at: NOW - 3000, actorId: "a1" })];
-    const ctx = { game: GAME, log, pools: POOLS, purse: { gp: 100 }, now: NOW, open: true, gmOnline: true };
+    const ctx = { game: GAME, tally: tallyOf(log), pools: POOLS, purse: { gp: 100 }, now: NOW, open: true, gmOnline: true };
     expect(kind.reveal.again(reveal(), ctx)).toEqual({ price: 15, label: "Draw again for 15 gp", off: "" });
-    expect(kind.reveal.again(reveal(), { ...ctx, log: [] })).toMatchObject({ price: 10, label: "Draw again for 10 gp" });
+    expect(kind.reveal.again(reveal(), { ...ctx, tally: null })).toMatchObject({ price: 10, label: "Draw again for 10 gp" });
     expect(kind.reveal.again(reveal(), { ...ctx, purse: { gp: 12 } })).toMatchObject({ price: 15, off: "Needs 3 gp more" });
     expect(kind.reveal.again(reveal(), { ...ctx, open: false })).toMatchObject({ off: "The GM has closed the shop." });
     expect(kind.reveal.again(reveal(), { ...ctx, open: false, gmOnline: false })).toMatchObject({ off: "Closed until a GM is online." });
     const once = { ...GAME, deck: { ...GAME.deck, cards: CARDS.map(c => ({ ...c, once: true })) } };
-    expect(kind.reveal.again(reveal(), { ...ctx, game: once, log: CARDS.map(c => row({ cardId: c.id })) })).toMatchObject({ off: "Every card is drawn" });
+    expect(kind.reveal.again(reveal(), { ...ctx, game: once, tally: tallyOf(CARDS.map(c => row({ cardId: c.id }))) })).toMatchObject({ off: "Every card is drawn" });
     expect(kind.reveal.again(reveal(), { ...ctx, game: null })).toBeNull();
     expect(kind.reveal.again(reveal({ replay: true }), ctx)).toBeNull();
   });
@@ -722,7 +726,10 @@ describe("the words", () => {
   });
 
   it("the shop card names the kinds of card, counts the cards left, prices the draw by the streak and says why it is off", () => {
-    const ctx = (over = {}) => ({ esc, purse: { gp: 100 }, hasActor: true, actorId: "a1", actorName: "Brinn", open: true, gmOnline: true, stateOf: () => ({}), log: [], now: NOW, held: () => false, ...over });
+    const ctx = (over = {}) => {
+      const c = { esc, purse: { gp: 100 }, hasActor: true, actorId: "a1", actorName: "Brinn", open: true, gmOnline: true, stateOf: () => ({}), log: [], now: NOW, held: () => false, ...over };
+      return { ...c, tally: tallyOf(c.log) };
+    };
     const why = html => html.match(/<div class="lc-box__why"[^>]*>([^<]*)<\/div>/)?.[1] ?? "";
     const html = kind.shop.card(GAME, POOLS, ctx());
     expect(html).toContain(`<span class="lc-odd lc-rarity-legendary">Item 20%</span><span class="lc-odd lc-rarity-coin">Coins 20%</span><span class="lc-odd lc-rarity-bane">Loss 20%</span><span class="lc-odd lc-rarity-none">Effect 10%</span><span class="lc-odd lc-rarity-none">Blank 30%</span>`);
@@ -752,7 +759,7 @@ describe("the words", () => {
 
   it("the manager's words: the rules cell, the editor's draft, preview and summary", () => {
     expect(deckRulesText(GAME)).toBe("5 cards, ×1.5 a draw in a row");
-    expect(deckRulesText(GAME, [row({ cardId: "omen" })])).toBe("5 cards, 1 drawn, ×1.5 a draw in a row");
+    expect(deckRulesText(GAME, tallyOf([row({ cardId: "omen" })]))).toBe("5 cards, 1 drawn, ×1.5 a draw in a row");
     expect(deckRulesText({ ...GAME, deck: { step: 2, cards: [CARDS[0]] } })).toBe("1 card, ×2 a draw in a row");
     // The window, when the GM set one other than the two minutes; none at all.
     expect(deckRulesText({ ...GAME, deck: { ...GAME.deck, streakMinutes: 5 } })).toBe("5 cards, ×1.5 a draw in a row within 5 minutes");
@@ -786,7 +793,7 @@ describe("the words", () => {
     expect(deckPreview({ ...GAME, pools: [] }, POOLS).note).toBe("The item cards have no pool ticked, so they can never be drawn; the other cards still can.");
     expect(deckPreview({ ...GAME, pools: [{ id: "empty", share: 1 }] }, { ...POOLS, empty: { id: "empty", entries: [] } }).note).toBe("The item cards' pools have no item that can drop, so they can never be drawn; the other cards still can.");
     const once = { ...GAME, deck: { ...GAME.deck, cards: CARDS.map(c => ({ ...c, once: true })) } };
-    const spent = deckPreview(once, POOLS, CARDS.map(c => row({ cardId: c.id })));
+    const spent = deckPreview(once, POOLS, tallyOf(CARDS.map(c => row({ cardId: c.id }))));
     expect(spent).toMatchObject({ warn: true, note: "Every card is drawn: reshuffle to put them back." });
     expect(deckPreviewHTML(spent)).toContain("lc-form__hint--warn");
     expect(DECK.id).toBe("deck");

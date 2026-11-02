@@ -64,8 +64,8 @@
       "Legend": "Who can buy",
       "EachMayBuy": "Each character may buy",
       "HowOften": "How often",
-      "EachHint": "Blank for no limit. Counted for each character from the Pull log, so a refund gives the purchase back.",
-      "EachHintDay": "Blank for no limit. Counted for each character from the Pull log, so a refund gives the purchase back; a day ends on the world's calendar or at the character's long rest."
+      "EachHint": "Blank for no limit. Counted for each character, every purchase they keep, so a refund gives the purchase back.",
+      "EachHintDay": "Blank for no limit. Counted for each character, every purchase they keep, so a refund gives the purchase back; a day ends on the world's calendar or at the character's long rest."
     },
     "Common": {
       "ThisCharacter": "this character",

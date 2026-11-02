@@ -17,7 +17,8 @@ const { dayKeyOf } = await import("../module/scripts/core/clock.js");
 const { getKind } = await import("../module/scripts/games/kinds.js");
 const { performPull, PullError } = await import("../module/scripts/foundry/pull.js");
 const { registerSocket } = await import("../module/scripts/foundry/socket.js");
-const { registerSettings, appendLog, getLog, getActorState, todayKey } = await import("../module/scripts/foundry/store.js");
+const { registerSettings, appendLog, getLog, getTally, getActorState, todayKey } = await import("../module/scripts/foundry/store.js");
+const { tallyOf } = await import("../module/scripts/core/tally.js");
 const { refundPull, describeRefund } = await import("../module/scripts/foundry/refund.js");
 const { postPullCard, postRefundCard } = await import("../module/scripts/foundry/chat.js");
 const { showReveal } = await import("../module/scripts/foundry/reveal.js");
@@ -147,9 +148,9 @@ describe("the cap per in-game day", () => {
   const log = [row(today), row(today), row(today, { refunded: 1 }), row("y1d6"), row(today, { actorId: "a2" }), row(today, { boxId: "other" })];
 
   it("counts this character's unrefunded throws at this well with today's key, and nothing without a clock", () => {
-    expect(throwsToday(log, { boxId: "well", actorId: "a1", day: today })).toBe(2);
-    expect(throwsToday(log, { boxId: "well", actorId: "a1", day: "y1d6" })).toBe(1);
-    expect(throwsToday(log, { boxId: "well", actorId: "a1", day: null })).toBe(0);
+    expect(throwsToday(tallyOf(log), { boxId: "well", actorId: "a1", day: today })).toBe(2);
+    expect(throwsToday(tallyOf(log), { boxId: "well", actorId: "a1", day: "y1d6" })).toBe(1);
+    expect(throwsToday(tallyOf(log), { boxId: "well", actorId: "a1", day: null })).toBe(0);
     expect(capOf(GAME)).toBe(3);
     expect(capOf({ rules: {} })).toBe(0);
     expect(capOf({ rules: { cap: "2.7" } })).toBe(2);
@@ -261,13 +262,14 @@ describe("the one refund, for a throw", () => {
     const actor = actorOf({ gp: 0, sp: 9, cp: 0 });
     await seed(actor, [MISS]);
     const rowId = getLog()[0].id;
+    expect(throwsToday(getTally(), { boxId: "well", actorId: "a1", day: "y1d7" })).toBe(1);
     const plan = describeRefund(rowId);
     expect(plan).toMatchObject({ status: "ready", coins: 10, item: null, state: { before: { sinceRare: 3 }, after: { sinceRare: 2, pulls: 2, owned: [] } } });
     const out = await refundPull(rowId);
     expect(out).toMatchObject({ status: "refunded", removedItem: null });
     expect(actor.system.currency).toEqual({ pp: 0, gp: 1, ep: 0, sp: 0, cp: 0 });
     expect(getActorState("a1", "well")).toEqual({ sinceRare: 2, owned: [], pulls: 2 });
-    expect(throwsToday(getLog(), { boxId: "well", actorId: "a1", day: "y1d7" })).toBe(0);
+    expect(throwsToday(getTally(), { boxId: "well", actorId: "a1", day: "y1d7" })).toBe(0);
     const card = await postRefundCard({ row: getLog()[0], actor, removedItem: null });
     expect(card.content).toContain("1 sp went back into their purse.");
     expect(card.content).toContain("lc-rarity-none");
@@ -316,7 +318,10 @@ describe("the Pull log's folded misses", () => {
 
 describe("the shop card", () => {
   const esc = s => String(s ?? "");
-  const ctx = (over = {}) => ({ purse: { gp: 1 }, hasActor: true, actorId: "a1", actorName: "Brinn", open: true, gmOnline: true, esc, stateOf: () => ({}), today: "y1d7", log: [], held: () => false, ...over });
+  const ctx = (over = {}) => {
+    const c = { purse: { gp: 1 }, hasActor: true, actorId: "a1", actorName: "Brinn", open: true, gmOnline: true, esc, stateOf: () => ({}), today: "y1d7", log: [], held: () => false, ...over };
+    return { ...c, tally: tallyOf(c.log) };
+  };
   const card = (over, game = GAME) => getKind("well").shop.card(game, POOLS, ctx(over));
   const why = html => html.match(/<div class="lc-box__why"[^>]*>([^<]*)<\/div>/)?.[1] ?? "";
 

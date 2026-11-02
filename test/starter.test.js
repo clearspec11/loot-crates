@@ -236,7 +236,7 @@ describe("the games", () => {
         crate: () => boxPreview(g, pools),
         well: () => wellPreview(g, pools),
         dice: () => dicePreview(g, pools),
-        deck: () => deckPreview(g, pools, []),
+        deck: () => deckPreview(g, pools, null),
         roulette: () => roulettePreview(g, pools),
         auction: () => auctionPreview(g),
         scratch: () => ({ note: scratchPreview(g, pools).notes.map(n => n.text).join(" ") }),
@@ -300,7 +300,7 @@ describe("the games", () => {
       expect(roll.size).toBe(g.roll.size);
       expect(roll.prizes.reduce((n, p) => n + p.count, 0) + roll.duds).toBe(g.roll.size);
       expect(roll.duds).toBeGreaterThan(0);
-      const st = rollState(g, []);
+      const st = rollState(g, null);
       expect([st.id, st.sold, st.left, st.soldOut]).toEqual([1, 0, g.roll.size, false]);
     }
   });

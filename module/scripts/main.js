@@ -10,7 +10,7 @@
   currency.js, strip.js, spin.js) are.
 */
 import { MODULE_ID, SETTINGS } from "./core/config.js";
-import { registerSettings, setStoreListener, registerIndexFields, getPools, getBoxes, getLog, getRounds, savePool, saveBox, entriesFromCompendium, entryFromItem, sweepAllPools } from "./foundry/store.js";
+import { registerSettings, setStoreListener, registerIndexFields, getPools, getBoxes, getLog, getTally, migrateTallies, getRounds, savePool, saveBox, entriesFromCompendium, entryFromItem, sweepAllPools } from "./foundry/store.js";
 import { registerSocket, requestPull, requestStake, requestRedeem, isActiveGM, restCompleted, settleOwedRests } from "./foundry/socket.js";
 import { makeTicket, ticketUseHook } from "./foundry/tickets.js";
 import { registerKind, getKind, kindOf } from "./games/kinds.js";
@@ -67,10 +67,14 @@ Hooks.once("init", () => {
 });
 
 Hooks.once("ready", () => {
+  // The Pull log's counts move to the tallies once (store.js
+  // migrateTallies), on the active GM, first in the write queue, so no
+  // play is counted from a half-moved world.
+  migrateTallies({ isActiveGM }).catch(err => console.error("loot-crates | moving the Pull log's counts to the tallies failed", err));
   registerSocket();
   const mod = game.modules.get(MODULE_ID);
   // registerKind adds a game of chance that runs on the crate's core (kinds.js).
-  if (mod) mod.api = { openShop, openManager, requestPull, performPull, showReveal, showReplay, draw, oddsTable, buildStrip, seededRng, getPools, getBoxes, getLog, savePool, saveBox, entriesFromCompendium, entryFromItem, registerKind, getKind, kindOf, openRound, closeRound, resolveRound, cancelRound, requestStake, onTable, setTableWindow, getRounds, openTable, openTableFor, makeCrateFromTable, addStarterCrates, openWelcome, makeTicket, requestRedeem };
+  if (mod) mod.api = { openShop, openManager, requestPull, performPull, showReveal, showReplay, draw, oddsTable, buildStrip, seededRng, getPools, getBoxes, getLog, getTally, savePool, saveBox, entriesFromCompendium, entryFromItem, registerKind, getKind, kindOf, openRound, closeRound, resolveRound, cancelRound, requestStake, onTable, setTableWindow, getRounds, openTable, openTableFor, makeCrateFromTable, addStarterCrates, openWelcome, makeTicket, requestRedeem };
   // Flag dead pool entries once at load, so the shop's odds are honest before
   // anyone buys; each pull sweeps its own box again (socket.js).
   // A table round's open stakes don't outlive their window across a reload

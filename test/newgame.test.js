@@ -10,6 +10,7 @@ import en from "../module/lang/en.json";
 import { setStrings } from "../module/scripts/core/i18n.js";
 import { NEW_DEFAULTS, NEW_TITLE, EDIT_TITLE, COPY_TITLE, DELETE_TITLE, editorTitle, deleteTitle, deleteGameText, deletedNotice, newDraft, crateFromPool, copyOf, copyName, addLabel, addedNotice } from "../module/scripts/views/newgame.js";
 import { drawnIds, deckOdds } from "../module/scripts/games/deck.js";
+import { tallyOf } from "../module/scripts/core/tally.js";
 import { liveRoundOf, newRound } from "../module/scripts/core/round.js";
 import { stockOf } from "../module/scripts/core/limits.js";
 import { DEFAULT_WEIGHTS, DEFAULT_PRICE_GP } from "../module/scripts/core/config.js";
@@ -143,13 +144,13 @@ describe("copyOf", () => {
       { id: "l1", kind: "deck", boxId: "k1", cardId: "a", at: 2000, actorId: "A" },
       { id: "l2", kind: "deck", boxId: "k1", cardId: "c", at: 3000, actorId: "A" },
     ];
-    expect(drawnIds(source, log)).toEqual(new Set(["a", "c"]));
+    expect(drawnIds(source, tallyOf(log))).toEqual(new Set(["a", "c"]));
     const copy = copyOf(source, { id: "k2", now: 4000 });
     expect(copy.deck.shuffledAt).toBe(4000);
-    expect(drawnIds(copy, log)).toEqual(new Set());
-    expect(deckOdds(copy, {}, log).drawn).toBe(0);
+    expect(drawnIds(copy, tallyOf(log))).toEqual(new Set());
+    expect(deckOdds(copy, {}, tallyOf(log)).drawn).toBe(0);
     // Even a row at the copy's own id from before its shuffle mark is out.
-    expect(drawnIds(copy, [...log, { id: "l3", kind: "deck", boxId: "k2", cardId: "a", at: 3500 }])).toEqual(new Set());
+    expect(drawnIds(copy, tallyOf([...log, { id: "l3", kind: "deck", boxId: "k2", cardId: "a", at: 3500 }]))).toEqual(new Set());
     expect(copyOf(source, { id: "k3" }).deck.shuffledAt).toBe(0);
   });
 

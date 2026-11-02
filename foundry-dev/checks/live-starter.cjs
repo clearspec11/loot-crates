@@ -294,7 +294,7 @@ const untilCard = (pl, boxId, pred, since) => pl.evaluate(async ({ boxId, pred, 
       const { toCopper } = await import(base + "scripts/core/currency.js");
       const actor = game.actors.get(before.actorId);
       const rows = store.getLog().filter(r => !before.logIds.includes(r.id));
-      return { purseCp: toCopper(actor.system.currency), items: actor.items.filter(i => !i.flags?.dnd5e?.cachedFor).length, rows: rows.map(r => ({ id: r.id, boxId: r.boxId, kind: r.kind ?? "crate", price: r.price, payoutCp: r.payoutCp ?? 0, outcome: r.outcome ?? null, tier: r.tier ?? null, name: r.name, itemId: r.itemId ?? null })), boxId };
+      return { purseCp: toCopper(actor.system.currency), items: actor.items.filter(i => !i.flags?.dnd5e?.cachedFor).length, rows: rows.map(r => ({ id: r.id, boxId: r.boxId, kind: r.kind ?? "crate", price: r.price, payoutCp: r.payoutCp ?? 0, outcome: r.outcome ?? null, tier: store.getTally().hidden?.[r.id]?.tier ?? null, name: r.name, itemId: r.itemId ?? null })), boxId };
     }, { base: MODULE_BASE, before, boxId });
 
     // 4. The GM refunds it from the Pull log.

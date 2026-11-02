@@ -295,7 +295,10 @@ describe("the GM's socket path", () => {
     const [row] = globalThis.game.settings.get("loot-crates", "pullLog");
     expect(row).toMatchObject({ id: reveal.logId, kind: "dice", boxId: "dice", actorId: "actor1", itemId: null, price: 10, payoutCp: 3000, faces: [4, 6, 5], total: 15, target: 12, formula: "3d6", win: true, name: "15 beats the dragon's 12" });
     expect(row).not.toHaveProperty("uuid");
-    expect(globalThis.game.settings.get("loot-crates", "actorState")).toEqual({});
+    // No per-buyer state: only the tallies the row counted toward.
+    const { tally, ...states } = globalThis.game.settings.get("loot-crates", "actorState");
+    expect(states).toEqual({});
+    expect(tally.buyers["actor1.dice"]).toEqual({ bought: 1 });
     expect(toCopper(world.actor.system.currency)).toBe(102000);
     // The card: the faces and the verdict, sealed by the core until the
     // dice land here; never a Roll in the message.

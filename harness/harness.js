@@ -159,6 +159,10 @@ import { tableBodyHTML } from "../module/scripts/views/tableview.js";
 import { lotOf, draftAuction, auctionPreview, auctionPreviewHTML } from "../module/scripts/games/auction.js";
 import { wireScratchEditor, draftScratch, scratchPreview, scratchPreviewHTML, rollState, layCard, mountScratch, poolRarities, THEMES } from "../module/scripts/games/scratch.js";
 import { wireFill } from "../module/scripts/games/scratchplan.js";
+import { tallyOf } from "../module/scripts/core/tally.js";
+
+// A sample log and the tallies a world would hold for it.
+const withTally = log => ({ log, tally: tallyOf(log) });
 import { editorHTML, lotChoices, wireLotSearch, showWhen, foldWeights, wireEditor, wireReadout } from "../module/scripts/views/editors.js";
 import { wirePoolPicker } from "../module/scripts/views/poolpicker.js";
 import { parsePrice } from "../module/scripts/core/currency.js";
@@ -309,9 +313,10 @@ function renderShop(extra = {}) {
   const ctx = {
     purse, hasActor: true, actorId: "tam", actorName: "Tam Thornwick", open: !closed, gmOnline: closed !== "1", art: CRATE_ICON,
     stateOf: id => (pityDue && id === BOX.id ? { sinceRare: BOX.rules.pity.after } : {}),
-    // The in-game day and the log the well counts today's throws from, and
-    // the deck its draws in a row.
-    today: "y1d1", log: [...deckDraws(Number(q.get("streak")) || 0), ...wellThrows(q.get("well") === "capped" ? WELL.rules.cap : 1), ...wheelStakes(), ...limitBuys(q.get("limit") === "reached" ? 2 : 1), ...(q.get("auction") === "1" ? auctionBids() : []), ...(q.has("scratch") ? scratchTickets() : [])],
+    // The in-game day, the log (a table round's stakes) and the tallies
+    // counted from it (core/tally.js) that the well counts today's throws
+    // from, the deck its draws in a row and the limit its buys.
+    today: "y1d1", ...withTally([...deckDraws(Number(q.get("streak")) || 0), ...wellThrows(q.get("well") === "capped" ? WELL.rules.cap : 1), ...wheelStakes(), ...limitBuys(q.get("limit") === "reached" ? 2 : 1), ...(q.get("auction") === "1" ? auctionBids() : []), ...(q.has("scratch") ? scratchTickets() : [])]),
     // The wheel's round, as the card reads it: open on the clock, closed, or
     // none; and the auction's, its gavel running.
     rounds: { ...(q.get("round") === "none" ? {} : { R1: q.get("round") === "closed" ? rouletteRound(Date.now(), { status: "closed", closesAt: Date.now() - 1000 }) : rouletteRound() }), ...(q.get("auction") === "1" ? { A1: auctionRound() } : {}) },
@@ -659,7 +664,7 @@ async function renderDeck() {
   const card = DECK.deck.cards.find(c => c.kind === outcome);
   const drawn = outcome === "item" ? draw({ box: DECK, pools: POOLS, rng: seededRng(seed), state: {} }) : null;
   const price = priceAt(DECK, streak - 1);
-  const plan = deckPlan(DECK, POOLS, []);
+  const plan = deckPlan(DECK, POOLS, null);
   const lossCp = outcome === "loss" ? card.gp * 100 : 0;
   const payoutCp = outcome === "coins" ? card.gp * 100 : -lossCp;
   const reveal = {
@@ -696,7 +701,7 @@ async function renderDeck() {
       outEl.innerHTML = kind.result(reveal, { esc, canSee: buyer });
       open.hidden = !(buyer && drawn);
       // Draw again, as the core offers it to the buyer: the next draw's price from the record.
-      const offer = buyer ? kind.again(reveal, { game: DECK, log: deckDraws(streak), pools: POOLS, purse: reveal.purse, now: Date.now() }) : null;
+      const offer = buyer ? kind.again(reveal, { game: DECK, tally: tallyOf(deckDraws(streak)), pools: POOLS, purse: reveal.purse, now: Date.now() }) : null;
       again.hidden = !offer;
       if (offer) again.textContent = offer.label;
       btn.dataset.action = "dismiss";
@@ -1028,7 +1033,7 @@ function renderBoxes({ toggled = null } = {}) {
     <div class="lc-manager__body">
       ${managerNavHTML({ tab: "boxes", shopOpen: q.get("shop") !== "closed" })}
       <section class="lc-tab" role="tabpanel">
-        ${boxesTabHTML({ boxes: GAMES, pools: POOLS, log: [...deckDraws(1, now), ...limitBuys(1), ...(q.has("scratch") ? scratchTickets() : [])], rounds: { R1: rouletteRound(now) }, recent: added?.id ?? null, esc })}
+        ${boxesTabHTML({ boxes: GAMES, pools: POOLS, tally: tallyOf([...deckDraws(1, now), ...limitBuys(1), ...(q.has("scratch") ? scratchTickets() : [])]), rounds: { R1: rouletteRound(now) }, recent: added?.id ?? null, esc })}
       </section>
     </div>`;
   if (added) {
@@ -1069,7 +1074,7 @@ function renderStarterBoxes(esc) {
     <div class="lc-manager__body">
       ${managerNavHTML({ tab: "boxes", shopOpen: true })}
       <section class="lc-tab" role="tabpanel">
-        ${boxesTabHTML({ boxes: built.games, pools, log: [], rounds: {}, action: built.games.length ? shelfAllHTML() : "", esc })}
+        ${boxesTabHTML({ boxes: built.games, pools, tally: null, rounds: {}, action: built.games.length ? shelfAllHTML() : "", esc })}
       </section>
     </div>`;
   if (built.games.length) {
@@ -1324,7 +1329,7 @@ const KIND_PREVIEW = {
   crate: [(box, v, ids) => draftBox(box, v, ids), (d, pools) => boxPreviewHTML(boxPreview(d, pools), escHTML), (d, pools) => boxPreview(d, pools).held],
   well: [draftWell, (d, pools) => wellPreviewHTML(wellPreview(d, pools), escHTML)],
   dice: [draftDice, (d, pools) => dicePreviewHTML(dicePreview(d, pools), escHTML)],
-  deck: [draftDeck, (d, pools) => deckPreviewHTML(deckPreview(d, pools, deckDraws(0)), escHTML)],
+  deck: [draftDeck, (d, pools) => deckPreviewHTML(deckPreview(d, pools, tallyOf(deckDraws(0))), escHTML)],
   roulette: [draftRoulette, (d, pools) => roulettePreviewHTML(roulettePreview(d, pools), escHTML), () => new Set()],
   auction: [null, d => auctionPreviewHTML(auctionPreview(d), escHTML), () => new Set()],
   scratch: [draftScratch, (d, pools) => scratchPreviewHTML(scratchPreview(d, pools), escHTML), (d, pools) => scratchPreview(d, pools).held],
@@ -1346,7 +1351,7 @@ function renderKindEditor(esc, kind) {
   const lots = lotChoices(BOXES, pools, lotOf(box));
   if (!(Number(q.get("width")) > 0)) Object.assign(document.getElementById("app").style, { width: `${WIDTH_OF[kind] ?? 460}px`, maxWidth: "100%" });
   let n = 0;
-  const sold = kind === "scratch" ? rollState(box, scratchTickets()).sold : 0;
+  const sold = kind === "scratch" ? rollState(box, tallyOf(scratchTickets())).sold : 0;
   stage.innerHTML = `
     <div class="dialog-form">
       <div class="dialog-content"><div class="lc-form">

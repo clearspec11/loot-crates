@@ -42,6 +42,7 @@ There are two kinds. **browsers** checks (`checks/*.cjs`) drive a GM and a playe
 | `live-focus` | in page | A full render of the pool editor keeps the GM where they were. |
 | `live-importer` | browsers | A crate whose only prize is an item Plutonium imported lands on the sheet with no "Use Importer?" prompt on the GM's screen, and its refund takes it back. |
 | `live-limits` | browsers | Stock limits (limits.js) at a real table, with the branch's code on both ends. |
+| `live-log-cap` | browsers | The Pull log's 500-row trim changes no rule (core/tally.js): after one purchase at a one-per-character crate, the log is padded past 500 so the purchase's row and a scratch roll's sold ticket fall off; the limit still refuses the next Buy with nothing charged and the roll still reads 4 of 5 left. Restores the log and the state setting. |
 | `live-linger` | browsers | Finished game windows close by themselves (linger.js, VIB-206), at a real table with the branch's code on both ends. |
 | `live-missing` | in page | A pool entry whose source is gone is never drawn, and the pool editor shows it. |
 | `live-narrow` | browsers | The manager's Boxes and Pull log tabs in a window a GM has sized down to 390 px (boxestable.js, logtable.js, module.css's lc-tab container), with the branch's code on the headless Gamemaster. |

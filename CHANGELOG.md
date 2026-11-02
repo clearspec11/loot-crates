@@ -6,7 +6,10 @@ The newest numbered entry's version is the one in `module/module.json`, and its 
 
 ## Unreleased
 
-- Nothing yet.
+- The Pull log no longer forgets what the rules count. It keeps its newest 500 rows, and every count a rule relies on is now kept on its own, written with each row: a character's limit per game ("1 in all", "2 a day"), the Wishing Well's throws today, a scratch roll's tickets sold and prizes paid, a deck's once cards and its rising draw price. Before, once a busy world passed 500 plays, the oldest rows fell off and took their counts with them: a character could buy past their limit, a long scratch roll could sell a prize it had already paid, and a once card could come back. A refund still gives its count back at once.
+- A table round's stakes are never trimmed off the log while the round is open or a stake is still held, so the GM's refunds and the stale refund at load always find them, however many plays happen meanwhile.
+- A scratch ticket's prize tier, number and winning panels are no longer written on its Pull log row; the GM's copy is kept beside the counts.
+- On the first load after updating, the GM's Foundry moves the counts over from the log once (the same numbers as before); nothing to do by hand, and loading with two GMs or an empty log is fine.
 
 ## 1.6.0
 
