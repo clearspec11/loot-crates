@@ -228,6 +228,27 @@ describe("a Foundry that gives the query no sender", () => {
     expect(world.actor.system.currency.gp).toBe(490);
   });
 
+  it("refuses a pull or a cancel replaying an id the named player's client already vouched for", async () => {
+    const world = makeWorld({ user: ANA });
+    const answer = globalThis.CONFIG.queries[SENT_QUERY];
+    const ana = { ...ANA, query: vi.fn(async (name, data) => answer(data)) };
+    requestPull({ boxId: "box", actorId: "actor1", price: 10 }).catch(() => {});
+    const id = world.queried[0].requestId;
+    // The GM's client: the same CONFIG.queries, Ana's client answering.
+    const gm = makeWorld({ users: [GM, ana, CY] });
+    globalThis.CONFIG.queries[SENT_QUERY] = answer;
+    await seed(gm.game);
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    await heardRequest(pull(id, "p1"), {});
+    expect(gm.actor.system.currency.gp).toBe(490);
+    // Cy heard the id on the reveal and sends it again in Ana's name.
+    await expect(heardRequest(pull(id, "p1"), {})).rejects.toThrow("so the GM refused it");
+    await expect(heardRequest({ type: "cancel", requestId: id, userId: "p1" }, {})).rejects.toThrow("so the GM refused it");
+    expect(gm.actor.system.currency.gp).toBe(490);
+    expect(getLog()).toHaveLength(1);
+    expect(getLog()[0].lateCancel).toBeUndefined();
+  });
+
   it.each([["says no", () => false], ["throws", () => { throw new Error("gone"); }]])("refuses it when the named player's client %s", async (_w, answer) => {
     const world = makeWorld({ users: users(answer) });
     await seed(world.game);
@@ -246,6 +267,8 @@ describe("a player's client", () => {
     expect(world.queried).toEqual([{ type: "pull", requestId: expect.any(String), boxId: "box", actorId: "actor1", userId: "p1", price: 10 }]);
     const sent = globalThis.CONFIG.queries[SENT_QUERY];
     expect(sent({ requestId: world.queried[0].requestId })).toBe(true);
+    // Once: an id asked about again (a replay of it) gets no.
+    expect(sent({ requestId: world.queried[0].requestId })).toBe(false);
     expect(sent({ requestId: "someone-elses" })).toBe(false);
     // Its wait running out calls it off the same way.
     vi.advanceTimersByTime(GM_TIMEOUT_MS + 1);

@@ -252,7 +252,9 @@ export function registerSocket() {
   const queries = globalThis.CONFIG?.queries;
   if (queries) {
     queries[REQUEST_QUERY] = async (data, context) => { await heardRequest(data, context); return true; };
-    queries[SENT_QUERY] = data => sentHere.has(data?.requestId);
+    // One yes per request id: a later ask (a replay of an id the reveal or
+    // a slow-pull ack made public) gets no.
+    queries[SENT_QUERY] = data => sentHere.delete(data?.requestId);
   }
   game.socket.on(SOCKET, msg => {
     if (isRequest(msg)) return isActiveGM() ? refuseUnsigned(msg) : null;
@@ -341,7 +343,11 @@ function refuseUnsigned(msg) {
 }
 
 // This client's own request ids (capped), so a GM asking "did you send
-// this?" (senderOf) gets a yes only for one it did.
+// this?" (senderOf) gets a yes only for one it did, and only once: the
+// ask forgets it, so another player who learns the id afterwards (it rides
+// the reveal and a slow pull's ack, which every client hears) can't send
+// a pull or a cancel in this player's name with it. A cancel notes its id
+// again.
 const sentHere = new Set();
 function noteSent(requestId) {
   if (!requestId) return;
