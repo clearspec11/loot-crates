@@ -573,11 +573,11 @@
       "CalendarOff": "dnd5e's calendar is off: a day ends at each character's long rest."
     },
     "News": {
-      "Title": "Fairer and safer",
-      "Line1": "The Pull log no longer forgets what the rules count. It keeps its newest 500 rows, and every count a rule relies on is now kept on its own, written with each row: a character's limit per game (\"1 in all\", \"2 a day\"), the Wishing Well's throws today, a scratch roll's tickets sold and prizes paid, a deck's once cards and its rising draw price. Before, once a busy world passed 500 plays, the oldest rows fell off and took their counts with them: a character could buy past their limit, a long scratch roll could sell a prize it had already paid, and a once card could come back. A refund still gives its count back at once.",
-      "Line2": "A player can no longer buy, use a ticket, bid or call a purchase off in someone else's name. Before, a player who sent the module's message by hand from the browser console could name another player as the buyer and spend their character's coins, and could call off another player's purchase. Requests now go to the GM through Foundry's own query, which tells the GM who really sent them: one naming anyone else is refused, nothing is charged and the GM is told. Players need Foundry's Query Users permission, which every role has unless the GM turned it off.",
-      "Line3": "After updating, every player should reload Foundry once; a browser still running the old version is told to.",
-      "Line4": "Make a pool from a compendium, in an empty crate's editor, can't be pressed twice while it is working, so it no longer makes two pools. The pool it makes is named for the crate (\"Goblin hoard pool\"), or for the compendium while the crate is still called New crate; it was named \"New crate\"."
+      "Title": "Give it, sell it, count it",
+      "Line1": "After the reveal, the winner can give the item to another player's character or sell it back to the house, without opening two sheets or asking the GM.",
+      "Line2": "The GM can see at a glance whether a game is too generous or too stingy, and who has sunk the most gold, without reading the Pull log row by row.",
+      "Line3": "A player can no longer make another player's purchase look failed.",
+      "Line4": "On the first load after updating, the GM's Foundry moves the counts over once more, keeping everything 1.7.0 counted; nothing to do by hand. Every player should reload Foundry once after updating."
     },
     "Welcome": {
       "Title": "Loot Crates",
