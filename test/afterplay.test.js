@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeAll, vi } from "vitest";
 import { createDocument } from "./minidom.js";
 
-const { SELL_BACK_DEFAULT, sellBackOf, sellBackFromForm, worthOf, worthColumns, sellCp, heldWorth, rowItems, giveTargets, isGiveTarget, partRefusal, partsLine, partSentence, anyParted, firstParted } = await import("../module/scripts/core/afterplay.js");
+const { SELL_BACK_DEFAULT, PART_WINDOW_MS, sellBackOf, sellBackFromForm, worthOf, worthColumns, sellCp, heldWorth, rowItems, giveTargets, isGiveTarget, partRefusal, partsLine, partSentence, anyParted, firstParted } = await import("../module/scripts/core/afterplay.js");
 const { afterHTML, wireAfter, setBusy, refused, showPart, spectatorLine } = await import("../module/scripts/views/afterreveal.js");
 const { applyRow, emptyTally, wonCount, countsChange } = await import("../module/scripts/core/tally.js");
 const { ownedAfterPart } = await import("../module/scripts/core/odds.js");
@@ -112,10 +112,11 @@ describe("who an item can be given to", () => {
 });
 
 describe("why the GM refuses", () => {
-  const row = { id: "r", userId: "p1", actorId: "a1", boxId: "box", itemId: "i1", name: "Wand of Webs" };
+  const NOW = 1_000_000_000;
+  const row = { id: "r", userId: "p1", actorId: "a1", boxId: "box", itemId: "i1", name: "Wand of Webs", at: NOW - 60_000 };
   const brinn = actor("a1", "Brinn", ["p1"]);
   const item = { id: "i1", flags: { "loot-crates": { boxId: "box" } } };
-  const why = over => partRefusal({ row, sender: ANA, itemId: "i1", actor: brinn, item, ...over });
+  const why = over => partRefusal({ row, sender: ANA, itemId: "i1", actor: brinn, item, now: NOW, ...over });
   it("names each case in a plain sentence, and lets the winner's own request through", () => {
     expect(why({})).toBeNull();
     expect(why({ row: null })).toBe("That play is no longer in the Pull log, so nothing was given or sold.");
@@ -126,6 +127,17 @@ describe("why the GM refuses", () => {
     expect(why({ row: { ...row, parted: { i1: { given: { actorId: "a2", actorName: "Saria" } } } } })).toBe("Wand of Webs was already given to Saria.");
     expect(why({ item: null })).toBe("Wand of Webs is no longer on Brinn's sheet. Nothing moved.");
     expect(why({ item: { id: "i1", flags: { "loot-crates": { boxId: "elsewhere" } } } })).toBe("Wand of Webs is no longer on Brinn's sheet. Nothing moved.");
+  });
+
+  it("takes a give or a sell for an hour after the play, and none after", () => {
+    const late = "Wand of Webs can be given away or sold back only within an hour of the play, so it stays with Brinn.";
+    expect(PART_WINDOW_MS).toBe(3_600_000);
+    expect(why({ row: { ...row, at: NOW - PART_WINDOW_MS } })).toBeNull();
+    expect(why({ row: { ...row, at: NOW - PART_WINDOW_MS - 1 } })).toBe(late);
+    expect(why({ row: { ...row, at: undefined } })).toBe(late);
+    // Someone else's old row still reads as not theirs, and an item already sold says so first.
+    expect(why({ sender: CY, row: { ...row, at: 0 } })).toBe("Only the player who won an item can give it away or sell it back. Nothing moved.");
+    expect(why({ row: { ...row, at: 0, parted: { i1: { soldCp: 100 } } } })).toBe("Wand of Webs was already sold back.");
   });
 });
 

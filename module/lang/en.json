@@ -745,7 +745,7 @@
       "PriceLegend": "The price",
       "ShelfRefused": "{name} stays off the shelf: {why}",
       "SellBack": "Sell back for {input} % of an item's price",
-      "SellBackHint": "While the reveal is open, the winner can sell an item back to the house for this share of its price. 0 turns it off for this game."
+      "SellBackHint": "While the reveal is open (up to an hour after the play), the winner can sell an item back to the house for this share of its price. 0 turns it off for this game."
     },
     "Game": {
       "EditBox": "Edit crate",
@@ -1471,6 +1471,7 @@
       "NotYours": "Only the player who won an item can give it away or sell it back. Nothing moved.",
       "Refunded": "That play was refunded, so {item} is no longer yours to pass on. Nothing moved.",
       "NotInRow": "That item didn't come from this play. Nothing moved.",
+      "TooLate": "{item} can be given away or sold back only within an hour of the play, so it stays with {actor}.",
       "AlreadyGiven": "{item} was already given to {target}.",
       "AlreadySold": "{item} was already sold back.",
       "Gone": "{item} is no longer on {actor}'s sheet. Nothing moved.",

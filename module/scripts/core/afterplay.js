@@ -18,6 +18,12 @@
   quantity, which can only lower the amount (heldWorth: a stack partly
   used since sells for what is left).
 
+  The GM takes a give or a sell only within PART_WINDOW_MS (an hour) of
+  the play, by the row's own `at` (the GM's clock, stamped when it was
+  written): the window closing is what keeps an item put on screen, and
+  this keeps it put against a request sent by hand from the console long
+  after. A row without `at` is refused.
+
   A row records each item's outcome in `parted` by item id: { at, given:
   { actorId, actorName } } or { at, soldCp }. A given or sold item no
   longer counts as owned for no duplicates (tally.js won, odds.js
@@ -28,6 +34,9 @@ import { COPPER_PER, formatPrice } from "./currency.js";
 import { t, listAnd } from "./i18n.js";
 
 export const SELL_BACK_DEFAULT = 50;
+
+// How long after the play the GM still takes a give or a sell.
+export const PART_WINDOW_MS = 60 * 60 * 1000;
 
 const clampPct = n => Math.max(0, Math.min(100, Math.floor(n)));
 
@@ -156,7 +165,7 @@ export const isGiveTarget = (actor, users, me) => !!targetOwners(actor, users, m
   `sender` the user Foundry names, `actor` the winner's character, `item`
   the item on it by the requested id.
 */
-export function partRefusal({ row, sender, itemId, actor, item }) {
+export function partRefusal({ row, sender, itemId, actor, item, now = Date.now() }) {
   if (!row) return t("LOOTCRATES.After.RowGone");
   const name = rowItems(row).find(i => i.id === itemId)?.name || row.name || t("LOOTCRATES.After.ThatItem");
   const mine = !!sender && row.userId === sender.id && !!actor && actor.testUserPermission?.(sender, "OWNER");
@@ -166,6 +175,8 @@ export function partRefusal({ row, sender, itemId, actor, item }) {
   const part = partOf(row, itemId);
   if (part?.given) return t("LOOTCRATES.After.AlreadyGiven", { item: name, target: part.given.actorName });
   if (part) return t("LOOTCRATES.After.AlreadySold", { item: name });
+  const at = Number(row.at);
+  if (!Number.isFinite(at) || now - at > PART_WINDOW_MS) return t("LOOTCRATES.After.TooLate", { item: name, actor: actor.name });
   const mark = item?.flags?.["loot-crates"];
   if (!item || mark?.boxId !== row.boxId) return t("LOOTCRATES.After.Gone", { item: name, actor: actor.name });
   return null;

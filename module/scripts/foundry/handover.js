@@ -47,7 +47,7 @@ function guard(msg) {
   const sender = game.users.get(msg.userId) ?? null;
   const actor = row ? game.actors.get(row.actorId) ?? null : null;
   const item = actor?.items?.get?.(msg.itemId) ?? null;
-  const why = partRefusal({ row, sender, itemId: msg.itemId, actor, item });
+  const why = partRefusal({ row, sender, itemId: msg.itemId, actor, item, now: Date.now() });
   if (why) throw new PullError(why);
   const name = rowItems(row).find(i => i.id === msg.itemId)?.name || item.name;
   return { row, sender, actor, item, name };
