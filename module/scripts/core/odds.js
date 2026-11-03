@@ -37,6 +37,7 @@
 */
 import { RARITIES, DEFAULT_WEIGHTS } from "./config.js";
 import { wonCount } from "./tally.js";
+import { firstParted } from "./afterplay.js";
 
 const RARITY_ALIASES = {
   "": "common", common: "common", uncommon: "uncommon", rare: "rare",
@@ -472,11 +473,24 @@ export function undoPull(state = {}, row, log = [], tally = null) {
 function stillWon(row, { log, live, tally }) {
   if (tally) {
     const now = log.find(r => r.id === row.id) ?? row;
-    const counted = !now.refunded && !row.keep ? 1 : 0;
+    const counted = !now.refunded && !row.keep && !firstParted(now) ? 1 : 0;
     return wonCount(tally, { boxId: row.boxId, actorId: row.actorId, uuid: row.uuid }) - counted > 0;
   }
   const fresh = row.before?.hadItem === false;
   return live.some(r => r.uuid === row.uuid && (!fresh || at(r) > at(row)));
+}
+
+/*
+  The buyer's state once the item `row` drew was given away or sold back
+  after the reveal (core/afterplay.js): no longer owned for no duplicates,
+  unless another unrefunded play there still holds it (`tally` the counts
+  with the row's `parted` already written, so its own play is out of
+  `won`). Any other part of the state is left as it is.
+*/
+export function ownedAfterPart(state = {}, row, tally) {
+  if (!row?.uuid || !firstParted(row) || !(state.owned ?? []).includes(row.uuid)) return state;
+  if (wonCount(tally, { boxId: row.boxId, actorId: row.actorId, uuid: row.uuid }) > 0) return state;
+  return { ...state, owned: state.owned.filter(u => u !== row.uuid) };
 }
 
 /*

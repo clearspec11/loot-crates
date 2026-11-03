@@ -20,7 +20,9 @@
     - won: { sourceUuid: n } the unrefunded plays there that drew that
       item, which a refund's no-duplicates undo reads (odds.js undoPull):
       the item stays owned while another play still holds it, whether or
-      not that play's row is still in the log.
+      not that play's row is still in the log. A play whose item was given
+      away or sold back after the reveal (`parted`, core/afterplay.js)
+      holds it no longer.
   - rolls["boxId.rollId"]: a scratch roll, { sold, tiers: { tier: n } },
     the tickets sold and the prize lines paid (scratch.js rollState). A
     Buy to keep draws nothing until it is used.
@@ -61,6 +63,7 @@
 
   Pure: no Foundry globals.
 */
+import { firstParted } from "./afterplay.js";
 
 export const TALLY_VERSION = 2;
 // Where the tallies are kept in the STATE setting (1.7.0 kept version 1
@@ -156,7 +159,7 @@ export function applyRow(tally, row, sign = 1, hidden = null) {
       b.days = newestDays(b.days);
       if (!Object.keys(b.days).length) delete b.days;
     }
-    if (row.uuid && !row.keep) {
+    if (row.uuid && !row.keep && !firstParted(row)) {
       b.won ??= {};
       bump(b.won, row.uuid, sign);
       if (!Object.keys(b.won).length) delete b.won;
@@ -223,7 +226,7 @@ export function tallyOf(log, hidden = {}) {
 const COUNTED_COLUMNS = ["boxId", "actorId", "roundId", "day", "kind", "cardId", "rollId", "uuid", "at"];
 export function countsOf(row, hidden = null) {
   if (!row) return "";
-  return JSON.stringify([!!row.refunded, !!row.redeem, !!row.redeem?.kept, !!row.keep, (hidden ?? row)?.tier ?? null, ...COUNTED_COLUMNS.map(c => row[c] ?? null)]);
+  return JSON.stringify([!!row.refunded, !!row.redeem, !!row.redeem?.kept, !!row.keep, firstParted(row), (hidden ?? row)?.tier ?? null, ...COUNTED_COLUMNS.map(c => row[c] ?? null)]);
 }
 export const countsChange = (before, after, hidden = null) => countsOf(before, hidden) !== countsOf(after, hidden);
 

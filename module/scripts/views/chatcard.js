@@ -75,3 +75,26 @@ export function refundedCardContent(content, row, { esc = String, when = refundT
   const end = html.lastIndexOf("</div>");
   return end < 0 ? html + note : html.slice(0, end) + note + html.slice(end);
 }
+
+/*
+  The card's content once an item of the play was given away or sold back
+  after the reveal (core/afterplay.js): one line at its foot saying what
+  became of the items ("Gave it to Saria", `line`, already in words), in
+  place of any such line before, and each link to a parted item on the
+  winner's sheet (now gone from it) unlinked. A refunded card is left as
+  it is (a row with a parted item can't be refunded, so it never is one).
+*/
+export const AFTER_CLASS = "lc-chat__after";
+export function partedCardContent(content, row, { esc = String, line = "", actorId = row?.actorId } = {}) {
+  let html = String(content ?? "");
+  if (isRefundedCard(html) || !line) return html;
+  for (const itemId of Object.keys(row?.parted ?? {})) {
+    const uuid = `Actor.${actorId}.Item.${itemId}`.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    html = html.replace(new RegExp(`<a\\b[^>]*data-uuid="${uuid}"[^>]*>([\\s\\S]*?)</a>`, "g"), "$1");
+  }
+  const note = `<div class="${AFTER_CLASS}">${esc(line)}</div>`;
+  const had = new RegExp(`<div class="${AFTER_CLASS}">[\\s\\S]*?</div>`);
+  if (had.test(html)) return html.replace(had, note);
+  const end = html.lastIndexOf("</div>");
+  return end < 0 ? html + note : html.slice(0, end) + note + html.slice(end);
+}

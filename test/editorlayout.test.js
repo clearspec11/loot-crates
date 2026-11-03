@@ -215,7 +215,8 @@ describe("only what applies is open", () => {
     const el = root(editorHTML("dice", newDraft("dice", { id: "d", pools: [{ id: "sea", share: 1 }] }), ctx));
     showWhen(el, { kind: "dice", rules: { prize: false } });
     const parts = el.querySelectorAll('[data-when="items"]');
-    expect(parts.map(p => p.dataset.section)).toEqual(["pools", "weights"]);
+    // The pools, the weights, and Sell back with its hint (core/afterplay.js).
+    expect(parts.map(p => p.dataset.section ?? p.getAttribute("class"))).toEqual(["pools", "weights", "lc-row lc-row--wrap lc-form__sellback", "lc-form__hint"]);
     expect(parts.every(p => p.hidden)).toBe(true);
     expect(el.querySelector('input[name="pool.sea"]').checked).toBe(true);
     showWhen(el, { kind: "dice", rules: { prize: true } });

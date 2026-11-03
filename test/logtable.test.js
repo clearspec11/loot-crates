@@ -37,7 +37,7 @@ describe("the Pull log table", () => {
     expect(html).toContain('aria-label="Refund one of 5 throws">Refund one</button>');
   });
 
-  it("reads each row's story: refunded, pity with its source, the late sale, the faces and payout, the bane, a lost stake", () => {
+  it("reads each row's story: refunded, pity with its source, an item given away, the late sale, the faces and payout, the bane, a lost stake", () => {
     expect(html).toContain('<tr class="lc-row--refunded" role="row">');
     expect(html).toContain("<s>Staff of Power</s>");
     expect(html).toContain("Cloak of Elvenkind · pity<small class=\"lc-log__rarity\">Rare, set by GM (source Uncommon)</small>");
@@ -47,6 +47,8 @@ describe("the Pull log table", () => {
     expect(html).toContain('class="lc-rarity-bane"');
     expect(html).toContain("Loss card · took 20 gp");
     expect(html).toContain("Lost at the spin.");
+    // Given to Orla after the reveal (core/afterplay.js).
+    expect(html).toContain('Rare, set by GM (source Uncommon)</small><small class="lc-log__parted">Tam Thornwick gave it to Orla Vane.</small>');
     expect((html.match(/data-action="refund"/g) ?? []).length).toBe(11);
   });
 

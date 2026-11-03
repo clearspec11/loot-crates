@@ -711,7 +711,9 @@
       "TicketFailed": "The ticket for {name} couldn't be made. The console says why.",
       "PoolsWheel": "Pools the item comes from",
       "PriceLegend": "The price",
-      "ShelfRefused": "{name} stays off the shelf: {why}"
+      "ShelfRefused": "{name} stays off the shelf: {why}",
+      "SellBack": "Sell back for {input} % of an item's price",
+      "SellBackHint": "While the reveal is open, the winner can sell an item back to the house for this share of its price. 0 turns it off for this game."
     },
     "Game": {
       "EditBox": "Edit crate",
@@ -1409,6 +1411,47 @@
       "LeftShown": "Players see what is left",
       "LeftHidden": "What is left is hidden from players",
       "SeesAnd": "{left}, {limits}"
+    },
+    "After": {
+      "Region": "After the reveal",
+      "Lead": "While this window is open you can give it to a party member or sell it back. Closing it leaves it with {actor}.",
+      "LeadSeveral": "While this window is open you can give each item to a party member or sell it back. Closing it leaves them with {actor}.",
+      "Give": "Give to…",
+      "GiveLabel": "Give {item} to a party member",
+      "Sell": "Sell back for {price}",
+      "SellLabel": "Sell {item} back for {price}",
+      "PickLabel": "Give {item} to",
+      "Target": "{name} ({players})",
+      "Confirm": "Give",
+      "Giving": "Giving…",
+      "Selling": "Selling…",
+      "NoTargets": "No other player has a character to give it to.",
+      "GaveSentence": "{actor} gave {item} to {target}.",
+      "SoldSentence": "{actor} sold {item} back for {price}.",
+      "GaveIt": "gave it to {target}",
+      "SoldIt": "sold it back for {price}",
+      "GaveNamed": "gave {item} to {target}",
+      "SoldNamed": "sold {item} back for {price}",
+      "CardLine": "{actor} {what}.",
+      "NoRefund": "This play can't be refunded, because what it won has left the sheet: {actor} {what}. Nothing was refunded.",
+      "ThatItem": "That item",
+      "RowGone": "That play is no longer in the Pull log, so nothing was given or sold.",
+      "NotYours": "Only the player who won an item can give it away or sell it back. Nothing moved.",
+      "Refunded": "That play was refunded, so {item} is no longer yours to pass on. Nothing moved.",
+      "NotInRow": "That item didn't come from this play. Nothing moved.",
+      "AlreadyGiven": "{item} was already given to {target}.",
+      "AlreadySold": "{item} was already sold back.",
+      "Gone": "{item} is no longer on {actor}'s sheet. Nothing moved.",
+      "BadTarget": "{item} can only go to a character another player owns. Nothing moved.",
+      "GiveFailed": "Giving {item} to {target} didn't work, so it stays with {actor}.",
+      "GiveUndoFailed": "Giving {item} failed halfway. The GM has been told to check both sheets.",
+      "GiveUndoFailedGM": "Giving {item} from {actor} to {target} failed halfway and the copy couldn't be taken back: both sheets have it. Delete one by hand.",
+      "SellOff": "{box} doesn't buy {item} back. Nothing was sold.",
+      "SellChanged": "{box} now buys {item} back for {price}. Nothing was sold; press Sell back again to sell it at that.",
+      "SellFailed": "Selling {item} back didn't work, so it stays with {actor} and no coins moved.",
+      "SellUndoFailed": "Selling {item} back failed halfway. The GM has been told to put it right.",
+      "SellUndoFailedGM": "Selling {item} back from {actor} failed halfway: the item is gone but {price} wasn't paid. Pay it or give the item back by hand.",
+      "Failed": "That didn't work, and nothing moved. Try again in a moment."
     }
   }
 }

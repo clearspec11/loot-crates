@@ -28,6 +28,7 @@ import { tallyOf } from "../core/tally.js";
 import { onShelf, shelfRefusal } from "../core/shelf.js";
 import { t } from "../core/i18n.js";
 import { spendTicket, keepTicket } from "./tickets.js";
+import { worthColumns } from "../core/afterplay.js";
 
 export { PullError } from "../games/kinds.js";
 export { sourceRaritiesOf };
@@ -67,7 +68,7 @@ export async function resolveSource(uuid) {
   takes coins): the stake and the loss leave the purse in the one settle(),
   never two writes.
 
-  Returns { result, itemId, itemIds, itemNames, purse, payoutCp, price,
+  Returns { result, itemId, itemIds, itemNames, worth, purse, payoutCp, price,
   priceNote, state, pools, kind, ...whatever the kind's roll added } (the
   crate: strip, sourceRarity, rarityOverride). `result` is null when the
   game gave nothing (a miss). `itemIds` are every item the play created
@@ -219,6 +220,9 @@ export async function performPull({ box, pools, actor, state = {}, rng = rollRng
     itemId: created[0]?.id ?? null,
     itemIds: created.map(d => d.id),
     itemNames: created.map(d => d.name),
+    // What each item was worth as granted (core/afterplay.js): the price a
+    // sell back after the reveal is paid from.
+    ...worthColumns(created),
     payoutCp,
     price,
     priceNote,
@@ -259,7 +263,7 @@ async function playTicket({ actor, ticket, purse, nextPurse, delta, datas, resul
     }
     throw new PullError(t("LOOTCRATES.Ticket.GrantFailed"));
   }
-  return { purse: nextPurse, itemId: created[0]?.id ?? null, itemIds: created.map(d => d.id), itemNames: created.map(d => d.name) };
+  return { purse: nextPurse, itemId: created[0]?.id ?? null, itemIds: created.map(d => d.id), itemNames: created.map(d => d.name), ...worthColumns(created) };
 }
 
 /*

@@ -255,7 +255,8 @@ export const scratchTickets = () => [
 // throws at the well that gave nothing and her Pauper's Box buy.
 export const sampleLog = (now = Date.now()) => [
   { id: "p1", kind: "crate", boxId: "royal", boxName: "Royal Vault", actorId: "orla", actorName: "Orla Vane", at: now - 60000, price: 1200, payoutCp: 0, name: "Staff of Power", rarity: "veryRare", refunded: now - 30000 },
-  { id: "p2", kind: "crate", boxId: BOX.id, boxName: BOX.name, actorId: "tam", actorName: "Tam Thornwick", at: now - 120000, price: BOX.price, payoutCp: 0, name: "Cloak of Elvenkind", rarity: "rare", pity: true, sourceRarity: ["uncommon"] },
+  // Given to Orla after the reveal (core/afterplay.js): its note says so.
+  { id: "p2", kind: "crate", boxId: BOX.id, boxName: BOX.name, actorId: "tam", actorName: "Tam Thornwick", at: now - 120000, price: BOX.price, payoutCp: 0, name: "Cloak of Elvenkind", rarity: "rare", pity: true, sourceRarity: ["uncommon"], itemId: "cloak", itemIds: ["cloak"], parted: { cloak: { at: now - 110000, given: { actorId: "orla", actorName: "Orla Vane" } } } },
   { id: "p3", kind: "crate", boxId: "common", boxName: "Pauper's Box", actorId: "bo", actorName: "Bo Marrow", at: now - 180000, price: 25, payoutCp: 0, name: "Club", rarity: "common", lateCancel: 1 },
   { id: "d1", kind: "dice", boxId: DICE.id, boxName: DICE.name, actorId: "tam", actorName: "Tam Thornwick", at: now - 240000, price: DICE.price, payoutCp: 3000, win: true, faces: DICE_FACES.win, name: "Beat the dragon" },
   { id: "k1", kind: "deck", boxId: DECK.id, boxName: DECK.name, actorId: "orla", actorName: "Orla Vane", at: now - 300000, price: DECK.price, payoutCp: -2000, cardId: "flames", card: "The Flames", cardKind: "loss", swatch: "bane", name: "The Flames" },

@@ -54,6 +54,17 @@ const STATES = [
   // skipped): Watch again beside Close, three buttons that wrap cleanly at
   // 390. Pressing it replays the strip in place, reading Skip.
   ["landed-missed", "state=landed&seed=7&buyer=1&watched=0"],
+  // After the reveal (afterreveal.js, VIB-219): under the vault, the
+  // buyer's Give to… and Sell back for 75 gp for the one item, and a pair
+  // for each of two; Give to… pressed (the picker in its place, the select
+  // focused, the other players' characters named with their players); Sell
+  // back pressed (the row says what was sold, focus back on Close); and a
+  // spectator's window, the line alone with no buttons.
+  ["landed-after", "state=landed&seed=7&buyer=1&after=1"],
+  ["landed-after-multi", "state=landed&seed=7&buyer=1&after=multi"],
+  ["landed-after-give", "state=landed&seed=7&buyer=1&after=1"],
+  ["landed-after-sold", "state=landed&seed=7&buyer=1&after=1"],
+  ["landed-after-watch", "state=landed&seed=7&after=watch"],
   // "Watch again" from the chat card: the replay window, titled as a replay,
   // shows the item and no gold or Open item; the card shows the button.
   ["replay", "state=replay&seed=7"],
@@ -382,6 +393,8 @@ function logProblems(narrow) {
   if (!/^5 throws that gave nothing, folded by day$/.test(document.querySelector(".lc-toolbar .lc-pool__hint")?.textContent ?? "")) out.push(`the misses line reads "${document.querySelector(".lc-toolbar .lc-pool__hint")?.textContent}"`);
   const rows = [...document.querySelectorAll(".lc-table tbody tr")];
   if (rows.length !== 13) out.push(`expected 13 rows, got ${rows.length}`);
+  // An item given away after the reveal (core/afterplay.js): its note under the row.
+  if (!/Tam Thornwick gave it to Orla Vane\./.test(document.querySelector(".lc-log__parted")?.textContent ?? "")) out.push("the given item's row doesn't say where it went");
   const plain = rows.find(r => !r.className);
   const refunded = document.querySelector(".lc-row--refunded");
   if (!refunded || !refunded.querySelector("s") || !/^refunded \S/.test(refunded.querySelector(".lc-log__status")?.textContent ?? "")) out.push("no refunded row reading as withdrawn");
@@ -1124,6 +1137,84 @@ function revealProblems(buyer) {
   for (const el of document.querySelectorAll(".lc-reveal__body *:not(.lc-spin__viewport *)")) {
     const r = el.getBoundingClientRect();
     if (r.right > document.documentElement.clientWidth + 1) { out.push(`reveal overflows: ${el.className}`); break; }
+  }
+  return out;
+}
+
+// The crate editor's Sell back (editorfields.js sellBackRow): in the price
+// section, right after the price, at the default 50, with its hint.
+function sellBackEditorProblems() {
+  const out = [];
+  const input = document.querySelector('input[name="sellBack"]');
+  if (!input) return ["the editor has no Sell back field"];
+  const label = input.closest("label");
+  if (label?.textContent.replace(/\s+/g, " ").trim() !== "Sell back for % of an item's price") out.push(`Sell back's label reads "${label?.textContent}"`);
+  if (input.value !== "50") out.push(`Sell back starts at ${input.value}`);
+  const price = document.querySelector('[data-section="price"]');
+  if (price?.nextElementSibling?.nextElementSibling !== label) out.push("Sell back isn't right after the price");
+  const hint = document.getElementById(input.getAttribute("aria-describedby"));
+  if (!hint || !/0 turns it off/.test(hint.textContent)) out.push("Sell back has no hint");
+  if (input.getBoundingClientRect().height < 20) out.push("Sell back's field is hidden");
+  return out;
+}
+
+// After the reveal (afterreveal.js): the section sits between the vault and
+// the window's buttons and never says Keep; each mode as the states above
+// describe it; every button 11px or more, 30px tall or more, inside the
+// window and clear of the others.
+function afterProblems(mode) {
+  const out = [];
+  const shown = el => !!el && !el.hidden && el.getBoundingClientRect().height > 0;
+  const slot = document.querySelector(".lc-reveal__after");
+  if (!shown(slot)) return ["no after-the-reveal section"];
+  const item = document.querySelector(".lc-reveal__name")?.textContent ?? "";
+  const words = el => el?.textContent.replace(/\s+/g, " ").trim() ?? "";
+  const s = slot.getBoundingClientRect();
+  if (s.top < document.querySelector(".lc-vault").getBoundingClientRect().bottom - 1 || s.bottom > document.querySelector(".lc-reveal__actions").getBoundingClientRect().top + 1) out.push("the section isn't between the vault and the window's buttons");
+  if (/\bKeep\b/.test(slot.textContent)) out.push("the section says Keep");
+  const buttons = [...slot.querySelectorAll("button")].filter(shown);
+  const rows = [...slot.querySelectorAll(".lc-after__item")];
+  const lead = words(slot.querySelector(".lc-after__lead"));
+  const close = document.querySelector(".lc-reveal__close");
+  if (mode === "watch") {
+    if (buttons.length) out.push("a spectator sees buttons");
+    if (words(slot) !== `Tam Thornwick gave ${item} to Saria Vell.`) out.push(`a spectator reads "${words(slot)}"`);
+  } else if (mode === "sold") {
+    if (buttons.length) out.push("the sold row still has buttons");
+    if (words(rows[0]?.querySelector(".lc-after__said")) !== `Tam Thornwick sold ${item} back for 75 gp.`) out.push(`the sold row reads "${words(rows[0])}"`);
+    if (lead) out.push("the lead line stayed once nothing is left to choose");
+    if (document.activeElement !== close) out.push("focus didn't go to Close once sold");
+    if (shown(document.querySelector(".lc-reveal__open"))) out.push("Open item is still offered for the item sold");
+    if (!/^345 gp 7 sp 3 cp left$/.test(document.querySelector(".lc-reveal__gold")?.textContent ?? "")) out.push(`the gold line reads "${document.querySelector(".lc-reveal__gold")?.textContent}" once sold`);
+  } else if (mode === "give") {
+    const pick = rows[0]?.querySelector(".lc-after__pick");
+    const select = pick?.querySelector("select");
+    if (!shown(pick) || shown(rows[0].querySelector(".lc-after__acts"))) out.push("Give to… didn't open the picker in its place");
+    if (document.activeElement !== select) out.push("the picker's select isn't focused");
+    if ([...(select?.options ?? [])].map(o => o.textContent).join(" | ") !== "Odo Underbough (Player4) | Saria Vell (Player3)") out.push(`the picker lists ${[...(select?.options ?? [])].map(o => o.textContent).join(" | ")}`);
+    if (words(pick?.querySelector("label")) !== `Give ${item} to`) out.push(`the picker's label reads "${words(pick?.querySelector("label"))}"`);
+    if (buttons.map(b => b.textContent).join(" | ") !== "Give | Cancel") out.push(`the picker's buttons read ${buttons.map(b => b.textContent).join(" | ")}`);
+  } else {
+    const multi = mode === "multi";
+    if (rows.length !== (multi ? 2 : 1)) out.push(`expected ${multi ? 2 : 1} rows, got ${rows.length}`);
+    const want = multi ? "While this window is open you can give each item to a party member or sell it back. Closing it leaves them with Tam Thornwick." : "While this window is open you can give it to a party member or sell it back. Closing it leaves it with Tam Thornwick.";
+    if (lead !== want) out.push(`the lead reads "${lead}"`);
+    const labels = buttons.map(b => b.textContent).join(" | ");
+    if (labels !== (multi ? "Give to… | Sell back for 75 gp | Give to… | Sell back for 25 gp" : "Give to… | Sell back for 75 gp")) out.push(`the buttons read ${labels}`);
+    const names = rows.map(r => words(r.querySelector(".lc-after__name")));
+    if (names.join(" | ") !== (multi ? `${item} | Potion of Greater Healing` : "")) out.push(`the rows are named ${names.join(" | ")}`);
+    if (buttons.some(b => !b.getAttribute("aria-label")?.includes(multi && b.closest(".lc-after__item") === rows[1] ? "Potion of Greater Healing" : item))) out.push("a button's name doesn't say which item");
+  }
+  const app = document.getElementById("app").getBoundingClientRect();
+  const rects = buttons.map(b => b.getBoundingClientRect());
+  for (const [i, b] of buttons.entries()) {
+    if (parseFloat(getComputedStyle(b).fontSize) < 11) out.push(`${b.textContent} is under 11px`);
+    if (rects[i].height < 30) out.push(`${b.textContent} is under 30px tall`);
+    if (rects[i].left < app.left - 1 || rects[i].right > app.right + 1) out.push(`${b.textContent} leaves the window`);
+    for (let j = i + 1; j < rects.length; j++) {
+      const [a, c] = [rects[i], rects[j]];
+      if (a.left < c.right - 1 && c.left < a.right - 1 && a.top < c.bottom - 1 && c.top < a.bottom - 1) out.push(`${b.textContent} overlaps ${buttons[j].textContent}`);
+    }
   }
   return out;
 }
@@ -2748,12 +2839,21 @@ try {
       else if (name.startsWith("editor-scratch-fill")) problems0.push(...await page.evaluate(scratchFillProblems, name === "editor-scratch-filled"));
       else if (EDITOR_KINDS[name]) {
         problems0.push(...await page.evaluate(editorOrderProblems, EDITOR_KINDS[name]), ...await page.evaluate(shelfEditorProblems));
+        if (name === "editor-crate") problems0.push(...await page.evaluate(sellBackEditorProblems));
         if (name === "editor-crate-picker") problems0.push(...await page.evaluate(pickerSearchProblems));
         if (name === "editor-auction-search") problems0.push(...await page.evaluate(lotSearchProblems));
       }
       else if (name === "box-odds") problems0.push(...await page.evaluate(oddsEditorProblems));
       else if (name === "drop-preview") problems0.push(...await page.evaluate(dropPreviewProblems));
       else if (name === "landed-nothing") problems0.push(...await page.evaluate(nothingRevealProblems));
+      else if (name.startsWith("landed-after")) {
+        // Give to… and Sell back pressed as a player does: a click.
+        const mode = name.slice("landed-after-".length) || "one";
+        if (mode === "give") await page.click(".lc-after__give");
+        if (mode === "sold") { await page.click(".lc-after__sell"); await page.waitForSelector("body[data-parted]", { timeout: 5000 }); }
+        if (mode !== "give" && mode !== "sold") problems0.push(...await page.evaluate(revealProblems, mode !== "watch"));
+        problems0.push(...await page.evaluate(afterProblems, mode));
+      }
       else if (name.startsWith("scratch")) {
         const mode = { "scratch-unscratched": "covered", "scratch-half": "half", "scratch-won": "won", "scratch-dud": "dud", "scratch-item": "item", "scratch-match3-won": "match3", "scratch-spectator": "spectator", "scratch-theme-fey": "fey", "scratch-combo": "combo" }[name];
         problems0.push(...await page.evaluate(scratchPrintProblems, mode), ...await page.evaluate(scratchRevealProblems, mode));

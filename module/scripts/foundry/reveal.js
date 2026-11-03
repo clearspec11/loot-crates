@@ -70,6 +70,16 @@
   played (the deck spent, the shop shut, the purse short) the button is
   off with the reason as a visible line.
 
+  After the reveal (VIB-219, views/afterreveal.js): once landed, the
+  winner alone gets, under the vault, Give to… and Sell back for N for
+  each item the play granted, sent to the GM by query (socket.js
+  requestGive, requestSell; foundry/handover.js does them). Closing the
+  window leaves the items where they are. The countdown holds while a
+  picker is open or a request is out. What became of an item replaces
+  its row's buttons; every other open reveal of the play says it in a
+  line once landed (heardParted, from the GM's `parted`), and only those
+  lines: spectators never see the buttons.
+
   The sheet and the shop keep the secret too, as the chat card does. The GM
   creates the item before it broadcasts the reveal, and writes the buyer's
   pity and owned record just after, so an open character sheet listed the
@@ -109,7 +119,11 @@ import { getBoxes, getPools, getLog, getTally, isShopOpen, todayKey } from "./st
 import { withLimit } from "../core/limits.js";
 // socket.js imports this file for showReveal; the cycle is safe, since each
 // side reaches the other only inside a function.
-import { requestPull } from "./socket.js";
+import { requestPull, requestGive, requestSell } from "./socket.js";
+import { onParted } from "./handover.js";
+import { rowItems, giveTargets, sellBackOf, sellCp, partSentence } from "../core/afterplay.js";
+import { afterHTML, wireAfter, setBusy, refused, showPart, spectatorLine } from "../views/afterreveal.js";
+import { formatGold } from "../core/currency.js";
 // The dice game's 3D dice bridge (Dice So Nice), set wherever reveals show.
 import "./dicereveal.js";
 import { t } from "../core/i18n.js";
@@ -558,6 +572,99 @@ export class CrateReveal extends ApplicationV2 {
     else btn.removeAttribute("aria-describedby");
   }
 
+  /* ---------- After the reveal ---------- */
+
+  // What became of each item, as this window says it (by item id): from
+  // the winner's own answer, or for anyone else from the GM's broadcast.
+  #parts = new Map();
+
+  // The winner's offer (views/afterreveal.js afterHTML), or null: only for
+  // the buyer's own first reveal of a pulled game that granted items.
+  #afterOffer() {
+    const r = this.reveal;
+    if (r.replay || !r.logId || !r.userId || r.userId !== globalThis.game?.user?.id) return null;
+    if (getKind(kindOf(r))?.table) return null;
+    const items = rowItems(r).filter(i => !this.#parts.has(i.id));
+    if (!items.length) return null;
+    try {
+      const box = getBoxes()[r.box?.id] ?? null;
+      const pct = box ? sellBackOf(box) : 0;
+      const users = game.users?.contents ?? [];
+      const targets = giveTargets({ actors: game.actors?.contents ?? [], users, userId: game.user.id, fromActorId: r.actorId });
+      return { items: items.map(i => ({ ...i, sellCp: sellCp(r.worth?.[i.id], pct) })), targets, actorName: r.actorName };
+    } catch (err) {
+      console.error("loot-crates | the choices after the reveal couldn't be offered", err);
+      return null;
+    }
+  }
+
+  #showAfter(root) {
+    const slot = root?.querySelector(".lc-reveal__after");
+    if (!slot) return;
+    const offer = this.#afterOffer();
+    if (offer) {
+      slot.innerHTML = afterHTML(offer, { esc, key: this.reveal.requestId ?? this.reveal.logId });
+      wireAfter(slot, {
+        onGive: (itemId, targetId, li) => this.#part("give", { itemId, targetId }, li),
+        onSell: (itemId, cp, li) => this.#part("sell", { itemId, cp }, li),
+        onPick: open => (open ? this.linger.pause("picking") : this.linger.resume("picking")),
+      });
+    }
+    for (const [itemId, text] of this.#parts) spectatorLine(slot, itemId, text, { esc });
+    slot.hidden = !slot.childElementCount;
+  }
+
+  // One Give or Sell back, out to the GM; its row says what came of it.
+  async #part(what, args, li) {
+    if (this.#closed) return;
+    const r = this.reveal;
+    setBusy(li, what);
+    this.linger.pause("parting");
+    try {
+      const answer = what === "give"
+        ? await requestGive({ logId: r.logId, itemId: args.itemId, targetId: args.targetId })
+        : await requestSell({ logId: r.logId, itemId: args.itemId, cp: args.cp });
+      if (answer?.type === "parted") this.#landPart(answer);
+      if (what === "give") this.linger.resume("picking");
+    } catch (err) {
+      // The house's price now, should it have changed (the sell button follows).
+      const box = getBoxes()[r.box?.id] ?? null;
+      const cp = what === "sell" ? sellCp(r.worth?.[args.itemId], box ? sellBackOf(box) : 0) : null;
+      refused(li, err?.message ?? "", { cp });
+    } finally {
+      this.linger.resume("parting");
+    }
+  }
+
+  // The winner's answer: the row's buttons give way to what happened, focus
+  // (if it was on the row) to the next row's button or Close, and a sale's
+  // coins in the gold line.
+  #landPart(answer) {
+    const root = this.element;
+    const slot = root?.querySelector(".lc-reveal__after");
+    if (!slot) return;
+    const text = partSentence(answer.part, { actor: this.reveal.actorName, item: answer.itemName });
+    this.#parts.set(answer.itemId, text);
+    const had = slot.contains(document.activeElement);
+    const next = showPart(slot, answer.itemId, text);
+    if (had && !this.#closed) this.linger.focus(next ?? root.querySelector(".lc-reveal__close"));
+    if (answer.itemId === this.reveal.itemId) root.querySelector(".lc-reveal__open").hidden = true;
+    const gold = root.querySelector(".lc-reveal__gold");
+    if (gold && answer.purse) gold.textContent = t("LOOTCRATES.Reveal.GoldLeft", { gold: formatGold(answer.purse) });
+  }
+
+  // The GM's word that an item of this play was given or sold (heardParted):
+  // a line, once landed, on everyone else's window.
+  partHeard(msg) {
+    if (this.reveal.replay || this.reveal.userId === game.user?.id || !msg?.itemId) return;
+    const text = partSentence(msg.part, { actor: msg.actorName ?? this.reveal.actorName, item: msg.itemName ?? "" });
+    this.#parts.set(msg.itemId, text);
+    const slot = this.element?.querySelector(".lc-reveal__after");
+    if (!slot || this.#landedAt === -Infinity || this.#closed) return;
+    spectatorLine(slot, msg.itemId, text, { esc });
+    slot.hidden = false;
+  }
+
   static async #openItem(_event, button) {
     const item = this.reveal.itemUuid ? await fromUuid(this.reveal.itemUuid).catch(() => null) : null;
     if (!item) {
@@ -609,6 +716,7 @@ export class CrateReveal extends ApplicationV2 {
         <div class="lc-reveal__spin"></div>
         <div class="lc-reveal__result lc-rarity-${esc(r.result?.rarity ?? "none")}" aria-live="polite"></div>
       </div>
+      <div class="lc-reveal__after" hidden></div>
       ${revealActionsHTML()}`;
     return root;
   }
@@ -683,6 +791,7 @@ export class CrateReveal extends ApplicationV2 {
     root.querySelector(".lc-reveal__open").hidden = !this.#itemStillThere();
     root.querySelector(".lc-reveal__watch").hidden = this.#watched || spin.reducedMotion || !this.#kind.replayable;
     this.#showAgain(this.#againOffer());
+    this.#showAfter(root);
     btn.dataset.action = "dismiss";
     btn.textContent = t("LOOTCRATES.Common.Close");
     if (focusIsFree(root, r, this.returnTo)) this.linger.focus(btn);
@@ -796,6 +905,16 @@ export function watchAgain(message, html) {
   });
   card.append(btn);
 }
+
+// What became of an item after the reveal (handover.js tellParted): every
+// open reveal of that play on this client hears it.
+export function heardParted(msg) {
+  if (!msg?.logId) return;
+  for (const app of foundry.applications.instances?.values?.() ?? []) {
+    if (app instanceof CrateReveal && app.reveal?.logId === msg.logId) app.partHeard(msg);
+  }
+}
+onParted(heardParted);
 
 export async function showReveal(reveal) {
   const app = new CrateReveal(reveal);

@@ -119,6 +119,7 @@ import { skippedNoun, describeSkipped, dropPreviewHTML, savedNotice, PAGE_ROWS, 
 import { formatPrice, parsePrice, unreadablePrice } from "../core/currency.js";
 import { managerNavHTML, MANAGER_TABS, directoryMenuEntry, statusBarHTML } from "../views/route.js";
 import { describeRefund, refundPull } from "./refund.js";
+import { sellBackFromForm } from "../core/afterplay.js";
 import { postRefundCard } from "./chat.js";
 import { makeTicket, showInItems } from "./tickets.js";
 import { changeCount } from "../core/redraw.js";
@@ -1025,6 +1026,7 @@ export class CrateManager extends ApplicationV2 {
           ...oddsRules(fresh.rules ?? {}, data, fresh.fromTable ?? box.fromTable),
           pity: data.pityRarity ? { minRarity: data.pityRarity, after: Math.max(1, Number(data.pityAfter) || 1) } : null,
           noDuplicates: !!data.noDuplicates,
+          sellBack: sellBackFromForm(data.sellBack),
           ...(data.restock === "1" ? restocked : s => s)(stockFromForm(fresh.rules ?? {}, { shown: shownStock, value: data.stock })),
           perCharacter: perCharacterFromForm(data),
         },
@@ -1071,6 +1073,7 @@ export class CrateManager extends ApplicationV2 {
         cap: data.cap === "" || data.cap == null ? null : Math.max(0, Math.floor(Number(data.cap) || 0)),
         pity: data.pityRarity ? { minRarity: data.pityRarity, after: Math.max(1, Number(data.pityAfter) || 1) } : null,
         noDuplicates: !!data.noDuplicates,
+        sellBack: sellBackFromForm(data.sellBack),
       },
     }), data);
   }
@@ -1109,7 +1112,7 @@ export class CrateManager extends ApplicationV2 {
       pools: draft.pools.filter(ref => ref.id in getPools()),
       weights: draft.weights,
       dice: draft.dice,
-      rules: { ...fresh.rules, prize: draft.rules.prize, perCharacter: perCharacterFromForm(data) },
+      rules: { ...fresh.rules, prize: draft.rules.prize, perCharacter: perCharacterFromForm(data), sellBack: sellBackFromForm(data.sellBack) },
     }), data);
   }
 
@@ -1173,7 +1176,7 @@ export class CrateManager extends ApplicationV2 {
       pools: draft.pools.filter(ref => ref.id in getPools()),
       weights: draft.weights,
       deck: { ...(fresh.deck ?? {}), step: draft.deck.step, streakMinutes: draft.deck.streakMinutes ?? streakMinutesOf(fresh), cards: draft.deck.cards },
-      rules: { ...(fresh.rules ?? {}), perCharacter: perCharacterFromForm(data) },
+      rules: { ...(fresh.rules ?? {}), perCharacter: perCharacterFromForm(data), sellBack: sellBackFromForm(data.sellBack) },
     }), data);
   }
 
@@ -1238,7 +1241,7 @@ export class CrateManager extends ApplicationV2 {
       // The roll as it is now (Print a new roll may have moved it on while
       // the dialog was open), with the GM's size and prizes.
       roll: { ...(fresh.roll ?? {}), size: draft.roll.size, prizes: draft.roll.prizes },
-      rules: { ...(fresh.rules ?? {}), perCharacter: perCharacterFromForm(data) },
+      rules: { ...(fresh.rules ?? {}), perCharacter: perCharacterFromForm(data), sellBack: sellBackFromForm(data.sellBack) },
     }), data);
   }
 
@@ -1403,7 +1406,9 @@ export class CrateManager extends ApplicationV2 {
     // Winnings the character has spent can't come back: the confirm's
     // place is taken by the sentence naming the shortfall, and nothing is
     // written. Focus returns to the row's Refund, which still stands.
-    if (plan.status === "short") {
+    // An item given away or sold back after the reveal: the play stands,
+    // said the same way.
+    if (plan.status === "short" || plan.status === "parted") {
       await DialogV2.prompt({ window: { title: t("LOOTCRATES.Log.Refund") }, content: `<p>${esc(plan.message)}</p>`, ok: { label: t("LOOTCRATES.Common.Close") }, rejectClose: false });
       return target.focus?.();
     }

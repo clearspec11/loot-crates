@@ -25,6 +25,10 @@
   more on its stack, or made again from the row), and what the play won is
   taken back as any refund takes it. It took no stock, so it gives none.
 
+  A play with an item the winner gave away or sold back after the reveal
+  (its row's `parted`, foundry/handover.js) is refused with a plain
+  sentence before anything is marked: the item is gone.
+
   A Buy to keep (its row's `keep`, socket.js doKeep) played nothing: its
   refund takes one kept ticket out of the pack (tickets.js takeKeptTicket)
   and gives its price back, and the stock it took. A character who no
@@ -41,6 +45,7 @@ import "../games/crate.js";
 import { findPullCard, isRefundedCard, refundedCardContent } from "../views/chatcard.js";
 import { returnTicket, takeKeptTicket } from "./tickets.js";
 import { keptTicketFor } from "../games/ticket.js";
+import { anyParted, partedRefundMessage } from "../core/afterplay.js";
 
 // What a refund of this row moves, in copper: the stake back, the payout
 // taken back, and coins the game took beyond the stake (a negative payout,
@@ -103,7 +108,9 @@ export function grantedItems(row, actor) {
 export const grantedItem = (row, actor) => grantedItems(row, actor).items[0] ?? null;
 
 // What a refund of this row would do, for the confirm dialog. Writes nothing.
-// status: "ready" | "already" | "missing" | "no-actor" | "short" | "ticket-gone"
+// status: "ready" | "already" | "missing" | "no-actor" | "short" | "ticket-gone" | "parted"
+// ("parted": an item was given away or sold back after the reveal, so the
+// play can't be undone, the item being gone: core/afterplay.js)
 // `coins` is what the character gets back, in copper (negative: gives back).
 // A Buy to keep is ready while the character still has a kept ticket to
 // that game at that price (`ticket`, the stack one is taken from).
@@ -111,6 +118,7 @@ export function describeRefund(rowId) {
   const row = getLog().find(r => r.id === rowId);
   if (!row) return { status: "missing", message: t("LOOTCRATES.Refund.Missing") };
   if (row.refunded) return { status: "already", row, message: t("LOOTCRATES.Refund.Already") };
+  if (anyParted(row)) return { status: "parted", row, message: partedRefundMessage(row) };
   const actor = game.actors.get(row.actorId);
   if (!actor) return { status: "no-actor", row, message: t("LOOTCRATES.Refund.NoActor") };
   const box = getBoxes()[row.boxId] ?? null;

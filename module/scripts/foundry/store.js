@@ -12,7 +12,7 @@
   each entry as missing or renamed, with Remove, Update and Relink.
 */
 import { MODULE_ID, SETTINGS } from "../core/config.js";
-import { normalizeRarity, flattenPool, markEntriesMissing, rawRarityOf, sourceRarityOf, curateEntries } from "../core/odds.js";
+import { normalizeRarity, flattenPool, markEntriesMissing, rawRarityOf, sourceRarityOf, curateEntries, ownedAfterPart } from "../core/odds.js";
 import { dayModeOf, dayKeyFor, byRest, dayOf, dayAfterRest, keyOfDay } from "../core/clock.js";
 import { pruneRounds } from "../core/round.js";
 import { t } from "../core/i18n.js";
@@ -409,6 +409,36 @@ export async function updateLogRows(patches) {
   if (!by.size) return;
   const l = ledger();
   patchRows(l, by);
+  await writeLedger(l);
+}
+
+/*
+  After the reveal (foundry/handover.js): an item of a play given away or
+  sold back, marked on its row (`parted`, core/afterplay.js) with the
+  tallies the mark moves (the item is no longer won there) and the buyer's
+  no-duplicates record (odds.js ownedAfterPart), in one write. Marked
+  before the item or the coins move, as a refund is, so a second request
+  is refused; returns what liftPart needs to take the mark back when what
+  follows fails, or null when the row is gone.
+*/
+export async function recordPart(rowId, itemId, part) {
+  const l = ledger();
+  const row = l.log.find(r => r.id === rowId);
+  if (!row) return null;
+  const key = `${row.actorId}.${row.boxId}`;
+  const mark = { rowId, key, parted: row.parted ?? null, state: l.state[key] ?? null };
+  patchRows(l, new Map([[rowId, { parted: { ...(row.parted ?? {}), [itemId]: part } }]]));
+  if (mark.state) l.state[key] = ownedAfterPart(mark.state, row, l.tally);
+  await writeLedger(l);
+  return mark;
+}
+
+// The row's mark and the buyer's record as they were before recordPart.
+export async function liftPart(mark) {
+  if (!mark) return;
+  const l = ledger();
+  patchRows(l, new Map([[mark.rowId, { parted: mark.parted ?? undefined }]]));
+  if (mark.state) l.state[mark.key] = mark.state;
   await writeLedger(l);
 }
 

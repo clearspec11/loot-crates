@@ -136,6 +136,12 @@
   draws nothing; the pointer over the window pauses it, and when it runs
   out the window "closes" as its Close does). &paused=1 holds it, as the
   pointer over the window would: "Paused, 30 s left".
+  ?after=1 | multi | watch (landed: after the reveal, afterreveal.js, as
+  reveal.js mounts it once landed: 1 the buyer's Give to… and Sell back for
+  75 gp under the vault, multi the same for a play that granted two items
+  (each named, a pair each), watch the line a spectator sees once the
+  buyer gave the item away. Give (after picking) and Sell back answer here
+  after a beat, as the GM would, and the row says what happened.)
   ?state=welcome (the GM's welcome, welcome.js: a world with games, so Open
   the manager is the primary and has focus; ?empty=1, a new world, where
   Add starter crates is; ?view=news, "What's new in 0.14.0" after an
@@ -175,13 +181,15 @@ import { onShelf, shelfFor, shelfFieldHTML, shelfRules, shelfNotice } from "../m
 import { draw, seededRng } from "../module/scripts/core/odds.js";
 import { buildStrip, NOTHING_CARD } from "../module/scripts/core/strip.js";
 import { mountSpin } from "../module/scripts/views/spin.js";
-import { charge, formatPrice, formatGold } from "../module/scripts/core/currency.js";
+import { charge, formatPrice, formatGold, settle as refundCoins } from "../module/scripts/core/currency.js";
 import { resultHTML, missHTML, oddsWithNothing, replaySnapshot, replayReveal, replayTitle, revealActionsHTML } from "../module/scripts/views/revealcard.js";
 import { RARITY_LABEL, RARITIES, DEFAULT_WEIGHTS } from "../module/scripts/core/config.js";
 import { actorPicker, boxCard, oddsRibbon, shopHTML, shopNotice, patchShop, draftBox, boxPreview, boxPreviewHTML } from "../module/scripts/views/boxcard.js";
 import { shopOdds } from "../module/scripts/core/odds.js";
 import { loadStrings } from "../module/scripts/core/i18n.js";
 import { Linger, lingerMs } from "../module/scripts/core/linger.js";
+import { afterHTML, wireAfter, setBusy, showPart, spectatorLine } from "../module/scripts/views/afterreveal.js";
+import { partSentence } from "../module/scripts/core/afterplay.js";
 
 // The module's words (module/lang/en.json), in before anything is drawn,
 // as main.js loads them in a world.
@@ -234,7 +242,7 @@ document.getElementById("title").textContent = appTitle;
 const CRATE_ICON = `<svg class="lc-box__icon" viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M3 8.5 12 4l9 4.5v8L12 21l-9-4.5z"/><path d="M3 8.5 12 13l9-4.5M12 13v8"/></svg>`;
 
 const nav = document.getElementById("nav");
-for (const [label, query] of [["shop", "state=shop"], ["spin", "state=spin"], ["landed", "state=landed"], ["landed, buyer", "state=landed&buyer=1"], ["missed", "state=landed&buyer=1&watched=0"], ["replay", "state=replay"], ["well", "state=well&buyer=1"], ["well, coin", "state=well&outcome=coin&buyer=1"], ["well, item", "state=well&outcome=item&buyer=1"], ["dice", "state=dice&buyer=1"], ["dice, lost", "state=dice&outcome=lose&buyer=1"], ["dice, prize", "state=dice&outcome=prize&buyer=1"], ["deck", "state=deck&buyer=1"], ["deck, item", "state=deck&outcome=item&buyer=1"], ["deck, bane", "state=deck&outcome=loss&buyer=1"], ["deck, effect", "state=deck&outcome=effect&buyer=1"], ["table", "state=table"], ["table, GM", "state=table&phase=waiting&gm=1"], ["wheel", "state=table&phase=spinning"], ["wheel, landed", "state=table&phase=landed&duration=0"], ["manager", "state=manager"], ["empty manager", "state=manager&empty=1"], ["boxes", "state=manager&tab=boxes&added=1"], ["starter", "state=manager&tab=boxes&starter=1"], ["pull log", "state=manager&tab=log"], ["box editor", "state=editor"], ["table crate", "state=shop&table=1"], ["table editor", "state=editor&odds=weight"], ["table drop", "state=preview"], ["nothing", "state=landed&nothing=1&buyer=1"], ["auction", "state=auction&phase=open"], ["auction, bids", "state=auction&phase=bid"], ["auction, GM", "state=auction&phase=bid&gm=1"], ["auction, hammer", "state=auction&phase=hammer&duration=0"], ["auction, crate", "state=auction&phase=hammer&lot=crate"], ["auction card", "state=shop&auction=1"], ["scratch card", "state=shop&scratch=1"], ["scratch hidden", "state=shop&scratch=hidden"], ["sold out", "state=shop&scratch=soldout"], ["scratch editor", "state=editor&scratch=1"], ["editor, off the shelf", "state=editor&guard=offshelf"], ["editor, stock", "state=editor&guard=stock"], ["editor, discard", "state=editor&guard=discard"], ["scratch fill", "state=editor&scratch=1&fill=done"], ["scratch", "state=scratch&buyer=1&phase=covered"], ["scratch, half", "state=scratch&buyer=1&phase=half"], ["scratch, watched", "state=scratch&phase=sweep"], ["scratch, match 3", "state=scratch&layout=match3&buyer=1"], ["scratch, fey", "state=scratch&outcome=coins&buyer=1&duration=0&ticket=fey"], ["scratch, combo", "state=scratch&outcome=combo&buyer=1&duration=0"], ["welcome", "state=welcome"], ["welcome, new world", "state=welcome&empty=1"], ["what's new", "state=welcome&view=news"]]) {
+for (const [label, query] of [["shop", "state=shop"], ["spin", "state=spin"], ["landed", "state=landed"], ["landed, buyer", "state=landed&buyer=1"], ["missed", "state=landed&buyer=1&watched=0"], ["after the reveal", "state=landed&buyer=1&after=1"], ["after, two items", "state=landed&buyer=1&after=multi"], ["replay", "state=replay"], ["well", "state=well&buyer=1"], ["well, coin", "state=well&outcome=coin&buyer=1"], ["well, item", "state=well&outcome=item&buyer=1"], ["dice", "state=dice&buyer=1"], ["dice, lost", "state=dice&outcome=lose&buyer=1"], ["dice, prize", "state=dice&outcome=prize&buyer=1"], ["deck", "state=deck&buyer=1"], ["deck, item", "state=deck&outcome=item&buyer=1"], ["deck, bane", "state=deck&outcome=loss&buyer=1"], ["deck, effect", "state=deck&outcome=effect&buyer=1"], ["table", "state=table"], ["table, GM", "state=table&phase=waiting&gm=1"], ["wheel", "state=table&phase=spinning"], ["wheel, landed", "state=table&phase=landed&duration=0"], ["manager", "state=manager"], ["empty manager", "state=manager&empty=1"], ["boxes", "state=manager&tab=boxes&added=1"], ["starter", "state=manager&tab=boxes&starter=1"], ["pull log", "state=manager&tab=log"], ["box editor", "state=editor"], ["table crate", "state=shop&table=1"], ["table editor", "state=editor&odds=weight"], ["table drop", "state=preview"], ["nothing", "state=landed&nothing=1&buyer=1"], ["auction", "state=auction&phase=open"], ["auction, bids", "state=auction&phase=bid"], ["auction, GM", "state=auction&phase=bid&gm=1"], ["auction, hammer", "state=auction&phase=hammer&duration=0"], ["auction, crate", "state=auction&phase=hammer&lot=crate"], ["auction card", "state=shop&auction=1"], ["scratch card", "state=shop&scratch=1"], ["scratch hidden", "state=shop&scratch=hidden"], ["sold out", "state=shop&scratch=soldout"], ["scratch editor", "state=editor&scratch=1"], ["editor, off the shelf", "state=editor&guard=offshelf"], ["editor, stock", "state=editor&guard=stock"], ["editor, discard", "state=editor&guard=discard"], ["scratch fill", "state=editor&scratch=1&fill=done"], ["scratch", "state=scratch&buyer=1&phase=covered"], ["scratch, half", "state=scratch&buyer=1&phase=half"], ["scratch, watched", "state=scratch&phase=sweep"], ["scratch, match 3", "state=scratch&layout=match3&buyer=1"], ["scratch, fey", "state=scratch&outcome=coins&buyer=1&duration=0&ticket=fey"], ["scratch, combo", "state=scratch&outcome=combo&buyer=1&duration=0"], ["welcome", "state=welcome"], ["welcome, new world", "state=welcome&empty=1"], ["what's new", "state=welcome&view=news"]]) {
   const a = document.createElement("a");
   a.href = `?${query}&seed=${seed}&theme=${theme}`;
   a.textContent = label;
@@ -378,6 +386,7 @@ async function renderSpin() {
         <div class="lc-reveal__spin"></div>
         <div class="lc-reveal__result lc-rarity-${result.rarity}" aria-live="polite"></div>
       </div>
+      <div class="lc-reveal__after" hidden></div>
       ${revealActionsHTML()}
     </div>`;
   const out = stage.querySelector(".lc-reveal__result");
@@ -397,6 +406,7 @@ async function renderSpin() {
       btn.textContent = "Close";
       btn.focus({ preventScroll: true });
       lingerOn(btn);
+      if (!replay && !nothing) afterReveal(stage, { itemName: result.entry.name, close: btn, purse: reveal.purse });
     },
   });
   btn.addEventListener("click", () => { if (landed) location.search = `?state=${replay ? "replay" : "shop"}&seed=${seed}&theme=${theme}`; else spin.skip(); });
@@ -426,6 +436,38 @@ async function renderSpin() {
   await spin.play();
   document.body.dataset.landed = "1";
   window.__lootCrates = { result, strip };
+}
+
+// After the reveal (?after=, afterreveal.js), as reveal.js mounts it.
+function afterReveal(stageEl, { itemName, close, purse: left }) {
+  const mode = q.get("after");
+  const slot = stageEl.querySelector(".lc-reveal__after");
+  if (!mode || !slot) return;
+  const actor = "Tam Thornwick";
+  const say = part => partSentence(part, { actor, item: itemName });
+  if (mode === "watch") {
+    spectatorLine(slot, "i1", say({ given: { actorName: "Saria Vell" } }));
+    slot.hidden = false;
+    return;
+  }
+  const items = [{ id: "i1", name: itemName, sellCp: 7500 }, ...(mode === "multi" ? [{ id: "i2", name: "Potion of Greater Healing", sellCp: 2500 }] : [])];
+  const targets = [{ id: "odo", name: "Odo Underbough", players: "Player4" }, { id: "saria", name: "Saria Vell", players: "Player3" }];
+  slot.innerHTML = afterHTML({ items, targets, actorName: actor }, { esc: s => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;"), key: "harness" });
+  slot.hidden = false;
+  const answer = (li, itemId, part) => setTimeout(() => {
+    const had = slot.contains(document.activeElement);
+    const next = showPart(slot, itemId, partSentence(part, { actor, item: items.find(i => i.id === itemId).name }));
+    if (had) (next ?? close).focus({ preventScroll: true });
+    // As reveal.js does: the item is gone from the sheet, a sale's coins in the gold line.
+    if (itemId === "i1") stageEl.querySelector(".lc-reveal__open").hidden = true;
+    const gold = stageEl.querySelector(".lc-reveal__gold");
+    if (gold && part.soldCp) gold.textContent = `${formatGold(refundCoins(left, part.soldCp))} left`;
+    document.body.dataset.parted = itemId;
+  }, 300);
+  wireAfter(slot, {
+    onGive: (itemId, targetId, li) => { setBusy(li, "give"); answer(li, itemId, { given: { actorName: targets.find(c => c.id === targetId).name } }); },
+    onSell: (itemId, cp, li) => { setBusy(li, "sell"); answer(li, itemId, { soldCp: cp }); },
+  });
 }
 
 // The pull's chat card as chat.js posts it, with the Watch again button
