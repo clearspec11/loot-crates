@@ -109,7 +109,7 @@ Result:
 
 - **Credentials and tokens: 0 matches.** The word "password" appears only in "a Gamemaster with no password: a dev world only" in `foundry-dev/README.md`, and "token" only as design tokens and CSS class names.
 - **Tailnet: 0 matches.**
-- **Private addresses:** `192.168.0.57:30000` (the dev Foundry world, 37 lines) and `192.168.0.190:8766` (the LAN server for the working copy, 27 lines), in the dev checks and their docs. Expected and fine: LAN addresses that can't be reached from the internet.
+- **Private addresses:** `192.168.0.57:30000` (the dev Foundry world at the time, 37 lines; it moved to `192.168.0.58:30000` on 2026-11-03, so a check run now finds both) and `192.168.0.190:8766` (the LAN server for the working copy, 27 lines), in the dev checks and their docs. Expected and fine: LAN addresses that can't be reached from the internet.
 - **Host names:** "homelab" twice, in a local path (`/home/claude/homelab/loot-crates/...`) inside an `.impeccable/` design record. Harmless; it names a folder, not a host.
 - **E-mail addresses:** the commit identities only: the bot `brindle@beetoff.xyz`, GitHub's own `noreply` addresses and the `Co-Authored-By` trailer's `noreply@anthropic.com`. Nothing private.
 

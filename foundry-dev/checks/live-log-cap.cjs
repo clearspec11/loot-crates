@@ -238,7 +238,7 @@ async function restore(gm, before, purchaseRow) {
       return {
         padded, after: log.length, pastCap: log.slice(500).length, pastCapAreStakes: log.slice(500).every(r => r.roundId),
         purchaseGone: !log.some(r => r.id === purchaseId), soldGone: !log.some(r => r.id === before.soldId),
-        hiddenGone: !tally.hidden?.[before.soldId], tallyVersion: tally.v,
+        hiddenGone: !tally.hidden?.[before.soldId], tallyVersion: tally.v, tallyWant: (await import(base + "scripts/core/tally.js")).TALLY_VERSION,
       };
     }, { base: MODULE_BASE, before, purchaseId: purchaseRow?.id ?? null });
 
@@ -263,7 +263,7 @@ async function restore(gm, before, purchaseRow) {
     out.checks = {
       cardsBefore: out.start.ms != null && out.start.crate.limit === "You can buy 1 more" && !out.start.crate.off && out.start.ticket.stock === "4 of 5 tickets left" && !out.start.ticket.off,
       bought: out.bought.ms != null && out.purchase?.price === 1 && out.bought.purseCp === paid && out.bought.items === before.items.length + 1 && out.bought.crate.why === limitWhy,
-      trimmed: out.trim.padded > 500 && out.trim.after >= 500 && out.trim.pastCapAreStakes && out.trim.purchaseGone && out.trim.soldGone && out.trim.hiddenGone && out.trim.tallyVersion === 1,
+      trimmed: out.trim.padded > 500 && out.trim.after >= 500 && out.trim.pastCapAreStakes && out.trim.purchaseGone && out.trim.soldGone && out.trim.hiddenGone && out.trim.tallyVersion === out.trim.tallyWant,
       limitHolds: out.afterTrim.crate.off && out.afterTrim.crate.why === limitWhy && out.afterTrim.crate.limit === "",
       pressDoesNothing: out.afterPress.purseCp === paid && out.afterPress.items === before.items.length + 1 && out.afterPress.crate.off,
       staleRefused: out.stale.refused === sentence && out.afterStale.purseCp === paid && out.afterStale.items === before.items.length + 1 && out.rowsAfter === 0,

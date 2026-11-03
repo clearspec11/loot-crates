@@ -6,7 +6,13 @@ The newest numbered entry's version is the one in `module/module.json`, and its 
 
 ## Unreleased
 
-- Nothing yet.
+- A player can no longer make another player's purchase look failed. Before, a player who had heard a purchase's request in the browser console could send a fake "it failed" message: the buyer's shop said the purchase had failed while the GM went on charging it, and a second press charged again. Every answer to a player's request (the reveal they opened, a ticket kept, a bet placed, a refusal, "it went through after all") now comes back with the request itself, through Foundry's query, and a player's browser ignores anything else that claims to answer it. Other players' reveals still play for everyone to watch.
+- A purchase that went through after the buyer's wait ran out still says so, now from the GM's own answer.
+- A long rest a player takes while the GM can't be reached (the GM left as it was sent, or the player can't query) is kept in their browser and sent when a GM next loads, as a rest taken with no GM online already was. Before, it was lost.
+- The counts the rules read (limits, the well's cap, scratch rolls, a deck's cards and price) now stay right when a GM's browser still runs an older version: a purchase it records is counted once the next time the counts are read, and a refund it makes is taken back. Before, after 1.7.0 moved the counts over, a purchase recorded by a GM browser not yet reloaded was never counted, and refunding an older purchase could make a count read low.
+- A refund in a crate or well with No duplicates no longer frees an item early: the item stays out of the draw while another unrefunded purchase still holds it, even once that purchase's row has left the Pull log.
+- A day's counts are kept by date: marking an old purchase as called off, or lifting an old refund, can no longer push today's count out (only the newest 30 days are kept).
+- On the first load after updating, the GM's Foundry moves the counts over once more (version 2), keeping everything 1.7.0 counted; nothing to do by hand.
 
 ## 1.7.0
 

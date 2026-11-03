@@ -36,6 +36,7 @@
   roll, the odds and the strip all follow the pool editor.
 */
 import { RARITIES, DEFAULT_WEIGHTS } from "./config.js";
+import { wonCount } from "./tally.js";
 
 const RARITY_ALIASES = {
   "": "common", common: "common", uncommon: "uncommon", rare: "rare",
@@ -435,12 +436,16 @@ const at = r => r.at ?? 0;
   The buyer's state as if the pull in `row` never happened, for a refund.
   `state` is their current { sinceRare, owned, pulls } for row's actor and
   box; `log` is the pull log (rows carry `at`; `row` may already be marked
-  refunded in it). Only the actor+box's other unrefunded rows count.
-  - owned loses row.uuid unless another unrefunded row granted it too. A
-    row that says the item wasn't owned before it (`before.hadItem`
-    false) only counts later rows: an earlier grant had already left the
-    record (a GM reset the state, or its write failed) or it would have
-    been owned.
+  refunded in it); `tally` the counts as they stand (core/tally.js). Only
+  the actor+box's other unrefunded plays count.
+  - owned loses row.uuid unless another unrefunded play drew it too, as
+    the tally's `won` count says (the log can have lost those rows to its
+    trim: the item would leave the record while the character still had a
+    play holding it). The row's own play is in that count until its
+    refund is written, so it is taken off while the log shows it live.
+    With no tally (a caller from before it), from the log: a row that says
+    the item wasn't owned before it (`before.hadItem` false) only counts
+    later rows, since an earlier grant had already left the record.
   - pulls goes down by one.
   - sinceRare (rows since the change carry `before.sinceRare` and
     `resetPity`): a row that counted toward it takes its 1 back; a row that
@@ -449,11 +454,10 @@ const at = r => r.at ?? 0;
     sinceRare stays.
   - A row from before the change (no `before`) keeps sinceRare as it is.
 */
-export function undoPull(state = {}, row, log = []) {
+export function undoPull(state = {}, row, log = [], tally = null) {
   const mine = log.filter(r => r.id !== row.id && r.actorId === row.actorId && r.boxId === row.boxId);
   const live = mine.filter(r => !r.refunded);
-  const fresh = row.before?.hadItem === false;
-  const owned = (state.owned ?? []).filter(u => u !== row.uuid || live.some(r => r.uuid === u && (!fresh || at(r) > at(row))));
+  const owned = (state.owned ?? []).filter(u => u !== row.uuid || stillWon(row, { log, live, tally }));
   const out = { ...state, owned, pulls: Math.max(0, (state.pulls ?? 0) - 1) };
   if (!row.before) return out;
 
@@ -461,6 +465,18 @@ export function undoPull(state = {}, row, log = []) {
   if (live.some(r => at(r) > at(row) && r.resetPity)) return out;
   if (!row.resetPity) return { ...out, sinceRare: Math.max(0, since - 1) };
   return { ...out, sinceRare: wiped(row, mine) + since };
+}
+
+// Whether another unrefunded play of this character at this game still
+// holds row.uuid (undoPull).
+function stillWon(row, { log, live, tally }) {
+  if (tally) {
+    const now = log.find(r => r.id === row.id) ?? row;
+    const counted = !now.refunded && !row.keep ? 1 : 0;
+    return wonCount(tally, { boxId: row.boxId, actorId: row.actorId, uuid: row.uuid }) - counted > 0;
+  }
+  const fresh = row.before?.hadItem === false;
+  return live.some(r => r.uuid === row.uuid && (!fresh || at(r) > at(row)));
 }
 
 /*

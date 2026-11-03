@@ -17,7 +17,7 @@ import { dayModeOf, dayKeyFor, byRest, dayOf, dayAfterRest, keyOfDay } from "../
 import { pruneRounds } from "../core/round.js";
 import { t } from "../core/i18n.js";
 import { LINGER_DEFAULT } from "../core/linger.js";
-import { TALLY_VERSION, applyRow, migrateLog, trimLog } from "../core/tally.js";
+import { TALLY_VERSION, TALLY_KEY, LEGACY_KEY, applyRow, migrateLog, trimLog, catchUp, needsCatchUp, countsChange, stamp } from "../core/tally.js";
 import { hiddenOf, setHidden, dropHidden } from "./hidden.js";
 
 const uid = () => (globalThis.foundry?.utils?.randomID?.(10)) ?? Math.random().toString(36).slice(2, 12);
@@ -280,17 +280,25 @@ export async function setActorState(actorId, boxId, state) {
   came from. The log keeps its newest 500 rows and every row a table round
   still needs (tally.js trimLog); the counts don't depend on it.
 
-  A world from before the tallies (or one whose migration hasn't run yet)
-  is moved over by the first write here, or by the active GM's load
+  A world from before these tallies (or one whose migration hasn't run
+  yet) is moved over by the first write here, or by the active GM's load
   (migrateTallies): the same rows give the same tallies, so a second run
   changes nothing. Until then getTally counts them from the log as it is.
+  A row another build wrote or refunded since (no stamp, or a stale one:
+  tally.js catchUp) is counted by the next read and written by the next
+  write, so getTally and the write agree on it.
 */
 export const newId = uid;
 
 export function getTally() {
   const state = game.settings.get(MODULE_ID, SETTINGS.STATE);
-  if (Number(state?.tally?.v) >= TALLY_VERSION) return foundry.utils.deepClone(state.tally);
-  return migrateLog({ log: game.settings.get(MODULE_ID, SETTINGS.LOG), tally: state?.tally }).tally;
+  const log = game.settings.get(MODULE_ID, SETTINGS.LOG);
+  if (!(Number(state?.[TALLY_KEY]?.v) >= TALLY_VERSION)) {
+    return migrateLog({ log, tally: state?.[TALLY_KEY], legacy: state?.[LEGACY_KEY], states: state }).tally;
+  }
+  const tally = foundry.utils.deepClone(state[TALLY_KEY]);
+  if (needsCatchUp(log)) catchUp(tally, foundry.utils.deepClone(log), state?.[LEGACY_KEY]);
+  return tally;
 }
 
 /*
@@ -319,12 +327,12 @@ function ledger() {
   const state = get(SETTINGS.STATE) ?? {};
   let log = get(SETTINGS.LOG);
   if (!Array.isArray(log)) log = [];
-  const moved = migrateLog({ log, tally: state.tally });
+  const moved = migrateLog({ log, tally: state[TALLY_KEY], legacy: state[LEGACY_KEY], states: state });
   if (moved) {
     log = moved.log;
-    state.tally = moved.tally;
-  }
-  return { state, log, tally: state.tally };
+    state[TALLY_KEY] = moved.tally;
+  } else catchUp(state[TALLY_KEY], log, state[LEGACY_KEY]);
+  return { state, log, tally: state[TALLY_KEY] };
 }
 
 // Writes the ledger back, trimmed, with any other settings in the same
@@ -332,18 +340,23 @@ function ledger() {
 async function writeLedger({ state, log }, more = {}) {
   const { log: kept } = trimLog(log, { rounds: getRounds() });
   const ids = new Set(kept.map(r => r?.id));
-  dropHidden(state.tally, Object.keys(state.tally?.hidden ?? {}).filter(id => !ids.has(id)));
+  dropHidden(state[TALLY_KEY], Object.keys(state[TALLY_KEY]?.hidden ?? {}).filter(id => !ids.has(id)));
   await setMany({ [SETTINGS.LOG]: kept, [SETTINGS.STATE]: state, ...more });
 }
 
-// Patches rows and moves the tallies by the difference each makes.
+// Patches rows and moves the tallies by the difference each makes: none
+// for a patch that changes nothing a tally reads (a late cancel's mark).
 function patchRows(l, patches) {
   for (const row of l.log) {
     if (!patches.has(row.id)) continue;
     const hidden = hiddenOf(l.tally, row.id);
-    applyRow(l.tally, row, -1, hidden);
+    const before = { ...row };
     Object.assign(row, patches.get(row.id));
-    applyRow(l.tally, row, 1, hidden);
+    if (countsChange(before, row, hidden)) {
+      applyRow(l.tally, before, -1, hidden);
+      applyRow(l.tally, row, 1, hidden);
+    }
+    stamp(row);
   }
 }
 
@@ -358,7 +371,7 @@ export async function appendLog({ id = uid(), ...entry }, { hidden = null } = {}
   const row = { id, at: Date.now(), ...entry };
   l.log.unshift(row);
   setHidden(l.tally, id, hidden);
-  applyRow(l.tally, row, 1, hidden);
+  applyRow(l.tally, stamp(row), 1, hidden);
   await writeLedger(l);
   return id;
 }
@@ -374,7 +387,7 @@ export async function recordPlay({ row, hidden = null, state = null, box = null,
   const full = { at: Date.now(), ...row };
   l.log.unshift(full);
   setHidden(l.tally, full.id, hidden);
-  applyRow(l.tally, full, 1, hidden);
+  applyRow(l.tally, stamp(full), 1, hidden);
   if (state != null) l.state[`${full.actorId}.${full.boxId}`] = state;
   const more = {};
   if (box && stock != null) {
@@ -410,7 +423,7 @@ export function migrateTallies({ isActiveGM = () => true } = {}) {
   return enqueueWrite(async () => {
     if (!isActiveGM()) return false;
     const state = get(SETTINGS.STATE) ?? {};
-    if (Number(state.tally?.v) >= TALLY_VERSION) return false;
+    if (Number(state[TALLY_KEY]?.v) >= TALLY_VERSION) return false;
     await writeLedger(ledger());
     return true;
   });

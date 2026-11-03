@@ -21,18 +21,25 @@
 //      the crate's real Buy; whatever request it overhears, it calls off
 //      as the victim (a cancel naming the victim), and when the reveal goes
 //      out it calls that request off again, by the query when there is one.
+//   4. A slow pull (VIB-217): the GM's tab says it is hidden and its write
+//      queue is held for a few seconds, so the GM sends the victim the
+//      slow-pull ack every client hears. The forger takes the request id
+//      from it and emits an "error" for it naming the victim. The victim
+//      must still get the real result (its reveal, no failure said in the
+//      shop or a toast) and be charged once.
 //
 // Reported: what the GM did with each forged request (charged or not, the
 // rows it wrote, its console), whether the forger heard the victim's
 // request, whether the victim's purchase went through once and whether a
-// forged cancel marked it. ok means every forged request was refused with
-// nothing charged and the real purchase stood, unmarked.
+// forged cancel marked it, and whether the forged error of step 4 was
+// taken. ok means every forged request was refused with nothing charged,
+// the real purchases stood, unmarked, and the forged error said nothing.
 //
 // Restored in a finally: every row this run made refunded (the items leave
 // Crate Tester with them), the crate deleted, the purse and the shop's open
 // state as they were. The pool stays seeded. Needs "Crate Tester" in
 // "Loot Crates Test", owned by VICTIM and not by FORGER.
-/* global game, foundry, fromUuid, CONFIG, __lc */
+/* global game, foundry, fromUuid, CONFIG, ui, __lc */
 const { chromium } = require("playwright");
 const FOUNDRY = process.env.FOUNDRY_URL || "http://localhost:30000";
 const MODULE_BASE = process.env.MODULE_BASE || "http://localhost:8766/";
@@ -215,6 +222,54 @@ const ledger = (page, boxId) => page.evaluate(async ({ base, boxId }) => {
       victim: vi.logs.filter(l => !l.includes("timings")),
     };
 
+    // 4. A slow pull, and a forged "error" for it on the socket.
+    base = now;
+    await fo.page.evaluate(({ victimId }) => {
+      __lc.forgedErrors = [];
+      game.socket.on("module.loot-crates", msg => {
+        if (msg?.type !== "ack" || msg.userId !== victimId) return;
+        game.socket.emit("module.loot-crates", { type: "error", requestId: msg.requestId, userId: victimId, message: "Forged: this crate jammed." });
+        __lc.forgedErrors.push(msg.requestId);
+      });
+    }, { victimId });
+    await gm.page.evaluate(async base => {
+      const store = await import(base + "scripts/foundry/store.js");
+      Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" });
+      store.enqueueWrite(() => new Promise(r => setTimeout(r, 6000)));
+    }, MODULE_BASE);
+    const revealsBefore = await vi.page.evaluate(() => document.querySelectorAll(".application.lc-reveal").length);
+    await vi.page.evaluate(() => {
+      __lc.warns = [];
+      const warn = ui.notifications.warn.bind(ui.notifications);
+      ui.notifications.warn = (m, ...a) => { __lc.warns.push(String(m)); return warn(m, ...a); };
+      __lc.notices = [];
+      __lc.watch = setInterval(() => {
+        const n = __lc.shop.element?.querySelector(".lc-shop__notice")?.textContent?.trim();
+        if (n && __lc.notices.at(-1) !== n) __lc.notices.push(n);
+      }, 100);
+    });
+    mark = gmLogsAt();
+    await buy.waitFor({ timeout: 10000 });
+    await vi.page.waitForFunction(id => document.querySelector(`.lc-shop .lc-box__buy[data-box="${id}"]`)?.getAttribute("aria-disabled") !== "true", boxId, { timeout: 10000 });
+    await buy.click();
+    for (let t0 = Date.now(); Date.now() - t0 < 25000; await gm.page.waitForTimeout(200)) {
+      now = await ledger(gm.page, boxId);
+      if (now.rows.length > base.rows.length) break;
+    }
+    await gm.page.waitForTimeout(3000);
+    now = await ledger(gm.page, boxId);
+    await gm.page.evaluate(() => { delete document.visibilityState; });
+    const slow = now.rows.slice(0, Math.max(0, now.rows.length - base.rows.length));
+    out.slowPull = {
+      chargedCp: base.purseCp - now.purseCp,
+      rows: slow,
+      forgedErrors: await fo.page.evaluate(() => __lc.forgedErrors),
+      reveals: (await vi.page.evaluate(() => document.querySelectorAll(".application.lc-reveal").length)) - revealsBefore,
+      warns: await vi.page.evaluate(() => __lc.warns),
+      notices: await vi.page.evaluate(() => { clearInterval(__lc.watch); return __lc.notices; }),
+      gm: gm.logs.slice(mark).filter(l => !l.includes("timings")),
+    };
+
     out.checks = {
       socketRefused: out.forgedSocket.chargedCp === 0 && out.forgedSocket.rows === 0,
       queryRefused: !out.seed.queryOnGM ? null : out.forgedQuery.chargedCp === 0 && out.forgedQuery.rows === 0 && !!out.forgedQuery.answer?.error,
@@ -222,6 +277,9 @@ const ledger = (page, boxId) => page.evaluate(async ({ base, boxId }) => {
       notOverheard: !out.realBuy.heard.some(h => h.type === "pull"),
       realBuyStood: out.realBuy.chargedCp === 500 && fresh.length === 1 && fresh[0].userId === victimId,
       notMarked: fresh.every(r => !r.lateCancel),
+      forgedErrorSent: out.slowPull.forgedErrors.length === 1,
+      forgedErrorIgnored: !out.slowPull.warns.some(w => w.includes("Forged")) && !out.slowPull.notices.some(n => n.includes("Forged")),
+      slowPullStood: out.slowPull.chargedCp === 500 && slow.length === 1 && slow[0].userId === victimId && !slow[0].lateCancel && out.slowPull.reveals >= 1,
     };
     out.ok = Object.values(out.checks).every(v => v === true);
   } catch (err) {

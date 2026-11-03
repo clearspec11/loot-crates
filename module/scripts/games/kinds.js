@@ -70,8 +70,9 @@
     revealExtra(ctx) the fields this kind adds to the reveal broadcast,
                   from the same ctx (the crate: its odds ribbon and the
                   buyer's state before the pull, which the shop holds).
-    undo(state, row, log) the buyer's state with the row undone, for a
-                  refund; a kind without one leaves the state as it is.
+    undo(state, row, log, tally) the buyer's state with the row undone,
+                  for a refund (`tally` the counts as they stand, core/
+                  tally.js); a kind without one leaves the state as it is.
     gotText(out)  what the buyer came away with, as a verb phrase after
                   their name, for the late-cancel messages (socket.js
                   lateCancel): the crate's "got Sling +2" or "got nothing"

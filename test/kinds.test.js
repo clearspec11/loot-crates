@@ -187,7 +187,7 @@ describe("the GM's socket path for a second kind", () => {
     await world.game.settings.set("loot-crates", "boxes", { flip: { ...GAME, id: "flip", kind: "flip", name: "Coin flip", price: 1 } });
     await world.deliver({ type: "pull", requestId: "f1", boxId: "flip", actorId: "actor1", userId: "p1" });
     expect(world.game.settings.get("loot-crates", "pullLog")).toHaveLength(2);
-    const { tally, ...states } = world.game.settings.get("loot-crates", "actorState");
+    const { tallies: tally, ...states } = world.game.settings.get("loot-crates", "actorState");
     expect(states).toEqual({ "actor1.well": { throws: 1 } });
     expect(Object.keys(tally.buyers).sort()).toEqual(["actor1.flip", "actor1.well"]);
     expect(toCopper(world.actor.system.currency)).toBe(295);

@@ -32,7 +32,7 @@
   as a refund whose winnings are spent is: nothing moves.
 */
 import { settle, toCopper, formatPrice } from "../core/currency.js";
-import { getLog, updateLog, getBoxes, saveBox, enqueueWrite, getActorState, setActorState } from "./store.js";
+import { getLog, getTally, updateLog, getBoxes, saveBox, enqueueWrite, getActorState, setActorState } from "./store.js";
 import { getKind, kindOf } from "../games/kinds.js";
 import { stockAfterRefund } from "../core/limits.js";
 import { t, listAnd } from "../core/i18n.js";
@@ -128,11 +128,12 @@ export function describeRefund(rowId) {
 // The buyer's state for the row's game now, and with the row undone the way
 // its kind undoes one. The row names its kind; a row from before kinds, or
 // one whose box is gone, is a crate's. A kind this client doesn't know, or
-// one with no undo, leaves the state as it is.
+// one with no undo, leaves the state as it is. The tallies go too: the
+// no-duplicates record reads them, not the log (odds.js undoPull).
 function stateAfter(row, box) {
   const before = getActorState(row.actorId, row.boxId);
   const kind = getKind(kindOf(row.kind ? row : box ?? row));
-  return { before, after: kind?.undo ? kind.undo(before, row, getLog()) : before };
+  return { before, after: kind?.undo ? kind.undo(before, row, getLog(), getTally()) : before };
 }
 
 // Refunds run strictly one after another, in the same queue as pulls, so two

@@ -336,7 +336,9 @@ function keepReason(kind, { box, pools, actor, state, log, tally, today, purse, 
   sets in the same task (the Auction's gavel, reset by every bid).
 */
 export async function performStake({ box, actor, round, bet = null, stakes = [], expectedPrice, log = [], today = null }) {
-  const { kind, price, purse } = guardPlay({ box, actor, expectedPrice, log, today, bet });
+  // A table game has no limit per character and no price from the counts,
+  // so nothing is counted from the log for it (tally: null).
+  const { kind, price, purse } = guardPlay({ box, actor, expectedPrice, log, tally: null, today, bet });
   if (!kind.table) throw new PullError(t("LOOTCRATES.Error.NotTable", { name: box.name }));
   if (!(price > 0)) throw new PullError(t("LOOTCRATES.Error.StakeNothing", { name: box.name }));
   const checked = kind.stake?.({ game: box, actor, bet, round, stakes, log, price }) ?? {};
