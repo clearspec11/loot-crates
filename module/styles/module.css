@@ -525,6 +525,28 @@
    twitch as the seconds tick. */
 .loot-crates .lc-linger { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; margin-right: auto; font-size: 12px; line-height: 1.3; color: var(--lc-ink-mute); font-variant-numeric: tabular-nums; }
 .loot-crates .lc-reveal__actions .lc-linger__keep { min-width: 0; min-height: 30px; padding: 0 10px; font-size: 12px; }
+/* After the reveal (afterreveal.js): the winner's Give to… and Sell back
+   for each item, on the parchment under the vault, above the window's own
+   buttons. A quiet lead line; each item one row, its name
+   (when there are several) then its two quiet buttons, the picker opening
+   in their place. Nothing gold: Close stays the window's one primary. What
+   happened replaces the buttons as a plain line, and that line is all a
+   spectator sees. */
+.loot-crates .lc-reveal__after[hidden] { display: none; }
+.loot-crates .lc-after { display: grid; gap: 6px; }
+.loot-crates .lc-after__lead, .loot-crates .lc-after__none { margin: 0; font-size: 12px; line-height: 1.35; color: var(--lc-ink-mute); }
+.loot-crates .lc-after__items { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.loot-crates .lc-after__item { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-width: 0; }
+.loot-crates .lc-after__name { flex: 1 1 10em; min-width: 0; font-family: var(--lc-slab); font-size: 13px; font-weight: 700; color: var(--lc-ink); overflow-wrap: anywhere; }
+.loot-crates .lc-after__acts, .loot-crates .lc-after__pick { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-left: auto; }
+.loot-crates .lc-after__acts[hidden], .loot-crates .lc-after__pick[hidden] { display: none; }
+.loot-crates .lc-after__item button { min-height: 32px; white-space: nowrap; }
+.loot-crates .lc-after__pick-label { font-size: 13px; color: var(--lc-ink-soft); }
+.loot-crates .lc-after__target { min-height: 32px; max-width: 100%; min-width: 0; width: auto; }
+.loot-crates .lc-after__said { flex: 1 0 100%; font-size: 13px; line-height: 1.35; color: var(--lc-ink-soft); }
+.loot-crates .lc-after__said:empty { display: none; }
+.loot-crates .lc-after__item[data-parted] .lc-after__said { flex-basis: auto; }
+
 /* "· 2nd in a row" after the price in the head. */
 .loot-crates .lc-reveal__streak { color: var(--lc-ink-mute); white-space: nowrap; }
 
@@ -1153,6 +1175,41 @@
 /* A sale its buyer called off too late: marked for the GM, not undone. */
 .loot-crates .lc-row--late td:first-child { box-shadow: inset 3px 0 var(--lc-warn); }
 .loot-crates .lc-log__late { display: block; margin-left: 14px; font-size: 12px; color: var(--lc-warn); }
+/* An item given away or sold back after the reveal (logtable.js logPartedNote). */
+.loot-crates .lc-log__parted { display: block; margin-left: 14px; font-size: 12px; color: var(--lc-ink-soft); }
+
+/* The economy readout over the Pull log, for the GM (views/economy.js):
+   a heading with the period as two pressed-or-not buttons (the chips'
+   idiom, filled while pressed), then two small tables in dnd5e's table
+   style, figures right-aligned in columns. Each table keeps its columns
+   at any width: in a narrow window its own box scrolls sideways (a tab
+   stop, so the keyboard can scroll it) while the log below stacks. */
+.loot-crates .lc-econ { display: grid; gap: 6px; margin-bottom: 16px; }
+.loot-crates .lc-econ__head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.loot-crates .lc-econ__title { margin: 0; border: 0; font-family: var(--lc-slab); font-size: 17px; font-weight: 700; color: var(--lc-ink); }
+.loot-crates .lc-econ__period { display: flex; gap: 5px; margin-left: auto; }
+.loot-crates .lc-econ__period button {
+  flex: none; min-height: 26px; padding: 0 9px; font-family: var(--lc-label); font-weight: 700; font-size: 12px; white-space: nowrap;
+  border-radius: 3px; background: transparent; border: 1px solid var(--lc-rule-soft); color: var(--lc-ink-soft);
+}
+.loot-crates .lc-econ__period button:hover { border-color: var(--lc-rule); color: var(--lc-ink); }
+.loot-crates .lc-econ__period button[aria-pressed="true"] { background: color-mix(in srgb, var(--lc-gold-ink) 16%, var(--lc-field)); border-color: var(--lc-gold-ink); color: var(--lc-ink); box-shadow: inset 0 -2px 0 var(--lc-gold-ink); }
+.loot-crates .lc-econ__scroll { overflow-x: auto; overscroll-behavior-x: contain; max-width: 100%; }
+.loot-crates .lc-econ__scroll:focus-visible { outline: 2px solid var(--lc-focus); outline-offset: 2px; }
+.loot-crates .lc-econ__table { width: 100%; min-width: 34em; }
+.loot-crates .lc-econ__table caption { caption-side: top; padding: 0 0 4px; text-align: left; font-family: var(--lc-label); font-size: 12px; font-weight: 700; color: var(--lc-ink-soft); }
+.loot-crates .lc-econ__table td, .loot-crates .lc-econ__table tbody th { white-space: nowrap; }
+.loot-crates .lc-econ__table thead th { vertical-align: bottom; }
+.loot-crates .lc-econ__table tbody th { padding: 7px 8px; border-top: 1px solid var(--lc-rule-soft); text-align: left; font-weight: 600; color: var(--lc-ink); background: none; font-family: inherit; font-size: 13px; letter-spacing: 0; text-transform: none; }
+/* Scrolled sideways, each line keeps its name in view. */
+.loot-crates .lc-econ__table tbody th { position: sticky; left: 0; z-index: 1; background: var(--lc-card); }
+.loot-crates .lc-econ__table tbody tr:nth-child(even) th { background: var(--lc-row-alt); }
+.loot-crates .lc-econ__table thead th:first-child { position: sticky; left: 0; z-index: 1; }
+@container lc-tab (max-width: 560px) {
+  .loot-crates .lc-econ__table thead th { white-space: nowrap; }
+}
+.loot-crates .lc-econ__table .lc-econ__num { text-align: right; font-variant-numeric: tabular-nums; }
+.loot-crates .lc-econ__note { margin: 0 0 6px; font-size: 12px; color: var(--lc-ink-mute); }
 
 /* Dialogs (pool and box editors, previews). */
 /* The module's dialogs (Edit box, Edit pool, Add from compendium, ...) are
@@ -1289,6 +1346,8 @@
 .loot-crates .lc-chat__rarity { display: flex; align-items: center; gap: 5px; margin-top: 2px; font-family: var(--lc-label); font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--lc-ink-mute); }
 .loot-crates .lc-chat__rarity::before { content: ""; width: 6px; height: 6px; background: var(--lc-rarity); transform: rotate(45deg); }
 .loot-crates .lc-chat__refund { font-size: 12px; margin-top: 6px; color: var(--lc-ink-soft); }
+/* What became of an item after the reveal (chatcard.js partedCardContent). */
+.loot-crates .lc-chat__after { font-size: 12px; margin-top: 6px; color: var(--lc-ink-soft); }
 /* A card whose spin is still playing on this client: the head, and
    "Opening…" where the item will be (reveal.js sealChatCard). */
 .loot-crates.lc-chat--sealed { --lc-rarity: var(--lc-ink-mute); }
@@ -1418,6 +1477,10 @@
   .loot-crates .lc-shop__field--purse { margin-left: 0; text-align: left; }
   .loot-crates .lc-shop__purse { justify-content: flex-start; }
   .loot-crates .lc-reveal__name { font-size: 28px; }
+  .loot-crates .lc-after__acts, .loot-crates .lc-after__pick { margin-left: 0; flex: 1 1 100%; }
+  .loot-crates .lc-after__acts button, .loot-crates .lc-after__pick button { flex: 1 1 auto; }
+  .loot-crates .lc-after__pick-label { flex: 1 0 100%; }
+  .loot-crates .lc-after__target { flex: 1 0 100%; }
   .loot-crates .lc-rail__row--numbers { grid-template-columns: repeat(4, 1fr); }
   .loot-crates .lc-rail__row--outside { grid-template-columns: repeat(2, 1fr); }
   .loot-crates .lc-table__state { margin-left: 0; flex: 1 0 100%; }

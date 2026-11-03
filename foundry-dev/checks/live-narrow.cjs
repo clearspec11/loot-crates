@@ -107,7 +107,8 @@ const shot = process.argv.includes("--shot") ? process.argv[process.argv.indexOf
       const inside = el => { const r = el.getBoundingClientRect(); return r.width > 0 && r.left >= pr.left - 1 && r.right <= pr.right + 1 && r.left >= wr.left - 1 && r.right <= wr.right + 1; };
       const label = b => b.getAttribute("aria-label") ?? b.textContent.trim();
       const buttons = [...panel.querySelectorAll("button")];
-      const rows = [...panel.querySelectorAll(".lc-table tbody tr")];
+      // The stacking table (Boxes, Pull log), not the economy readout's, which scrolls in its box.
+      const rows = [...panel.querySelectorAll(".lc-table--stack tbody tr")];
       return {
         tab: globalThis.__lcApp.tab,
         paneWidth: Math.round(pr.width),
@@ -116,8 +117,8 @@ const shot = process.argv.includes("--shot") ? process.argv[process.argv.indexOf
         newButtons: [...panel.querySelectorAll('.lc-toolbar [data-action^="add"]')].map(b => b.dataset.action),
         rows: rows.length,
         stacked: rows.length ? rows.every(tr => getComputedStyle(tr).display === "grid") : null,
-        headerHidden: panel.querySelector(".lc-table thead") ? panel.querySelector(".lc-table thead").getBoundingClientRect().width <= 2 : null,
-        roles: !!panel.querySelector('.lc-table[role="table"]') && rows.every(tr => tr.getAttribute("role") === "row"),
+        headerHidden: panel.querySelector(".lc-table--stack thead") ? panel.querySelector(".lc-table--stack thead").getBoundingClientRect().width <= 2 : null,
+        roles: !!panel.querySelector('.lc-table--stack[role="table"]') && rows.every(tr => tr.getAttribute("role") === "row"),
         tags: rows.map(tr => tr.querySelector(".lc-kind")?.textContent ?? null),
         offScreen: buttons.filter(b => !inside(b)).map(label),
         actions: rows.map(tr => [...tr.lastElementChild.querySelectorAll("[data-action]")].map(b => b.dataset.action)),

@@ -10,7 +10,7 @@
 import { heardRequest, isRequest } from "../module/scripts/foundry/socket.js";
 
 export const deliverTo = handlers => (msg, { from } = {}) => isRequest(msg)
-  ? heardRequest(msg, { user: globalThis.game.users.get(from ?? msg.userId) })
+  ? heardRequest(msg, { user: globalThis.game.users.get(from ?? msg.userId) }).catch(refused => ({ refused }))
   : Promise.all(handlers.map(h => h(msg)));
 
 export const withQuery = (user, sent) => user && { ...user, query: async (_name, data) => { sent.push(data); return true; } };

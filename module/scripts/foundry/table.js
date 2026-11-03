@@ -61,6 +61,7 @@ import { SOCKET } from "../core/config.js";
 import { getBoxes, getPools, getLog, getRounds, saveRound, saveRounds, updateLogRows, appendLog, enqueueWrite, newId } from "./store.js";
 import { getKind, kindFor, PullError } from "../games/kinds.js";
 import { settle } from "../core/currency.js";
+import { worthOf } from "../core/afterplay.js";
 import { rollRng, resolveSource, createGrants } from "./pull.js";
 import { newRound, liveRoundOf, openStakesOf, stakesOf, staleStakes, staleAt, nextStaleAt, stakeReason, planResolve, coinsByActor, rowPatch, tableDue, orphanRounds, STATUS } from "../core/round.js";
 import { onShelf, shelfRoundRefusal } from "../core/shelf.js";
@@ -170,6 +171,8 @@ export async function closeStakes(lines, now = Date.now()) {
       // another module's hook cancels counts as not added.
       const [created] = actor ? await createGrants(actor, [l.grant]) : [];
       l.itemId = created?.id ?? null;
+      // What it was worth as granted, for the economy readout (core/tally.js).
+      l.worth = created ? worthOf(created) : null;
     } catch (err) {
       console.error(`loot-crates | granting ${l.result?.name ?? "the item"} to ${l.row.actorName} at the spin failed; ${l.refundOnFail ? "the stake is refunded" : "the stake is paid in coins only"}`, err);
       globalThis.ui?.notifications?.error(t("LOOTCRATES.Error.WonNotAdded", { actor: l.row.actorName, item: l.result?.name ?? t("LOOTCRATES.Error.AnItem"), box: l.row.boxName }));

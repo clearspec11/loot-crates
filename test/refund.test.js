@@ -147,7 +147,7 @@ describe("refundPull and the buyer's pity and no-duplicates record", () => {
     // counted for taken back in the same write as the row (store.js), then
     // the pity count and the no-duplicates record.
     expect(writes).toHaveLength(2);
-    expect(writes[0].tally.buyers["actor1.box"]).toBeUndefined();
+    expect(writes[0].tallies.buyers["actor1.box"]).toBeUndefined();
     expect(writes[0]["actor1.box"]).toEqual({ sinceRare: 0, owned: [ROW.uuid], pulls: 3 });
     expect(writes[1]["actor1.box"]).toEqual({ sinceRare: 2, owned: [], pulls: 2 });
   });

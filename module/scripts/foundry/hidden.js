@@ -13,6 +13,7 @@
   this is the one place to point at it.
 */
 import { MODULE_ID, SETTINGS } from "../core/config.js";
+import { TALLY_KEY, LEGACY_KEY } from "../core/tally.js";
 
 // The columns kept for this row in `tally`, or null.
 export const hiddenOf = (tally, rowId) => tally?.hidden?.[rowId] ?? null;
@@ -31,7 +32,11 @@ export function dropHidden(tally, ids = []) {
   return tally;
 }
 
-// One row's columns as the world holds them now, on any client.
+// One row's columns as the world holds them now, on any client (a row a
+// 1.7.0 GM wrote, not yet caught up, keeps them in that build's tally).
 export function readHidden(rowId) {
-  try { return hiddenOf(game.settings.get(MODULE_ID, SETTINGS.STATE)?.tally, rowId); } catch { return null; }
+  try {
+    const state = game.settings.get(MODULE_ID, SETTINGS.STATE);
+    return hiddenOf(state?.[TALLY_KEY], rowId) ?? hiddenOf(state?.[LEGACY_KEY], rowId);
+  } catch { return null; }
 }

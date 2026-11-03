@@ -1530,6 +1530,9 @@ export const SCRATCH = registerKind({
   noun: "scratch",
   roll,
   logRow,
+  // The payback the GM set (kinds.js payback): the roll's plan, in coins,
+  // plus items when its prize list pays any.
+  payback: game => { const pb = paybackOf(game); return pb ? { pct: pb.pct, items: pb.items > 0 } : null; },
   hiddenRow,
   revealExtra,
   gotText,

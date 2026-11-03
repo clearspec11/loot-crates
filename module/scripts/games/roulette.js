@@ -702,10 +702,28 @@ export function rouletteSummary(preview) {
   return [bands, ...betLines(preview.odds), preview.note].filter(Boolean).join(". ");
 }
 
+/*
+  The payback the GM set (kinds.js payback): each bet's chance times what
+  it pays, as a percentage of the stake (a win pays the stake times the
+  type's multiplier, the stake included). Bets that pay back alike read as
+  one number; a wheel whose bets differ reads as the range, lowest to
+  highest. Plus items when a winning rarity bet draws one. Null for a
+  wheel with no pockets.
+*/
+export function wheelPayback(game) {
+  const odds = betOdds(game);
+  if (!odds.pockets) return null;
+  const pcts = BET_TYPES.flatMap(type => odds[type].map(o => Math.round(o.chance * o.pays * 100)));
+  if (!pcts.length) return null;
+  const min = Math.min(...pcts), max = Math.max(...pcts);
+  return { ...(min === max ? { pct: min } : { min, max }), items: itemOnRarity(game) };
+}
+
 export const ROULETTE = registerKind({
   id: "roulette",
   noun: "wheel",
   table: true,
+  payback: wheelPayback,
   priceOf,
   stake,
   roll,

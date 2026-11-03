@@ -54,6 +54,17 @@ const STATES = [
   // skipped): Watch again beside Close, three buttons that wrap cleanly at
   // 390. Pressing it replays the strip in place, reading Skip.
   ["landed-missed", "state=landed&seed=7&buyer=1&watched=0"],
+  // After the reveal (afterreveal.js, VIB-219): under the vault, the
+  // buyer's Give to… and Sell back for 75 gp for the one item, and a pair
+  // for each of two; Give to… pressed (the picker in its place, the select
+  // focused, the other players' characters named with their players); Sell
+  // back pressed (the row says what was sold, focus back on Close); and a
+  // spectator's window, the line alone with no buttons.
+  ["landed-after", "state=landed&seed=7&buyer=1&after=1"],
+  ["landed-after-multi", "state=landed&seed=7&buyer=1&after=multi"],
+  ["landed-after-give", "state=landed&seed=7&buyer=1&after=1"],
+  ["landed-after-sold", "state=landed&seed=7&buyer=1&after=1"],
+  ["landed-after-watch", "state=landed&seed=7&after=watch"],
   // "Watch again" from the chat card: the replay window, titled as a replay,
   // shows the item and no gold or Open item; the card shows the button.
   ["replay", "state=replay&seed=7"],
@@ -186,8 +197,15 @@ const STATES = [
   // took coins, five throws at the well folded into one line with "Refund
   // one", and the wheel's settled round with its stakes under it. In a 480
   // px window (and at 390) the rows stack as cards with every Refund in view.
+  // Over it, the GM's economy readout (economy.js, VIB-218): who spent and
+  // won what, each game's payback against the one it was set to, All time
+  // pressed; in the narrow window each table scrolls in its own box while
+  // the log stacks. -session: This session pressed, its note, only the
+  // last plays counted. -empty: a new world's, a line saying what will show.
   ["manager-log", "state=manager&tab=log"],
   ["manager-log-narrow", "state=manager&tab=log&width=480"],
+  ["manager-log-session", "state=manager&tab=log&period=session"],
+  ["manager-log-empty", "state=manager&tab=log&empty=1"],
   // A crate made from a roll table (B1): Goblin's Pockets leads the shelf,
   // drawing at the table's own odds, so its card names its items with
   // their real chances (the 1-in-100 Flame Tongue first, "<1%"), "and 3
@@ -380,8 +398,10 @@ function logProblems(narrow) {
   const toggle = document.querySelector('[data-action="toggleMisses"]');
   if (toggle?.textContent !== "Hide misses" || toggle.getAttribute("aria-pressed") !== "false") out.push("no Hide misses button");
   if (!/^5 throws that gave nothing, folded by day$/.test(document.querySelector(".lc-toolbar .lc-pool__hint")?.textContent ?? "")) out.push(`the misses line reads "${document.querySelector(".lc-toolbar .lc-pool__hint")?.textContent}"`);
-  const rows = [...document.querySelectorAll(".lc-table tbody tr")];
+  const rows = [...document.querySelectorAll(".lc-table--log tbody tr")];
   if (rows.length !== 13) out.push(`expected 13 rows, got ${rows.length}`);
+  // An item given away after the reveal (core/afterplay.js): its note under the row.
+  if (!/Tam Thornwick gave it to Orla Vane\./.test(document.querySelector(".lc-log__parted")?.textContent ?? "")) out.push("the given item's row doesn't say where it went");
   const plain = rows.find(r => !r.className);
   const refunded = document.querySelector(".lc-row--refunded");
   if (!refunded || !refunded.querySelector("s") || !/^refunded \S/.test(refunded.querySelector(".lc-log__status")?.textContent ?? "")) out.push("no refunded row reading as withdrawn");
@@ -397,7 +417,7 @@ function logProblems(narrow) {
   const late = document.querySelector(".lc-row--late");
   if (!late || !/Called off by the buyer after the charge/.test(late.textContent)) out.push("the late sale isn't explained");
   else if (getComputedStyle(late.querySelector("td")).boxShadow === "none" && getComputedStyle(late).boxShadow === "none") out.push("the late sale has no edge");
-  const text = document.querySelector(".lc-table").textContent;
+  const text = document.querySelector(".lc-table--log").textContent;
   if (!/Rolled 4, 6, 5 · won 30 gp/.test(text)) out.push("the dice row has no faces and payout");
   if (!/Loss card · took 20 gp/.test(text)) out.push("the deck's bane row doesn't say what it took");
   if (!/Rare, set by GM \(source Uncommon\)/.test(text)) out.push("the pity row doesn't trace its rarity");
@@ -406,6 +426,74 @@ function logProblems(narrow) {
   const refunds = [...document.querySelectorAll('[data-action="refund"]')];
   if (refunds.length !== 11) out.push(`expected 11 Refund buttons (one per live row, one per folded group), got ${refunds.length}`);
   for (const b of refunds) { const r = b.getBoundingClientRect(); if (r.width < 20 || r.height < 20) { out.push(`"${b.textContent}" is not visible`); break; } }
+  return out;
+}
+
+/*
+  The economy readout over the Pull log (views/economy.js), read from the
+  DOM: its heading, the period pressed, each table sorted by what it
+  counts and in its own scroll box (scrolling sideways, never the pane, in
+  a narrow window), the sample's sums, or a new world's line.
+*/
+function econProblems({ period = "all", empty = false } = {}) {
+  const out = [];
+  const econ = document.querySelector(".lc-econ");
+  if (!econ) return ["no economy readout"];
+  if (econ.querySelector("h3")?.textContent !== "Spending and payback") out.push(`the readout's heading reads "${econ.querySelector("h3")?.textContent}"`);
+  const buttons = [...econ.querySelectorAll('[data-action="econPeriod"]')];
+  const pressed = buttons.filter(b => b.getAttribute("aria-pressed") === "true").map(b => b.textContent);
+  if (buttons.map(b => b.textContent).join("|") !== "All time|This session") out.push(`the period buttons read ${buttons.map(b => b.textContent).join(", ")}`);
+  if (pressed.join() !== (period === "session" ? "This session" : "All time")) out.push(`pressed: ${pressed.join() || "none"}`);
+  if (econ.closest(".lc-tab")?.firstElementChild !== econ) out.push("the readout isn't at the top of the tab");
+  const panel = document.querySelector(".lc-tab");
+  if (panel.scrollWidth > panel.clientWidth + 1) out.push("the pane scrolls sideways");
+  const notes = [...econ.querySelectorAll(".lc-econ__note")].map(p => p.textContent);
+  if (empty) {
+    if (econ.querySelector("table")) out.push("an empty world's readout has a table");
+    if (!/^No plays yet\. /.test(notes[0] ?? "")) out.push(`an empty world's readout says "${notes[0]}"`);
+    return out;
+  }
+  if ((period === "session") !== notes.some(n => /^This session counts the plays since you loaded the world/.test(n))) out.push("the session note is wrong for the period");
+  const [chars, games] = [...econ.querySelectorAll(".lc-econ__scroll")];
+  if (!chars || !games) return [...out, "the readout doesn't have its two tables"];
+  for (const box of [chars, games]) {
+    if (box.getAttribute("role") !== "region" || box.tabIndex !== 0 || !document.getElementById(box.getAttribute("aria-labelledby"))) out.push("a table's scroll box isn't a named tab stop");
+    if (getComputedStyle(box).overflowX !== "auto") out.push("a table's box doesn't scroll sideways");
+    if (box.getBoundingClientRect().right > panel.getBoundingClientRect().right + 1) out.push("a table's box runs past the pane");
+  }
+  const narrow = panel.clientWidth < 560;
+  if (narrow && chars.scrollWidth <= chars.clientWidth) out.push("in a narrow window the character table doesn't scroll in its box");
+  const head = box => [...box.querySelectorAll("thead th")].map(th => th.textContent);
+  if (head(chars).join("|") !== "Character|Spent|Won in coins|Won in items|Net") out.push(`character columns: ${head(chars).join(", ")}`);
+  if (head(games).join("|") !== "Game|Plays|Taken|Paid in coins|Paid in items|Payback|Set payback") out.push(`game columns: ${head(games).join(", ")}`);
+  const lines = box => [...box.querySelectorAll("tbody tr")].map(tr => [...tr.children].map(c => c.textContent));
+  const cl = lines(chars), gl = lines(games);
+  const gp = s => { let n = 0; for (const [, v, c] of String(s).matchAll(/(\d+) (gp|sp|cp)/g)) n += Number(v) * { gp: 100, sp: 10, cp: 1 }[c]; return String(s).startsWith("−") ? -n : n; };
+  for (let i = 1; i < cl.length; i++) if (gp(cl[i][1]) > gp(cl[i - 1][1])) { out.push("the characters aren't sorted by Spent"); break; }
+  for (let i = 1; i < gl.length; i++) if (gp(gl[i][2]) > gp(gl[i - 1][2])) { out.push("the games aren't sorted by Taken"); break; }
+  for (const c of cl) if (gp(c[4]) !== gp(c[2]) + gp(c[3]) - gp(c[1])) { out.push(`${c[0]}'s Net isn't won less spent`); break; }
+  const by = (list, name) => list.find(l => l[0] === name);
+  const font = parseFloat(getComputedStyle(econ.querySelector(".lc-econ__note")).fontSize);
+  if (font < 11) out.push(`the readout's notes are ${font}px`);
+  if (period === "session") {
+    // The last three and a half minutes: the deck's draw and the wheel's stakes are older.
+    if (gl.some(l => /Deck|Wheel|Dragon/.test(l[0]))) out.push("This session counts plays from before the load");
+    if (!by(cl, "Tam Thornwick")) out.push("This session leaves out Tam's plays");
+    return out;
+  }
+  // The sample: Tam gave Orla the 400 gp cloak; the Staff was refunded; the
+  // dice paid Tam 30 gp on a 10 gp stake; the deck's bane took 20 gp more.
+  const orla = by(cl, "Orla Vane"), tam = by(cl, "Tam Thornwick");
+  if (!orla || orla[3] !== "400 gp") out.push(`Orla's Won in items reads "${orla?.[3]}", not the cloak she was given`);
+  if (!tam || gp(tam[2]) < 3000) out.push(`Tam's Won in coins reads "${tam?.[2]}"`);
+  const deck = gl.find(l => /Deck/.test(l[0]));
+  if (!deck || deck[1] !== "1" || deck[3] !== "0 gp") out.push(`the deck's line reads ${deck?.join(", ")}`);
+  const dice = gl.find(l => /Dragon/.test(l[0]));
+  if (!dice || !/^\d+%( \+ items)?$/.test(dice[6])) out.push(`the dice's Set payback reads "${dice?.[6]}"`);
+  const royal = by(gl, "Royal Vault");
+  if (royal) out.push("the refunded Staff's game still counts");
+  const crate = gl.find(l => l[0] === "Pauper's Box");
+  if (!crate || crate[6] !== "") out.push(`a crate's Set payback isn't blank: "${crate?.[6]}"`);
   return out;
 }
 
@@ -1124,6 +1212,84 @@ function revealProblems(buyer) {
   for (const el of document.querySelectorAll(".lc-reveal__body *:not(.lc-spin__viewport *)")) {
     const r = el.getBoundingClientRect();
     if (r.right > document.documentElement.clientWidth + 1) { out.push(`reveal overflows: ${el.className}`); break; }
+  }
+  return out;
+}
+
+// The crate editor's Sell back (editorfields.js sellBackRow): in the price
+// section, right after the price, at the default 50, with its hint.
+function sellBackEditorProblems() {
+  const out = [];
+  const input = document.querySelector('input[name="sellBack"]');
+  if (!input) return ["the editor has no Sell back field"];
+  const label = input.closest("label");
+  if (label?.textContent.replace(/\s+/g, " ").trim() !== "Sell back for % of an item's price") out.push(`Sell back's label reads "${label?.textContent}"`);
+  if (input.value !== "50") out.push(`Sell back starts at ${input.value}`);
+  const price = document.querySelector('[data-section="price"]');
+  if (price?.nextElementSibling?.nextElementSibling !== label) out.push("Sell back isn't right after the price");
+  const hint = document.getElementById(input.getAttribute("aria-describedby"));
+  if (!hint || !/0 turns it off/.test(hint.textContent)) out.push("Sell back has no hint");
+  if (input.getBoundingClientRect().height < 20) out.push("Sell back's field is hidden");
+  return out;
+}
+
+// After the reveal (afterreveal.js): the section sits between the vault and
+// the window's buttons and never says Keep; each mode as the states above
+// describe it; every button 11px or more, 30px tall or more, inside the
+// window and clear of the others.
+function afterProblems(mode) {
+  const out = [];
+  const shown = el => !!el && !el.hidden && el.getBoundingClientRect().height > 0;
+  const slot = document.querySelector(".lc-reveal__after");
+  if (!shown(slot)) return ["no after-the-reveal section"];
+  const item = document.querySelector(".lc-reveal__name")?.textContent ?? "";
+  const words = el => el?.textContent.replace(/\s+/g, " ").trim() ?? "";
+  const s = slot.getBoundingClientRect();
+  if (s.top < document.querySelector(".lc-vault").getBoundingClientRect().bottom - 1 || s.bottom > document.querySelector(".lc-reveal__actions").getBoundingClientRect().top + 1) out.push("the section isn't between the vault and the window's buttons");
+  if (/\bKeep\b/.test(slot.textContent)) out.push("the section says Keep");
+  const buttons = [...slot.querySelectorAll("button")].filter(shown);
+  const rows = [...slot.querySelectorAll(".lc-after__item")];
+  const lead = words(slot.querySelector(".lc-after__lead"));
+  const close = document.querySelector(".lc-reveal__close");
+  if (mode === "watch") {
+    if (buttons.length) out.push("a spectator sees buttons");
+    if (words(slot) !== `Tam Thornwick gave ${item} to Saria Vell.`) out.push(`a spectator reads "${words(slot)}"`);
+  } else if (mode === "sold") {
+    if (buttons.length) out.push("the sold row still has buttons");
+    if (words(rows[0]?.querySelector(".lc-after__said")) !== `Tam Thornwick sold ${item} back for 75 gp.`) out.push(`the sold row reads "${words(rows[0])}"`);
+    if (lead) out.push("the lead line stayed once nothing is left to choose");
+    if (document.activeElement !== close) out.push("focus didn't go to Close once sold");
+    if (shown(document.querySelector(".lc-reveal__open"))) out.push("Open item is still offered for the item sold");
+    if (!/^345 gp 7 sp 3 cp left$/.test(document.querySelector(".lc-reveal__gold")?.textContent ?? "")) out.push(`the gold line reads "${document.querySelector(".lc-reveal__gold")?.textContent}" once sold`);
+  } else if (mode === "give") {
+    const pick = rows[0]?.querySelector(".lc-after__pick");
+    const select = pick?.querySelector("select");
+    if (!shown(pick) || shown(rows[0].querySelector(".lc-after__acts"))) out.push("Give to… didn't open the picker in its place");
+    if (document.activeElement !== select) out.push("the picker's select isn't focused");
+    if ([...(select?.options ?? [])].map(o => o.textContent).join(" | ") !== "Odo Underbough (Player4) | Saria Vell (Player3)") out.push(`the picker lists ${[...(select?.options ?? [])].map(o => o.textContent).join(" | ")}`);
+    if (words(pick?.querySelector("label")) !== `Give ${item} to`) out.push(`the picker's label reads "${words(pick?.querySelector("label"))}"`);
+    if (buttons.map(b => b.textContent).join(" | ") !== "Give | Cancel") out.push(`the picker's buttons read ${buttons.map(b => b.textContent).join(" | ")}`);
+  } else {
+    const multi = mode === "multi";
+    if (rows.length !== (multi ? 2 : 1)) out.push(`expected ${multi ? 2 : 1} rows, got ${rows.length}`);
+    const want = multi ? "While this window is open you can give each item to a party member or sell it back. Closing it leaves them with Tam Thornwick." : "While this window is open you can give it to a party member or sell it back. Closing it leaves it with Tam Thornwick.";
+    if (lead !== want) out.push(`the lead reads "${lead}"`);
+    const labels = buttons.map(b => b.textContent).join(" | ");
+    if (labels !== (multi ? "Give to… | Sell back for 75 gp | Give to… | Sell back for 25 gp" : "Give to… | Sell back for 75 gp")) out.push(`the buttons read ${labels}`);
+    const names = rows.map(r => words(r.querySelector(".lc-after__name")));
+    if (names.join(" | ") !== (multi ? `${item} | Potion of Greater Healing` : "")) out.push(`the rows are named ${names.join(" | ")}`);
+    if (buttons.some(b => !b.getAttribute("aria-label")?.includes(multi && b.closest(".lc-after__item") === rows[1] ? "Potion of Greater Healing" : item))) out.push("a button's name doesn't say which item");
+  }
+  const app = document.getElementById("app").getBoundingClientRect();
+  const rects = buttons.map(b => b.getBoundingClientRect());
+  for (const [i, b] of buttons.entries()) {
+    if (parseFloat(getComputedStyle(b).fontSize) < 11) out.push(`${b.textContent} is under 11px`);
+    if (rects[i].height < 30) out.push(`${b.textContent} is under 30px tall`);
+    if (rects[i].left < app.left - 1 || rects[i].right > app.right + 1) out.push(`${b.textContent} leaves the window`);
+    for (let j = i + 1; j < rects.length; j++) {
+      const [a, c] = [rects[i], rects[j]];
+      if (a.left < c.right - 1 && c.left < a.right - 1 && a.top < c.bottom - 1 && c.top < a.bottom - 1) out.push(`${b.textContent} overlaps ${buttons[j].textContent}`);
+    }
   }
   return out;
 }
@@ -2748,12 +2914,21 @@ try {
       else if (name.startsWith("editor-scratch-fill")) problems0.push(...await page.evaluate(scratchFillProblems, name === "editor-scratch-filled"));
       else if (EDITOR_KINDS[name]) {
         problems0.push(...await page.evaluate(editorOrderProblems, EDITOR_KINDS[name]), ...await page.evaluate(shelfEditorProblems));
+        if (name === "editor-crate") problems0.push(...await page.evaluate(sellBackEditorProblems));
         if (name === "editor-crate-picker") problems0.push(...await page.evaluate(pickerSearchProblems));
         if (name === "editor-auction-search") problems0.push(...await page.evaluate(lotSearchProblems));
       }
       else if (name === "box-odds") problems0.push(...await page.evaluate(oddsEditorProblems));
       else if (name === "drop-preview") problems0.push(...await page.evaluate(dropPreviewProblems));
       else if (name === "landed-nothing") problems0.push(...await page.evaluate(nothingRevealProblems));
+      else if (name.startsWith("landed-after")) {
+        // Give to… and Sell back pressed as a player does: a click.
+        const mode = name.slice("landed-after-".length) || "one";
+        if (mode === "give") await page.click(".lc-after__give");
+        if (mode === "sold") { await page.click(".lc-after__sell"); await page.waitForSelector("body[data-parted]", { timeout: 5000 }); }
+        if (mode !== "give" && mode !== "sold") problems0.push(...await page.evaluate(revealProblems, mode !== "watch"));
+        problems0.push(...await page.evaluate(afterProblems, mode));
+      }
       else if (name.startsWith("scratch")) {
         const mode = { "scratch-unscratched": "covered", "scratch-half": "half", "scratch-won": "won", "scratch-dud": "dud", "scratch-item": "item", "scratch-match3-won": "match3", "scratch-spectator": "spectator", "scratch-theme-fey": "fey", "scratch-combo": "combo" }[name];
         problems0.push(...await page.evaluate(scratchPrintProblems, mode), ...await page.evaluate(scratchRevealProblems, mode));
@@ -2780,7 +2955,9 @@ try {
       else if (name === "manager-boxes-shelf") problems0.push(...await page.evaluate(shelfBoxesProblems), ...await page.evaluate(panelProblems));
       else if (name === "manager-boxes-scratch") problems0.push(...await page.evaluate(scratchBoxesProblems), ...await page.evaluate(panelProblems));
       else if (name.startsWith("manager-boxes")) problems0.push(...await page.evaluate(boxesProblems, name.endsWith("narrow")), ...await page.evaluate(panelProblems));
-      else if (name.startsWith("manager-log")) problems0.push(...await page.evaluate(logProblems, name.endsWith("narrow")), ...await page.evaluate(panelProblems));
+      else if (name === "manager-log-empty") problems0.push(...await page.evaluate(econProblems, { empty: true }));
+      else if (name === "manager-log-session") problems0.push(...await page.evaluate(econProblems, { period: "session" }), ...await page.evaluate(panelProblems));
+      else if (name.startsWith("manager-log")) problems0.push(...await page.evaluate(logProblems, name.endsWith("narrow")), ...await page.evaluate(econProblems, {}), ...await page.evaluate(panelProblems));
       else if (name.startsWith("manager")) problems0.push(...await page.evaluate(managerProblems, name === "manager-narrow"));
       else if (name === "replay") problems0.push(...await page.evaluate(replayProblems));
       else if (name.startsWith("well")) problems0.push(...await page.evaluate(wellProblems, { "well-missed": "nothing", "well-coin": "coin", "well-won": "item" }[name]));

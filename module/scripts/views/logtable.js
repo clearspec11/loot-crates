@@ -8,8 +8,8 @@
   folded under the round's own line (round.js groupRounds). "Hide misses"
   (a toggle with one label, pressed while they are hidden) leaves only the
   pulls that gave something (the misses stay in the setting). Under a row, in small print: where a GM-set rarity came from,
-  what a game paid or took, a stake's state, and a sale its buyer called
-  off too late. An auction's house bid (auction.js) is a row with no
+  what a game paid or took, a stake's state, a sale its buyer called
+  off too late, and an item given away or sold back after the reveal. An auction's house bid (auction.js) is a row with no
   character and no coins: it names its bidder and its bid, and has no
   Refund, there being nothing to give back.
 
@@ -31,6 +31,7 @@ import { refundTime } from "./chatcard.js";
 import { tableHTML, cell } from "./boxestable.js";
 import { t, words } from "../core/i18n.js";
 import { rowPriceTag } from "../games/ticket.js";
+import { anyParted, partsLine } from "../core/afterplay.js";
 
 const plain = s => String(s ?? "");
 const rarityName = r => RARITY_LABEL[normalizeRarity(r)] ?? String(r);
@@ -74,6 +75,14 @@ export function logLateNote(row) {
   return `<small class="lc-log__late">${t("LOOTCRATES.Log.LateCancel")}</small>`;
 }
 
+// What the winner did with an item after the reveal (core/afterplay.js):
+// "Brinn gave it to Saria." or "Brinn sold it back for 75 gp." A row with
+// one can't be refunded (refund.js), and its Refund says so when pressed.
+export function logPartedNote(row, esc = plain) {
+  if (!anyParted(row)) return "";
+  return `<small class="lc-log__parted">${esc(t("LOOTCRATES.After.CardLine", { actor: row.actorName, what: partsLine(row) }))}</small>`;
+}
+
 // A folded line's Refund, named for what it gives back: "Refund the
 // throw", "Refund one of 3 pulls".
 const REFUND_LABEL = {
@@ -100,7 +109,7 @@ export function logTableHTML({ log = [], rounds = {}, hideMisses = false, esc = 
       </tr>`;
   const row = r => (r.house ? house(r) : `<tr class="${r.refunded ? "lc-row--refunded" : r.lateCancel ? "lc-row--late" : ""}" role="row">
         ${cell(WHEN, new Date(r.at).toLocaleString())}${cell(WHO, esc(r.actorName))}${cell(BOX, `${esc(r.boxName)} (${esc(rowPriceTag(r))})`)}
-        ${got(r.rarity ?? r.swatch ?? r.stake?.swatch ?? (r.win ? "coin" : "none"), `${r.refunded ? `<s>${esc(r.name)}</s>` : esc(r.name)}${r.pity ? ` · ${t("LOOTCRATES.Common.Pity")}` : ""}${logRarityNote(r, esc)}${logPayoutNote(r, esc)}${logStakeNote(r, esc)}${logLateNote(r)}`)}
+        ${got(r.rarity ?? r.swatch ?? r.stake?.swatch ?? (r.win ? "coin" : "none"), `${r.refunded ? `<s>${esc(r.name)}</s>` : esc(r.name)}${r.pity ? ` · ${t("LOOTCRATES.Common.Pity")}` : ""}${logRarityNote(r, esc)}${logPayoutNote(r, esc)}${logStakeNote(r, esc)}${logLateNote(r)}${logPartedNote(r, esc)}`)}
         ${cell(ACT, r.refunded ? status(r.id, r.refunded) : `<button type="button" data-action="refund" data-row="${esc(r.id)}">${t("LOOTCRATES.Log.Refund")}</button>`)}
       </tr>`);
   const group = g => {

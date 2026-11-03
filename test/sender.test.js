@@ -11,7 +11,9 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 vi.mock("../module/scripts/foundry/reveal.js", () => ({ showReveal: vi.fn(async () => ({ landed: Promise.resolve() })) }));
 vi.mock("../module/scripts/foundry/chat.js", () => ({ postPullCard: vi.fn(async () => null), postKeptCard: vi.fn(async () => null) }));
 
-const { registerSocket, requestPull, heardRequest, REQUEST_QUERY, SENT_QUERY, GM_TIMEOUT_MS } = await import("../module/scripts/foundry/socket.js");
+const { registerSocket, requestPull, requestKeep, requestSell, heardRequest, restCompleted, REQUEST_QUERY, SENT_QUERY, GM_TIMEOUT_MS, WAIT_NOTICE_MS, TIMED_OUT, TIMED_OUT_PART } = await import("../module/scripts/foundry/socket.js");
+const { onParted } = await import("../module/scripts/foundry/handover.js");
+const { showReveal } = await import("../module/scripts/foundry/reveal.js");
 const { registerSettings, enqueueWrite, getLog } = await import("../module/scripts/foundry/store.js");
 const { withQuery } = await import("./requests.js");
 
@@ -103,7 +105,7 @@ describe("the GM takes the sender from Foundry", () => {
     expect(warn.mock.calls.flat().join(" ")).toContain(`refused a ${type} from Cy that named Ana as its sender`);
   });
 
-  it("answers the query of a refused request with Foundry's rejection, and a taken one with true", async () => {
+  it("answers a 1.7.0 client's query (no replyBy) with Foundry's rejection, or true, as that build expects", async () => {
     const world = makeWorld();
     await seed(world.game);
     vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -118,9 +120,10 @@ describe("the GM takes the sender from Foundry", () => {
   it("refuses a character the real sender doesn't own, even named honestly, charging nothing", async () => {
     const world = makeWorld();
     await seed(world.game);
-    await heardRequest(pull("r1", "p3"), { user: CY });
-    await heardRequest({ type: "redeem", requestId: "r2", actorId: "actor1", itemId: "t1", userId: "p3" }, { user: CY });
+    await expect(heardRequest(pull("r1", "p3"), { user: CY })).rejects.toThrow("You don't own that character.");
+    await expect(heardRequest({ type: "redeem", requestId: "r2", actorId: "actor1", itemId: "t1", userId: "p3" }, { user: CY })).rejects.toThrow("You don't own that character.");
     unchanged(world);
+    // Said on the socket only because these name no replyBy (a 1.7.0 client).
     expect(world.emitted).toEqual([
       { type: "error", requestId: "r1", userId: "p3", message: "You don't own that character." },
       { type: "error", requestId: "r2", userId: "p3", message: "You don't own that character." },
@@ -264,7 +267,7 @@ describe("a player's client", () => {
     const world = makeWorld({ user: ANA });
     const promise = requestPull({ boxId: "box", actorId: "actor1", price: 10 });
     expect(world.emitted).toEqual([]);
-    expect(world.queried).toEqual([{ type: "pull", requestId: expect.any(String), boxId: "box", actorId: "actor1", userId: "p1", price: 10 }]);
+    expect(world.queried).toEqual([{ type: "pull", requestId: expect.any(String), boxId: "box", actorId: "actor1", userId: "p1", price: 10, replyBy: "query" }]);
     const sent = globalThis.CONFIG.queries[SENT_QUERY];
     expect(sent({ requestId: world.queried[0].requestId })).toBe(true);
     // Once: an id asked about again (a replay of it) gets no.
@@ -273,7 +276,7 @@ describe("a player's client", () => {
     // Its wait running out calls it off the same way.
     vi.advanceTimersByTime(GM_TIMEOUT_MS + 1);
     await expect(promise).rejects.toThrow();
-    expect(world.queried.at(-1)).toEqual({ type: "cancel", requestId: world.queried[0].requestId, userId: "p1" });
+    expect(world.queried.at(-1)).toEqual({ type: "cancel", requestId: world.queried[0].requestId, userId: "p1", replyBy: "query" });
     expect(world.emitted).toEqual([]);
   });
 
@@ -288,5 +291,159 @@ describe("a player's client", () => {
     await expect(requestPull({ boxId: "box", actorId: "actor1", price: 10 })).rejects.toThrow("The GM can turn on Query Users for your role in Configure Permissions.");
     expect(world.queried).toEqual([]);
     expect(world.emitted).toEqual([]);
+  });
+});
+
+/*
+  The answer comes back the way the request went (VIB-217). Anything on the
+  module socket can be forged by a player who heard the request id (it
+  rides the slow-pull ack every client hears): a forged "error" made the
+  buyer's shop say a pull had failed while the GM went on charging, and a
+  second press charged again. So a request's answer, refusal and late
+  notice are the query's own result, and a client of 1.8.0 takes nothing
+  the socket says about its own requests.
+*/
+describe("answers come back by the query, never the socket", () => {
+  const reply = { replyBy: "query" };
+  const deferredGM = () => {
+    const calls = [];
+    const gm = { ...GM, query: (_n, data) => new Promise(resolve => calls.push({ data, resolve })) };
+    return { gm, calls };
+  };
+
+  it("ignores a forged socket error for a pending pull, and resolves from the query with the reveal", async () => {
+    vi.useFakeTimers();
+    const world = makeWorld({ user: ANA });
+    const { gm, calls } = deferredGM();
+    world.game.users.activeGM = gm;
+    let settled = null;
+    const promise = requestPull({ boxId: "box", actorId: "actor1", price: 10 }).then(v => (settled = { ok: v }), err => (settled = { err }));
+    const { requestId } = calls[0].data;
+    expect(calls[0].data.replyBy).toBe("query");
+    // Cy heard the id (a slow pull's ack) and says it failed.
+    await world.onSocket({ type: "ack", requestId, userId: "p1", hidden: true });
+    await world.onSocket({ type: "error", requestId, userId: "p1", message: "Test Crate is sold out." });
+    await world.onSocket({ type: "kept", requestId, userId: "p1" });
+    await world.onSocket({ type: "reveal", requestId, userId: "p1", box: { id: "box", name: "Forged" }, result: { name: "Vorpal Sword" } });
+    await vi.advanceTimersByTimeAsync(WAIT_NOTICE_MS);
+    expect(settled).toBeNull();
+    expect(showReveal).not.toHaveBeenCalled();
+    // The GM's real answer.
+    const reveal = { type: "reveal", requestId, userId: "p1", actorId: "actor1", box: { id: "box", name: "Test Crate", price: 10 }, result: { name: "a" }, sold: { boxName: "Test Crate", actorName: "Crate Tester", got: "got a" } };
+    calls[0].resolve(reveal);
+    await promise;
+    expect(settled).toEqual({ ok: reveal });
+    expect(showReveal).toHaveBeenCalledTimes(1);
+    expect(showReveal).toHaveBeenCalledWith(reveal);
+    expect(vi.getTimerCount()).toBe(0);
+    showReveal.mockClear();
+  });
+
+  it("still shows another player's reveal from the socket, for the table to watch", async () => {
+    const world = makeWorld({ user: ANA });
+    await world.onSocket({ type: "reveal", requestId: "theirs", userId: "p3", box: { id: "box" } });
+    expect(showReveal).toHaveBeenCalledTimes(1);
+    showReveal.mockClear();
+  });
+
+  it("on the GM: a refusal is the query's answer, with its stale price, nothing charged and nothing on the socket", async () => {
+    const world = makeWorld();
+    await seed(world.game);
+    const query = globalThis.CONFIG.queries[REQUEST_QUERY];
+    await expect(query({ ...pull("s1", "p1"), price: 5, ...reply }, { user: ANA })).resolves.toEqual({ type: "error", message: "Test Crate now costs 10 gp (you pressed 5 gp). Nothing was charged.", stalePrice: 10 });
+    await expect(query({ ...pull("s2", "p1"), ...reply, actorId: "nobody" }, { user: ANA })).resolves.toEqual({ type: "error", message: "You don't own that character." });
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    await expect(query({ ...pull("s3", "p1"), ...reply }, { user: CY })).resolves.toMatchObject({ type: "error", message: expect.stringContaining("Nothing was charged.") });
+    unchanged(world);
+    expect(world.emitted).toEqual([]);
+  });
+
+  it("on the GM: a pull's answer is the reveal, sent as soon as it is out, before the row is written", async () => {
+    const world = makeWorld();
+    await seed(world.game);
+    const query = globalThis.CONFIG.queries[REQUEST_QUERY];
+    const answer = await query({ ...pull("q1", "p1"), ...reply }, { user: ANA });
+    expect(answer).toMatchObject({ type: "reveal", requestId: "q1", userId: "p1", box: { id: "box", name: "Test Crate", price: 10 }, sold: { boxName: "Test Crate", actorName: "Crate Tester", got: expect.stringMatching(/^got /) } });
+    expect(world.emitted.map(m => m.type)).toEqual(["reveal"]);
+    // The row follows in the same queued task.
+    await enqueueWrite(() => {});
+    expect(getLog().map(r => r.id)).toEqual([answer.logId]);
+    expect(world.actor.system.currency.gp).toBe(490);
+  });
+
+  it("a refusal reaches the player's request as its rejection, with the stale price, and nothing charged", async () => {
+    const world = makeWorld({ user: ANA });
+    world.game.users.activeGM = { ...GM, query: async () => ({ type: "error", message: "Test Crate now costs 10 gp (you pressed 5 gp). Nothing was charged.", stalePrice: 10 }) };
+    await expect(requestPull({ boxId: "box", actorId: "actor1", price: 5 })).rejects.toMatchObject({ message: "Test Crate now costs 10 gp (you pressed 5 gp). Nothing was charged.", stalePrice: 10 });
+    world.game.users.activeGM = { ...GM, query: async (_n, data) => ({ type: "kept", requestId: data.requestId, userId: "p1", boxName: "Test Crate", actorName: "Crate Tester", count: 1 }) };
+    await expect(requestKeep({ boxId: "box", actorId: "actor1", price: 10 })).resolves.toMatchObject({ type: "kept", count: 1 });
+    expect(world.actor.updates).toBe(0);
+    expect(world.emitted).toEqual([]);
+  });
+
+  it("from a GM of 1.7.0 (its query says true), takes the answer that came on the socket", async () => {
+    const world = makeWorld({ user: ANA });
+    const { gm, calls } = deferredGM();
+    world.game.users.activeGM = gm;
+    const promise = requestPull({ boxId: "box", actorId: "actor1", price: 10 });
+    const { requestId } = calls[0].data;
+    await world.onSocket({ type: "error", requestId, userId: "p1", message: "Test Crate is sold out." });
+    calls[0].resolve(true);
+    await expect(promise).rejects.toThrow("Test Crate is sold out.");
+  });
+
+  it("answers did-you-send-it only to the active GM, where Foundry names who asks", () => {
+    const world = makeWorld({ user: ANA });
+    const ids = [];
+    world.game.users.activeGM = { ...GM, query: (_n, data) => { ids.push(data.requestId); return new Promise(() => {}); } };
+    requestPull({ boxId: "box", actorId: "actor1", price: 10 });
+    requestPull({ boxId: "box", actorId: "actor1", price: 10 });
+    const sent = globalThis.CONFIG.queries[SENT_QUERY];
+    // Cy asks: no, and the GM's one yes is still there.
+    expect(sent({ requestId: ids[0] }, { user: CY })).toBe(false);
+    expect(sent({ requestId: ids[0] }, { user: GM })).toBe(true);
+    // A Foundry that names no one (13): as before, one yes.
+    expect(sent({ requestId: ids[1] }, {})).toBe(true);
+    expect(sent({ requestId: ids[1] }, {})).toBe(false);
+  });
+
+  it("keeps a long rest for the next GM when the query is refused", async () => {
+    const world = makeWorld({ user: ANA });
+    world.game.world = { id: "w" };
+    world.game.time = { worldTime: 86400 * 3 };
+    const kept = new Map();
+    vi.stubGlobal("localStorage", { getItem: k => kept.get(k) ?? null, setItem: (k, v) => kept.set(k, String(v)), removeItem: k => kept.delete(k) });
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    world.game.users.activeGM = { ...GM, query: async () => { throw new Error("User [gm] is not active"); } };
+    restCompleted(world.actor, { newDay: true }, { newDay: true });
+    await tick();
+    expect(JSON.parse(kept.get("loot-crates.owedRests.w.p1"))).toEqual({ actor1: { at: 86400 * 3 } });
+    vi.unstubAllGlobals();
+  });
+
+  it("a sell the GM got to after the wait gave up: said as a request, not a purchase, and the winner's window hears the answer", async () => {
+    vi.useFakeTimers();
+    const world = makeWorld({ user: ANA });
+    const { gm, calls } = deferredGM();
+    world.game.users.activeGM = gm;
+    const heard = [];
+    onParted(msg => heard.push(msg));
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const promise = requestSell({ logId: "row1", itemId: "i1", cp: 7500 }).catch(err => err);
+    const { requestId } = calls[0].data;
+    await vi.advanceTimersByTimeAsync(GM_TIMEOUT_MS + 1);
+    const err = await promise;
+    expect(err.message).toBe(TIMED_OUT_PART);
+    expect(TIMED_OUT_PART).not.toBe(TIMED_OUT);
+    expect(calls[1].data).toMatchObject({ type: "cancel", requestId });
+    // The sale was already under way on the GM: its answer comes after all.
+    const parted = { type: "parted", requestId, logId: "row1", userId: "p1", itemId: "i1", itemName: "Wand", actorName: "Crate Tester", part: { soldCp: 7500 }, purse: { gp: 575 } };
+    calls[0].resolve(parted);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(heard).toEqual([{ ...parted, own: true }]);
+    // The socket's word on one's own (anyone can send it) is still not taken.
+    await world.onSocket({ ...parted, itemId: "i2" });
+    expect(heard).toHaveLength(1);
+    onParted(null);
   });
 });

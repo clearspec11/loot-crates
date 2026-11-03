@@ -414,8 +414,9 @@ async function gmWatchCheck(page) {
         app.tab = "log";
         await app.render({ force: true });
         await new Promise(r => setTimeout(r, 500));
-        const rows = () => app.element?.querySelectorAll(".lc-table tbody tr").length ?? 0;
-        const first = () => app.element?.querySelector(".lc-table tbody tr")?.innerText ?? null;
+        // The log's own table: the GM's economy readout sits above it (VIB-218).
+        const rows = () => app.element?.querySelectorAll(".lc-table--log tbody tr").length ?? 0;
+        const first = () => app.element?.querySelector(".lc-table--log tbody tr")?.innerText ?? null;
         globalThis.__lcLog = { before: rows(), firstBefore: first(), at: null, renders: 0 };
         const watch = setInterval(() => {
           if (globalThis.__lcLog.at == null && rows() > globalThis.__lcLog.before) {

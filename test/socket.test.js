@@ -170,7 +170,7 @@ describe("a player's requestPull", () => {
     vi.advanceTimersByTime(GM_TIMEOUT_MS + 1);
     await expect(promise).rejects.toThrow(TIMED_OUT);
     // The buyer calls the purchase off, so a GM that gets to it later doesn't charge.
-    expect(emitted[1]).toEqual({ type: "cancel", requestId: emitted[0].requestId, userId: "p1" });
+    expect(emitted[1]).toEqual({ type: "cancel", requestId: emitted[0].requestId, userId: "p1", replyBy: "query" });
     await deliver({ type: "reveal", requestId: emitted[0].requestId, userId: "p1" });
   });
 
@@ -298,18 +298,51 @@ describe("the GM client", () => {
     expect(game.settings.get("loot-crates", "pullLog")[0].lateCancel).toEqual(expect.any(Number));
   });
 
-  it("tells a buyer whose crate opened after all, and no one else", async () => {
+  it("tells a buyer whose crate opened after all, from its cancel's answer, and not from the socket", async () => {
+    vi.useFakeTimers();
     const infos = [];
     globalThis.ui = { notifications: { info: (...a) => infos.push(a) } };
-    const { deliver } = makeWorld({ user: PLAYER });
-    await deliver({ type: "late", requestId: "x", userId: "someone-else", boxName: "Test Crate", got: "got Rope", actorName: "Other" });
-    expect(infos).toEqual([]);
+    const { game, deliver } = makeWorld({ user: PLAYER });
+    const late = { "Test Crate": "got Rope", "Dragon's Teeth": "rolled 4, 6, 5: 15 beats the dragon's 12" };
+    let boxName = "Test Crate";
+    // A GM that never answers the pull, and answers its cancel "too late".
+    game.users.activeGM = { ...GM, query: async (_n, data) => (data.type === "cancel" ? { type: "late", requestId: data.requestId, userId: "p1", boxName, got: late[boxName], actorName: "Crate Tester" } : new Promise(() => {})) };
+    // Anyone can say "late" on the socket: it is not taken.
     await deliver({ type: "late", requestId: "x", userId: "p1", boxName: "Test Crate", got: "got Rope", actorName: "Crate Tester" });
+    expect(infos).toEqual([]);
+    const first = requestPull({ boxId: "box", actorId: "actor1" });
+    vi.advanceTimersByTime(GM_TIMEOUT_MS + 1);
+    await expect(first).rejects.toThrow(TIMED_OUT);
+    await vi.runAllTimersAsync();
     expect(infos).toHaveLength(1);
     expect(infos[0][0]).toBe("Your Test Crate went through after all: Crate Tester got Rope. Ask the GM if you'd like it refunded.");
     // The dice's phrase travels as the kind wrote it, never as an item name.
-    await deliver({ type: "late", requestId: "y", userId: "p1", boxName: "Dragon's Teeth", got: "rolled 4, 6, 5: 15 beats the dragon's 12", actorName: "Crate Tester" });
+    boxName = "Dragon's Teeth";
+    const second = requestPull({ boxId: "box", actorId: "actor1" });
+    vi.advanceTimersByTime(GM_TIMEOUT_MS + 1);
+    await expect(second).rejects.toThrow(TIMED_OUT);
+    await vi.runAllTimersAsync();
     expect(infos[1][0]).toBe("Your Dragon's Teeth went through after all: Crate Tester rolled 4, 6, 5: 15 beats the dragon's 12. Ask the GM if you'd like it refunded.");
+    expect(infos).toHaveLength(2);
+  });
+
+  it("from a GM of 1.7.0 (its query says true), takes the late notice it said on the socket first", async () => {
+    vi.useFakeTimers();
+    const infos = [];
+    globalThis.ui = { notifications: { info: (...a) => infos.push(a) } };
+    const { game, deliver } = makeWorld({ user: PLAYER });
+    let heard = null;
+    game.users.activeGM = { ...GM, query: async (_n, data) => {
+      if (data.type !== "cancel") return new Promise(() => {});
+      await heard(data);
+      return true;
+    } };
+    heard = data => deliver({ type: "late", requestId: data.requestId, userId: "p1", boxName: "Test Crate", got: "got Rope", actorName: "Crate Tester" });
+    const promise = requestPull({ boxId: "box", actorId: "actor1" });
+    vi.advanceTimersByTime(GM_TIMEOUT_MS + 1);
+    await expect(promise).rejects.toThrow(TIMED_OUT);
+    await vi.runAllTimersAsync();
+    expect(infos.map(i => i[0])).toEqual(["Your Test Crate went through after all: Crate Tester got Rope. Ask the GM if you'd like it refunded."]);
   });
 
   it("fulfils a player's pull over the socket and broadcasts the reveal", async () => {
@@ -1119,7 +1152,25 @@ describe("a day that ends at a long rest, with dnd5e's calendar off", () => {
     restCompleted(actor, { type: "long", newDay: false }, { type: "long", newDay: true });
     restCompleted(actor, { type: "short", newDay: false }, { type: "short" });
     // With the world time the rest began, for the calendar's day (below).
-    expect(emitted).toEqual([{ type: "newDay", requestId: expect.any(String), actorId: "actor1", userId: "p1", at: 86400 * 5 }]);
+    expect(emitted).toEqual([{ type: "newDay", requestId: expect.any(String), actorId: "actor1", userId: "p1", at: 86400 * 5, replyBy: "query" }]);
+  });
+
+  it("keeps a long rest the GM couldn't be asked about for the next GM", async () => {
+    const world = restWorld({ user: PLAYER });
+    world.game.world = { id: "w" };
+    const kept = new Map();
+    vi.stubGlobal("localStorage", { getItem: k => kept.get(k) ?? null, setItem: (k, v) => kept.set(k, String(v)), removeItem: k => kept.delete(k) });
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    world.game.users.activeGM = { ...GM, query: async () => { throw new Error("User [gm] is not active"); } };
+    restCompleted(world.actor, { type: "long", newDay: true }, { type: "long", newDay: true });
+    await tick();
+    expect(owedRests()).toEqual({ actor1: { at: 86400 * 5 } });
+    // A refusal said as the answer is kept the same way.
+    kept.clear();
+    world.game.users.activeGM = { ...GM, query: async () => ({ type: "error", message: "There's no GM online to open it." }) };
+    restCompleted(world.actor, { type: "long", newDay: true }, { type: "long", newDay: true });
+    await tick();
+    expect(owedRests()).toEqual({ actor1: { at: 86400 * 5 } });
   });
 
   it("counts rests when the calendar is on but dnd5e's daily recovery is manual", async () => {
@@ -1317,14 +1368,17 @@ describe("a long rest taken while no GM is online", () => {
     expect(settleOwedRests()).toBe(0);
 
     // A GM comes online and its load asks.
-    game.users.activeGM = withQuery(GM, emitted);
+    const answers = [];
+    game.users.activeGM = { ...GM, query: (_n, data) => { emitted.push(data); return new Promise(resolve => answers.push(resolve)); } };
     await deliver({ type: "owedRests" });
-    expect(emitted).toEqual([{ type: "newDay", requestId: expect.any(String), actorId: "actor1", userId: "p1", at: 86400 * 5, owed: true }]);
+    expect(emitted).toEqual([{ type: "newDay", requestId: expect.any(String), actorId: "actor1", userId: "p1", at: 86400 * 5, owed: true, replyBy: "query" }]);
     // Kept until the GM says it was counted, so a GM that dropped it hears it again.
     expect(owedRests()).toEqual({ actor1: { at: 86400 * 5 } });
-    await deliver({ type: "newDayCounted", userId: "someone else", actorId: "actor1", at: 86400 * 5 });
-    expect(owedRests()).toEqual({ actor1: { at: 86400 * 5 } });
+    // The socket's word is no answer: anyone can say it.
     await deliver({ type: "newDayCounted", userId: "p1", actorId: "actor1", at: 86400 * 5 });
+    expect(owedRests()).toEqual({ actor1: { at: 86400 * 5 } });
+    answers[0]({ type: "newDayCounted", userId: "p1", actorId: "actor1", at: 86400 * 5 });
+    await tick();
     expect(owedRests()).toEqual({});
     expect(stored.size).toBe(0);
   });
@@ -1334,33 +1388,36 @@ describe("a long rest taken while no GM is online", () => {
     restCompleted(actor, { newDay: true }, { newDay: true });
     game.users.activeGM = withQuery(GM, emitted);
     expect(settleOwedRests()).toBe(1);
-    expect(emitted).toEqual([{ type: "newDay", requestId: expect.any(String), actorId: "actor1", userId: "p1", at: 86400 * 5, owed: true }]);
+    expect(emitted).toEqual([{ type: "newDay", requestId: expect.any(String), actorId: "actor1", userId: "p1", at: 86400 * 5, owed: true, replyBy: "query" }]);
   });
 
   it("sends a rest once when its own load and the GM's ask fall together, and again only once unanswered for a while", async () => {
     vi.useFakeTimers();
     const { game, actor, emitted, deliver } = playerWorld();
     restCompleted(actor, { newDay: true }, { newDay: true });
-    game.users.activeGM = withQuery(GM, emitted);
+    const answers = [];
+    const gm = { ...GM, query: (_n, data) => { emitted.push(data); return new Promise(resolve => answers.push(resolve)); } };
+    game.users.activeGM = gm;
     // Both clients loading at a session's start: the player's own load
     // sends, and the GM's ask moments later must not make the GM hear the
     // same rest twice (it would end two days).
     expect(settleOwedRests()).toBe(1);
     await deliver({ type: "owedRests" });
-    expect(emitted).toEqual([{ type: "newDay", requestId: expect.any(String), actorId: "actor1", userId: "p1", at: 86400 * 5, owed: true }]);
+    expect(emitted).toEqual([{ type: "newDay", requestId: expect.any(String), actorId: "actor1", userId: "p1", at: 86400 * 5, owed: true, replyBy: "query" }]);
     // A GM that dropped it asks again later and hears it again.
     vi.advanceTimersByTime(OWED_RESEND_MS);
     await deliver({ type: "owedRests" });
     expect(emitted.length).toBe(2);
     // Once answered and forgotten, a new rest for the character is sent at once.
-    await deliver({ type: "newDayCounted", userId: "p1", actorId: "actor1", at: 86400 * 5 });
+    answers[1]({ type: "newDayCounted", userId: "p1", actorId: "actor1", at: 86400 * 5 });
+    await vi.advanceTimersByTimeAsync(0);
     expect(owedRests()).toEqual({});
     game.users.activeGM = null;
     game.time = { components: { year: 1, day: 6 }, worldTime: 86400 * 6 };
     restCompleted(actor, { newDay: true }, { newDay: true });
-    game.users.activeGM = withQuery(GM, emitted);
+    game.users.activeGM = gm;
     expect(settleOwedRests()).toBe(1);
-    expect(emitted.at(-1)).toEqual({ type: "newDay", requestId: expect.any(String), actorId: "actor1", userId: "p1", at: 86400 * 6, owed: true });
+    expect(emitted.at(-1)).toEqual({ type: "newDay", requestId: expect.any(String), actorId: "actor1", userId: "p1", at: 86400 * 6, owed: true, replyBy: "query" });
   });
 
   it("on the GM: asks at its load, counts an owed rest as any rest and answers it, even for a character it can't count", async () => {

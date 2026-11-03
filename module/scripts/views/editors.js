@@ -26,7 +26,7 @@ import { t, listAnd } from "../core/i18n.js";
 import { limitsFieldset, stockField, perCharacterOf, perCharacterFromForm, perCharacterText } from "../core/limits.js";
 import { byRest } from "../core/clock.js";
 import { shelfFieldHTML } from "../core/shelf.js";
-import { poolsFieldset, pityRow, stakeRow, betRangeRow, dragonRow, CARD_FIELDS, oddsModeFieldset, tableNoteHTML, nothingRow } from "./editorfields.js";
+import { poolsFieldset, pityRow, stakeRow, betRangeRow, dragonRow, CARD_FIELDS, oddsModeFieldset, tableNoteHTML, nothingRow, sellBackRow } from "./editorfields.js";
 import { WELL_DEFAULTS, stakeCoins, noClockNote } from "../games/well.js";
 import { DICE_DEFAULTS, FORMULAS } from "../games/dicegame.js";
 import { CARD_KINDS, CARD_KIND_HINT, cardsOf, deckRiseFieldsHTML } from "../games/deck.js";
@@ -181,7 +181,7 @@ function crateHTML(box, ctx) {
     weightsFieldset(t("LOOTCRATES.Manager.RarityWeights"), box, { esc, hidden: oddsModeOf(box) === "weight" }),
     section("nothing", nothingRow(box, { esc })),
     readoutHTML(box, t("LOOTCRATES.Manager.ChancesSeen"), esc),
-    section("price", priceFieldHTML(t("LOOTCRATES.Boxes.ColPrice"), box, ctx)),
+    section("price", priceFieldHTML(t("LOOTCRATES.Boxes.ColPrice"), box, ctx) + sellBackRow(box, { esc })),
     limitsFold(box, ctx),
     extrasFold(box, ctx),
     section("shelf", shelfFieldHTML(box, ctx)),
@@ -200,7 +200,7 @@ function wellHTML(box, ctx) {
     picker(t("LOOTCRATES.Manager.PoolsItem"), box, ctx, { when: "items" }),
     weightsFieldset(t("LOOTCRATES.Manager.ItemRarityWeights"), box, { esc, when: "items" }),
     readoutHTML(box, t("LOOTCRATES.Manager.ChancesSeen"), esc),
-    section("price", stakeRow(stakeCoins(box.price), esc)),
+    section("price", stakeRow(stakeCoins(box.price), esc) + sellBackRow(box, { esc, when: "items" })),
     foldHTML("cap", t("LOOTCRATES.Fold.WhoCanPlay"), esc(cap || t("LOOTCRATES.Fold.Anyone")), `<fieldset class="lc-limits"><legend>${t("LOOTCRATES.Fold.WhoCanPlay")}</legend>
         <label class="lc-row">${t(byRest(ctx.day) ? "LOOTCRATES.Manager.WellCap" : "LOOTCRATES.Manager.WellCapDay", { input: `<input name="cap" type="number" min="0" step="1" value="${esc(box.rules?.cap ?? "")}">` })}</label>
         ${noClockNote({ day: ctx.day, hasClock: ctx.hasClock, cap: box.rules?.cap })}
@@ -226,7 +226,7 @@ function diceHTML(box, ctx) {
     picker(t("LOOTCRATES.Manager.PoolsPrize"), box, ctx, { when: "items" }),
     weightsFieldset(t("LOOTCRATES.Manager.PrizeRarityWeights"), box, { esc, when: "items" }),
     readoutHTML(box, t("LOOTCRATES.Manager.ChancesSeen"), esc),
-    section("price", stakeRow(stakeCoins(box.price), esc)),
+    section("price", stakeRow(stakeCoins(box.price), esc) + sellBackRow(box, { esc, when: "items" })),
     limitsFold(box, ctx, { stock: false }),
     section("shelf", shelfFieldHTML(box, ctx)),
   ];
@@ -271,6 +271,7 @@ function deckHTML(box, ctx) {
     `<fieldset data-section="price"><legend>${t("LOOTCRATES.Manager.PriceLegend")}</legend>
         ${priceFieldHTML(t("LOOTCRATES.Manager.FirstDraw"), box, ctx)}
         ${deckRiseFieldsHTML(box, esc)}
+        ${sellBackRow(box, { esc, when: "items" })}
       </fieldset>`,
     limitsFold(box, ctx, { stock: false }),
     section("shelf", shelfFieldHTML(box, ctx)),
@@ -491,7 +492,7 @@ function scratchHTML(box, ctx) {
     .split(/(?=<details class="lc-fold" data-section="card")/);
   return [
     nameHTML(box, ctx),
-    section("price", priceFieldHTML(t("LOOTCRATES.Scratch.PriceField"), box, ctx)),
+    section("price", priceFieldHTML(t("LOOTCRATES.Scratch.PriceField"), box, ctx) + sellBackRow(box, { esc })),
     parts[0],
     readoutHTML(box, t("LOOTCRATES.Scratch.ReadoutLabel"), esc),
     parts[1],

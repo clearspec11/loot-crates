@@ -106,6 +106,20 @@ Players can buy tickets too. Under each game's Buy in the shop is **Buy to keep*
 
 Already have loot tables? Right-click a table in the **Roll Tables** sidebar and choose **Make a crate** (just under the table's own Draw), or drop it on the Boxes tab. The crate keeps the table's own odds, so a 1 in 100 result stays 1 in 100, and nested tables are flattened. Type a price and press **Add to shelf**.
 
+### After the reveal: give it away or sell it back
+
+When a play hands a character an item, its winner gets two more buttons under the result while the reveal window is open: **Give to…** and **Sell back for 75 gp**. The GM takes them for up to an hour after the play; after that the item stays put. Give to… opens a list of the characters the other players own, each with its player's name ("Saria (Player3)"); pick one and press **Give**, and the item moves to that sheet, no dragging between sheets or ownership to change. Sell back hands the item to the house for its price share and puts the coins in the purse. Closing the window leaves the item where it is. A play that granted several items (a scratch line with two) offers each its own pair. Everyone else watching sees a line saying where the item went, and the chat card and the Pull log say it too ("Brinn gave it to Saria.", "Brinn sold it back for 75 gp.").
+
+For the GM: what the house pays is set per game, as **Sell back for N % of an item's price** in the price section of every game that can hand out items (crates, the well, the dice, the deck, scratch tickets). It starts at 50, is worked out from the item's dnd5e price as it was when it was won (for a stack, only as many as are still on the sheet), and 0 turns it off for that game. Nothing new appears on your screen beyond the line in the log. A play whose item was given away or sold back can't be refunded (the item has left the sheet); the Refund button says so and moves nothing. Each item can only be given or sold once, only by the player who won it.
+
+## Spending and payback
+
+The top of the **Pull log** tab answers "is this game fair, and who is spending?" at a glance, for you alone (players never see it). **By character** lists what each character has spent, won in coins and won in items, and their net, most spent first. **By game** lists each game's plays, what it took in, what it paid out in coins and in items, and its **Payback**: what it paid out for what it took in, as a percentage. Beside it, **Set payback** is the payback the game's own settings give, where they can say: a scratch roll's printed plan, the well's coin back, the dice's chance of beating the dragon times the multiplier, the wheel's bets (a range when they differ), with "+ items" where items come on top. A crate, the deck and the auction have none to state, so it stays blank. A table game counts each stake when it is placed and what it paid when the round settles.
+
+An item counts at its dnd5e price when it was won. One sold back counts as the coins it fetched, and one given away counts for the character who has it now. A refund takes its play back out. Money reads in the same coins as every price in the manager.
+
+**All time** keeps its totals beside the log, so they don't change when old rows leave the 500-row Pull log. They start from the rows the log held when you first loaded 1.8.0, and items won before 1.8.0 count as 0 gp (their price wasn't recorded). **This session** counts the plays since you loaded the world, read from the Pull log. In a narrow window each table scrolls sideways in its own box, the names staying in view.
+
 ## Stock limits and the shelf
 
 - **Stock.** Give a game a stock and the shop says what is left ("3 of 10 left"). Each sale takes one and a refund puts one back. **Restock** in the editor fills it again.
@@ -115,13 +129,13 @@ Already have loot tables? Right-click a table in the **Roll Tables** sidebar and
 
 ## What players see
 
-Players press **Crates** at the top of the Items sidebar. The shop shows every game on the shelf with its price and the odds *for their character*: items they already own are left out of a no-duplicates crate, and a pity countdown says how close a guarantee is. A game they can't afford says how much more they need. When someone opens a crate, every player sees the same spin, and the chat card stays sealed until their own spin lands, so nobody spoils it. The found item appears on the character sheet when the spin ends. Players never see the GM's manager, and no screen shows them an auction's reserve, the house bidders' budget or a hidden scratch roll's counts. These are not secret from the browser's console, though: Foundry sends every world setting to every player, and offers no storage that it keeps from them.
+Players press **Crates** at the top of the Items sidebar. The shop shows every game on the shelf with its price and the odds *for their character*: items they already own are left out of a no-duplicates crate, and a pity countdown says how close a guarantee is. A game they can't afford says how much more they need. When someone opens a crate, every player sees the same spin, and the chat card stays sealed until their own spin lands, so nobody spoils it. The found item appears on the character sheet when the spin ends, and while the reveal is still open its winner can give it to another player's character or sell it back to the house (see [After the reveal](#after-the-reveal-give-it-away-or-sell-it-back)). Players never see the GM's manager, and no screen shows them an auction's reserve, the house bidders' budget or a hidden scratch roll's counts. These are not secret from the browser's console, though: Foundry sends every world setting to every player, and offers no storage that it keeps from them.
 
 ## FAQ
 
 **Does it work with no GM logged in?** No. The GM's Foundry rolls every result and moves every coin, so while no GM is online the shop reads "Closed until a GM is online." and nothing is charged.
 
-**What if I make a mistake, or a player misclicks?** Press **Refund** on the row in the Pull log. The coins come back, the item leaves the sheet and pity and stock go back to where they were. If the player has already spent winnings, the refund says how much is short rather than making coins from nothing.
+**What if I make a mistake, or a player misclicks?** Press **Refund** on the row in the Pull log. The coins come back, the item leaves the sheet and pity and stock go back to where they were. If the player has already spent winnings, the refund says how much is short rather than making coins from nothing. A play whose item was given away or sold back after the reveal can't be refunded.
 
 **Can players see what they will get before the spin ends?** No. The result is decided first, but the chat card, the sheet row and the shop's pity line stay hidden on each screen until that screen's spin lands.
 

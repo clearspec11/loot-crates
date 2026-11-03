@@ -463,11 +463,26 @@ export function wellSummary(preview) {
   return [odds, items ? t("LOOTCRATES.Well.IfItem", { odds: items }) : "", preview.note].filter(Boolean).join(". ");
 }
 
+/*
+  The payback the GM set (kinds.js payback): the coin back's share of the
+  record's outcomes, as a percentage of the stakes, since a coin back
+  returns the stake; plus items when the well can give one. Read from the
+  record's weights, before pity or what the pools hold change a throw.
+*/
+export function wellPayback(game) {
+  const w = { ...WELL_DEFAULTS.odds, ...(game?.odds ?? {}) };
+  const weightOf = k => Math.max(0, Number(w[k]) || 0);
+  const total = OUTCOMES.reduce((n, k) => n + weightOf(k), 0);
+  if (!(total > 0)) return null;
+  return { pct: Math.round((weightOf("coin") / total) * 100), items: weightOf("item") > 0 };
+}
+
 export const WELL = registerKind({
   id: "well",
   noun: "well",
   roll,
   logRow,
+  payback: wellPayback,
   // The late-cancel line (socket.js): the coin back isn't a thing one "got".
   gotText: out => (out.outcome === "coin" ? t("LOOTCRATES.Well.GotCoinBack") : out.result?.name ? t("LOOTCRATES.Common.Got", { name: out.result.name }) : t("LOOTCRATES.Common.GotNothing")),
   undo: undoPull,

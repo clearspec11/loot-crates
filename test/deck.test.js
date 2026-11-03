@@ -405,8 +405,8 @@ describe("the GM's socket path", () => {
     expect(toCopper(world.actor.system.currency)).toBe(7500);
     // No per-buyer state: the deck's draws are its tallies, written with each row.
     const state = world.game.settings.get("loot-crates", "actorState");
-    expect(Object.keys(state)).toEqual(["tally"]);
-    expect(Object.values(state.tally.buyers["a1.deck"].priced).sort()).toEqual(log.map(r => r.at).sort());
+    expect(Object.keys(state)).toEqual(["tallies"]);
+    expect(Object.values(state.tallies.buyers["a1.deck"].priced).sort()).toEqual(log.map(r => r.at).sort());
     // Every draw posts a card, with the deck's words and the row's id.
     expect(globalThis.ChatMessage.create).toHaveBeenCalledTimes(2);
     const [msg] = globalThis.ChatMessage.create.mock.calls[1];

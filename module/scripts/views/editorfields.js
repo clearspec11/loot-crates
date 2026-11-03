@@ -15,6 +15,7 @@ import { RARITIES, RARITY_LABEL } from "../core/config.js";
 import { oddsModeOf, missChanceOf, chanceLabel } from "../core/odds.js";
 import { t, words } from "../core/i18n.js";
 import { poolPickerHTML } from "./poolpicker.js";
+import { sellBackOf } from "../core/afterplay.js";
 
 const plain = s => String(s ?? "");
 
@@ -63,6 +64,21 @@ export function pityRow(pity, { noun = "pulls", esc = plain } = {}) {
 // The well's and the dice game's stake: an amount, then its coin.
 export function stakeRow(stake, esc = plain) {
   return `<div class="lc-row lc-row--wrap lc-form__stake">${field(t("LOOTCRATES.Editor.Stake"), `<input name="stake" type="number" min="0" step="1" value="${esc(stake.amount)}">`)} <select name="coin" aria-label="${t("LOOTCRATES.Editor.Coin")}">${["cp", "sp", "gp"].map(c => `<option value="${c}"${c === stake.coin ? " selected" : ""}>${c}</option>`).join("")}</select></div>`;
+}
+
+/*
+  "Sell back for [50] % of an item's price" (core/afterplay.js): what the
+  house pays the winner of an item who sells it back while the reveal is
+  open; 0 turns it off for this game. In the price section of every game
+  whose reveal can grant items; `when` hides it with the item prize (the
+  well's, the dice's and the deck's parts marked data-when="items").
+*/
+export function sellBackRow(box, { esc = plain, when = "" } = {}) {
+  const hint = `lc-sellback-${esc(box.id)}`;
+  const shown = when ? ` data-when="${when}"` : "";
+  const input = `<input name="sellBack" type="number" min="0" max="100" step="1" value="${esc(sellBackOf(box))}" aria-describedby="${hint}">`;
+  return `<label class="lc-row lc-row--wrap lc-form__sellback"${shown}>${t("LOOTCRATES.Manager.SellBack", { input })}</label>
+      <p class="lc-form__hint" id="${hint}"${shown}>${t("LOOTCRATES.Manager.SellBackHint")}</p>`;
 }
 
 // The wheel's "From [least] to [most] gp a bet", each bound named for itself.

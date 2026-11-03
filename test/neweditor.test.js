@@ -743,7 +743,7 @@ describe("On the shelf", () => {
     dialog.save();
     await pending;
     await settle();
-    expect(store.getBoxes().b1.rules).toEqual({ stock: 2, stockMax: 5, pity: null, noDuplicates: false, perCharacter: null });
+    expect(store.getBoxes().b1.rules).toEqual({ stock: 2, stockMax: 5, pity: null, noDuplicates: false, perCharacter: null, sellBack: 50 });
     pending = act(app, "editBox", { dataset: { box: "b1" } });
     await settle(2);
     expect(field("onShelf").checked).toBe(true);
