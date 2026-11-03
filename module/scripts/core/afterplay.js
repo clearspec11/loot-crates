@@ -14,7 +14,9 @@
   item at 50% sells for 2 sp), in copper for settle(). The price is the
   one the item had when it was granted (`worth` on the row, worthColumns):
   a player owns their character and can edit an item's price on the
-  sheet, so the GM never reads it from the item afterwards.
+  sheet, so the GM never reads it from the item afterwards; only its
+  quantity, which can only lower the amount (heldWorth: a stack partly
+  used since sells for what is left).
 
   A row records each item's outcome in `parted` by item id: { at, given:
   { actorId, actorName } } or { at, soldCp }. A given or sold item no
@@ -84,6 +86,22 @@ export function sellCp(worth, pct) {
   if (!per || !(Number(worth?.value) > 0) || !(pct > 0)) return 0;
   const qty = Math.max(1, Math.floor(Number(worth.quantity) || 1));
   return Math.floor(Number(worth.value) * qty * pct / 100) * per;
+}
+
+/*
+  What of `worth` (as granted) is still on the sheet: its quantity no more
+  than the item's own now, so a stack partly used since (four of five
+  potions drunk) sells for what is left, never for the stack as won. The
+  price stays the grant's (a player can edit it). Null when nothing is
+  left or the item had no worth.
+*/
+export function heldWorth(worth, item) {
+  if (!worth) return null;
+  const won = Math.max(1, Math.floor(Number(worth.quantity) || 1));
+  const raw = item?.system?.quantity;
+  const now = raw == null ? won : Math.max(0, Math.floor(Number(raw) || 0));
+  const quantity = Math.min(won, now);
+  return quantity > 0 ? { ...worth, quantity } : null;
 }
 
 // The items a row (or a reveal) granted, in order: [{ id, name }].

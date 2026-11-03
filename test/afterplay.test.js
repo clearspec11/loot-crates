@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeAll, vi } from "vitest";
 import { createDocument } from "./minidom.js";
 
-const { SELL_BACK_DEFAULT, sellBackOf, sellBackFromForm, worthOf, worthColumns, sellCp, rowItems, giveTargets, isGiveTarget, partRefusal, partsLine, partSentence, anyParted, firstParted } = await import("../module/scripts/core/afterplay.js");
+const { SELL_BACK_DEFAULT, sellBackOf, sellBackFromForm, worthOf, worthColumns, sellCp, heldWorth, rowItems, giveTargets, isGiveTarget, partRefusal, partsLine, partSentence, anyParted, firstParted } = await import("../module/scripts/core/afterplay.js");
 const { afterHTML, wireAfter, setBusy, refused, showPart, spectatorLine } = await import("../module/scripts/views/afterreveal.js");
 const { applyRow, emptyTally, wonCount, countsChange } = await import("../module/scripts/core/tally.js");
 const { ownedAfterPart } = await import("../module/scripts/core/odds.js");
@@ -51,6 +51,16 @@ describe("what the house pays", () => {
     expect(sellCp(w(10, "ep"), 25)).toBe(100);
     expect(sellCp(w(25, "gp", 2), 50)).toBe(2500);
     expect(sellCp(w(150, "gp"), 100)).toBe(15000);
+  });
+
+  it("counts no more of a stack than the sheet still has, and never more than was won", () => {
+    const won = { value: 50, denomination: "gp", quantity: 5 };
+    expect(heldWorth(won, { system: { quantity: 1 } })).toEqual({ ...won, quantity: 1 });
+    expect(heldWorth(won, { system: { quantity: 9 } })).toEqual(won);
+    expect(heldWorth(won, { system: { quantity: 0 } })).toBeNull();
+    expect(heldWorth(won, { system: {} })).toEqual(won);
+    expect(heldWorth(null, { system: { quantity: 1 } })).toBeNull();
+    expect(sellCp(heldWorth(won, { system: { quantity: 2 } }), 50)).toBe(5000);
   });
 
   it("is nothing at 0%, or for an item with no price", () => {

@@ -121,7 +121,7 @@ import { withLimit } from "../core/limits.js";
 // side reaches the other only inside a function.
 import { requestPull, requestGive, requestSell } from "./socket.js";
 import { onParted } from "./handover.js";
-import { rowItems, giveTargets, sellBackOf, sellCp, partSentence } from "../core/afterplay.js";
+import { rowItems, giveTargets, sellBackOf, sellCp, heldWorth, partSentence } from "../core/afterplay.js";
 import { afterHTML, wireAfter, setBusy, refused, showPart, spectatorLine } from "../views/afterreveal.js";
 import { formatGold } from "../core/currency.js";
 // The dice game's 3D dice bridge (Dice So Nice), set wherever reveals show.
@@ -591,11 +591,19 @@ export class CrateReveal extends ApplicationV2 {
       const pct = box ? sellBackOf(box) : 0;
       const users = game.users?.contents ?? [];
       const targets = giveTargets({ actors: game.actors?.contents ?? [], users, userId: game.user.id, fromActorId: r.actorId });
-      return { items: items.map(i => ({ ...i, sellCp: sellCp(r.worth?.[i.id], pct) })), targets, actorName: r.actorName };
+      return { items: items.map(i => ({ ...i, sellCp: this.#sellCp(i.id, pct) })), targets, actorName: r.actorName };
     } catch (err) {
       console.error("loot-crates | the choices after the reveal couldn't be offered", err);
       return null;
     }
+  }
+
+  // What the house pays for an item of this play now, as the GM works it
+  // out (handover.js doSell): its worth as granted, no more of it than the
+  // sheet still has.
+  #sellCp(itemId, pct) {
+    const item = game.actors?.get?.(this.reveal.actorId)?.items?.get?.(itemId) ?? null;
+    return sellCp(heldWorth(this.reveal.worth?.[itemId], item), pct);
   }
 
   #showAfter(root) {
@@ -629,7 +637,7 @@ export class CrateReveal extends ApplicationV2 {
     } catch (err) {
       // The house's price now, should it have changed (the sell button follows).
       const box = getBoxes()[r.box?.id] ?? null;
-      const cp = what === "sell" ? sellCp(r.worth?.[args.itemId], box ? sellBackOf(box) : 0) : null;
+      const cp = what === "sell" ? this.#sellCp(args.itemId, box ? sellBackOf(box) : 0) : null;
       refused(li, err?.message ?? "", { cp });
     } finally {
       this.linger.resume("parting");

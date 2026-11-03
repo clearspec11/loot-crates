@@ -10,7 +10,8 @@
   or sold already, and the item is still on the character with the same id
   and this game's mark. A give's target must be a character a different
   non-GM player owns (isGiveTarget); a sell's price is the house's now
-  (sellCp: the item's worth as granted, at the game's sellBack), and a
+  (sellCp: the item's worth as granted, no more of it than is still on
+  the sheet, heldWorth, at the game's sellBack), and a
   press at another price is refused naming the new one.
 
   The row is marked first (store.js recordPart, with the tallies and the
@@ -33,7 +34,7 @@ import { SOCKET, MODULE_ID } from "../core/config.js";
 import { PullError } from "../games/kinds.js";
 import { getLog, getBoxes, recordPart, liftPart } from "./store.js";
 import { createGrants } from "./pull.js";
-import { partRefusal, isGiveTarget, sellBackOf, sellCp, rowItems, partsLine } from "../core/afterplay.js";
+import { partRefusal, isGiveTarget, sellBackOf, sellCp, heldWorth, rowItems, partsLine } from "../core/afterplay.js";
 import { settle, formatPrice } from "../core/currency.js";
 import { findPullCard, partedCardContent } from "../views/chatcard.js";
 import { t } from "../core/i18n.js";
@@ -114,7 +115,7 @@ export async function doGive(msg) {
 export async function doSell(msg) {
   const { row, actor, item, name } = guard(msg);
   const box = getBoxes()[row.boxId] ?? null;
-  const cp = sellCp(row.worth?.[item.id], box ? sellBackOf(box) : 0);
+  const cp = sellCp(heldWorth(row.worth?.[item.id], item), box ? sellBackOf(box) : 0);
   if (!cp) throw new PullError(t("LOOTCRATES.After.SellOff", { box: row.boxName, item: name }));
   if (msg.cp != null && Math.round(Number(msg.cp)) !== cp) throw new PullError(t("LOOTCRATES.After.SellChanged", { box: row.boxName, item: name, price: formatPrice(cp / 100) }));
   const part = { at: Date.now(), soldCp: cp };

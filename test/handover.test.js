@@ -190,6 +190,20 @@ describe("Sell back", () => {
     expect((await sell(row, itemId, 6000)).part.soldCp).toBe(6000);
   });
 
+  it("pays for no more of a stack than is still on the sheet, never for the stack as won", async () => {
+    const world = makeWorld();
+    globalThis.fromUuid = async () => ({ name: "Potion", img: "", toObject: () => ({ name: "Potion", type: "consumable", system: { price: { value: 50, denomination: "gp" }, quantity: 5 }, flags: {} }) });
+    const { row, itemId } = await won(world);
+    expect(row.worth[itemId].quantity).toBe(5);
+    // Four drunk since the grant: the button's price for five is refused, naming one's.
+    world.brinn.items[0].system.quantity = 1;
+    expect((await sell(row, itemId, 12500)).message).toBe("Test Crate now buys Potion back for 25 gp. Nothing was sold; press Sell back again to sell it at that.");
+    expect(gp(world.brinn)).toBe(490);
+    expect(world.brinn.items).toHaveLength(1);
+    expect((await sell(row, itemId, 2500)).part.soldCp).toBe(2500);
+    expect(gp(world.brinn)).toBe(515);
+  });
+
   it("refuses at 0%, or for an item with no price", async () => {
     const world = makeWorld();
     const { row, itemId } = await won(world, { sellBack: 0 });
