@@ -11,9 +11,11 @@
     line (collapseMisses), and only an item posts a chat card.
   - The cap is "N throws per in-game day", keyed on the world's calendar
     and the character's long rests (clock.js dayKeyFor: with dnd5e's
-    calendar off on the rests alone), and counted from the unrefunded log rows that carry that
-    day's key: the GM resets nothing, the day rolls over when the party's
-    does, and a refund gives a throw back by itself.
+    calendar off on the rests alone), and counted in the tallies by that
+    day's key (core/tally.js, written with each throw's log row): the GM
+    resets nothing, the day rolls over when the party's does, a refund
+    gives a throw back by itself, and a row trimmed off the log still
+    counts.
   - Pity counts throws since the last item at the pity rarity, in the
     crate's own state shape ({ sinceRare, owned, pulls }), so the crate's
     odds, pity and refund maths (odds.js) run unchanged: when it is due the
@@ -28,7 +30,7 @@
   item's rarity odds), odds: { nothing, coin, item } (weights), rules: {
   cap, pity, noDuplicates } }.
 
-  No Foundry globals: the core passes the clock's day and the log, so
+  No Foundry globals: the core passes the clock's day and the tallies, so
   Vitest runs the roll and the cap as they are.
 */
 import { RARITY_LABEL } from "../core/config.js";
@@ -42,6 +44,7 @@ import { PullError, registerKind } from "./kinds.js";
 import { priceTag } from "./ticket.js";
 import { byRest, restDayNote } from "../core/clock.js";
 import { t, words } from "../core/i18n.js";
+import { playedOn } from "../core/tally.js";
 
 export const WELL_DEFAULTS = { price: 0.1, odds: { nothing: 90, coin: 8, item: 2 }, cap: 3 };
 export const OUTCOMES = ["nothing", "coin", "item"];
@@ -55,12 +58,12 @@ export function capOf(game) {
   return n > 0 ? n : 0;
 }
 
-// How many throws this character has made at this well today: its unrefunded
-// log rows carrying today's key. None when the world has no clock (day null).
-// A coin bought to keep (row.keep) isn't thrown until its ticket is used.
-export function throwsToday(log, { boxId, actorId, day }) {
-  if (!day) return 0;
-  return (log ?? []).filter(r => r.boxId === boxId && r.actorId === actorId && r.day === day && !r.refunded && !r.keep).length;
+// How many throws this character has made at this well today: the
+// tallies' unrefunded plays on today's key (core/tally.js). None when the
+// world has no clock (day null). A coin bought to keep (row.keep) isn't
+// thrown until its ticket is used.
+export function throwsToday(tally, { boxId, actorId, day }) {
+  return playedOn(tally, { boxId, actorId, day });
 }
 
 export const stillLine = (thrown, cap) => t("LOOTCRATES.Well.Still", { thrown, cap });
@@ -103,7 +106,7 @@ export function wellOdds(game, pools, state = {}) {
 }
 
 /*
-  The throw, on the GM. The cap is checked first, from the log as it stands
+  The throw, on the GM. The cap is checked first, from the tallies as they stand
   inside the write queue, so two quick throws can't both pass. Then the
   outcome: nothing (the state counts a throw toward pity), the coin back
   (the stake is the payout, so the one settle() moves nothing), or an item
@@ -113,9 +116,9 @@ export function wellOdds(game, pools, state = {}) {
   miss, never an error. `day` and `thrown` ride into the row and the reveal.
 */
 async function roll(ctx) {
-  const { game, actor, state = {}, rng, log = [], today = null } = ctx;
+  const { game, actor, state = {}, rng, tally = null, today = null } = ctx;
   const cap = capOf(game);
-  const thrown = throwsToday(log, { boxId: game.id, actorId: actor.id, day: today });
+  const thrown = throwsToday(tally, { boxId: game.id, actorId: actor.id, day: today });
   if (cap && today && thrown >= cap) throw new PullError(t("LOOTCRATES.Common.Sentence", { text: stillLine(thrown, cap) }));
   const odds = wellOdds(game, ctx.pools, state);
   if (odds.dry) throw new PullError(t("LOOTCRATES.Well.DryError", { name: game.name }));
@@ -154,8 +157,10 @@ function logRow(ctx) {
 */
 // A ticket's play stands alone too: its Refund gives the ticket back.
 export const isMiss = r => r?.outcome === "nothing" && !r.roundId && !r.redeem;
-// What one play is called on a folded line: a throw at the well, a pull elsewhere.
-export const missNoun = kind => (kind === "well" ? "throw" : "pull");
+// What one play is called on a folded line: a throw at the well, a ticket
+// for a scratch ticket's dud, a pull elsewhere.
+const MISS_NOUN = { well: "throw", scratch: "ticket" };
+export const missNoun = kind => MISS_NOUN[kind] ?? "pull";
 
 export function collapseMisses(log = []) {
   const groups = new Map();
@@ -178,6 +183,7 @@ export function collapseMisses(log = []) {
 const MISS_WORDS = {
   throw: { one: "LOOTCRATES.Well.ThrowsOne", many: "LOOTCRATES.Well.ThrowsMany", nothingOne: "LOOTCRATES.Well.ThrowsNothingOne", nothingMany: "LOOTCRATES.Well.ThrowsNothingMany" },
   pull: { one: "LOOTCRATES.Well.PullsOne", many: "LOOTCRATES.Well.PullsMany", nothingOne: "LOOTCRATES.Well.PullsNothingOne", nothingMany: "LOOTCRATES.Well.PullsNothingMany" },
+  ticket: { one: "LOOTCRATES.Well.TicketsOne", many: "LOOTCRATES.Well.TicketsMany", nothingOne: "LOOTCRATES.Well.TicketsNothingOne", nothingMany: "LOOTCRATES.Well.TicketsNothingMany" },
 };
 const missWords = noun => MISS_WORDS[noun] ?? MISS_WORDS.throw;
 export const throwsText = (n, noun = "throw") => t(n === 1 ? missWords(noun).nothingOne : missWords(noun).nothingMany, { count: n });
@@ -383,7 +389,7 @@ function wellState(game, odds, ctx) {
   if (ctx.held?.(game.id)) return t("LOOTCRATES.Well.StillRippling");
   if (odds.dry) return t("LOOTCRATES.Well.Dry");
   const cap = capOf(game);
-  const thrown = throwsToday(ctx.log, { boxId: game.id, actorId: ctx.actorId, day: ctx.today });
+  const thrown = throwsToday(ctx.tally, { boxId: game.id, actorId: ctx.actorId, day: ctx.today });
   if (cap && ctx.today && thrown >= cap) return stillLine(thrown, cap);
   return "";
 }
@@ -395,7 +401,7 @@ function card(game, pools, ctx) {
   const reason = wellState(game, odds, ctx) || shortReason(game, ctx);
   const pity = pityLine(odds.item, "throws");
   const cap = capOf(game);
-  const thrown = throwsToday(ctx.log, { boxId: game.id, actorId: ctx.actorId, day: ctx.today });
+  const thrown = throwsToday(ctx.tally, { boxId: game.id, actorId: ctx.actorId, day: ctx.today });
   const middle = [
     wellOddsHTML(odds),
     pity ? `<div class="lc-box__pity lc-rarity-${odds.item.pity.minRarity}${odds.item.pity.due ? " lc-box__pity--due" : ""}">${esc(pity)}</div>` : "",

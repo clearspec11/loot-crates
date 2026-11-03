@@ -24,7 +24,7 @@
 // B. In the editor: 1. New crate on the Boxes tab: no pool ticked, "Make a
 //    pool from a compendium" offered; type a name. 2. Make a pool from a
 //    compendium; 3. tick Loot, 4. tick Common, type "cloak"; 5. Preview;
-//    6. Add N items: a pool named for the crate, ticked and focused in the
+//    6. Add N items: a pool named for the crate ("<crate> pool"), ticked and focused in the
 //    picker, the line under it saying so. Type a price. 7. Add to shelf: the
 //    crate draws from that pool; the status line in view.
 //
@@ -219,7 +219,7 @@ const GM_HELPERS = `
       const pool = Object.values(game.settings.get("loot-crates", "pools")).find(p => p.name === name && !known.includes(p.id));
       const tick = pool && d.querySelector(`input[name="pool.${pool.id}"]`);
       return { id: pool?.id ?? null, entries: pool?.entries?.length ?? 0, title: __lc.title(), ticked: !!tick?.checked, focused: !!tick && document.activeElement === tick, said: d.querySelector(".lc-pool-picker__made")?.textContent ?? null, offerHidden: !!d.querySelector(".lc-pool-picker__make")?.closest("[hidden]") || !!d.querySelector(".lc-pool-picker__make[hidden]"), windows: document.querySelectorAll(".application.lc-dialog").length };
-    }, { name: CRATE_B, known: out.before.poolIds });
+    }, { name: `${CRATE_B} pool`, known: out.before.poolIds });
     if (out.b.made.id) out.made.pools.push(out.b.made.id);
     await editorB.locator('input[name="price"]').fill("12 gp");
     const okB = (await editorB.locator('button[data-action="ok"]').textContent()).trim();

@@ -143,7 +143,13 @@ describe("refundPull and the buyer's pity and no-duplicates record", () => {
     const out = await pending;
     expect(out.state).toEqual({ before: { sinceRare: 0, owned: [ROW.uuid], pulls: 3 }, after: shown.after });
     expect(await next).toEqual({ gp: 517, stock: 3, state: { sinceRare: 2, owned: [], pulls: 2 } });
-    expect(writes).toHaveLength(1);
+    // Two writes of the state setting: the mark, with the tallies the row
+    // counted for taken back in the same write as the row (store.js), then
+    // the pity count and the no-duplicates record.
+    expect(writes).toHaveLength(2);
+    expect(writes[0].tally.buyers["actor1.box"]).toBeUndefined();
+    expect(writes[0]["actor1.box"]).toEqual({ sinceRare: 0, owned: [ROW.uuid], pulls: 3 });
+    expect(writes[1]["actor1.box"]).toEqual({ sinceRare: 2, owned: [], pulls: 2 });
   });
 
   it("writes nothing the second time", async () => {
@@ -152,7 +158,7 @@ describe("refundPull and the buyer's pity and no-duplicates record", () => {
     const [a, b] = await Promise.all([refundPull(rowId), refundPull(rowId)]);
     expect([a.status, b.status].sort()).toEqual(["already", "refunded"]);
     expect((await refundPull(rowId)).status).toBe("already");
-    expect(writes).toHaveLength(1);
+    expect(writes).toHaveLength(2);
     expect(getActorState("actor1", "box")).toEqual({ sinceRare: 3, owned: ["other"], pulls: 3 });
   });
 
@@ -165,8 +171,10 @@ describe("refundPull and the buyer's pity and no-duplicates record", () => {
     const card = message("m1", { uuid: ROW.uuid, logId: rowId });
     globalThis.game.messages = { contents: [card] };
     globalThis.foundry.utils.escapeHTML = escapeHTML;
+    // The mark (the row and its tallies) lands; the pity write after it fails.
     const set = globalThis.game.settings.set;
-    globalThis.game.settings.set = async (ns, key, value) => { if (key === "actorState") throw new Error("socket down"); return set(ns, key, value); };
+    let stateWrites = 0;
+    globalThis.game.settings.set = async (ns, key, value) => { if (key === "actorState" && ++stateWrites > 1) throw new Error("socket down"); return set(ns, key, value); };
     const notify = vi.fn();
     globalThis.ui = { notifications: { error: notify } };
     const err = vi.spyOn(console, "error").mockImplementation(() => {});

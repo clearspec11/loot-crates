@@ -24,6 +24,7 @@ import "../games/auction.js";
 import "../games/scratch.js";
 import { settle, canAfford, formatPrice } from "../core/currency.js";
 import { limitState, limitRefusal } from "../core/limits.js";
+import { tallyOf } from "../core/tally.js";
 import { onShelf, shelfRefusal } from "../core/shelf.js";
 import { t } from "../core/i18n.js";
 import { spendTicket, keepTicket } from "./tickets.js";
@@ -53,9 +54,11 @@ export async function resolveSource(uuid) {
 
   `onMissing(entry)` reaches the kind's roll (the crate re-rolls past an
   entry whose source vanished since the sweep, and the socket handler flags
-  it). `grant: false` rolls without writing anything. `log` (the pull log as
-  it stands) and `today` (the in-game day's key, store.js todayKey) reach
-  the roll too, for a game that counts plays per day.
+  it). `grant: false` rolls without writing anything. `tally` (the counts
+  as they stand, core/tally.js; counted from `log` when a caller passes
+  only the log), `log` (the pull log, for a table round's rows) and
+  `today` (the in-game day's key, store.js todayKey) reach the roll too,
+  for a game that counts plays per day or what is left of a deck or roll.
 
   The price is the record's, or the kind's for this play (kinds.js priceOf:
   the deck's draw price rises with each draw in a row): the Buy's price is
@@ -87,8 +90,8 @@ export const PRICE_SKEW_MS = 5000;
   the game exists and is on the shelf (shelf.js: a game the GM took off
   it is refused for a shop drawn before that, or a request made by hand),
   there is a character, it isn't sold out, this character
-  hasn't reached its limit (limits.js: counted from `log`, the unrefunded
-  rows as they stand in the queue, and for a limit per day `today`; a
+  hasn't reached its limit (limits.js: counted from `tally`, the counts
+  as they stand in the queue, and for a limit per day `today`; a
   table game has none), the price is
   the one on the button pressed (the kind's priceOf, or the record's; at
   a boundary of a clock-driven price, either side of it, PRICE_SKEW_MS),
@@ -101,21 +104,21 @@ export const PRICE_SKEW_MS = 5000;
   boundary (else null). A `ticket` play (performPull) skips the shelf,
   the stock, the price and the limit per character: it costs nothing, the
   ticket is its payment, and the limit counts purchases. A ticket bought
-  to keep was counted when it was bought (limits.js boughtBy); one the GM
+  to keep was counted when it was bought (core/tally.js); one the GM
   handed out was never bought, so it plays past the limit and doesn't
   count toward it.
 */
-function guardPlay({ box, actor, state = {}, expectedPrice, log = [], today = null, bet, ticket = false }) {
+function guardPlay({ box, actor, state = {}, expectedPrice, log = [], tally = tallyOf(log), today = null, bet, ticket = false }) {
   if (!box) throw new PullError(t("LOOTCRATES.Error.BoxGone"));
   if (!ticket && !onShelf(box)) throw new PullError(shelfRefusal(box));
   if (!actor) throw new PullError(t("LOOTCRATES.Error.NoActor"));
   if (!ticket && box.rules?.stock != null && box.rules.stock <= 0) throw new PullError(t("LOOTCRATES.Error.SoldOut", { name: box.name }));
   const kind = kindFor(box);
-  const limit = ticket ? null : limitState(box, { log, actorId: actor.id, today });
+  const limit = ticket ? null : limitState(box, { tally, actorId: actor.id, today });
   if (limit?.reached) throw new PullError(limitRefusal(box, limit, actor.name));
   // A ticket was paid for already (or handed out): the play costs nothing.
   if (ticket) return { kind, price: 0, purse: { ...(actor.system?.currency ?? {}) }, now: Date.now(), priceNote: null };
-  const priceAt = at => Number(kind.priceOf?.({ game: box, actor, state, log, today, now: at, bet }) ?? box.price);
+  const priceAt = at => Number(kind.priceOf?.({ game: box, actor, state, log, tally, today, now: at, bet }) ?? box.price);
   let now = Date.now();
   let price = priceAt(now);
   let priceNote = null;
@@ -168,13 +171,13 @@ export async function createGrants(actor, datas) {
   grant fails. The kind's own guards (a sold-out scratch roll, the well's
   daily cap) refuse in its roll, before anything is spent.
 */
-export async function performPull({ box, pools, actor, state = {}, rng = rollRng(), grant = true, onMissing = null, expectedPrice, log = [], today = null, ticket = null }) {
-  const { kind, price, purse, now, priceNote } = guardPlay({ box, actor, state, expectedPrice, log, today, ticket: !!ticket });
+export async function performPull({ box, pools, actor, state = {}, rng = rollRng(), grant = true, onMissing = null, expectedPrice, log = [], tally = tallyOf(log), today = null, ticket = null }) {
+  const { kind, price, purse, now, priceNote } = guardPlay({ box, actor, state, expectedPrice, log, tally, today, ticket: !!ticket });
   // A table game is played in rounds (table.js): its roll settles every
   // stake at once, so it is staked, never pulled.
   if (kind.table) throw new PullError(t("LOOTCRATES.Error.TableGame", { name: box.name }));
 
-  const rolled = await kind.roll({ game: box, pools, actor, state, rng, resolveSource, onMissing, log, today, now, price });
+  const rolled = await kind.roll({ game: box, pools, actor, state, rng, resolveSource, onMissing, log, tally, today, now, price });
   const { result = null, payoutCp: payout, state: nextState, pools: rolledFrom, ...own } = rolled;
   const datas = grantsOf(rolled);
   // The Item data is created here, never broadcast.
@@ -277,12 +280,12 @@ async function playTicket({ actor, ticket, purse, nextPurse, delta, datas, resul
   Returns { purse, before, price, priceNote, kind, item, stacked, undo }:
   `item` the ticket stack it went onto.
 */
-export async function performKeep({ box, pools = {}, actor, state = {}, expectedPrice, log = [], today = null }) {
-  const { kind, price, purse, now, priceNote } = guardPlay({ box, actor, state, expectedPrice, log, today });
+export async function performKeep({ box, pools = {}, actor, state = {}, expectedPrice, log = [], tally = tallyOf(log), today = null }) {
+  const { kind, price, purse, now, priceNote } = guardPlay({ box, actor, state, expectedPrice, log, tally, today });
   if (kind.table) throw new PullError(t("LOOTCRATES.Error.TableGame", { name: box.name }));
   // Asked at the moment guardPlay accepted the price (a deck's streak can
   // turn within PRICE_SKEW_MS), so the shop reason judges the same price.
-  const why = keepReason(kind, { box, pools, actor, state, log, today, purse, now });
+  const why = keepReason(kind, { box, pools, actor, state, log, tally, today, purse, now });
   if (why) throw new PullError(t("LOOTCRATES.Keep.Refused", { name: box.name, reason: why }));
   const nextPurse = settle(purse, -Math.round(price * 100));
   if (!nextPurse) throw new PullError(t("LOOTCRATES.Error.CantAfford", { actor: actor.name, name: box.name }));
@@ -309,10 +312,10 @@ export async function performKeep({ box, pools = {}, actor, state = {}, expected
   purse, the log and the day as they stand, and nothing still spinning
   (the buyer's own hold is the shop's to show).
 */
-function keepReason(kind, { box, pools, actor, state, log, today, purse, now = Date.now() }) {
+function keepReason(kind, { box, pools, actor, state, log, tally, today, purse, now = Date.now() }) {
   const reason = kind.shop?.reason ?? getKind(DEFAULT_KIND)?.shop?.reason;
   if (!reason) return "";
-  return reason(box, pools ?? {}, { log, today, actorId: actor.id, actorName: actor.name, purse, hasActor: true, open: true, gmOnline: true, isGM: false, now, stateOf: () => state ?? {} }) || "";
+  return reason(box, pools ?? {}, { log, tally, today, actorId: actor.id, actorName: actor.name, purse, hasActor: true, open: true, gmOnline: true, isGM: false, now, stateOf: () => state ?? {} }) || "";
 }
 
 /*

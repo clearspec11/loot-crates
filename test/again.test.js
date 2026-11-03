@@ -14,7 +14,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 vi.mock("../module/scripts/foundry/sound.js", () => ({ playTick: vi.fn(), playSlow: vi.fn(), playReveal: vi.fn() }));
 vi.mock("../module/scripts/foundry/socket.js", () => ({ requestPull: vi.fn() }));
-vi.mock("../module/scripts/foundry/store.js", () => ({ getBoxes: vi.fn(() => ({})), getPools: vi.fn(() => ({})), getLog: vi.fn(() => []), getRounds: vi.fn(() => ({})), todayKey: vi.fn(() => null), isShopOpen: vi.fn(() => true) }));
+vi.mock("../module/scripts/foundry/store.js", () => ({ getBoxes: vi.fn(() => ({})), getPools: vi.fn(() => ({})), getLog: vi.fn(() => []), getTally: vi.fn(() => null), getRounds: vi.fn(() => ({})), todayKey: vi.fn(() => null), isShopOpen: vi.fn(() => true) }));
 
 const fakeElement = () => {
   const el = {
@@ -53,7 +53,7 @@ class FakeApp {
 
 vi.stubGlobal("foundry", { applications: { api: { ApplicationV2: FakeApp }, instances: new Map() }, utils: { escapeHTML: s => s } });
 const { showReveal, CrateReveal, _resetHolds } = await import("../module/scripts/foundry/reveal.js");
-const { registerKind, _resetKinds } = await import("../module/scripts/games/kinds.js");
+const { registerKind, _resetKinds, PullError } = await import("../module/scripts/games/kinds.js");
 const { requestPull } = await import("../module/scripts/foundry/socket.js");
 const store = await import("../module/scripts/foundry/store.js");
 
@@ -87,6 +87,7 @@ beforeEach(() => {
   vi.stubGlobal("fromUuidSync", () => null);
   store.getBoxes.mockReturnValue({ d1: GAME });
   store.getLog.mockReturnValue([{ id: "x" }]);
+  store.getTally.mockReturnValue({ v: 1, buyers: { "a.d1": { bought: 1 } } });
   requestPull.mockReset();
   again.mockClear();
   registerKind(DECK);
@@ -95,7 +96,7 @@ beforeEach(() => {
 afterEach(() => { _resetHolds(); _resetKinds(["crate"]); vi.unstubAllGlobals(); });
 
 describe("Draw again", () => {
-  it("shows the kind's offer to the buyer on landing, with the record, log, purse and shop state", async () => {
+  it("shows the kind's offer to the buyer on landing, with the record, log, tallies, purse and shop state", async () => {
     const app = await showReveal(reveal());
     await app.landed;
     const btn = app.element.querySelector(".lc-reveal__again");
@@ -103,7 +104,7 @@ describe("Draw again", () => {
     expect(btn.textContent).toBe("Draw again for 15 gp");
     expect(btn.getAttribute("aria-disabled")).toBeNull();
     expect(app.element.querySelector(".lc-reveal__why").hidden).toBe(true);
-    expect(again).toHaveBeenCalledWith(expect.objectContaining({ requestId: "r1" }), expect.objectContaining({ game: GAME, log: [{ id: "x" }], purse: { gp: 40 }, open: true, gmOnline: true }));
+    expect(again).toHaveBeenCalledWith(expect.objectContaining({ requestId: "r1" }), expect.objectContaining({ game: GAME, log: [{ id: "x" }], tally: { v: 1, buyers: { "a.d1": { bought: 1 } } }, purse: { gp: 40 }, open: true, gmOnline: true }));
     expect(typeof again.mock.calls[0][1].now).toBe("number");
   });
 
@@ -183,5 +184,37 @@ describe("Draw again", () => {
     await press(app, btn);
     expect(requestPull).toHaveBeenCalledTimes(2);
     expect(app.closed).toBe(1);
+  });
+
+  it("says a stale price on the reason line beside the button, as the shop's notice line does, not as a toast", async () => {
+    const app = await showReveal(reveal());
+    await app.landed;
+    const btn = app.element.querySelector(".lc-reveal__again");
+    const why = app.element.querySelector(".lc-reveal__why");
+    requestPull.mockRejectedValue(new PullError("The Deck now costs 10 gp (you pressed 15 gp). Nothing was charged.", { stalePrice: 10 }));
+    // The GM's price, which the offer reads once the setting catches up.
+    offer = { price: 10, label: "Draw again for 10 gp", off: "" };
+    await press(app, btn);
+    await settle();
+    expect(toasts).toEqual([]);
+    expect(why.hidden).toBe(false);
+    expect(why.textContent).toBe("The Deck now costs 10 gp (you pressed 15 gp). Nothing was charged.");
+    expect(btn.getAttribute("aria-describedby")).toBe(why.id);
+    // The button is back at the price now, pressable.
+    expect(btn.textContent).toBe("Draw again for 10 gp");
+    expect(btn.getAttribute("aria-disabled")).toBeNull();
+    expect(app.closed).toBe(0);
+    // The next press clears the line.
+    requestPull.mockReturnValue(new Promise(() => {}));
+    press(app, btn);
+    expect(why.hidden).toBe(true);
+    expect(btn.getAttribute("aria-describedby")).toBeNull();
+  });
+});
+
+describe("Foundry v14's Detach", () => {
+  it("is not offered on the reveal: it reads the main page's tab, focus, Buy and chat card", async () => {
+    const app = await showReveal(reveal());
+    expect(app._canDetach()).toBe(false);
   });
 });

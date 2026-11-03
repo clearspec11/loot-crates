@@ -344,6 +344,50 @@ describe("the editors ask before throwing a change away", () => {
   });
 });
 
+describe("New pool's name asks before a typed name is thrown away, as the editors do", () => {
+  it("Escape, X or Cancel with the name untouched closes at once and makes nothing", async () => {
+    const app = await manager();
+    for (const how of ["escape", "x", "cancel"]) {
+      const pending = act(app, "addPool", {});
+      await tick();
+      expect(field("name").value).toBe("New pool");
+      if (how === "escape") open.escape(); else if (how === "x") open.clickX(); else await open.press("cancel");
+      await pending;
+    }
+    expect(FakeDialog.asked).toEqual([]);
+    expect(Object.keys(store.getPools()).sort()).toEqual(["p", "q"]);
+  });
+
+  it("a typed name asks Discard your changes to <the typed name>?; Keep editing keeps it, Discard makes nothing", async () => {
+    const app = await manager();
+    const pending = act(app, "addPool", {});
+    await tick();
+    const dialog = open;
+    type("name", "Dragon hoard");
+    dialog.escape();
+    await tick();
+    expect(FakeDialog.asked.map(c => [c.window.title, c.content, c.no.default, c.no.label, c.yes.label])).toEqual([["Discard changes?", "<p>Discard your changes to <strong>Dragon hoard</strong>? Nothing you changed has been saved.</p>", true, "Keep editing", "Discard"]]);
+    expect(dialog.rendered).toBe(true);
+    expect(field("name").value).toBe("Dragon hoard");
+    FakeDialog.answers = [true];
+    await dialog.press("cancel");
+    await pending;
+    expect(dialog.rendered).toBe(false);
+    expect(Object.keys(store.getPools()).sort()).toEqual(["p", "q"]);
+  });
+
+  it("Make the pool with a typed name asks nothing and makes it", async () => {
+    const app = await manager();
+    const pending = act(app, "addPool", {});
+    await tick();
+    type("name", "Dragon hoard");
+    await open.press("ok");
+    await pending;
+    expect(FakeDialog.asked).toEqual([]);
+    expect(Object.values(store.getPools()).map(p => p.name)).toContain("Dragon hoard");
+  });
+});
+
 describe("a game that can't be played saves off the shelf", () => {
   it("New crate with no pool: Save off the shelf, the box off with the reason; ticking a pool brings Add to shelf back", async () => {
     const app = await manager();

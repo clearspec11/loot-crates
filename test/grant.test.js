@@ -15,6 +15,7 @@ vi.mock("../module/scripts/foundry/reveal.js", () => ({ showReveal: vi.fn(async 
 const { registerKind, readyToGrant, grantsOf, _resetKinds } = await import("../module/scripts/games/kinds.js");
 const { performPull, createGrants, PullError } = await import("../module/scripts/foundry/pull.js");
 const { registerSocket, itemColumns } = await import("../module/scripts/foundry/socket.js");
+const { deliverTo } = await import("./requests.js");
 const { registerSettings, appendLog, getLog } = await import("../module/scripts/foundry/store.js");
 const { refundPull, describeRefund, grantedItems } = await import("../module/scripts/foundry/refund.js");
 const { postRefundCard } = await import("../module/scripts/foundry/chat.js");
@@ -111,7 +112,7 @@ function makeWorld(actor) {
   globalThis.ui = { notifications: { error: vi.fn(), info: vi.fn(), warn: vi.fn() } };
   registerSettings();
   registerSocket();
-  return { game, emitted, deliver: msg => Promise.all(handlers.map(h => h(msg))) };
+  return { game, emitted, deliver: deliverTo(handlers) };
 }
 
 async function buy(world, boxId) {

@@ -13,6 +13,7 @@ vi.mock("../module/scripts/foundry/reveal.js", () => ({ showReveal: vi.fn(async 
 vi.mock("../module/scripts/foundry/chat.js", () => ({ postPullCard: vi.fn(async () => null) }));
 
 const { registerSocket, requestPull, restCompleted, owedRests, settleOwedRests, _resetOwedSent, OWED_RESEND_MS, GM_TIMEOUT_MS, WAIT_NOTICE_MS, TIMED_OUT, SLOW_PULL_MS, _resetSlowWarning } = await import("../module/scripts/foundry/socket.js");
+const { deliverTo, withQuery } = await import("./requests.js");
 const { registerSettings, setStoreListener, appendLog, sweepAllPools, enqueueWrite, updateBox, INDEX_FIELDS, todayKey } = await import("../module/scripts/foundry/store.js");
 const { storeRedraw, REDRAW_DELAY_MS } = await import("../module/scripts/core/redraw.js");
 const { refundPull } = await import("../module/scripts/foundry/refund.js");
@@ -62,7 +63,7 @@ function makeWorld({ user, activeGM = GM, actor = makeActor() }) {
   const emitted = [];
   const game = {
     user,
-    users: { activeGM, get: id => [GM, PLAYER].find(u => u.id === id) ?? null },
+    users: { activeGM: withQuery(activeGM, emitted), get: id => [GM, PLAYER].find(u => u.id === id) ?? null },
     actors: { get: id => (id === actor.id ? actor : null) },
     settings: {
       register: (ns, key, { default: def, onChange: fn }) => { settings.set(`${ns}.${key}`, def); if (fn) onChange.set(`${ns}.${key}`, fn); },
@@ -79,7 +80,7 @@ function makeWorld({ user, activeGM = GM, actor = makeActor() }) {
   globalThis.fromUuid = async uuid => ({ name: `Item ${uuid}`, img: "", toObject: () => ({ name: `Item ${uuid}`, type: "loot", flags: {} }) });
   registerSettings();
   registerSocket();
-  const deliver = msg => Promise.all(handlers.map(h => h(msg)));
+  const deliver = deliverTo(handlers);
   return { game, actor, emitted, deliver, settings };
 }
 
@@ -223,6 +224,7 @@ describe("the GM client", () => {
     const held = enqueueWrite(() => new Promise(r => { release = r; }));
     const pull = deliver({ type: "pull", requestId: "late", boxId: "box", actorId: "actor1", userId: "p1" });
     await deliver({ type: "cancel", requestId: "late", userId: "p1" });
+    while (!release) await tick();
     release();
     await held;
     await pull;
@@ -1117,7 +1119,7 @@ describe("a day that ends at a long rest, with dnd5e's calendar off", () => {
     restCompleted(actor, { type: "long", newDay: false }, { type: "long", newDay: true });
     restCompleted(actor, { type: "short", newDay: false }, { type: "short" });
     // With the world time the rest began, for the calendar's day (below).
-    expect(emitted).toEqual([{ type: "newDay", actorId: "actor1", userId: "p1", at: 86400 * 5 }]);
+    expect(emitted).toEqual([{ type: "newDay", requestId: expect.any(String), actorId: "actor1", userId: "p1", at: 86400 * 5 }]);
   });
 
   it("counts rests when the calendar is on but dnd5e's daily recovery is manual", async () => {
@@ -1315,9 +1317,9 @@ describe("a long rest taken while no GM is online", () => {
     expect(settleOwedRests()).toBe(0);
 
     // A GM comes online and its load asks.
-    game.users.activeGM = GM;
+    game.users.activeGM = withQuery(GM, emitted);
     await deliver({ type: "owedRests" });
-    expect(emitted).toEqual([{ type: "newDay", actorId: "actor1", userId: "p1", at: 86400 * 5, owed: true }]);
+    expect(emitted).toEqual([{ type: "newDay", requestId: expect.any(String), actorId: "actor1", userId: "p1", at: 86400 * 5, owed: true }]);
     // Kept until the GM says it was counted, so a GM that dropped it hears it again.
     expect(owedRests()).toEqual({ actor1: { at: 86400 * 5 } });
     await deliver({ type: "newDayCounted", userId: "someone else", actorId: "actor1", at: 86400 * 5 });
@@ -1330,22 +1332,22 @@ describe("a long rest taken while no GM is online", () => {
   it("sends what it owes at its own load when a GM is already online", () => {
     const { game, actor, emitted } = playerWorld();
     restCompleted(actor, { newDay: true }, { newDay: true });
-    game.users.activeGM = GM;
+    game.users.activeGM = withQuery(GM, emitted);
     expect(settleOwedRests()).toBe(1);
-    expect(emitted).toEqual([{ type: "newDay", actorId: "actor1", userId: "p1", at: 86400 * 5, owed: true }]);
+    expect(emitted).toEqual([{ type: "newDay", requestId: expect.any(String), actorId: "actor1", userId: "p1", at: 86400 * 5, owed: true }]);
   });
 
   it("sends a rest once when its own load and the GM's ask fall together, and again only once unanswered for a while", async () => {
     vi.useFakeTimers();
     const { game, actor, emitted, deliver } = playerWorld();
     restCompleted(actor, { newDay: true }, { newDay: true });
-    game.users.activeGM = GM;
+    game.users.activeGM = withQuery(GM, emitted);
     // Both clients loading at a session's start: the player's own load
     // sends, and the GM's ask moments later must not make the GM hear the
     // same rest twice (it would end two days).
     expect(settleOwedRests()).toBe(1);
     await deliver({ type: "owedRests" });
-    expect(emitted).toEqual([{ type: "newDay", actorId: "actor1", userId: "p1", at: 86400 * 5, owed: true }]);
+    expect(emitted).toEqual([{ type: "newDay", requestId: expect.any(String), actorId: "actor1", userId: "p1", at: 86400 * 5, owed: true }]);
     // A GM that dropped it asks again later and hears it again.
     vi.advanceTimersByTime(OWED_RESEND_MS);
     await deliver({ type: "owedRests" });
@@ -1356,9 +1358,9 @@ describe("a long rest taken while no GM is online", () => {
     game.users.activeGM = null;
     game.time = { components: { year: 1, day: 6 }, worldTime: 86400 * 6 };
     restCompleted(actor, { newDay: true }, { newDay: true });
-    game.users.activeGM = GM;
+    game.users.activeGM = withQuery(GM, emitted);
     expect(settleOwedRests()).toBe(1);
-    expect(emitted.at(-1)).toEqual({ type: "newDay", actorId: "actor1", userId: "p1", at: 86400 * 6, owed: true });
+    expect(emitted.at(-1)).toEqual({ type: "newDay", requestId: expect.any(String), actorId: "actor1", userId: "p1", at: 86400 * 6, owed: true });
   });
 
   it("on the GM: asks at its load, counts an owed rest as any rest and answers it, even for a character it can't count", async () => {

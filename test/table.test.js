@@ -11,6 +11,7 @@ vi.mock("../module/scripts/foundry/reveal.js", () => ({ showReveal: vi.fn(async 
 vi.mock("../module/scripts/foundry/chat.js", () => ({ postPullCard: vi.fn(async () => null) }));
 
 const { registerSocket, requestStake } = await import("../module/scripts/foundry/socket.js");
+const { deliverTo, withQuery } = await import("./requests.js");
 const { registerSettings, getLog, getRounds, enqueueWrite } = await import("../module/scripts/foundry/store.js");
 const { openRound, closeRound, resolveRound, recoverRounds, refundOrphanRounds, onTable, watchStale, stopStaleWatch, watchTables, stopWatching, STALE_SLACK_MS } = await import("../module/scripts/foundry/table.js");
 const { refundPull, describeRefund } = await import("../module/scripts/foundry/refund.js");
@@ -73,7 +74,7 @@ function makeWorld() {
   const notes = { warn: vi.fn(), error: vi.fn(), info: vi.fn() };
   const game = {
     user: GM,
-    users: { activeGM: GM, get: id => USERS.find(u => u.id === id) ?? null },
+    users: { activeGM: withQuery(GM, emitted), get: id => USERS.find(u => u.id === id) ?? null },
     actors: { get: id => actors.get(id) ?? null },
     messages: { contents: [] },
     settings: {
@@ -88,7 +89,7 @@ function makeWorld() {
   globalThis.foundry = { utils: { randomID: n => Math.random().toString(36).slice(2, 2 + n), deepClone: v => structuredClone(v), escapeHTML: s => String(s) } };
   registerSettings();
   registerSocket();
-  const deliver = msg => Promise.all(handlers.map(h => h(msg)));
+  const deliver = deliverTo(handlers);
   return { game, actors, emitted, deliver, writes, notes, settings };
 }
 

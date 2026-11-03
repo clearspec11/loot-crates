@@ -290,7 +290,7 @@ describe("Add from compendium", () => {
 });
 
 describe("Make a pool from a compendium, inside an empty crate editor", () => {
-  it("is offered with no pool in the world, makes a pool named for the crate, ticks it, and the crate saves with it", async () => {
+  it("is offered with no pool in the world, makes a pool named for the crate (\"<name> pool\"), ticks it, and the crate saves with it", async () => {
     const app = await manager();
     const adding = act(app, "addBox");
     await until(() => top());
@@ -304,18 +304,18 @@ describe("Make a pool from a compendium, inside an empty crate editor", () => {
     expect(top().title).toBe("Add from compendium");
     top().press("ok");
     await until(() => dialogs.length === 2 && top().title !== "Add from compendium");
-    expect(top().title).toBe("Add to Goblin Crate");
+    expect(top().title).toBe("Add to Goblin Crate pool");
     top().press("add");
     await until(() => editor.form.querySelector(".lc-pool-picker__made")?.textContent);
     const pool = Object.values(store.getPools())[0];
-    expect(pool).toMatchObject({ name: "Goblin Crate" });
+    expect(pool).toMatchObject({ name: "Goblin Crate pool" });
     expect(pool.entries).toHaveLength(2);
     // Ticked, first, the offer gone with it, and said under the picker.
     const tick = editor.form.querySelector(`input[name="pool.${pool.id}"]`);
     expect(tick.hasAttribute("checked")).toBe(true);
     expect(document.activeElement).toBe(tick);
     expect(editor.form.querySelector(".lc-pool-picker__make").hasAttribute("hidden")).toBe(true);
-    expect(editor.form.querySelector(".lc-pool-picker__made").textContent).toBe("Made the pool Goblin Crate with 2 items and ticked it.");
+    expect(editor.form.querySelector(".lc-pool-picker__made").textContent).toBe("Made the pool Goblin Crate pool with 2 items and ticked it.");
     field(editor, "price").value = "25 gp";
     editor.press("ok");
     await adding;
@@ -332,6 +332,53 @@ describe("Make a pool from a compendium, inside an empty crate editor", () => {
     const make = top().form.querySelector(".lc-pool-picker__make");
     // The world's only pool is ticked for a new crate already.
     expect(make.hasAttribute("hidden")).toBe(true);
+  });
+
+  it("names the pool for the compendium while the crate is still New crate, never \"New crate\"", async () => {
+    const app = await manager();
+    act(app, "addBox");
+    await until(() => top());
+    const editor = top();
+    expect(field(editor, "name").value).toBe("New crate");
+    editor.form.dispatchEvent({ type: "click", target: editor.form.querySelector("[data-make-pool]") });
+    await until(() => dialogs.length === 2);
+    top().press("ok");
+    await until(() => dialogs.length === 2 && top().title !== "Add from compendium");
+    expect(top().title).toBe("Add to Items (SRD)");
+    top().press("add");
+    await until(() => editor.form.querySelector(".lc-pool-picker__made")?.textContent);
+    expect(Object.values(store.getPools()).map(p => p.name)).toEqual(["Items (SRD)"]);
+  });
+
+  it("is off from the press until it is done: a second press makes no second pool, and Cancel gives it back", async () => {
+    const app = await manager();
+    act(app, "addBox");
+    await until(() => top());
+    const editor = top();
+    const offer = editor.form.querySelector("[data-make-pool]");
+    editor.form.dispatchEvent({ type: "click", target: offer });
+    await until(() => dialogs.length === 2);
+    expect(offer.disabled).toBe(true);
+    // Pressed again while Add from compendium is up: nothing more opens.
+    editor.form.dispatchEvent({ type: "click", target: offer });
+    await settle();
+    expect(dialogs).toHaveLength(2);
+    top().press("cancel");
+    await settle();
+    expect(offer.disabled).toBe(false);
+    expect(document.activeElement).toBe(offer);
+    // And once more, to the end: one pool.
+    editor.form.dispatchEvent({ type: "click", target: offer });
+    await until(() => dialogs.length === 2);
+    editor.form.dispatchEvent({ type: "click", target: offer });
+    top().press("ok");
+    await until(() => dialogs.length === 2 && top().title !== "Add from compendium");
+    editor.form.dispatchEvent({ type: "click", target: offer });
+    top().press("add");
+    await until(() => editor.form.querySelector(".lc-pool-picker__made")?.textContent);
+    await settle();
+    expect(Object.keys(store.getPools())).toHaveLength(1);
+    expect(drops).toHaveLength(1);
   });
 
   it("makes nothing when the compendium is cancelled", async () => {

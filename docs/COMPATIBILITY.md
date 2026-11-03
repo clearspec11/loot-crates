@@ -1,6 +1,6 @@
 # Compatibility
 
-What `module/module.json` promises, and the evidence behind each part of it. Audited on 2026-10-25 for 1.0.1.
+What `module/module.json` promises, and the evidence behind each part of it. Audited on 2026-10-25 for 1.0.1; refreshed on 2026-11-02 for the next release (round 31) against Foundry 13.341 and 14.369 and dnd5e 5.0.0, 6.0.6 and 6.1.0, a pre-release published 2026-10-30.
 
 ## The manifest
 
@@ -11,7 +11,7 @@ What `module/module.json` promises, and the evidence behind each part of it. Aud
 
 `test/release.test.js` checks that this table and `module/module.json` agree.
 
-**Tested** means a live check ran on it. Every live check, smoke run and probe so far ran on one world: Foundry v14 build 14.369 with dnd5e 6.0.6 (cc-dev).
+**Tested** means a live check ran on it. Every live check, smoke run and probe so far ran on one world: Foundry v14 build 14.369 with dnd5e 6.0.6 (cc-dev). dnd5e 6.1.0 is **read** only (its `system.json`, item types and English words), and stays out of the manifest's verified version until a world runs it.
 
 **Read** means the API was looked up in Foundry v13's public API docs and release notes, or in dnd5e 5.x's source on GitHub, and the module's use of it compared by hand. Nothing has run on Foundry v13 or on dnd5e 5. The first v13 or dnd5e 5 world to load it is the first live test, and a bug report from one is welcome: [issues](https://github.com/clearspec11/loot-crates/issues).
 
@@ -27,7 +27,7 @@ dnd5e 5.0.0 itself needs Foundry 13.339, so no dnd5e world could run on the buil
 
 ### Which pairs exist
 
-dnd5e 6.0.0 and later need Foundry 14.367 or later. dnd5e 5.0.0 needs Foundry 13.339, and dnd5e 5.3.x is verified on Foundry 14. So the pairs are v13 with dnd5e 5, v14 with dnd5e 5.3, and v14 with dnd5e 6. Only the last one is tested. ([5.0.0 system.json](https://github.com/foundryvtt/dnd5e/blob/release-5.0.0/system.json), [5.3.3](https://github.com/foundryvtt/dnd5e/blob/release-5.3.3/system.json), [6.0.0](https://github.com/foundryvtt/dnd5e/blob/release-6.0.0/system.json))
+dnd5e 6.0.0 and later need Foundry 14.367 or later; 6.1.0 asks the same (minimum 14.367, verified 14). dnd5e 5.0.0 needs Foundry 13.339, and dnd5e 5.3.x is verified on Foundry 14. So the pairs are v13 with dnd5e 5, v14 with dnd5e 5.3, and v14 with dnd5e 6. Only the last one is tested, with 6.0.6. ([5.0.0 system.json](https://github.com/foundryvtt/dnd5e/blob/release-5.0.0/system.json), [5.3.3](https://github.com/foundryvtt/dnd5e/blob/release-5.3.3/system.json), [6.0.0](https://github.com/foundryvtt/dnd5e/blob/release-6.0.0/system.json))
 
 ## Differences found, and what the module does
 
@@ -40,6 +40,8 @@ dnd5e 6.0.0 and later need Foundry 14.367 or later. dnd5e 5.0.0 needs Foundry 13
 | The starter crates' packs | `dnd5e.items` and `dnd5e.equipment24` | The same two, both listed in [5.0.0 system.json](https://github.com/foundryvtt/dnd5e/blob/release-5.0.0/system.json) | `starter.js starterPackPlan` reads the packs the system lists. `equipment24` is optional, so a dnd5e without it builds from `dnd5e.items` alone | `test/starter.test.js`, `test/compat.test.js` |
 | dnd5e's `rulesVersion` setting | Present | Present since 4.0 ([5.0.0 settings.mjs](https://github.com/foundryvtt/dnd5e/blob/release-5.0.0/module/settings.mjs#L65)) | `starterbuild.js starterPlan` reads it in a try. If it can't be read, it treats the rules as modern | `test/compat.test.js` |
 | `CONFIG.Item.compendiumIndexFields` | An array of field paths | Not in v13's public API docs | `store.js registerIndexFields` adds the rarity fields only when the array is there. Otherwise each read asks `getIndex` for its own fields | `test/rarity.test.js`, `test/compat.test.js` |
+| Detach, a header control on every window | v14 adds Detach Window to every ApplicationV2's controls menu, shown while `_canDetach()` says so; it moves the window into its own browser window (14.369 `ApplicationV2#canDetach`, `detachWindow`) | No Detach, and nothing calls `_canDetach` | **Fixed in round 31.** The reveal, the table window and the shop return `false` from `_canDetach`, so they stay in the main window: they read the main page's hidden tab, focus, the shop's Buy and the chat card's Watch again, which a detached window would read wrong. The manager and the editors keep Detach | `test/again.test.js`, `test/shop.test.js`, `test/lingerwindow.test.js`; live `live-detach.cjs` |
+| An item type that isn't loot, new in dnd5e 6.1 | `renown` (6.1.0's `system.json` `documentTypes.Item`), "Renown" in dnd5e's words; 6.0.6 has no such type | Absent | A drop that brings renown items says "3 renown items skipped, not loot" (`poolview.js SKIPPED_NAMES`), not "3 renowns". A type a later dnd5e adds reads "2 <type> items" | `test/tablecrate.test.js` |
 
 ## Hooks
 
@@ -77,6 +79,9 @@ Every hook the module registers (`main.js`, and `shop.js registerShopHooks`).
 | `ChatMessage.create`, `ChatMessage.getSpeaker`, `ChatMessage#update` | Yes | [ChatMessage](https://foundryvtt.com/api/v13/classes/foundry.documents.ChatMessage.html) | The pull and refund cards, which never carry a Roll. A refund marks the pull's card |
 | `game.i18n.has`, `game.i18n.format`, `game.i18n.localize` | Yes; `format` is `localize` with data, and `{name}` is filled from it | [Localization](https://foundryvtt.com/api/v13/classes/foundry.helpers.Localization.html): `has(stringId, fallback)`, `format(stringId, data)`, `localize(stringId)` | Every word the module shows (`i18n.js t()`, installed by `main.js` at `i18nInit`): a key Foundry has comes through `format` (or `localize` with no data), one it hasn't from the module's own `lang/en.json`. The manager's item type names are dnd5e's, through `localize` |
 | `module.json` `languages` | Yes | [Module development: languages](https://foundryvtt.com/article/module-development/) | Declares `lang/en.json`, so Foundry merges it, and a translation adds its own entry |
+| `CONFIG.queries`, `User#query(name, data, options)`, a handler `(data, context)` | Yes; only the queried user receives it, and the handler's `context.user` is the querying User, from the server (14.369 `Users#handleUserQuery`); `query` needs the Query Users permission (`QUERY_USER`, players by default) and an active target | `User#query` is in v13's docs ([User](https://foundryvtt.com/api/v13/classes/foundry.documents.User.html)); its docs don't say what the handler receives, so a v13 build may pass no sender | Every request a player sends the GM (`socket.js toGM`, `REQUEST_QUERY`). The GM takes the sender from `context.user`; with none it asks the named player's client (`SENT_QUERY`) and acts only on its yes. Without Query Users a Buy says so and sends nothing (`test/sender.test.js`) |
+| `game.socket.emit` / `on` on `module.loot-crates` | Yes; every other client hears every message, and nothing says who sent it (probed, `live-forge.cjs`) | The same ([module socket](https://foundryvtt.com/article/module-development/)) | Answers and broadcasts only. A request that comes on it is refused (`socket.js refuseUnsigned`) |
+| `ApplicationV2#_canDetach` | Yes, 14.369: the Detach Window control's `visible` asks it (probed, `live-detach.cjs`: the manager's menu has Detach Window, the shop's and the reveal's don't) | Not in v13's [ApplicationV2](https://foundryvtt.com/api/v13/classes/foundry.applications.api.ApplicationV2.html); a method v13 never calls | `reveal.js`, `tablewindow.js`, `shop.js` return `false` (above) |
 | `game.settings.register`, `registerMenu`, `get`, `set` | Yes | [ClientSettings](https://foundryvtt.com/api/v13/classes/foundry.helpers.ClientSettings.html) | World state, and the manager in Game Settings |
 | `game.packs` and a pack's `getIndex({ fields })`, `index`, `documentName` | Yes | [CompendiumCollection](https://foundryvtt.com/api/v13/classes/foundry.documents.collections.CompendiumCollection.html) | Pool imports and the starter crates |
 | `game.users.activeGM` | Yes | [Users](https://foundryvtt.com/api/v13/classes/foundry.documents.collections.Users.html) | Which client writes |
@@ -95,7 +100,7 @@ Every hook the module registers (`main.js`, and `shop.js registerShopHooks`).
 | `system.currency` | `pp`, `gp`, `ep`, `sp`, `cp` | The same keys, whole numbers ([currency.mjs](https://github.com/foundryvtt/dnd5e/blob/release-5.0.0/module/data/shared/currency.mjs#L15)) | Reads and writes through `currency.js` |
 | `system.type.value` | Present | `ItemTypeField` on consumable, equipment, weapon, tool and loot ([consumable.mjs](https://github.com/foundryvtt/dnd5e/blob/release-5.0.0/module/data/item/consumable.mjs#L61), [equipment.mjs](https://github.com/foundryvtt/dnd5e/blob/release-5.0.0/module/data/item/equipment.mjs#L63)) | The starter pools' subtypes: `potion`, `scroll`, `wondrous`, `trinket`, `ring`, `clothing`, `light`, `medium`, `heavy`, `shield`, all in 5.0.0's [config.mjs](https://github.com/foundryvtt/dnd5e/blob/release-5.0.0/module/config.mjs#L1594) |
 | `system.quantity`, `system.activities`, `system.price` | A consumable's stack, its activities keyed by id (a `utility` one has `roll`), its price `{ value, denomination }` | The same ([consumable.mjs](https://github.com/foundryvtt/dnd5e/blob/release-5.0.0/module/data/item/consumable.mjs), [utility-data.mjs](https://github.com/foundryvtt/dnd5e/blob/release-5.0.0/module/data/activity/utility-data.mjs)) | A ticket (`games/ticket.js ticketData`): a `trinket` consumable with one `utility` activity; a use spends one from `system.quantity` (`tickets.js spendTicket`) |
-| Item types `weapon`, `equipment`, `consumable`, `tool`, `loot`, `container` | Present | Present ([data/item](https://github.com/foundryvtt/dnd5e/tree/release-5.0.0/module/data/item)) | What a pool takes (`store.js LOOT_TYPES`) |
+| Item types `weapon`, `equipment`, `consumable`, `tool`, `loot`, `container` | Present, in 6.0.6 and 6.1.0 | Present ([data/item](https://github.com/foundryvtt/dnd5e/tree/release-5.0.0/module/data/item)) | What a pool takes (`store.js LOOT_TYPES`). Every other type a drop brings is counted and named as skipped, 6.1.0's `renown` among them (above) |
 | Rarity keys `common` to `artifact` | Present | The same six ([config.mjs](https://github.com/foundryvtt/dnd5e/blob/release-5.0.0/module/config.mjs#L1484)) | `normalizeRarity` |
 | `dnd5e.items` | Listed | Listed | Starter crates and the editor's example UUID |
 | `dnd5e.equipment24` | Listed | Listed | Starter crates, optional |

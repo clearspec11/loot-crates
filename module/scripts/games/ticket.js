@@ -22,7 +22,7 @@
   keepTicket) is marked `kept`: the purchase was the play's, so its own
   log row (`keep`, see keepRow) counts toward the limit per character and
   took the stock, and the play it is later used for counts toward neither
-  (limits.js boughtBy, pull.js). Kept tickets of one game at one price
+  (core/tally.js, limits.js, pull.js). Kept tickets of one game at one price
   stack as one item.
 */
 import { getKind, kindOf } from "./kinds.js";

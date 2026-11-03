@@ -8,6 +8,28 @@ The newest numbered entry's version is the one in `module/module.json`, and its 
 
 - Nothing yet.
 
+## 1.7.0
+
+Fairer and safer.
+
+- The Pull log no longer forgets what the rules count. It keeps its newest 500 rows, and every count a rule relies on is now kept on its own, written with each row: a character's limit per game ("1 in all", "2 a day"), the Wishing Well's throws today, a scratch roll's tickets sold and prizes paid, a deck's once cards and its rising draw price. Before, once a busy world passed 500 plays, the oldest rows fell off and took their counts with them: a character could buy past their limit, a long scratch roll could sell a prize it had already paid, and a once card could come back. A refund still gives its count back at once.
+- A table round's stakes are never trimmed off the log while the round is open or a stake is still held, so the GM's refunds and the stale refund at load always find them, however many plays happen meanwhile.
+- A scratch ticket's prize tier, number and winning panels are no longer written on its Pull log row; the GM's copy is kept beside the counts.
+- On the first load after updating, the GM's Foundry moves the counts over from the log once (the same numbers as before); nothing to do by hand, and loading with two GMs or an empty log is fine.
+- A player can no longer buy, use a ticket, bid or call a purchase off in someone else's name. Before, a player who sent the module's message by hand from the browser console could name another player as the buyer and spend their character's coins, and could call off another player's purchase. Requests now go to the GM through Foundry's own query, which tells the GM who really sent them: one naming anyone else is refused, nothing is charged and the GM is told. Players need Foundry's Query Users permission, which every role has unless the GM turned it off.
+- A player's browser no longer hears the other players' purchases being asked for, only their results.
+- After updating, every player should reload Foundry once; a browser still running the old version is told to.
+- The README no longer says players never see an auction's reserve: no screen shows it, but Foundry sends every world setting to every player's browser, so a player who opens the console can read it.
+- Make a pool from a compendium, in an empty crate's editor, can't be pressed twice while it is working, so it no longer makes two pools. The pool it makes is named for the crate ("Goblin hoard pool"), or for the compendium while the crate is still called New crate; it was named "New crate".
+- New pool asks "Discard your changes to <name>?" before Cancel, X or Escape throws away a name you typed, as every editor does since 1.6.0.
+- With two crate editors open, each Make a pool button is described by its own hint for a screen reader, not the other window's.
+- On Foundry v14, the reveal, the table window and the shop no longer offer Detach Window in their header menu: they work only in Foundry's main window. The manager and the editors can still be detached.
+- Draw again in a deck's reveal says a changed price on the line beside the button, as the shop does, instead of in a toast.
+- A replay's title uses the game's own words ("Replay: Brinn scratches Fortune Ticket", not "opens").
+- The Pull log folds a scratch ticket's duds as "3 tickets, nothing" rather than "3 pulls, nothing".
+- Dropping items from dnd5e 6.1 that aren't loot says "3 renown items skipped", not "3 renowns".
+- docs/COMPATIBILITY.md is refreshed for Foundry 14.369, dnd5e 6.0.6 and the dnd5e 6.1.0 pre-release, with rows for the request query and the Detach control.
+
 ## 1.6.0
 
 Easier to set up.

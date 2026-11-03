@@ -9,20 +9,22 @@
     alone, and says "3 left" as it always has.
   - The limit per character (`rules.perCharacter`: { max, per }) is how
     many times one character may buy, in all ("ever") or per in-game day
-    ("day", keyed on clock.js like the well's cap). It is counted from that
-    character's unrefunded log rows for this game, never stored as a
-    counter: a refund gives the purchase back by itself, and the GM resets
-    nothing. It counts per character (the buyer), not per Foundry user.
+    ("day", keyed on clock.js like the well's cap). It is counted in the
+    tallies (core/tally.js), written with each log row and taken back by
+    its refund, so the GM resets nothing and a row trimmed off the log
+    still counts. It counts per character (the buyer), not per Foundry
+    user.
 
   The GM checks both in pull.js, inside the write queue, so two quick buys
   can't both pass; the shop card says the same thing before anyone presses.
 
-  No Foundry globals: the callers pass the log and the day's key.
+  No Foundry globals: the callers pass the tallies and the day's key.
 */
 import { getKind, kindOf } from "../games/kinds.js";
 import { field } from "../views/editorfields.js";
 import { byRest, restDayNote } from "./clock.js";
 import { t, words } from "./i18n.js";
+import { boughtCount } from "./tally.js";
 
 export const PER = ["ever", "day"];
 const PER_LABEL = words({ ever: "LOOTCRATES.Limits.PerEver", day: "LOOTCRATES.Limits.PerDay" });
@@ -150,30 +152,32 @@ export function perCharacterFromForm({ limitMax, limitPer } = {}) {
   return max ? { max, per: limitPer === "day" ? "day" : "ever" } : null;
 }
 
-// How many times this character has bought this game: its unrefunded rows
-// (today's, for a limit per day). Every pulled play writes one row, a miss
-// included. A Buy to keep (row.keep) is a purchase, so it counts on the day
-// it was bought; the play its ticket is used for later (a redeem) was that
-// purchase, so it doesn't count again. A ticket the GM handed out was never
-// bought: its play (a redeem with no Buy to keep behind it) counts for
-// nothing either.
-export function boughtBy(log, { boxId, actorId, per = "ever", today = null }) {
-  if (per === "day" && !today) return 0;
-  return (log ?? []).filter(r => r.boxId === boxId && r.actorId === actorId && !r.refunded && !r.roundId && !r.redeem && (per !== "day" || r.day === today)).length;
+/*
+  How many times this character has bought this game, from the tallies
+  (core/tally.js, kept with each log row, so a row trimmed off the log
+  still counts): its unrefunded purchases (today's, for a limit per day).
+  Every pulled play counts one, a miss included. A Buy to keep (row.keep)
+  is a purchase, so it counts on the day it was bought; the play its
+  ticket is used for later (a redeem) was that purchase, so it doesn't
+  count again. A ticket the GM handed out was never bought: its play (a
+  redeem with no Buy to keep behind it) counts for nothing either.
+*/
+export function boughtBy(tally, { boxId, actorId, per = "ever", today = null }) {
+  return boughtCount(tally, { boxId, actorId, per, today });
 }
 
 /*
   Where this character stands with the limit: { max, per, bought, left,
   reached }, or null when the game has none, there is no character, or the
   limit is per day in a world with no clock (like the well's cap, it can't
-  apply). `ctx` is { log, actorId, today }; the log is read only when the
-  game has a limit.
+  apply). `ctx` is { tally, actorId, today }; the tally is read only when
+  the game has a limit.
 */
 export function limitState(game, ctx = {}) {
   const pc = perCharacterOf(game);
   if (!pc || !ctx.actorId) return null;
   if (pc.per === "day" && !ctx.today) return null;
-  const bought = boughtBy(ctx.log, { boxId: game.id, actorId: ctx.actorId, per: pc.per, today: ctx.today });
+  const bought = boughtBy(ctx.tally, { boxId: game.id, actorId: ctx.actorId, per: pc.per, today: ctx.today });
   return { ...pc, bought, left: Math.max(0, pc.max - bought), reached: bought >= pc.max };
 }
 

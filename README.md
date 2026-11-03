@@ -31,7 +31,7 @@ The first time you load the world, a welcome window says where everything is. It
 
 1. Open the **Items** sidebar and press **Manage crates** at the top. The manager opens on **Boxes**, the games players can buy, beside **Pools** and **Pull log**.
 2. **Make a pool.** On the Pools tab press **New pool**, type its name and press **Make the pool**. The tab shows the new pool, open, with **Add from compendium** ready: pick a compendium (the dnd5e Items pack is picked for you), tick the item types and rarities you want (each is a chip you can see, ticked or not) and press **Preview**, then **Add**. You can also drag items onto a pool from any compendium, a folder in the Items sidebar or a roll table. Each row's rarity decides the odds, and you can change it there. The pencil on a pool's bar renames it. The Pools tab opens with only the pool you last worked on open; click a pool's name to open the rest.
-3. **Make a crate.** Press **New crate from this pool** on the pool's bar, or **New crate** on the Boxes tab. Type a price such as "50 gp" or "12 gp 5 sp", set the rarity odds and press **Add to shelf**. A new crate with no pool ticked offers **Make a pool from a compendium** right in its editor: it runs Add from compendium into a new pool named for the crate and ticks it, so you never leave the editor.
+3. **Make a crate.** Press **New crate from this pool** on the pool's bar, or **New crate** on the Boxes tab. Type a price such as "50 gp" or "12 gp 5 sp", set the rarity odds and press **Add to shelf**. A new crate with no pool ticked offers **Make a pool from a compendium** right in its editor: it runs Add from compendium into a new pool named for the crate ("Goblin hoard pool", or for the compendium if you haven't named the crate yet) and ticks it, so you never leave the editor.
 
 Whatever you do in the manager, the line at the top of the tab says what happened ("Saved Goblin Crate.", "Added 6 items from Items (SRD) to Goblin loot"), and it stays in view however far down you have scrolled.
 
@@ -115,7 +115,7 @@ Already have loot tables? Right-click a table in the **Roll Tables** sidebar and
 
 ## What players see
 
-Players press **Crates** at the top of the Items sidebar. The shop shows every game on the shelf with its price and the odds *for their character*: items they already own are left out of a no-duplicates crate, and a pity countdown says how close a guarantee is. A game they can't afford says how much more they need. When someone opens a crate, every player sees the same spin, and the chat card stays sealed until their own spin lands, so nobody spoils it. The found item appears on the character sheet when the spin ends. Players never see the GM's manager or an auction's reserve.
+Players press **Crates** at the top of the Items sidebar. The shop shows every game on the shelf with its price and the odds *for their character*: items they already own are left out of a no-duplicates crate, and a pity countdown says how close a guarantee is. A game they can't afford says how much more they need. When someone opens a crate, every player sees the same spin, and the chat card stays sealed until their own spin lands, so nobody spoils it. The found item appears on the character sheet when the spin ends. Players never see the GM's manager, and no screen shows them an auction's reserve, the house bidders' budget or a hidden scratch roll's counts. These are not secret from the browser's console, though: Foundry sends every world setting to every player, and offers no storage that it keeps from them.
 
 ## FAQ
 

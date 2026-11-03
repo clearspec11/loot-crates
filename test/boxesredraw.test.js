@@ -1,7 +1,8 @@
 /*
   The manager's Boxes tab follows the pull log while a deck is on it: a
-  deck's row reads its cards drawn and its odds from the log (deck.js
-  deckOdds, deckRulesText), so a draw or a refund on any client redraws
+  deck's row reads its cards drawn and its odds from the tallies written
+  with each log row (core/tally.js; deck.js deckOdds, deckRulesText), so a
+  draw or a refund on any client redraws
   that row there and then, not when the tab is next opened. Without a deck
   a log change leaves the tab alone (a crate's row reads nothing from the
   log). A wheel's row reads the rounds the same way (its button is "Open
@@ -11,6 +12,7 @@
 */
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from "vitest";
 import { createDocument } from "./minidom.js";
+import { tallyOf } from "../module/scripts/core/tally.js";
 
 vi.mock("../module/scripts/foundry/shop.js", () => ({ refreshShop: vi.fn() }));
 vi.mock("../module/scripts/foundry/chat.js", () => ({ postRefundCard: vi.fn() }));
@@ -21,6 +23,8 @@ vi.mock("../module/scripts/foundry/store.js", async importOriginal => ({
   getPools: () => structuredClone(pools),
   getBoxes: () => structuredClone(boxes),
   getLog: () => structuredClone(log),
+  // The tallies as a world keeps them, written with the log (store.js).
+  getTally: () => tallyOf(log),
   getRounds: () => structuredClone(rounds),
   isShopOpen: () => true,
   checkSources: async entries => new Map(entries.map(e => [e.uuid, { name: e.name, img: e.img, rarity: e.rarity }])),

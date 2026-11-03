@@ -3,7 +3,21 @@
   a request to the active GM's client, which does the pull and broadcasts the
   reveal to everyone. No GM online means the shop is closed.
 
-  Messages on SOCKET:
+  Who sent it. A player's client can write anything into a message, and a
+  message on the module socket arrives with no word from Foundry of who
+  sent it (probed on 14.369: a pull naming another player as its sender, and
+  their character as the buyer, was charged; a cancel naming another player
+  marked their sale as called off; every player's client overheard every
+  request). So the requests (pull, redeem, keep, stake, cancel, newDay) go
+  to the active GM only, as a Foundry query (User#query, REQUEST_QUERY),
+  and the GM takes the sender from Foundry (heardRequest, senderOf), never
+  from the message: a request naming anyone else is refused, the GM told,
+  and nothing charged, and the guards then check the character against the
+  real sender. A request that still comes over the socket (a client running
+  an older build) is refused and its named sender told to reload. The
+  answers and broadcasts below stay on the socket: they move no coins.
+
+  Messages (requests by REQUEST_QUERY to the active GM, the rest on SOCKET):
     { type: "pull", requestId, boxId, actorId, userId, price }
                                                            player -> GM; price is
                                                            the one on the Buy pressed
@@ -47,7 +61,8 @@
                                                            (to all) or "error"
     { type: "staked", ... } and { type: "round", ... }     GM -> everyone; table.js
                                                            hears them (onTable)
-    { type: "newDay", actorId, userId, at, owed? }         a player -> GM: that
+    { type: "newDay", requestId, actorId, userId, at, owed? }
+                                                           a player -> GM: that
                                                            character finished a
                                                            rest that starts a new
                                                            day (restCompleted); `at`
@@ -106,10 +121,10 @@
   264 ms, and a warning on every hidden pull was a false alarm. A pull is slow
   when its reveal goes out more than SLOW_PULL_MS after the request arrived.
 */
-import { SOCKET } from "../core/config.js";
+import { SOCKET, MODULE_ID } from "../core/config.js";
 import { performPull, performStake, performKeep, PullError } from "./pull.js";
 import { getKind, kindOf, gotText, nounText } from "../games/kinds.js";
-import { getBoxes, getPools, getLog, getActorState, setActorState, appendLog, updateLog, newId, isShopOpen, saveBox, enqueueWrite, refreshMissing, markMissing, reportMissing, todayKey, dayMode, countRest, restInto, dayAt, getRounds, saveRound } from "./store.js";
+import { getBoxes, getPools, getLog, getTally, getActorState, recordPlay, appendLog, updateLog, newId, isShopOpen, saveBox, enqueueWrite, refreshMissing, markMissing, reportMissing, todayKey, dayMode, countRest, restInto, dayAt, getRounds, saveRound } from "./store.js";
 import { byRest } from "../core/clock.js";
 import { formatPrice } from "../core/currency.js";
 import { stakeReason, stakesOf } from "../core/round.js";
@@ -130,24 +145,49 @@ export const SLOW_PULL_MS = 2000;
 export let TIMED_OUT = "";
 onStrings(() => { TIMED_OUT = t("LOOTCRATES.Error.TimedOut"); });
 
+// Only the request's own sender can call it off: a cancel from anyone else
+// (who might have learned the id from the reveal) is refused and logged.
 function cancelPull(msg) {
   const sale = charged.get(msg.requestId);
-  if (sale) return lateCancel(sale);
-  cancelled.add(msg.requestId);
-  if (cancelled.size > 200) cancelled.delete(cancelled.values().next().value);
+  if (sale) {
+    if (sale.userId !== msg.userId) return refuseCancel(msg, sale.userId);
+    return lateCancel(sale);
+  }
+  const had = cancelled.get(msg.requestId);
+  if (had && had !== msg.userId) return refuseCancel(msg, had);
+  cancelled.set(msg.requestId, msg.userId);
+  if (cancelled.size > 200) cancelled.delete(cancelled.keys().next().value);
+  return null;
 }
 
-// True (and forgotten) when the buyer has called this request off.
+function refuseCancel(msg, owner) {
+  console.warn(`loot-crates | refused ${userName(msg.userId)}'s cancel of ${msg.requestId}, which ${userName(owner)} sent`);
+  return null;
+}
+
+// True (and forgotten) when the buyer has called this request off: the
+// cancel came from the same sender as the request.
 function wasCancelled(msg) {
-  if (!cancelled.delete(msg.requestId)) return false;
+  if (!cancelled.has(msg.requestId) || cancelled.get(msg.requestId) !== msg.userId) return false;
+  cancelled.delete(msg.requestId);
   console.warn(`loot-crates | ${msg.requestId} was called off by its buyer after ${GM_TIMEOUT_MS / 1000} s; not charged`);
   return true;
 }
 
+// A cancel that came in while the coins were being taken, from the buyer.
+function cancelledMidway(msg) {
+  if (msg.userId === game.user.id || cancelled.get(msg.requestId) !== msg.userId) return false;
+  cancelled.delete(msg.requestId);
+  return true;
+}
+
+const userName = id => game.users?.get?.(id)?.name ?? id ?? "someone";
+
 // The buyer's unanswered requests: requestId -> { resolve, reject, timer, slow, onWait, waited, hidden }.
 const pending = new Map();
-// The GM's side: requests their buyer has called off (insertion-ordered, capped).
-const cancelled = new Set();
+// The GM's side: requests their buyer has called off, requestId -> who
+// called it off (insertion-ordered, capped).
+const cancelled = new Map();
 // The GM's side: requests already charged, so a cancel for one is too late
 // (requestId -> what lateCancel names; insertion-ordered, capped).
 const charged = new Map();
@@ -200,11 +240,24 @@ function settle(requestId, answer) {
   answer(entry);
 }
 
+// The requests a player sends the GM, by REQUEST_QUERY only.
+export const REQUEST_QUERY = `${MODULE_ID}.request`;
+// The GM asks a request's named sender whether it sent it, when Foundry
+// gives the query's handler no sender (senderOf).
+export const SENT_QUERY = `${MODULE_ID}.sent`;
+const REQUESTS = new Set(["pull", "redeem", "keep", "stake", "cancel", "newDay"]);
+export const isRequest = msg => REQUESTS.has(msg?.type);
+
 export function registerSocket() {
+  const queries = globalThis.CONFIG?.queries;
+  if (queries) {
+    queries[REQUEST_QUERY] = async (data, context) => { await heardRequest(data, context); return true; };
+    // One yes per request id: a later ask (a replay of an id the reveal or
+    // a slow-pull ack made public) gets no.
+    queries[SENT_QUERY] = data => sentHere.delete(data?.requestId);
+  }
   game.socket.on(SOCKET, msg => {
-    if ((msg.type === "pull" || msg.type === "redeem") && isActiveGM()) return handlePull(msg);
-    if (msg.type === "stake" && isActiveGM()) return handleStake(msg);
-    if (msg.type === "keep" && isActiveGM()) return handleKeep(msg);
+    if (isRequest(msg)) return isActiveGM() ? refuseUnsigned(msg) : null;
     if (msg.type === "kept") {
       if (msg.userId === game.user.id) settle(msg.requestId, p => p.resolve(msg));
       return null;
@@ -214,8 +267,6 @@ export function registerSocket() {
       return tableHeard(msg);
     }
     if (msg.type === "round") return tableHeard(msg);
-    if (msg.type === "cancel" && isActiveGM()) return cancelPull(msg);
-    if (msg.type === "newDay" && isActiveGM()) return heardNewDay(msg);
     if (msg.type === "owedRests" && !isActiveGM()) return sendOwedRests();
     if (msg.type === "newDayCounted" && msg.userId === game.user.id) return forgetOwedRest(msg);
     if (msg.type === "ack" && msg.userId === game.user.id) return heardFromGM(msg);
@@ -228,6 +279,94 @@ export function registerSocket() {
       settle(msg.requestId, p => p.reject(new PullError(msg.message, { stalePrice: msg.stalePrice })));
     }
   });
+}
+
+/*
+  The active GM's side of REQUEST_QUERY: the sender is Foundry's, the
+  request is handled as that sender's, and a request naming anyone else is
+  refused before anything is read or charged (the GM is told, the sender's
+  query is rejected with a plain sentence). Resolves with what the request
+  returned once it is handled (the query answers only that it was taken:
+  the reveal, kept or staked still goes out on the socket).
+*/
+export function heardRequest(data, context = {}) {
+  if (!isActiveGM()) return Promise.reject(new PullError(t("LOOTCRATES.Error.NoGM")));
+  if (!isRequest(data)) return Promise.reject(new PullError(t("LOOTCRATES.Error.Reload")));
+  // Foundry's sender is at hand: handled at once, so a request joins the
+  // write queue in the order it arrived (as the socket's did).
+  if (context?.user) return fromSender(data, context.user, context);
+  return senderOf(data).then(sender => fromSender(data, sender, context));
+}
+
+function fromSender(data, sender, context) {
+  if (!sender || (data.userId != null && data.userId !== sender.id)) {
+    const claimed = userName(data.userId);
+    const who = sender?.name ?? context?.user?.name ?? "someone";
+    console.warn(`loot-crates | refused a ${data.type} from ${who} that named ${claimed} as its sender; nothing was charged`);
+    if (data.type !== "cancel") globalThis.ui?.notifications?.warn(t("LOOTCRATES.Error.ForgedGM", { sender: who, claimed }));
+    return Promise.reject(new PullError(t("LOOTCRATES.Error.NotSender")));
+  }
+  const msg = { ...data, userId: sender.id };
+  if (msg.type === "pull" || msg.type === "redeem") return handlePull(msg);
+  if (msg.type === "keep") return handleKeep(msg);
+  if (msg.type === "stake") return handleStake(msg);
+  if (msg.type === "cancel") return Promise.resolve(cancelPull(msg));
+  return heardNewDay(msg);
+}
+
+/*
+  Who sent a query. Foundry 14 hands the handler the querying User
+  (context.user, from the server). A build that doesn't is asked the long
+  way: the named sender's own client is queried (which only it receives)
+  whether it sent this request id, and only a yes makes it the sender.
+*/
+async function senderOf(data) {
+  const named = game.users?.get?.(data?.userId);
+  if (!named || named.id === game.user.id || !data?.requestId || typeof named.query !== "function") return null;
+  try {
+    return (await named.query(SENT_QUERY, { requestId: data.requestId }, { timeout: 5000 })) === true ? named : null;
+  } catch {
+    return null;
+  }
+}
+
+// A request that came over the module socket, which can't say who sent it:
+// a client running a build from before REQUEST_QUERY. Refused; the client
+// it names is told to reload (a real one is waiting on this id, a forged
+// one's named player has no such request and ignores it).
+function refuseUnsigned(msg) {
+  console.warn(`loot-crates | refused a ${msg.type} that came over the socket naming ${userName(msg.userId)}; requests come by query now (an older client must reload)`);
+  if (msg.requestId && msg.type !== "cancel" && msg.userId && msg.userId !== game.user.id) {
+    game.socket.emit(SOCKET, { type: "error", requestId: msg.requestId, userId: msg.userId, message: t("LOOTCRATES.Error.Reload") });
+  }
+  return null;
+}
+
+// This client's own request ids (capped), so a GM asking "did you send
+// this?" (senderOf) gets a yes only for one it did, and only once: the
+// ask forgets it, so another player who learns the id afterwards (it rides
+// the reveal and a slow pull's ack, which every client hears) can't send
+// a pull or a cancel in this player's name with it. A cancel notes its id
+// again.
+const sentHere = new Set();
+function noteSent(requestId) {
+  if (!requestId) return;
+  sentHere.add(requestId);
+  if (sentHere.size > 200) sentHere.delete(sentHere.values().next().value);
+}
+
+/*
+  A request to the active GM, by REQUEST_QUERY. Resolves once the GM has
+  handled it; rejects with the GM's refusal, or at once when there is no
+  GM or this user may not query (Foundry's Query Users permission, on for
+  players by default).
+*/
+export function toGM(msg) {
+  const gm = game.users.activeGM;
+  if (!gm) return Promise.reject(new PullError(t("LOOTCRATES.Error.NoGM")));
+  if (typeof gm.query !== "function" || game.user?.hasPermission?.("QUERY_USER") === false) return Promise.reject(new PullError(t("LOOTCRATES.Error.NoQuery")));
+  noteSent(msg.requestId);
+  return gm.query(REQUEST_QUERY, msg);
 }
 
 // The player's side. Resolves on the GM's reveal broadcast (the same message
@@ -276,7 +415,7 @@ function send(msg, handle, onWait) {
   if (isActiveGM()) return handle(msg);
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => settle(msg.requestId, p => {
-      game.socket.emit(SOCKET, { type: "cancel", requestId: msg.requestId, userId: msg.userId });
+      toGM({ type: "cancel", requestId: msg.requestId, userId: msg.userId }).catch(err => console.warn(`loot-crates | calling off ${msg.requestId} failed`, err));
       p.reject(new PullError(TIMED_OUT));
     }), GM_TIMEOUT_MS);
     const entry = { resolve, reject, timer, onWait, waited: false, hidden: false };
@@ -285,7 +424,9 @@ function send(msg, handle, onWait) {
       tellWait(entry);
     }, WAIT_NOTICE_MS);
     pending.set(msg.requestId, entry);
-    game.socket.emit(SOCKET, msg);
+    // The GM's refusal (or no way to ask) ends the wait with its sentence;
+    // its answer comes on the socket like everyone's.
+    toGM(msg).catch(err => settle(msg.requestId, p => p.reject(err instanceof PullError ? err : new PullError(err?.message || TIMED_OUT))));
   });
 }
 
@@ -401,22 +542,23 @@ async function sweepBox(box) {
 }
 
 /*
-  The pull's bookkeeping, after the reveal: three settings, each its own key,
-  written together. The coins are taken and the item is on the sheet by now,
-  so a failure here is the GM's to fix (the buyer has their item); it is
-  reported, not thrown back at the buyer as a failed purchase.
+  The pull's bookkeeping, after the reveal: the row, the tallies it moves
+  (core/tally.js), the buyer's state and the stock, in one write
+  (store.js recordPlay). The coins are taken and the item is on the sheet
+  by now, so a failure here is the GM's to fix (the buyer has their item);
+  it is reported, not thrown back at the buyer as a failed purchase.
 */
-async function recordPull({ msg, box, actor, out, log }) {
-  const writes = [appendLog(log)];
-  // A kind with no per-buyer state (nothing to count between plays) writes none.
-  if (out.state != null) writes.unshift(setActorState(msg.actorId, box.id, out.state));
-  // A ticket was sold (or given) already: its play takes no stock.
-  if (box.rules?.stock != null && !log.redeem) writes.push(saveBox({ ...box, rules: { ...box.rules, stock: Math.max(0, box.rules.stock - 1) } }));
-  const failed = (await Promise.allSettled(writes)).filter(r => r.status === "rejected");
-  if (!failed.length) return;
-  const got = out.result?.name ?? t("LOOTCRATES.Common.NothingWord");
-  for (const f of failed) console.error(`loot-crates | recording ${actor.name}'s pull of ${got} from ${box.name} failed`, f.reason);
-  globalThis.ui?.notifications?.error(t("LOOTCRATES.Error.LogFailed", { actor: actor.name, got, box: box.name }));
+async function recordPull({ box, actor, out, log, hidden = null }) {
+  // A kind with no per-buyer state (nothing to count between plays) writes
+  // none. A ticket was sold (or given) already: its play takes no stock.
+  const stock = box.rules?.stock != null && !log.redeem ? Math.max(0, box.rules.stock - 1) : null;
+  try {
+    await recordPlay({ row: log, hidden, state: out.state ?? null, box, stock });
+  } catch (err) {
+    const got = out.result?.name ?? t("LOOTCRATES.Common.NothingWord");
+    console.error(`loot-crates | recording ${actor.name}'s pull of ${got} from ${box.name} failed`, err);
+    globalThis.ui?.notifications?.error(t("LOOTCRATES.Error.LogFailed", { actor: actor.name, got, box: box.name }));
+  }
 }
 
 /*
@@ -459,12 +601,12 @@ async function doPull(msg, timer, sent, stopWatching) {
         reportMissing([{ poolId: entry.poolId, poolName: getPools()[entry.poolId]?.name ?? entry.poolId, uuid: entry.uuid, name: entry.name }]);
       } catch (err) { console.error(`loot-crates | could not flag ${entry.uuid} as missing`, err); }
     };
-    // The log and the day reach the guards and the roll for anything
-    // counted per character or per day (the limit per character, the
-    // well's cap), read here inside the queue so two quick buys can't both
-    // pass.
+    // The tallies and the day reach the guards and the roll for anything
+    // counted per character, per day or per roll (the limit per character,
+    // the well's cap, a scratch roll, a deck's once cards; core/tally.js),
+    // read here inside the queue so two quick buys can't both pass.
     const today = todayKey(actor.id);
-    const out = await performPull({ box, pools: getPools(), actor, state, onMissing, expectedPrice: redeem ? undefined : msg.price, log: getLog(), today, ticket: ticket?.item ?? null });
+    const out = await performPull({ box, pools: getPools(), actor, state, onMissing, expectedPrice: redeem ? undefined : msg.price, log: getLog(), tally: getTally(), today, ticket: ticket?.item ?? null });
     // What the reveal and the chat card say in place of the price.
     if (ticket) out.redeem = { itemName: ticket.row.itemName, paid: ticket.row.paid };
     const kind = getKind(out.kind);
@@ -495,7 +637,7 @@ async function doPull(msg, timer, sent, stopWatching) {
     game.socket.emit(SOCKET, reveal);
     timer.mark("broadcast");
     // A cancel that came in while the coins were being taken.
-    if (msg.userId !== game.user.id && cancelled.delete(msg.requestId)) lateCancel(charged.get(msg.requestId));
+    if (cancelledMidway(msg)) lateCancel(charged.get(msg.requestId));
     warnIfSlow(timer.elapsed(), { hidden: hiddenAtStart || gmTabHidden(), buyer: actor.name, noun: kind.noun });
     showAndPost(reveal);
 
@@ -507,7 +649,9 @@ async function doPull(msg, timer, sent, stopWatching) {
     // (limits.js); none in a world with no clock. itemId is the first
     // item, as rows from before several items read; itemColumns the rest.
     const log = { id: logId, kind: out.kind, boxId: box.id, boxName: box.name, actorId: actor.id, actorName: actor.name, userId: msg.userId, itemId: out.itemId, ...itemColumns(out), price: out.price, payoutCp: out.payoutCp, ...(today ? { day: today } : {}), ...(kind.logRow?.(ctx) ?? {}), ...(ticket ? { redeem: ticket.row } : {}) };
-    await recordPull({ msg, box, actor, out, log });
+    // The kind's GM-only columns (the scratch ticket's tier) are kept off
+    // the row, which every client reads (hidden.js).
+    await recordPull({ box, actor, out, log, hidden: kind.hiddenRow?.(ctx) ?? null });
     timer.mark("record");
     return reveal;
   } catch (err) {
@@ -549,7 +693,7 @@ export function restCompleted(actor, result, config) {
     oweRest(actor.id, at);
     return null;
   }
-  game.socket.emit(SOCKET, { type: "newDay", actorId: actor.id, userId: game.user.id, ...(at != null ? { at } : {}) });
+  toGM({ type: "newDay", requestId: uid(), actorId: actor.id, userId: game.user.id, ...(at != null ? { at } : {}) }).catch(err => console.warn(`loot-crates | telling the GM of ${actor.name}'s new day failed`, err));
   return null;
 }
 
@@ -624,7 +768,7 @@ export function sendOwedRests() {
     const last = owedSent.get(actorId);
     if (last && last.at === at && now - last.sentAt < OWED_RESEND_MS) continue;
     owedSent.set(actorId, { at, sentAt: now });
-    game.socket.emit(SOCKET, { type: "newDay", actorId, userId: game.user.id, at, owed: true });
+    toGM({ type: "newDay", requestId: uid(), actorId, userId: game.user.id, at, owed: true }).catch(err => console.warn(`loot-crates | sending an owed rest for ${actorId} failed`, err));
     sent++;
   }
   return sent;
@@ -649,7 +793,8 @@ export function settleOwedRests() {
 }
 
 // The shop is open and the buyer owns the character, checked on the GM
-// inside the queue for every play (a pull or a stake).
+// inside the queue for every play (a pull or a stake). msg.userId is the
+// sender Foundry named (heardRequest), or this GM's own.
 function guardBuyer(msg) {
   if (!isShopOpen()) throw new PullError(t("LOOTCRATES.Shop.ClosedByGM"));
   const actor = game.actors.get(msg.actorId);
@@ -709,7 +854,7 @@ async function doKeep(msg, timer, sent, stopWatching) {
     const { actor, buyer } = guardBuyer(msg);
     box = getBoxes()[msg.boxId];
     const today = todayKey(actor.id);
-    const out = await performKeep({ box, pools: getPools(), actor, state: getActorState(msg.actorId, msg.boxId), expectedPrice: msg.price, log: getLog(), today });
+    const out = await performKeep({ box, pools: getPools(), actor, state: getActorState(msg.actorId, msg.boxId), expectedPrice: msg.price, log: getLog(), tally: getTally(), today });
     timer.mark("charge");
 
     const logId = newId();
@@ -741,7 +886,7 @@ async function doKeep(msg, timer, sent, stopWatching) {
     const kept = { type: "kept", requestId: msg.requestId, userId: msg.userId, logId, boxId: box.id, boxName: box.name, actorId: actor.id, actorName: actor.name, price: out.price, purse: out.purse, itemId: out.item.id, count: Math.max(1, Math.floor(Number(out.item.system?.quantity) || 1)), ...(out.priceNote ? { priceNote: out.priceNote } : {}) };
     reply(kept);
     timer.mark("answer");
-    if (msg.userId !== game.user.id && cancelled.delete(msg.requestId)) lateCancel(charged.get(msg.requestId));
+    if (cancelledMidway(msg)) lateCancel(charged.get(msg.requestId));
     postKeptCard(row).catch(err => console.error(`loot-crates | chat line for ${actor.name}'s ${box.name} ticket failed`, err));
     return kept;
   } catch (err) {
@@ -815,7 +960,7 @@ async function doStake(msg, timer, sent, stopWatching) {
     const staked = { type: "staked", requestId: msg.requestId, userId: msg.userId, roundId: round.id, boxId: box.id, logId, actorId: actor.id, actorName: actor.name, price: out.price, stake: out.stake, purse: out.purse, outbid: displaced.map(r => r.id), round };
     game.socket.emit(SOCKET, staked);
     timer.mark("broadcast");
-    if (msg.userId !== game.user.id && cancelled.delete(msg.requestId)) lateCancel(charged.get(msg.requestId));
+    if (cancelledMidway(msg)) lateCancel(charged.get(msg.requestId));
     tableHeard(staked);
     return staked;
   } catch (err) {

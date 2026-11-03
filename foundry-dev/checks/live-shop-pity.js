@@ -3,7 +3,8 @@
 // redraw listener in place of the installed module's (as player-pull.cjs
 // does), it saves a test pool "Live pity pool" (two entries of the lowest
 // rarity in "Live UI pool", one of its highest) and a 1 gp box "Live pity
-// crate" (pity after 2 for the high rarity, no duplicates), picks Crate
+// crate" (pity after 2 for the high rarity, no duplicates), reusing both
+// from an earlier run when they still match, picks Crate
 // Tester in the shop's character select, then sets Crate Tester's pity state
 // for that box and reads the card each time:
 //   fresh (sinceRare 1)   both rarities, "<High> or better within 2 pulls"
@@ -68,14 +69,24 @@ const high = ranked[ranked.length - 1];
 if (low.length < 2 || high.rarity === low[0].rarity) throw new Error("Live UI pool needs two rarities");
 const strip = ({ uuid, name, img, rarity, sourceRarity, weight }) => ({ uuid, name, img, rarity, sourceRarity, weight });
 const entries = [...low, high].map(strip);
+// The pool and box from an earlier run are used as they are when they
+// still say what this run needs; only a missing or different one is
+// written (an earlier run rewrote both every time).
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const sameEntries = (a = [], b = []) => same(a.map(e => [e.uuid, e.rarity, e.weight]), b.map(e => [e.uuid, e.rarity, e.weight]));
 const oldPool = Object.values(store.getPools()).find(p => p.name === "Live pity pool");
-const pool = await store.savePool({ ...(oldPool ? { id: oldPool.id } : {}), name: "Live pity pool", entries, pools: [] });
-const oldBox = Object.values(store.getBoxes()).find(b => b.name === "Live pity crate");
-const box = await store.saveBox({
-  ...(oldBox ? { id: oldBox.id } : {}), name: "Live pity crate", price: 1, pools: [{ id: pool.id, share: 1 }],
+const poolReused = !!oldPool && sameEntries(oldPool.entries, entries) && !(oldPool.pools ?? []).length;
+const pool = poolReused ? oldPool : await store.savePool({ ...(oldPool ? { id: oldPool.id } : {}), name: "Live pity pool", entries, pools: [] });
+const wantBox = {
+  name: "Live pity crate", price: 1, pools: [{ id: pool.id, share: 1 }],
   weights: { [low[0].rarity]: 90, [high.rarity]: 10 },
   rules: { pity: { after: 2, minRarity: high.rarity }, noDuplicates: true, stock: null },
-});
+};
+const oldBox = Object.values(store.getBoxes()).find(b => b.name === "Live pity crate");
+const boxReused = !!oldBox && oldBox.price === wantBox.price && same(oldBox.pools, wantBox.pools) && same(oldBox.weights, wantBox.weights)
+  && same(oldBox.rules?.pity, wantBox.rules.pity) && oldBox.rules?.noDuplicates === true && oldBox.rules?.stock == null
+  && Object.entries(oldBox.rules ?? {}).every(([k, v]) => k in wantBox.rules || v == null);
+const box = boxReused ? oldBox : await store.saveBox({ ...(oldBox ? { id: oldBox.id } : {}), ...wantBox });
 
 const frames = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
 const wait = ms => new Promise(r => setTimeout(r, ms));
@@ -210,6 +221,7 @@ return {
   ok: !problems.length,
   problems,
   box: { id: box.id, low: low[0].rarity, high: high.rarity },
+  reused: { pool: poolReused, box: boxReused },
   cases,
   timings: {
     stateWrittenMs: stateMs && Math.round(stateMs),

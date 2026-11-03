@@ -118,8 +118,8 @@ beforeEach(async () => {
     await world.game1.settings.set("loot-crates", "boxes", { lot: AUCTION });
     await world.game1.settings.set("loot-crates", "pools", {});
     round = await first.table.openRound("lot", { windowMs: 20000 });
-    // Ana's bid, as the first GM's socket hears it.
-    await Promise.all(world.handlers.map(h => h({ type: "stake", requestId: "r-a1", boxId: "lot", roundId: round.id, actorId: "a1", userId: "p1", price: 10, bet: { amount: 10 } })));
+    // Ana's bid, as the first GM hears it (by query, from Ana).
+    await first.socket.heardRequest({ type: "stake", requestId: "r-a1", boxId: "lot", roundId: round.id, actorId: "a1", userId: "p1", price: 10, bet: { amount: 10 } }, { user: USERS[2] });
     // The gavel's clock has run out: the round is due.
     await first.store.saveRound({ ...first.store.getRounds()[round.id], closesAt: Date.now() - 1 });
     // The round's open started the first GM's watch; each test starts the watches it means to.

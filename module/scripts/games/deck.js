@@ -7,16 +7,18 @@
   the GM renames or replaces.
 
   - A card marked "once" leaves the deck when drawn, until the GM
-    reshuffles. Which cards are out is read from the pull log, the way the
-    well's cap is: the unrefunded rows at this deck since the deck's
-    shuffledAt mark name their card, so a refund puts the card back by
-    itself and nothing is reset by hand.
+    reshuffles. Which cards are out is read from the tallies, the way the
+    well's cap is (core/tally.js decks: every unrefunded draw of each card,
+    written with its log row): a draw since the deck's shuffledAt mark
+    keeps its card out, a refund puts the card back by itself, nothing is
+    reset by hand, and a draw trimmed off the log still counts.
   - The price rises with each draw in a row: the first draw costs the
     record's price, the next base x step, then base x step^2, as long as
     each draw follows the last within the deck's streak window (the GM's
     "within N minutes", deck.streakMinutes; two minutes, STREAK_MS, on a
     record without one; 0 makes every draw a first draw). Waiting longer,
-    or a refund of the last draw, brings it back down. The core charges this price (kinds.js
+    or a refund of the last draw, brings it back down (the draws that set
+    it are each character's tally, core/tally.js priced). The core charges this price (kinds.js
     priceOf), checks the Buy's price against it and writes it to the row,
     so the refund gives back what was paid.
   - A bane takes its coins through the core's one settle(): the roll says
@@ -40,7 +42,7 @@
   kind: item | coins | loss | effect | blank, weight, once, gp, text }] },
   rules: {} }. The deck keeps no per-buyer state.
 
-  No Foundry globals: the core passes the log, the purse and the clock, so
+  No Foundry globals: the core passes the tallies, the purse and the clock, so
   Vitest runs the plan, the price and the roll as they are.
 */
 import { RARITY_LABEL } from "../core/config.js";
@@ -53,6 +55,7 @@ import { drawItem, grantData, crateLogRow } from "./crate.js";
 import { PullError, registerKind } from "./kinds.js";
 import { priceTag } from "./ticket.js";
 import { t, words } from "../core/i18n.js";
+import { deckDraws, pricedTimes } from "../core/tally.js";
 
 export const CARD_KINDS = ["item", "coins", "loss", "effect", "blank"];
 // The pills' and the editor's names for what a card does.
@@ -139,22 +142,24 @@ export function windowText(game) {
 }
 export const shuffledAt = game => Math.max(0, Number(game?.deck?.shuffledAt) || 0);
 
-const at = r => Number(r?.at) || 0;
-// The draws: a ticket bought to keep (row.keep) draws nothing until it is used.
-const deckRows = (log, boxId) => (log ?? []).filter(r => r.kind === "deck" && r.boxId === boxId && !r.refunded && !r.keep);
-// What the rising price counts: the paid draws and the tickets bought to
-// keep (each was charged at the streak's price, so it raises the next),
-// not the later use of a kept ticket (its purchase counted already).
-// Without the kept rows, Buy to keep would sell every draw at the base
-// price. A ticket the GM handed out (redeem, not kept) counts as a draw.
-const pricedRows = (log, boxId) => (log ?? []).filter(r => r.kind === "deck" && r.boxId === boxId && !r.refunded && !r.redeem?.kept);
+/*
+  What the tallies keep of a deck (core/tally.js): every unrefunded draw
+  of each card (a ticket bought to keep draws nothing until it is used),
+  and each character's draws that set the rising price: the paid draws
+  and the tickets bought to keep (each was charged at the streak's price,
+  so it raises the next), not the later use of a kept ticket (its
+  purchase counted already). Without the kept ones, Buy to keep would
+  sell every draw at the base price. A ticket the GM handed out (redeem,
+  not kept) counts as a draw.
+*/
 
-// The once cards out of the deck now: named by an unrefunded row since the
-// last reshuffle. A card the GM has since set to draw every time is back in.
-export function drawnIds(game, log = []) {
+// The once cards out of the deck now: drawn (unrefunded) since the last
+// reshuffle. A card the GM has since set to draw every time is back in.
+export function drawnIds(game, tally = null) {
   const since = shuffledAt(game);
   const once = new Set(cardsOf(game).filter(c => c.once).map(c => c.id));
-  return new Set(deckRows(log, game.id).filter(r => at(r) > since && r.cardId != null && once.has(String(r.cardId))).map(r => String(r.cardId)));
+  const draws = deckDraws(tally, game?.id);
+  return new Set(Object.entries(draws).filter(([card, times]) => once.has(card) && times.some(at => at > since)).map(([card]) => card));
 }
 
 /*
@@ -165,9 +170,9 @@ export function drawnIds(game, log = []) {
   buyer nothing, so the odds stay honest. `left` is the deck's own count
   ("3 of 5 cards left"): the cards not yet drawn, item cards included.
 */
-export function deckPlan(game, pools, log = [], state = {}) {
+export function deckPlan(game, pools, tally = null, state = {}) {
   const cards = cardsOf(game).filter(c => c.weight > 0);
-  const drawn = drawnIds(game, log);
+  const drawn = drawnIds(game, tally);
   const item = shopOdds(game, pools ?? {}, state);
   const canItem = item.rows.length > 0;
   const held = cards.filter(c => !(c.once && drawn.has(c.id)));
@@ -185,8 +190,8 @@ export function deckPlan(game, pools, log = [], state = {}) {
   labels whole percents summing to 100, never "0%" (a kind with no live
   card has no row), plus the plan. The roll draws on the same live cards.
 */
-export function deckOdds(game, pools, log = [], state = {}) {
-  const plan = deckPlan(game, pools, log, state);
+export function deckOdds(game, pools, tally = null, state = {}) {
+  const plan = deckPlan(game, pools, tally, state);
   const weights = CARD_KINDS.map(k => [k, plan.live.filter(c => c.kind === k).reduce((n, c) => n + c.weight, 0)]).filter(([, w]) => w > 0);
   const total = weights.reduce((n, [, w]) => n + w, 0);
   const pcts = wholePercents(weights.map(([, w]) => w / total));
@@ -197,18 +202,18 @@ export function deckOdds(game, pools, log = [], state = {}) {
 
 /*
   How many draws in a row this character has made at this deck, counted
-  back from `now` through the unrefunded rows: each within `within` ms of
-  the one after it (the deck's window, streakWindowMs; 0 counts none). A
-  refund of the newest draw takes the streak down with it.
+  back from `now` through their unrefunded draws in the tallies: each
+  within `within` ms of the one after it (the deck's window,
+  streakWindowMs; 0 counts none). A refund of the newest draw takes the
+  streak down with it.
 */
-export function streakOf(log, { boxId, actorId, now, within = STREAK_MS }) {
+export function streakOf(tally, { boxId, actorId, now, within = STREAK_MS }) {
   if (!(within > 0)) return 0;
-  const rows = pricedRows(log, boxId).filter(r => r.actorId === actorId).sort((a, b) => at(b) - at(a));
   let n = 0, last = now;
-  for (const r of rows) {
-    if (last - at(r) > within) break;
+  for (const at of pricedTimes(tally, { boxId, actorId })) {
+    if (last - at > within) break;
     n++;
-    last = at(r);
+    last = at;
   }
   return n;
 }
@@ -220,9 +225,9 @@ export function priceAt(game, n) {
 }
 
 // This character's streak at this deck now, by the deck's own window.
-export const streakAt = (game, log, { actorId, now = Date.now() }) => streakOf(log, { boxId: game.id, actorId, now, within: streakWindowMs(game) });
+export const streakAt = (game, tally, { actorId, now = Date.now() }) => streakOf(tally, { boxId: game.id, actorId, now, within: streakWindowMs(game) });
 
-export const nextPrice = (game, log, { actorId, now = Date.now() }) => priceAt(game, streakAt(game, log, { actorId, now }));
+export const nextPrice = (game, tally, { actorId, now = Date.now() }) => priceAt(game, streakAt(game, tally, { actorId, now }));
 
 /*
   When this character's streak at this deck runs out (the newest
@@ -230,14 +235,14 @@ export const nextPrice = (game, log, { actorId, now = Date.now() }) => priceAt(g
   back a moment after), or null with no streak running: the shop's card is redrawn then (kinds.js
   shop.changesAt), so it never shows a price the GM no longer charges.
 */
-export function streakEndsAt(game, log, { actorId, now = Date.now() }) {
-  if (!streakAt(game, log, { actorId, now })) return null;
-  const newest = Math.max(...pricedRows(log, game.id).filter(r => r.actorId === actorId).map(at));
+export function streakEndsAt(game, tally, { actorId, now = Date.now() }) {
+  if (!streakAt(game, tally, { actorId, now })) return null;
+  const newest = pricedTimes(tally, { boxId: game.id, actorId })[0];
   return newest + streakWindowMs(game);
 }
 
 // kinds.js priceOf: what the core charges for this play.
-const priceOf = ({ game, actor, log = [], now = Date.now() }) => nextPrice(game, log, { actorId: actor?.id, now });
+const priceOf = ({ game, actor, tally = null, now = Date.now() }) => nextPrice(game, tally, { actorId: actor?.id, now });
 
 // "3rd draw in a row": the ordinal the card and the result use.
 export const ordinal = n => t(n % 10 === 1 && n % 100 !== 11 ? "LOOTCRATES.Deck.Ordinal1" : n % 10 === 2 && n % 100 !== 12 ? "LOOTCRATES.Deck.Ordinal2" : n % 10 === 3 && n % 100 !== 13 ? "LOOTCRATES.Deck.Ordinal3" : "LOOTCRATES.Deck.OrdinalN", { n });
@@ -245,7 +250,7 @@ export const ordinal = n => t(n % 10 === 1 && n % 100 !== 11 ? "LOOTCRATES.Deck.
 /* ---------- The roll ---------- */
 
 /*
-  The draw, on the GM, before anything is charged: the plan from the log as
+  The draw, on the GM, before anything is charged: the plan from the tallies as
   it stands inside the write queue (so two quick draws of the last once
   card can't both land on it), one weighted pick, then the card's outcome.
   An item card draws from the pools the crate's way and grants the item; a
@@ -258,11 +263,11 @@ export const ordinal = n => t(n % 10 === 1 && n % 100 !== 11 ? "LOOTCRATES.Deck.
   per-buyer state, so nothing is written for the pity rules.
 */
 async function roll(ctx) {
-  const { game, actor, state = {}, rng, log = [], now = Date.now(), price = game.price } = ctx;
-  const plan = deckPlan(game, ctx.pools, log, state);
+  const { game, actor, state = {}, rng, tally = null, now = Date.now(), price = game.price } = ctx;
+  const plan = deckPlan(game, ctx.pools, tally, state);
   if (plan.empty) throw new PullError(!plan.cards.length ? t("LOOTCRATES.Deck.NoCardsError", { name: game.name }) : t("LOOTCRATES.Deck.NothingLeftError", { name: game.name }));
   const card = weightedPick(plan.live, c => c.weight, rng) ?? plan.live[0];
-  const streak = streakAt(game, log, { actorId: actor.id, now }) + 1;
+  const streak = streakAt(game, tally, { actorId: actor.id, now }) + 1;
   const common = {
     card: { id: card.id, label: card.label, kind: card.kind, once: card.once },
     tone: TONE_OF[card.kind], cardsLeft: plan.left - (card.once ? 1 : 0), size: plan.size, streak, nextPrice: priceAt(game, streak),
@@ -463,14 +468,14 @@ function notice(reveal) {
 
 /*
   The next draw from the window (the core's again button, reveal.js): its
-  price from the log as it stands, "Draw again for 15 gp", and why it is
+  price from the tallies as they stand, "Draw again for 15 gp", and why it is
   off: the deck is spent, the shop is shut, or the purse is short. null
   when there is no deck to draw from (its record is gone, or a replay).
 */
-function again(reveal, { game = null, log = [], pools = {}, purse = {}, now = Date.now(), open = true, gmOnline = true } = {}) {
+function again(reveal, { game = null, tally = null, pools = {}, purse = {}, now = Date.now(), open = true, gmOnline = true } = {}) {
   if (!game || reveal.replay) return null;
-  const price = nextPrice(game, log, { actorId: reveal.actorId, now });
-  const plan = deckPlan(game, pools, log);
+  const price = nextPrice(game, tally, { actorId: reveal.actorId, now });
+  const plan = deckPlan(game, pools, tally);
   const off = (plan.empty ? plan.reason : "") || shopReason({ hasActor: true, open, gmOnline }) || (!canAfford(purse, price) ? t("LOOTCRATES.Card.Needs", { price: formatPrice(shortfall(purse, price)) }) : "");
   return { price, label: t("LOOTCRATES.Deck.DrawAgainFor", { price: formatPrice(price) }), off };
 }
@@ -538,9 +543,9 @@ function deckState(game, odds, ctx) {
 function card(game, pools, ctx) {
   const esc = ctx.esc ?? (s => String(s ?? ""));
   const state = ctx.stateOf?.(game.id) ?? {};
-  const log = ctx.log ?? [];
-  const odds = deckOdds(game, pools, log, state);
-  const n = streakAt(game, log, { actorId: ctx.actorId, now: ctx.now ?? Date.now() });
+  const tally = ctx.tally ?? null;
+  const odds = deckOdds(game, pools, tally, state);
+  const n = streakAt(game, tally, { actorId: ctx.actorId, now: ctx.now ?? Date.now() });
   const price = priceAt(game, n);
   const reason = deckState(game, odds, ctx) || shortReason({ price }, ctx);
   const middle = [
@@ -552,9 +557,9 @@ function card(game, pools, ctx) {
 }
 
 function reason(game, pools, ctx) {
-  const log = ctx.log ?? [];
-  const odds = deckOdds(game, pools, log, ctx.stateOf?.(game.id) ?? {});
-  const price = priceAt(game, streakAt(game, log, { actorId: ctx.actorId, now: ctx.now ?? Date.now() }));
+  const tally = ctx.tally ?? null;
+  const odds = deckOdds(game, pools, tally, ctx.stateOf?.(game.id) ?? {});
+  const price = priceAt(game, streakAt(game, tally, { actorId: ctx.actorId, now: ctx.now ?? Date.now() }));
   return deckState(game, odds, ctx) || shopReason(ctx) || shortReason({ price }, ctx);
 }
 
@@ -563,8 +568,8 @@ function reason(game, pools, ctx) {
 // "5 cards, 1 drawn, ×1.5 a draw in a row": the Boxes table's rules cell,
 // with the window when the GM set one other than two minutes ("within 5
 // minutes"), and "one price every draw" when draws never count in a row.
-export function deckRulesText(game, log = []) {
-  const plan = deckPlan(game, {}, log);
+export function deckRulesText(game, tally = null) {
+  const plan = deckPlan(game, {}, tally);
   const m = streakMinutesOf(game);
   const step = +stepOf(game).toFixed(2);
   const rise = !(m > 0) ? t("LOOTCRATES.Deck.RuleOnePrice") : m === STREAK_MINUTES ? t("LOOTCRATES.Deck.RuleRise", { step }) : t("LOOTCRATES.Deck.RuleRiseWithin", { step, window: windowText(game) });
@@ -610,8 +615,8 @@ export function draftDeck(game, values, poolIds) {
 // The editor's preview: the kinds' pills and ribbon, the item cards'
 // rarity pills under them, the cards left, and a line when nothing can be
 // drawn or the item cards have nowhere to draw from.
-export function deckPreview(game, pools, log = []) {
-  const odds = deckOdds(game, pools, log);
+export function deckPreview(game, pools, tally = null) {
+  const odds = deckOdds(game, pools, tally);
   const items = odds.cards.some(c => c.kind === "item");
   let note = "";
   if (!odds.cards.length) note = cardsOf(game).length ? t("LOOTCRATES.Deck.PreviewAllZero") : t("LOOTCRATES.Deck.PreviewNoCards");
@@ -655,5 +660,5 @@ export const DECK = registerKind({
   },
   // Every card posts one, so the seal shows its head with "Opening…".
   chat: { card: chatCard },
-  shop: { card, reason, changesAt: (game, ctx) => streakEndsAt(game, ctx.log ?? [], { actorId: ctx.actorId, now: ctx.now ?? Date.now() }) },
+  shop: { card, reason, changesAt: (game, ctx) => streakEndsAt(game, ctx.tally ?? null, { actorId: ctx.actorId, now: ctx.now ?? Date.now() }) },
 });

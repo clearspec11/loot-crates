@@ -480,13 +480,18 @@ export const SKIPPED_NAMES = {
   background: ["LOOTCRATES.Pools.BackgroundOne", "LOOTCRATES.Pools.BackgroundMany"],
   race: ["LOOTCRATES.Pools.SpeciesOne", "LOOTCRATES.Pools.SpeciesMany"],
   facility: ["LOOTCRATES.Pools.FacilityOne", "LOOTCRATES.Pools.FacilityMany"],
+  // dnd5e 6.1's faction standing, an item type that isn't loot.
+  renown: ["LOOTCRATES.Pools.RenownOne", "LOOTCRATES.Pools.RenownMany"],
 };
 // The same types' names alone, for "Fireball is a spell, not loot."
 export const SKIPPED_NOUN = words({
   spell: "LOOTCRATES.Pools.NounSpell", feat: "LOOTCRATES.Pools.NounFeat", class: "LOOTCRATES.Pools.NounClass", subclass: "LOOTCRATES.Pools.NounSubclass",
-  background: "LOOTCRATES.Pools.NounBackground", race: "LOOTCRATES.Pools.NounSpecies", facility: "LOOTCRATES.Pools.NounFacility",
+  background: "LOOTCRATES.Pools.NounBackground", race: "LOOTCRATES.Pools.NounSpecies", facility: "LOOTCRATES.Pools.NounFacility", renown: "LOOTCRATES.Pools.NounRenown",
 });
-const skippedName = (type, n) => (SKIPPED_NAMES[type] ? plural(n, ...SKIPPED_NAMES[type]) : `${n} ${n === 1 ? type : `${type}s`}`);
+// A type a later dnd5e adds that isn't named above: "2 vehicle items",
+// never an English plural made up from its key ("2 renowns").
+export const skippedNoun = type => SKIPPED_NOUN[type] ?? t("LOOTCRATES.Pools.NounOther", { type });
+const skippedName = (type, n) => (SKIPPED_NAMES[type] ? plural(n, ...SKIPPED_NAMES[type]) : t(n === 1 ? "LOOTCRATES.Pools.OtherOne" : "LOOTCRATES.Pools.OtherMany", { count: n, type }));
 
 /*
   What a drop left out, and what it did on the way, one line each: "14

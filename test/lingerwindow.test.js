@@ -17,7 +17,7 @@ vi.mock("../module/scripts/foundry/sound.js", () => ({ playTick: vi.fn(), playSl
 vi.mock("../module/scripts/foundry/socket.js", () => ({ requestPull: vi.fn(), requestStake: vi.fn(), isActiveGM: vi.fn(() => true) }));
 vi.mock("../module/scripts/foundry/table.js", () => ({ onTable: vi.fn(), openRound: vi.fn(), resolveRound: vi.fn(), cancelRound: vi.fn() }));
 vi.mock("../module/scripts/foundry/shop.js", () => ({ buyableActors: vi.fn(() => []) }));
-vi.mock("../module/scripts/foundry/store.js", () => ({ getBoxes: vi.fn(() => ({})), getPools: vi.fn(() => ({})), getLog: vi.fn(() => []), getRounds: vi.fn(() => ({})), todayKey: vi.fn(() => null), isShopOpen: vi.fn(() => true), getActorState: vi.fn(() => ({})) }));
+vi.mock("../module/scripts/foundry/store.js", () => ({ getBoxes: vi.fn(() => ({})), getPools: vi.fn(() => ({})), getLog: vi.fn(() => []), getTally: vi.fn(() => null), getRounds: vi.fn(() => ({})), todayKey: vi.fn(() => null), isShopOpen: vi.fn(() => true), getActorState: vi.fn(() => ({})) }));
 
 // A window in the page: a section holding the content, removed on close
 // before _onClose runs, as ApplicationV2 does.
@@ -242,6 +242,12 @@ describe("a reveal closes by itself once landed", () => {
     await app.close();
     vi.advanceTimersByTime(60000);
     expect(app.closed).toBe(1);
+  });
+});
+
+describe("Foundry v14's Detach", () => {
+  it("is not offered on the table window: it reads the main page's hidden tab and focus", () => {
+    expect(new TableWindow("R1", "w1")._canDetach()).toBe(false);
   });
 });
 

@@ -7,16 +7,18 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { createDocument } from "./minidom.js";
 import { POOLS, BOXES } from "../harness/sample.js";
 import { flattenPool } from "../module/scripts/core/odds.js";
+import { tallyOf } from "../module/scripts/core/tally.js";
 
 const boxes = Object.fromEntries(BOXES.map(b => [b.id, b]));
 let shopOpen = true;
 // The pity and ownership state per "actorId.boxId", as the world setting holds it.
 let states = {};
-// How many times a render read the pull log (a deep clone of the whole setting).
-let logReads = 0;
-// The pull log as the world holds it (a deck's streak is read from it).
+// How many times a render read the tallies (a deep clone of a whole setting).
+let tallyReads = 0;
+// The pull log as the world holds it; the tallies (a deck's streak, the
+// well's cap, the limit) are counted from it as a world's would be.
 let pullLog = [];
-vi.mock("../module/scripts/foundry/store.js", () => ({ getBoxes: () => boxes, getPools: () => POOLS, getLog: () => { logReads++; return pullLog; }, getRounds: () => ({}), todayKey: () => null, isShopOpen: () => shopOpen, getActorState: (a, b) => states[`${a}.${b}`] ?? {} }));
+vi.mock("../module/scripts/foundry/store.js", () => ({ getBoxes: () => boxes, getPools: () => POOLS, getLog: () => pullLog, getTally: () => { tallyReads++; return tallyOf(pullLog); }, getRounds: () => ({}), todayKey: () => null, isShopOpen: () => shopOpen, getActorState: (a, b) => states[`${a}.${b}`] ?? {} }));
 const requestPull = vi.fn(async () => ({}));
 const requestKeep = vi.fn(async () => ({}));
 vi.mock("../module/scripts/foundry/socket.js", () => ({ requestPull: (...args) => requestPull(...args), requestKeep: (...args) => requestKeep(...args) }));
@@ -64,6 +66,12 @@ beforeEach(() => {
   activeGM = { id: "gm" };
   owns = new Set(["a1"]);
   globalThis.game.user.character = actor;
+});
+
+describe("Foundry v14's Detach", () => {
+  it("is not offered on the shop: the reveal and the table look for its Buy and countdowns in the main page", () => {
+    expect(new CrateShop()._canDetach()).toBe(false);
+  });
 });
 
 describe("the shop's Buy action", () => {
@@ -631,18 +639,18 @@ describe("the shop mid-purchase, and a Buy that does nothing", () => {
   // once, shared by every game that counts rows (the well's cap, the
   // deck's streak, a limit per character), and not at all when none of
   // them is on the shelf.
-  it("reads the pull log once per render, and not at all when no game counts its rows", async () => {
+  it("reads the tallies once per render, and not at all when no game counts its plays", async () => {
     const app = new CrateShop();
-    logReads = 0;
+    tallyReads = 0;
     await draw(app);
-    expect(logReads).toBe(1);
+    expect(tallyReads).toBe(1);
     const counted = Object.entries(boxes).filter(([, b]) => b.kind === "well" || b.kind === "deck" || b.rules?.perCharacter);
     expect(counted.length).toBeGreaterThan(1);
     try {
       for (const [id] of counted) delete boxes[id];
-      logReads = 0;
+      tallyReads = 0;
       await draw(app);
-      expect(logReads).toBe(0);
+      expect(tallyReads).toBe(0);
     } finally { for (const [id, b] of counted) boxes[id] = b; }
   });
 

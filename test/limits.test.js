@@ -1,7 +1,8 @@
 /*
   Stock limits (limits.js): the global stock shows what it started at and
   Restock fills it; the limit per character, ever or per in-game day, is
-  counted from that character's unrefunded log rows and checked by the
+  counted from that character's unrefunded plays in the tallies
+  (core/tally.js, written with each log row) and checked by the
   core (pull.js) for every pulled kind; the shop card says how many more,
   or that the limit is reached, with its Buy off. Records from before
   stockMax and perCharacter behave as they always have.
@@ -10,6 +11,7 @@ import { describe, it, expect, afterEach } from "vitest";
 import { performPull, PullError } from "../module/scripts/foundry/pull.js";
 import { boxCard, cardShell } from "../module/scripts/views/boxcard.js";
 import { getKind } from "../module/scripts/games/kinds.js";
+import { tallyOf } from "../module/scripts/core/tally.js";
 import {
   stockOf, stockText, restocked, restockLine, stockAfterRefund, stockFromForm, stockField, stockProblem, stockLine, perCharacterOf, perCharacterFromForm,
   boughtBy, limitState, limitLine, limitReason, limitRefusal, withLimit, perCharacterText, limitsText, limitsFieldset,
@@ -111,7 +113,7 @@ describe("the global stock", () => {
     const out = await performPull({ box: { ...BOX, rules: { stock: 1 } }, pools: POOLS, actor, rng: () => 0.5, log: [row("actor1"), row("actor1")] });
     expect(out.result).not.toBeNull();
     await expect(performPull({ box: { ...BOX, rules: { stock: 0 } }, pools: POOLS, actor, rng: () => 0.5 })).rejects.toThrow("Test Crate is sold out.");
-    expect(limitState(BOX, { log: [row("actor1")], actorId: "actor1" })).toBeNull();
+    expect(limitState(BOX, { tally: tallyOf([row("actor1")]), actorId: "actor1" })).toBeNull();
   });
 });
 
@@ -128,8 +130,8 @@ describe("the limit per character", () => {
 
   it("counts only this character's unrefunded rows at this game", () => {
     const log = [row("actor1"), row("actor1", { refunded: 123 }), row("actor2"), row("actor1", { boxId: "other" }), row("actor1", { roundId: "R1" })];
-    expect(boughtBy(log, { boxId: "box", actorId: "actor1" })).toBe(1);
-    expect(boughtBy(log, { boxId: "box", actorId: "actor2" })).toBe(1);
+    expect(boughtBy(tallyOf(log), { boxId: "box", actorId: "actor1" })).toBe(1);
+    expect(boughtBy(tallyOf(log), { boxId: "box", actorId: "actor2" })).toBe(1);
   });
 
   it("blocks purchase N+1 for that character and not for another, with the refusal sentence", async () => {
@@ -158,14 +160,14 @@ describe("the limit per character", () => {
     source();
     const box = limited(1, "day");
     const log = [row("actor1", { day: "y1d5" }), row("actor1", { day: "y1d4" }), row("actor1")];
-    expect(limitState(box, { log, actorId: "actor1", today: "y1d5" })).toMatchObject({ bought: 1, left: 0, reached: true });
+    expect(limitState(box, { tally: tallyOf(log), actorId: "actor1", today: "y1d5" })).toMatchObject({ bought: 1, left: 0, reached: true });
     await expect(performPull({ box, pools: POOLS, actor: makeActor(), rng: () => 0.5, log, today: "y1d5" }))
       .rejects.toThrow("Test Crate: limit reached, 1 of 1 for Crate Tester until tomorrow. Nothing was charged.");
-    expect(limitState(box, { log, actorId: "actor1", today: "y1d6" })).toMatchObject({ bought: 0, left: 1, reached: false });
+    expect(limitState(box, { tally: tallyOf(log), actorId: "actor1", today: "y1d6" })).toMatchObject({ bought: 0, left: 1, reached: false });
     const out = await performPull({ box, pools: POOLS, actor: makeActor(), rng: () => 0.5, log, today: "y1d6" });
     expect(out.result).not.toBeNull();
     // A world with no clock: a limit per day can't apply (like the well's cap).
-    expect(limitState(box, { log, actorId: "actor1", today: null })).toBeNull();
+    expect(limitState(box, { tally: tallyOf(log), actorId: "actor1", today: null })).toBeNull();
   });
 
   it("applies to every pulled kind, not only crates, and never to a table game", async () => {
@@ -192,7 +194,7 @@ describe("the limit per character", () => {
   });
 
   it("the reason over the game's own, except while the last play is still spinning", () => {
-    const ctx = { log: [row("actor1")], actorId: "actor1", actorName: "Crate Tester" };
+    const ctx = { tally: tallyOf([row("actor1")]), actorId: "actor1", actorName: "Crate Tester" };
     expect(withLimit(limited(1), "Needs 3 gp more", ctx)).toBe("Limit reached: 1 of 1 for Crate Tester");
     expect(withLimit(limited(1), "", { ...ctx, held: id => id === "box" })).toBe("");
     expect(withLimit(limited(2), "Needs 3 gp more", ctx)).toBe("Needs 3 gp more");
@@ -201,7 +203,7 @@ describe("the limit per character", () => {
 
 describe("the shop card", () => {
   const esc = s => String(s ?? "");
-  const ctx = (log = [], extra = {}) => ({ purse: { gp: 5000 }, hasActor: true, open: true, gmOnline: true, actorId: "tam", actorName: "Tam Thornwick", today: "y1d1", log, esc, ...extra });
+  const ctx = (log = [], extra = {}) => ({ purse: { gp: 5000 }, hasActor: true, open: true, gmOnline: true, actorId: "tam", actorName: "Tam Thornwick", today: "y1d1", log, tally: tallyOf(log), esc, ...extra });
   const pauper = BOXES.find(b => b.id === "common");
   const royal = BOXES.find(b => b.id === "royal");
   const tam = n => Array.from({ length: n }, () => ({ boxId: pauper.id, actorId: "tam", day: "y1d1" }));
@@ -234,10 +236,11 @@ describe("the shop card", () => {
     expect(html).toContain("You can buy 2 more today");
   });
 
-  it("a card for a record without limits reads the log not at all", () => {
+  it("a card for a record without limits reads neither the log nor the tallies", () => {
     let reads = 0;
     const c = ctx();
     Object.defineProperty(c, "log", { get: () => { reads++; return []; } });
+    Object.defineProperty(c, "tally", { get: () => { reads++; return null; } });
     boxCard({ ...pauper, rules: {} }, SHOP_POOLS, c);
     expect(reads).toBe(0);
   });

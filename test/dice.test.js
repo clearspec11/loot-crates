@@ -21,6 +21,7 @@ const { DICE, parseFormula, winChance, resolve, facesOf, rollData, rollFaces, di
 const { getKind } = await import("../module/scripts/games/kinds.js");
 const { performPull, PullError } = await import("../module/scripts/foundry/pull.js");
 const { registerSocket } = await import("../module/scripts/foundry/socket.js");
+const { deliverTo } = await import("./requests.js");
 const { registerSettings, appendLog, getLog } = await import("../module/scripts/foundry/store.js");
 const { refundPull, describeRefund, refundCoins, shortMessage } = await import("../module/scripts/foundry/refund.js");
 const { showReveal } = await import("../module/scripts/foundry/reveal.js");
@@ -83,7 +84,7 @@ function makeWorld({ user = GM, actor = actorOf() } = {}) {
   globalThis.ChatMessage = { create: vi.fn(async data => data), getSpeaker: () => ({ actor: actor.id }) };
   registerSettings();
   registerSocket();
-  return { actor, emitted, deliver: msg => Promise.all(handlers.map(h => h(msg))) };
+  return { actor, emitted, deliver: deliverTo(handlers) };
 }
 
 beforeEach(() => { globalThis.fromUuid = source; });
@@ -295,7 +296,10 @@ describe("the GM's socket path", () => {
     const [row] = globalThis.game.settings.get("loot-crates", "pullLog");
     expect(row).toMatchObject({ id: reveal.logId, kind: "dice", boxId: "dice", actorId: "actor1", itemId: null, price: 10, payoutCp: 3000, faces: [4, 6, 5], total: 15, target: 12, formula: "3d6", win: true, name: "15 beats the dragon's 12" });
     expect(row).not.toHaveProperty("uuid");
-    expect(globalThis.game.settings.get("loot-crates", "actorState")).toEqual({});
+    // No per-buyer state: only the tallies the row counted toward.
+    const { tally, ...states } = globalThis.game.settings.get("loot-crates", "actorState");
+    expect(states).toEqual({});
+    expect(tally.buyers["actor1.dice"]).toEqual({ bought: 1 });
     expect(toCopper(world.actor.system.currency)).toBe(102000);
     // The card: the faces and the verdict, sealed by the core until the
     // dice land here; never a Roll in the message.

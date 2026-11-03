@@ -117,7 +117,7 @@ async function seed(gm) {
     const calendar = { config: foundry.utils.deepClone(game.settings.get("dnd5e", "calendarConfig")), prefs: foundry.utils.deepClone(game.settings.get("dnd5e", "calendarPreferences")) };
     if (!calendar.config?.enabled) await game.settings.set("dnd5e", "calendarConfig", { ...game.settings.get("dnd5e", "calendarConfig"), enabled: true });
     const today = store.todayKey(actor.id);
-    const base0 = old ? throwsToday(store.getLog(), { boxId: old.id, actorId: actor.id, day: today }) : 0;
+    const base0 = old ? throwsToday(store.getTally(), { boxId: old.id, actorId: actor.id, day: today }) : 0;
     const well = await store.saveBox({
       ...(old ? { id: old.id } : {}), kind: "well", name, price: 0.1, pools: [{ id: pool.id, share: 1 }],
       weights: { uncommon: 75, rare: 25 }, odds: { nothing: 100, coin: 0, item: 0 }, rules: { cap: base0 + 5, pity: null, noDuplicates: false, stock: null },

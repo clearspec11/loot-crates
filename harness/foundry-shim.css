@@ -79,3 +79,4 @@ h1 { font-size: 13px; font-weight: 600; color: #b5a99a; margin: 0 0 10px; }
 .harness-confirm .form-footer { display: flex; gap: 8px; }
 .harness-confirm .form-footer button { flex: 1; }
 .harness-confirm .form-footer button:focus-visible, .harness-confirm .form-footer button:focus { outline: 2px solid #e3ce9e; outline-offset: 1px; }
+.harness-second { margin-top: 16px; }

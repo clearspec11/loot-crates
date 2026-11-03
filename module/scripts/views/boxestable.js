@@ -40,7 +40,8 @@
   log (logtable.js) is built the same way.
 
   No Foundry globals: the caller passes the records, the pools as the last
-  source check found them, the log, the rounds and the escape.
+  source check found them, the tallies (core/tally.js: a deck's draws, a
+  scratch roll's tickets), the rounds and the escape.
 */
 import { RARITY_LABEL } from "../core/config.js";
 import { oddsPills, oddsRibbon, oddsRows } from "./boxcard.js";
@@ -116,25 +117,25 @@ export function boxesToolbarHTML(esc = s => String(s ?? ""), boxes = []) {
 */
 export const shelfAllHTML = () => `<button type="button" class="lc-manager__statusaction" data-action="shelfAll"><i class="fas fa-store" inert></i> ${t("LOOTCRATES.Manager.ShelfAll")}</button>`;
 
-export function boxesTableHTML({ boxes, pools, log = [], rounds = {}, recent = null, esc }) {
+export function boxesTableHTML({ boxes, pools, tally = null, rounds = {}, recent = null, esc }) {
   if (!boxes.length) return starterCallHTML("boxes", esc);
   const kind = b => kindOf(b);
   const tag = b => ` <span class="lc-kind">${esc(kindTag(b))}</span>${onShelf(b) ? "" : ` <span class="lc-kind lc-kind--off">${t("LOOTCRATES.Boxes.OffShelfTag")}</span>`}`;
   const odds = b => ({
     well: () => wellOddsHTML(wellOdds(b, pools)) || `<em>${t("LOOTCRATES.Boxes.Dry")}</em>`,
     dice: () => diceOddsHTML(diceOdds(b, pools)) || `<em>${t("LOOTCRATES.Boxes.Unbeatable")}</em>`,
-    deck: () => deckOddsHTML(deckOdds(b, pools, log)) || `<em>${t("LOOTCRATES.Boxes.Empty")}</em>`,
+    deck: () => deckOddsHTML(deckOdds(b, pools, tally)) || `<em>${t("LOOTCRATES.Boxes.Empty")}</em>`,
     roulette: () => rouletteOddsHTML(betOdds(b), esc) || `<em>${t("LOOTCRATES.Boxes.NoPockets")}</em>`,
     auction: () => auctionLotHTML(b, esc),
-    scratch: () => scratchOddsHTML(b, log) || `<em>${t("LOOTCRATES.Boxes.Empty")}</em>`,
+    scratch: () => scratchOddsHTML(b, tally) || `<em>${t("LOOTCRATES.Boxes.Empty")}</em>`,
   }[kind(b)] ?? (() => oddsCell(oddsRows(shopOdds(b, pools)))))();
   const own = b => ({
     well: () => wellRulesText(b),
     dice: () => diceRulesText(b),
-    deck: () => deckRulesText(b, log),
+    deck: () => deckRulesText(b, tally),
     roulette: () => rouletteRulesText(b),
     auction: () => auctionRulesText(b),
-    scratch: () => scratchRulesText(b, log),
+    scratch: () => scratchRulesText(b, tally),
   }[kind(b)] ?? (() => [oddsModeOf(b) === "weight" ? (b.fromTable ? t("LOOTCRATES.Boxes.RuleTableOdds") : t("LOOTCRATES.Boxes.RuleByWeight")) : "", b.rules?.pity ? t("LOOTCRATES.Boxes.RulePityPulls", { rarity: RARITY_LABEL[b.rules.pity.minRarity] ?? b.rules.pity.minRarity, after: b.rules.pity.after }) : "", b.rules?.noDuplicates ? t("LOOTCRATES.Boxes.RuleNoDupes") : ""].filter(Boolean).join(", ")))();
   const rules = b => esc([own(b), TABLE_KINDS.includes(kind(b)) ? "" : limitsText(b)].filter(Boolean).join(", "));
   // A deck's row reshuffles; a scratch ticket's prints a new roll; a wheel's opens its round (or brings the open one

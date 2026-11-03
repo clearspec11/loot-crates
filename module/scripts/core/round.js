@@ -21,7 +21,9 @@
     "open" | "closed" | "resolved", opensAt, closesAt (null: until the GM
     spins), closedAt?, resolvedAt?, outcome?, voided? }. Who staked what is
     counted from the log, never copied onto the round, so a refund is seen
-    by the round as soon as the row is marked.
+    by the round as soon as the row is marked. The log's trim never drops
+    a stake still open or any row of a round that hasn't resolved
+    (core/tally.js trimLog), so they are always there to count.
   - A round resolves at most once: "resolved" is written before any coin
     moves, and a resolve that finds it so does nothing.
   What a round is doing, in words (roundState, clockText), is here too, so

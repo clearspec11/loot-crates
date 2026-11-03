@@ -14,7 +14,7 @@ vi.mock("../module/scripts/foundry/sound.js", () => ({ playTick: vi.fn(), playSl
 const boxes = Object.fromEntries(BOXES.map(b => [b.id, b]));
 // The world setting, as the GM's write leaves it.
 let states = {};
-vi.mock("../module/scripts/foundry/store.js", () => ({ getBoxes: () => boxes, getPools: () => POOLS, getLog: () => [], getRounds: () => ({}), todayKey: () => null, isShopOpen: () => true, getActorState: (a, b) => states[`${a}.${b}`] ?? {} }));
+vi.mock("../module/scripts/foundry/store.js", () => ({ getBoxes: () => boxes, getPools: () => POOLS, getLog: () => [], getTally: () => null, getRounds: () => ({}), todayKey: () => null, isShopOpen: () => true, getActorState: (a, b) => states[`${a}.${b}`] ?? {} }));
 vi.mock("../module/scripts/foundry/socket.js", () => ({ requestPull: vi.fn(async () => ({})) }));
 
 const fakeElement = () => ({

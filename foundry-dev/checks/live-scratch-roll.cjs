@@ -220,7 +220,8 @@ const untilCard = async (pl, boxId, pred, ms = 5000) => {
       await gm.page.evaluate(() => __lc.closeReveals());
     }
     out.soldOut = await untilCard(pl.page, boxId, c => c.off && c.why === "Sold out");
-    out.log = await gm.page.evaluate(async ({ base, boxId }) => (await import(base + "scripts/foundry/store.js")).getLog().filter(r => r.boxId === boxId).map(r => ({ id: r.id, tier: r.tier, rollId: r.rollId, price: r.price, payoutCp: r.payoutCp, refunded: !!r.refunded })), { base: MODULE_BASE, boxId });
+    // A ticket's tier is the GM's, kept off the row (hidden.js).
+    out.log = await gm.page.evaluate(async ({ base, boxId }) => { const { readHidden } = await import(base + "scripts/foundry/hidden.js"); return (await import(base + "scripts/foundry/store.js")).getLog().filter(r => r.boxId === boxId).map(r => ({ id: r.id, onRow: "tier" in r, tier: readHidden(r.id)?.tier, rollId: r.rollId, price: r.price, payoutCp: r.payoutCp, refunded: !!r.refunded })); }, { base: MODULE_BASE, boxId });
 
     // 3. A fourth press does nothing; a fourth request is refused by the GM.
     // The Buy is aria-disabled (it keeps focus), so the mouse still lands on it.
@@ -277,7 +278,7 @@ const untilCard = async (pl, boxId, pred, ms = 5000) => {
       made: out.made.kind === "scratch" && out.made.price === 1 && out.made.layout === "lucky" && out.made.bonus?.on === false && out.made.roll?.id === 1 && out.made.roll?.size === 3 && JSON.stringify(out.made.roll?.prizes) === JSON.stringify([{ count: 1, parts: [{ gp: 1 }] }]) && out.made.status === `${NAME} is on the shelf at 1 gp.`,
       shopCard: out.start.ms != null && !out.start.off && out.start.buy === `${NAME}: Buy a ticket for 1 gp`,
       threeBuys: out.buys.map(b => b.stock).join("|") === "2 of 3 tickets left|1 of 3 tickets left|Roll 1 is sold out" && out.buys.every(b => b.reveal.panels >= 12),
-      roll: out.log.length === 3 && out.log.every(r => r.rollId === 1 && r.price === 1) && out.log.filter(r => r.tier === "gp.1").length === 1 && out.log.filter(r => r.tier === "dud").length === 2 && coins === 100,
+      roll: out.log.length === 3 && out.log.every(r => r.rollId === 1 && r.price === 1 && !r.onRow) && out.log.filter(r => r.tier === "gp.1").length === 1 && out.log.filter(r => r.tier === "dud").length === 2 && coins === 100,
       charged: out.start.purseCp - out.soldOut.purseCp === 300 - coins,
       soldOut: out.soldOut.ms != null && out.soldOut.off && out.soldOut.why === "Sold out" && out.soldOut.stock === "Roll 1 is sold out",
       fourthPress: out.fourthPress.rows === 3 && out.fourthPress.purseCp === out.soldOut.purseCp && out.fourthPress.off,

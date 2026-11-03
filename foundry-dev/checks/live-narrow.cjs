@@ -13,8 +13,9 @@
 // window is 390 px wide (setPosition stands in if the drag is refused, and
 // the result says so). Then:
 //
-//   1. Click the real Boxes tab: the pane doesn't scroll sideways, the five
-//      New buttons fit it, every row stacks as a card with its kind's tag
+//   1. Click the real Boxes tab: the pane doesn't scroll sideways, every New
+//      button the branch draws (boxestable.js NEW_BUTTONS, one per kind:
+//      seven in 1.6.0) is there and fits it, every row stacks as a card with its kind's tag
 //      (the crate's reads "Crate") and its Edit, Copy and Delete inside the
 //      pane and the window.
 //   2. Click the real Edit on the BOX crate: the dialog "Edit crate" opens;
@@ -112,7 +113,7 @@ const shot = process.argv.includes("--shot") ? process.argv[process.argv.indexOf
         paneWidth: Math.round(pr.width),
         sideways: panel.scrollWidth - panel.clientWidth,
         toolbarFits: [...panel.querySelectorAll(".lc-toolbar")].every(t => t.scrollWidth <= t.clientWidth + 1 && t.getBoundingClientRect().right <= pr.right + 1),
-        newButtons: [...panel.querySelectorAll('.lc-toolbar [data-action^="add"]')].map(label),
+        newButtons: [...panel.querySelectorAll('.lc-toolbar [data-action^="add"]')].map(b => b.dataset.action),
         rows: rows.length,
         stacked: rows.length ? rows.every(tr => getComputedStyle(tr).display === "grid") : null,
         headerHidden: panel.querySelector(".lc-table thead") ? panel.querySelector(".lc-table thead").getBoundingClientRect().width <= 2 : null,
@@ -126,6 +127,9 @@ const shot = process.argv.includes("--shot") ? process.argv[process.argv.indexOf
     const dialog = () => page.evaluate(() => { const d = [...document.querySelectorAll(".application.lc-dialog")].pop(); return d ? { title: d.querySelector(".window-title")?.textContent.trim() ?? null, focusInside: d.contains(document.activeElement) } : null; });
     const waitDialog = (open, ms = 8000) => page.waitForFunction(o => !![...document.querySelectorAll(".application.lc-dialog")].pop() === o, open, { timeout: ms }).then(() => true, () => false);
     const boxesBefore = await page.evaluate(async base => JSON.stringify((await import(base + "scripts/foundry/store.js")).getBoxes()), MODULE_BASE);
+    // The New buttons the branch's Boxes tab draws, one per kind, counted
+    // from its own markup rather than a number that goes stale with a kind.
+    out.newActions = await page.evaluate(async base => (await import(base + "scripts/views/boxestable.js")).NEW_BUTTONS.map(([action]) => action), MODULE_BASE);
 
     // 1. The Boxes tab, by its real tab button.
     await win.locator('.lc-tabs [data-tab="boxes"]').click();
@@ -175,7 +179,7 @@ const shot = process.argv.includes("--shot") ? process.argv[process.argv.indexOf
     const stacks = b.paneWidth <= STACK_AT;
     out.stacks = stacks;
     out.ok = Math.abs(out.resize.to - WIDTH) <= 4
-      && b.tab === "boxes" && b.sideways <= 0 && b.toolbarFits && b.newButtons.length === 5 && b.rows > 0 && b.stacked === stacks && b.headerHidden === stacks && b.roles
+      && b.tab === "boxes" && b.sideways <= 0 && b.toolbarFits && out.newActions.length > 0 && out.newActions.every(a => b.newButtons.includes(a)) && b.rows > 0 && b.stacked === stacks && b.headerHidden === stacks && b.roles
       && b.tags.every(Boolean) && b.crateTag === "Crate" && b.offScreen.length === 0 && b.actions.every(a => a.slice(-3).join("|") === "editBox|copyBox|deleteBox")
       && out.edit.opened && out.edit.title === "Edit crate" && out.edit.closed && !out.edit.written
       && l.tab === "log" && l.sideways <= 0 && l.offScreen.length === 0 && (l.rows === 0 || (l.stacked === stacks && l.roles))

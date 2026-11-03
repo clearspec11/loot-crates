@@ -1,6 +1,7 @@
 /*
-  World-scoped storage for pools, boxes, the pull log and per-actor state,
-  behind Foundry's settings. Everything here is GM-only to write; the socket
+  World-scoped storage for pools, boxes, the pull log, per-actor state and
+  the tallies every rule counts from (core/tally.js), behind Foundry's
+  settings. Everything here is GM-only to write; the socket
   handler is the one place that writes on a player's behalf.
 
   Pools hold references (UUIDs), never copies, so an item edited at its source
@@ -16,6 +17,8 @@ import { dayModeOf, dayKeyFor, byRest, dayOf, dayAfterRest, keyOfDay } from "../
 import { pruneRounds } from "../core/round.js";
 import { t } from "../core/i18n.js";
 import { LINGER_DEFAULT } from "../core/linger.js";
+import { TALLY_VERSION, applyRow, migrateLog, trimLog } from "../core/tally.js";
+import { hiddenOf, setHidden, dropHidden } from "./hidden.js";
 
 const uid = () => (globalThis.foundry?.utils?.randomID?.(10)) ?? Math.random().toString(36).slice(2, 12);
 
@@ -269,32 +272,148 @@ export async function setActorState(actorId, boxId, state) {
   await set(SETTINGS.STATE, all);
 }
 
-// Returns the new row's id, which the pull's chat card keeps (flags logId)
-// so a refund can find the card that announced it.
-// `entry.id` may be set beforehand (newId): a pull's reveal carries the row's
-// id before the row is written.
+/*
+  The Pull log and the tallies kept beside it (core/tally.js). Every write
+  of a row goes through here: the row, the tallies it moves and its GM-only
+  columns (hidden.js) are one write of the log and the STATE setting, in
+  one round trip (setMany), so a count never disagrees with the rows it
+  came from. The log keeps its newest 500 rows and every row a table round
+  still needs (tally.js trimLog); the counts don't depend on it.
+
+  A world from before the tallies (or one whose migration hasn't run yet)
+  is moved over by the first write here, or by the active GM's load
+  (migrateTallies): the same rows give the same tallies, so a second run
+  changes nothing. Until then getTally counts them from the log as it is.
+*/
 export const newId = uid;
-export async function appendLog({ id = uid(), ...entry }) {
-  const log = getLog();
-  log.unshift({ id, at: Date.now(), ...entry });
-  await set(SETTINGS.LOG, log.slice(0, 500));
+
+export function getTally() {
+  const state = game.settings.get(MODULE_ID, SETTINGS.STATE);
+  if (Number(state?.tally?.v) >= TALLY_VERSION) return foundry.utils.deepClone(state.tally);
+  return migrateLog({ log: game.settings.get(MODULE_ID, SETTINGS.LOG), tally: state?.tally }).tally;
+}
+
+/*
+  Several world settings in one write: one Setting.updateDocuments when
+  each already has its document (every client hears each change as from
+  game.settings.set), else one set each.
+*/
+async function setMany(values) {
+  const entries = Object.entries(values);
+  const docs = entries.map(([key]) => {
+    try { return game.settings.get(MODULE_ID, key, { document: true }); } catch { return null; }
+  });
+  // A setting never written has no stored document yet (get makes an unsaved one).
+  const world = game.settings.storage?.get?.("world");
+  const Setting = globalThis.CONFIG?.Setting?.documentClass;
+  if (Setting?.updateDocuments && docs.every(d => d?._id && world?.get?.(d._id))) {
+    await Setting.updateDocuments(entries.map(([, value], i) => ({ _id: docs[i]._id, value: JSON.stringify(value) })));
+    return;
+  }
+  for (const [key, value] of entries) await set(key, value);
+}
+
+// The log and the STATE setting as they stand, moved to the tallies if
+// they haven't been yet. Read inside a queued write.
+function ledger() {
+  const state = get(SETTINGS.STATE) ?? {};
+  let log = get(SETTINGS.LOG);
+  if (!Array.isArray(log)) log = [];
+  const moved = migrateLog({ log, tally: state.tally });
+  if (moved) {
+    log = moved.log;
+    state.tally = moved.tally;
+  }
+  return { state, log, tally: state.tally };
+}
+
+// Writes the ledger back, trimmed, with any other settings in the same
+// write. A row's hidden columns go when the row leaves the log.
+async function writeLedger({ state, log }, more = {}) {
+  const { log: kept } = trimLog(log, { rounds: getRounds() });
+  const ids = new Set(kept.map(r => r?.id));
+  dropHidden(state.tally, Object.keys(state.tally?.hidden ?? {}).filter(id => !ids.has(id)));
+  await setMany({ [SETTINGS.LOG]: kept, [SETTINGS.STATE]: state, ...more });
+}
+
+// Patches rows and moves the tallies by the difference each makes.
+function patchRows(l, patches) {
+  for (const row of l.log) {
+    if (!patches.has(row.id)) continue;
+    const hidden = hiddenOf(l.tally, row.id);
+    applyRow(l.tally, row, -1, hidden);
+    Object.assign(row, patches.get(row.id));
+    applyRow(l.tally, row, 1, hidden);
+  }
+}
+
+/*
+  Returns the new row's id, which the pull's chat card keeps (flags logId)
+  so a refund can find the card that announced it. `entry.id` may be set
+  beforehand (newId): a pull's reveal carries the row's id before the row
+  is written. `hidden` is the row's GM-only columns (hidden.js).
+*/
+export async function appendLog({ id = uid(), ...entry }, { hidden = null } = {}) {
+  const l = ledger();
+  const row = { id, at: Date.now(), ...entry };
+  l.log.unshift(row);
+  setHidden(l.tally, id, hidden);
+  applyRow(l.tally, row, 1, hidden);
+  await writeLedger(l);
   return id;
 }
 
+/*
+  A play's bookkeeping in one write: its row (with its hidden columns and
+  the tallies it moves), the buyer's new state for the game (`state`, none
+  for a kind with nothing to keep between plays) and, when `stock` is a
+  number, the game's stock. socket.js recordPull.
+*/
+export async function recordPlay({ row, hidden = null, state = null, box = null, stock = null }) {
+  const l = ledger();
+  const full = { at: Date.now(), ...row };
+  l.log.unshift(full);
+  setHidden(l.tally, full.id, hidden);
+  applyRow(l.tally, full, 1, hidden);
+  if (state != null) l.state[`${full.actorId}.${full.boxId}`] = state;
+  const more = {};
+  if (box && stock != null) {
+    const boxes = getBoxes();
+    boxes[box.id] = { ...box, rules: { ...box.rules, stock } };
+    more[SETTINGS.BOXES] = boxes;
+  }
+  await writeLedger(l, more);
+  return full.id;
+}
+
 export async function updateLog(id, patch) {
-  const log = getLog();
-  const row = log.find(r => r.id === id);
-  if (row) Object.assign(row, patch);
-  await set(SETTINGS.LOG, log);
+  await updateLogRows([[id, patch]]);
 }
 
 // Several rows in one write (a table round's resolve): Map or entries of id -> patch.
 export async function updateLogRows(patches) {
   const by = new Map(patches);
   if (!by.size) return;
-  const log = getLog();
-  for (const row of log) if (by.has(row.id)) Object.assign(row, by.get(row.id));
-  await set(SETTINGS.LOG, log);
+  const l = ledger();
+  patchRows(l, by);
+  await writeLedger(l);
+}
+
+/*
+  The one-time move to the tallies at the active GM's load, in the write
+  queue before any play: idempotent (a world already moved is left alone),
+  fine on a world with no log, and only on the active GM, so two GMs
+  loading together don't both write it. Returns whether it wrote.
+*/
+export function migrateTallies({ isActiveGM = () => true } = {}) {
+  if (!isActiveGM()) return Promise.resolve(false);
+  return enqueueWrite(async () => {
+    if (!isActiveGM()) return false;
+    const state = get(SETTINGS.STATE) ?? {};
+    if (Number(state.tally?.v) >= TALLY_VERSION) return false;
+    await writeLedger(ledger());
+    return true;
+  });
 }
 
 // The table rounds (round.js), by id. Written only inside the write queue.
