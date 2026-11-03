@@ -540,11 +540,26 @@ export function diceSummary(preview) {
   return [odds, paysText(preview.odds), items ? `${prizeText(preview.odds)}: ${items}` : "", preview.note].filter(Boolean).join(". ");
 }
 
+/*
+  The payback the GM set (kinds.js payback): the chance the dice beat the
+  dragon times the multiplier, as a percentage of the stakes (a win pays
+  the stake times it, the stake included), plus items when a perfect roll
+  wins one. Null for a record whose formula isn't one the game rolls.
+*/
+export function dicePayback(game) {
+  const parsed = parseFormula(game?.dice?.formula ?? DICE_DEFAULTS.formula);
+  if (!parsed) return null;
+  const target = game?.dice?.target == null ? DICE_DEFAULTS.target : targetOf(game);
+  const multiplier = game?.dice?.multiplier == null ? DICE_DEFAULTS.multiplier : multiplierOf(game);
+  return { pct: Math.round(winChance(parsed.number, parsed.sides, target) * multiplier * 100), items: hasPrize(game) };
+}
+
 export const DICE = registerKind({
   id: "dice",
   noun: "dice",
   roll,
   logRow,
+  payback: dicePayback,
   // "rolled 4, 6, 5: 15 beats the dragon's 12", for the late-cancel line
   // (socket.js), where "got <verdict>" read as if the verdict were an item.
   gotText: out => t("LOOTCRATES.Dice.GotText", { faces: facesText(out.faces), verdict: verdictText(out) }),

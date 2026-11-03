@@ -31,7 +31,9 @@
   edge and its Edit has focus, as manager.js #saveEditor leaves it)
   ?tab=log (manager: the Pull log, logtable.js, with sample.js sampleLog:
   a refunded pull, a pity pull, a late sale, a dice win, a deck loss, five
-  folded throws at the well and the wheel's settled round)
+  folded throws at the well and the wheel's settled round), under the GM's
+  economy readout counted from the same rows (economy.js); &period=session
+  presses This session, &empty=1 is a new world's
   ?dropped=1 (manager: the GM had the 200-entry pool filtered to Rare, then
   dropped its last item, a Very rare one, on it: the pool opens, the chip
   clears, the row is pinned at the top and focused, and the status line says so)
@@ -176,6 +178,7 @@ import { poolRows, sortRows, defaultView, poolToOpen, poolSummary, poolBody, pin
 import { boxesTabHTML, shelfAllHTML } from "../module/scripts/views/boxestable.js";
 import { managerNavHTML, shopControls, shopEmptyHTML, statusBarHTML } from "../module/scripts/views/route.js";
 import { logTableHTML } from "../module/scripts/views/logtable.js";
+import { economyHTML } from "../module/scripts/views/economy.js";
 import { addedNotice, EDIT_TITLE } from "../module/scripts/views/newgame.js";
 import { onShelf, shelfFor, shelfFieldHTML, shelfRules, shelfNotice } from "../module/scripts/core/shelf.js";
 import { draw, seededRng } from "../module/scripts/core/odds.js";
@@ -1142,18 +1145,31 @@ stage.addEventListener("click", e => {
 
 /*
   The manager's Pull log (logtable.js) on the sample log, with the wheel's
-  round settled. Refund and Hide misses need Foundry here.
+  round settled, under the GM's economy readout (economy.js) counted from
+  the same rows. ?empty=1: a new world's, with no rows. ?period=session:
+  the readout's This session, the plays of the last three and a half
+  minutes (the sample's load). Its two period buttons switch here as in
+  the manager; Refund and Hide misses need Foundry here.
 */
-function renderLog() {
+function renderLog(period = q.get("period") === "session" ? "session" : "all") {
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   const now = Date.now();
+  const log = q.get("empty") === "1" ? [] : sampleLog(now);
+  const boxes = Object.fromEntries(GAMES.map(b => [b.id, b]));
   stage.innerHTML = `
     <div class="lc-manager__body">
       ${managerNavHTML({ tab: "log", shopOpen: true })}
       <section class="lc-tab" role="tabpanel">
-        ${logTableHTML({ log: sampleLog(now), rounds: { R1: rouletteRound(now - 400000, { status: "resolved", closesAt: now - 380000 }) }, esc })}
+        ${economyHTML({ tally: tallyOf(log), log, boxes, period, since: now - 210000, esc })}
+        ${logTableHTML({ log, rounds: { R1: rouletteRound(now - 400000, { status: "resolved", closesAt: now - 380000 }) }, esc })}
       </section>
     </div>`;
+  stage.onclick = e => {
+    const btn = e.target.closest?.('[data-action="econPeriod"]');
+    if (!btn) return;
+    renderLog(btn.dataset.period);
+    stage.querySelector(`[data-action="econPeriod"][data-period="${btn.dataset.period}"]`)?.focus();
+  };
   document.body.dataset.ready = "1";
 }
 

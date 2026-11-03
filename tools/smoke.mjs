@@ -197,8 +197,15 @@ const STATES = [
   // took coins, five throws at the well folded into one line with "Refund
   // one", and the wheel's settled round with its stakes under it. In a 480
   // px window (and at 390) the rows stack as cards with every Refund in view.
+  // Over it, the GM's economy readout (economy.js, VIB-218): who spent and
+  // won what, each game's payback against the one it was set to, All time
+  // pressed; in the narrow window each table scrolls in its own box while
+  // the log stacks. -session: This session pressed, its note, only the
+  // last plays counted. -empty: a new world's, a line saying what will show.
   ["manager-log", "state=manager&tab=log"],
   ["manager-log-narrow", "state=manager&tab=log&width=480"],
+  ["manager-log-session", "state=manager&tab=log&period=session"],
+  ["manager-log-empty", "state=manager&tab=log&empty=1"],
   // A crate made from a roll table (B1): Goblin's Pockets leads the shelf,
   // drawing at the table's own odds, so its card names its items with
   // their real chances (the 1-in-100 Flame Tongue first, "<1%"), "and 3
@@ -391,7 +398,7 @@ function logProblems(narrow) {
   const toggle = document.querySelector('[data-action="toggleMisses"]');
   if (toggle?.textContent !== "Hide misses" || toggle.getAttribute("aria-pressed") !== "false") out.push("no Hide misses button");
   if (!/^5 throws that gave nothing, folded by day$/.test(document.querySelector(".lc-toolbar .lc-pool__hint")?.textContent ?? "")) out.push(`the misses line reads "${document.querySelector(".lc-toolbar .lc-pool__hint")?.textContent}"`);
-  const rows = [...document.querySelectorAll(".lc-table tbody tr")];
+  const rows = [...document.querySelectorAll(".lc-table--log tbody tr")];
   if (rows.length !== 13) out.push(`expected 13 rows, got ${rows.length}`);
   // An item given away after the reveal (core/afterplay.js): its note under the row.
   if (!/Tam Thornwick gave it to Orla Vane\./.test(document.querySelector(".lc-log__parted")?.textContent ?? "")) out.push("the given item's row doesn't say where it went");
@@ -410,7 +417,7 @@ function logProblems(narrow) {
   const late = document.querySelector(".lc-row--late");
   if (!late || !/Called off by the buyer after the charge/.test(late.textContent)) out.push("the late sale isn't explained");
   else if (getComputedStyle(late.querySelector("td")).boxShadow === "none" && getComputedStyle(late).boxShadow === "none") out.push("the late sale has no edge");
-  const text = document.querySelector(".lc-table").textContent;
+  const text = document.querySelector(".lc-table--log").textContent;
   if (!/Rolled 4, 6, 5 · won 30 gp/.test(text)) out.push("the dice row has no faces and payout");
   if (!/Loss card · took 20 gp/.test(text)) out.push("the deck's bane row doesn't say what it took");
   if (!/Rare, set by GM \(source Uncommon\)/.test(text)) out.push("the pity row doesn't trace its rarity");
@@ -419,6 +426,74 @@ function logProblems(narrow) {
   const refunds = [...document.querySelectorAll('[data-action="refund"]')];
   if (refunds.length !== 11) out.push(`expected 11 Refund buttons (one per live row, one per folded group), got ${refunds.length}`);
   for (const b of refunds) { const r = b.getBoundingClientRect(); if (r.width < 20 || r.height < 20) { out.push(`"${b.textContent}" is not visible`); break; } }
+  return out;
+}
+
+/*
+  The economy readout over the Pull log (views/economy.js), read from the
+  DOM: its heading, the period pressed, each table sorted by what it
+  counts and in its own scroll box (scrolling sideways, never the pane, in
+  a narrow window), the sample's sums, or a new world's line.
+*/
+function econProblems({ period = "all", empty = false } = {}) {
+  const out = [];
+  const econ = document.querySelector(".lc-econ");
+  if (!econ) return ["no economy readout"];
+  if (econ.querySelector("h3")?.textContent !== "Spending and payback") out.push(`the readout's heading reads "${econ.querySelector("h3")?.textContent}"`);
+  const buttons = [...econ.querySelectorAll('[data-action="econPeriod"]')];
+  const pressed = buttons.filter(b => b.getAttribute("aria-pressed") === "true").map(b => b.textContent);
+  if (buttons.map(b => b.textContent).join("|") !== "All time|This session") out.push(`the period buttons read ${buttons.map(b => b.textContent).join(", ")}`);
+  if (pressed.join() !== (period === "session" ? "This session" : "All time")) out.push(`pressed: ${pressed.join() || "none"}`);
+  if (econ.closest(".lc-tab")?.firstElementChild !== econ) out.push("the readout isn't at the top of the tab");
+  const panel = document.querySelector(".lc-tab");
+  if (panel.scrollWidth > panel.clientWidth + 1) out.push("the pane scrolls sideways");
+  const notes = [...econ.querySelectorAll(".lc-econ__note")].map(p => p.textContent);
+  if (empty) {
+    if (econ.querySelector("table")) out.push("an empty world's readout has a table");
+    if (!/^No plays yet\. /.test(notes[0] ?? "")) out.push(`an empty world's readout says "${notes[0]}"`);
+    return out;
+  }
+  if ((period === "session") !== notes.some(n => /^This session counts the plays since you loaded the world/.test(n))) out.push("the session note is wrong for the period");
+  const [chars, games] = [...econ.querySelectorAll(".lc-econ__scroll")];
+  if (!chars || !games) return [...out, "the readout doesn't have its two tables"];
+  for (const box of [chars, games]) {
+    if (box.getAttribute("role") !== "region" || box.tabIndex !== 0 || !document.getElementById(box.getAttribute("aria-labelledby"))) out.push("a table's scroll box isn't a named tab stop");
+    if (getComputedStyle(box).overflowX !== "auto") out.push("a table's box doesn't scroll sideways");
+    if (box.getBoundingClientRect().right > panel.getBoundingClientRect().right + 1) out.push("a table's box runs past the pane");
+  }
+  const narrow = panel.clientWidth < 560;
+  if (narrow && chars.scrollWidth <= chars.clientWidth) out.push("in a narrow window the character table doesn't scroll in its box");
+  const head = box => [...box.querySelectorAll("thead th")].map(th => th.textContent);
+  if (head(chars).join("|") !== "Character|Spent|Won in coins|Won in items|Net") out.push(`character columns: ${head(chars).join(", ")}`);
+  if (head(games).join("|") !== "Game|Plays|Taken|Paid in coins|Paid in items|Payback|Set payback") out.push(`game columns: ${head(games).join(", ")}`);
+  const lines = box => [...box.querySelectorAll("tbody tr")].map(tr => [...tr.children].map(c => c.textContent));
+  const cl = lines(chars), gl = lines(games);
+  const gp = s => { let n = 0; for (const [, v, c] of String(s).matchAll(/(\d+) (gp|sp|cp)/g)) n += Number(v) * { gp: 100, sp: 10, cp: 1 }[c]; return String(s).startsWith("−") ? -n : n; };
+  for (let i = 1; i < cl.length; i++) if (gp(cl[i][1]) > gp(cl[i - 1][1])) { out.push("the characters aren't sorted by Spent"); break; }
+  for (let i = 1; i < gl.length; i++) if (gp(gl[i][2]) > gp(gl[i - 1][2])) { out.push("the games aren't sorted by Taken"); break; }
+  for (const c of cl) if (gp(c[4]) !== gp(c[2]) + gp(c[3]) - gp(c[1])) { out.push(`${c[0]}'s Net isn't won less spent`); break; }
+  const by = (list, name) => list.find(l => l[0] === name);
+  const font = parseFloat(getComputedStyle(econ.querySelector(".lc-econ__note")).fontSize);
+  if (font < 11) out.push(`the readout's notes are ${font}px`);
+  if (period === "session") {
+    // The last three and a half minutes: the deck's draw and the wheel's stakes are older.
+    if (gl.some(l => /Deck|Wheel|Dragon/.test(l[0]))) out.push("This session counts plays from before the load");
+    if (!by(cl, "Tam Thornwick")) out.push("This session leaves out Tam's plays");
+    return out;
+  }
+  // The sample: Tam gave Orla the 400 gp cloak; the Staff was refunded; the
+  // dice paid Tam 30 gp on a 10 gp stake; the deck's bane took 20 gp more.
+  const orla = by(cl, "Orla Vane"), tam = by(cl, "Tam Thornwick");
+  if (!orla || orla[3] !== "400 gp") out.push(`Orla's Won in items reads "${orla?.[3]}", not the cloak she was given`);
+  if (!tam || gp(tam[2]) < 3000) out.push(`Tam's Won in coins reads "${tam?.[2]}"`);
+  const deck = gl.find(l => /Deck/.test(l[0]));
+  if (!deck || deck[1] !== "1" || deck[3] !== "0 gp") out.push(`the deck's line reads ${deck?.join(", ")}`);
+  const dice = gl.find(l => /Dragon/.test(l[0]));
+  if (!dice || !/^\d+%( \+ items)?$/.test(dice[6])) out.push(`the dice's Set payback reads "${dice?.[6]}"`);
+  const royal = by(gl, "Royal Vault");
+  if (royal) out.push("the refunded Staff's game still counts");
+  const crate = gl.find(l => l[0] === "Pauper's Box");
+  if (!crate || crate[6] !== "") out.push(`a crate's Set payback isn't blank: "${crate?.[6]}"`);
   return out;
 }
 
@@ -2880,7 +2955,9 @@ try {
       else if (name === "manager-boxes-shelf") problems0.push(...await page.evaluate(shelfBoxesProblems), ...await page.evaluate(panelProblems));
       else if (name === "manager-boxes-scratch") problems0.push(...await page.evaluate(scratchBoxesProblems), ...await page.evaluate(panelProblems));
       else if (name.startsWith("manager-boxes")) problems0.push(...await page.evaluate(boxesProblems, name.endsWith("narrow")), ...await page.evaluate(panelProblems));
-      else if (name.startsWith("manager-log")) problems0.push(...await page.evaluate(logProblems, name.endsWith("narrow")), ...await page.evaluate(panelProblems));
+      else if (name === "manager-log-empty") problems0.push(...await page.evaluate(econProblems, { empty: true }));
+      else if (name === "manager-log-session") problems0.push(...await page.evaluate(econProblems, { period: "session" }), ...await page.evaluate(panelProblems));
+      else if (name.startsWith("manager-log")) problems0.push(...await page.evaluate(logProblems, name.endsWith("narrow")), ...await page.evaluate(econProblems, {}), ...await page.evaluate(panelProblems));
       else if (name.startsWith("manager")) problems0.push(...await page.evaluate(managerProblems, name === "manager-narrow"));
       else if (name === "replay") problems0.push(...await page.evaluate(replayProblems));
       else if (name.startsWith("well")) problems0.push(...await page.evaluate(wellProblems, { "well-missed": "nothing", "well-coin": "coin", "well-won": "item" }[name]));

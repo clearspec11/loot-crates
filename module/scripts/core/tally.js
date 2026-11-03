@@ -33,6 +33,21 @@
     tier, number and winning panels), off the row; foundry/hidden.js is
     the one accessor, so where they are kept is one decision. Kept while
     the row is in the log (a refund needs the tier back).
+  - chars[actorId] and games[boxId]: the economy (VIB-218), what the
+    manager's Pull log tab reads out to the GM (views/economy.js), in
+    copper, every unrefunded row but an auction's house bid (applyEcon):
+    - chars: { name, spent (the price paid, a stake as it is placed, and
+      what a game took beyond it: the deck's bane), paid (coins a game
+      paid out), items (what the items won were worth as granted:
+      core/afterplay.js worthCp), sold (coins from selling one back),
+      soldWorth (what those were worth), gave (what the items given away
+      were worth), got (what the items given to them were worth: counted
+      on the receiver, from the giver's row) }.
+    - games: { name, plays (every row but a Buy to keep; a ticket's use
+      is the play), taken (as `spent`), paid, items }. A table stake is
+      taken when placed and its settle adds what it paid; a stake turned
+      back is refunded and counts for nothing. A sell back is the
+      character's, not the game's: the game paid out the item.
   A table round's open stakes are not counted here: they are their rows,
   and the trim never drops a row of a round that hasn't resolved or a
   stake still open (trimLog), so the round's resolve, its refunds and the
@@ -53,19 +68,25 @@
   kept: a 1.7.0 client still counts into that one, so nothing it writes is
   counted twice here.
 
-  migrateLog builds the tallies once: from 1.7.0's (`legacy`), each count
+  migrateLog builds the tallies once: from version 2 (this round's first
+  build, before the economy), its counts kept as they are (with any row an
+  older build wrote caught up) and the economy counted from the rows; from
+  1.7.0's (`legacy`), each count
   raised to what the log's rows show where the log shows more (rows an
   older GM wrote after 1.7.0 moved over, which it never counted), or from
   the rows alone in a world from before; the no-duplicates record seeds
   `won` for an item it still holds whose rows are gone. It moves the
-  hidden columns off the rows and stamps every row. A world whose tallies
-  carry TALLY_VERSION is never rebuilt.
+  hidden columns off the rows and stamps every row. Either way the economy
+  can only be counted from the rows the log still has (no build before
+  kept it), and an item granted before 1.8.0 has no price on its row
+  (`worth`), so it counts as nothing in what was won. A world whose
+  tallies carry TALLY_VERSION is never rebuilt.
 
   Pure: no Foundry globals.
 */
-import { firstParted } from "./afterplay.js";
+import { firstParted, rowItems, partOf, worthCp } from "./afterplay.js";
 
-export const TALLY_VERSION = 2;
+export const TALLY_VERSION = 3;
 // Where the tallies are kept in the STATE setting (1.7.0 kept version 1
 // under "tally", which a 1.7.0 client may still write).
 export const TALLY_KEY = "tallies";
@@ -78,7 +99,7 @@ export const TIMES_KEPT = 50;
 // read them (scratch.js hiddenRow).
 export const HIDDEN_COLUMNS = ["tier", "ticketNo", "winners"];
 
-export const emptyTally = () => ({ v: TALLY_VERSION, buyers: {}, rolls: {}, decks: {}, hidden: {} });
+export const emptyTally = () => ({ v: TALLY_VERSION, buyers: {}, rolls: {}, decks: {}, hidden: {}, chars: {}, games: {} });
 
 const buyerKey = (actorId, boxId) => `${actorId}.${boxId}`;
 const rollKey = (boxId, rollId) => `${boxId}.${Number(rollId)}`;
@@ -132,8 +153,69 @@ const shape = tally => {
   t.rolls ??= {};
   t.decks ??= {};
   t.hidden ??= {};
+  t.chars ??= {};
+  t.games ??= {};
   return t;
 };
+
+/*
+  The economy's part of a row (see the header), added (`sign` 1) or taken
+  out (-1). A row the caller has already found counted (not refunded, with
+  a game). `name` is kept as the newest row wrote it, for the readout.
+*/
+const cpOf = gp => Math.round((Number(gp) || 0) * 100);
+function entry(map, key, name) {
+  const e = (map[key] ??= {});
+  if (name) e.name = String(name);
+  return e;
+}
+function tidy(map, key) {
+  if (map[key] && !Object.keys(map[key]).some(k => k !== "name")) delete map[key];
+}
+export function applyEcon(tally, row, sign = 1) {
+  const t = shape(tally);
+  if (!row || row.refunded || !row.boxId || row.house) return t;
+  const payout = Math.round(Number(row.payoutCp) || 0);
+  const taken = Math.max(0, cpOf(row.price)) + Math.max(0, -payout);
+  const paid = Math.max(0, payout);
+  const items = rowItems(row);
+  const worth = id => worthCp(row.worth?.[id]);
+  const value = items.reduce((n, i) => n + worth(i.id), 0);
+  const g = entry(t.games, row.boxId, row.boxName);
+  if (!row.keep) bump(g, "plays", sign);
+  bump(g, "taken", sign * taken);
+  bump(g, "paid", sign * paid);
+  bump(g, "items", sign * value);
+  tidy(t.games, row.boxId);
+  if (!row.actorId) return t;
+  const c = entry(t.chars, row.actorId, row.actorName);
+  bump(c, "spent", sign * taken);
+  bump(c, "paid", sign * paid);
+  bump(c, "items", sign * value);
+  for (const i of items) {
+    const part = partOf(row, i.id);
+    if (!part) continue;
+    if (part.given?.actorId) {
+      bump(c, "gave", sign * worth(i.id));
+      const to = entry(t.chars, part.given.actorId, part.given.actorName);
+      bump(to, "got", sign * worth(i.id));
+      tidy(t.chars, part.given.actorId);
+    } else {
+      bump(c, "sold", sign * Math.max(0, Math.round(Number(part.soldCp) || 0)));
+      bump(c, "soldWorth", sign * worth(i.id));
+    }
+  }
+  tidy(t.chars, row.actorId);
+  return t;
+}
+
+// The economy counted from these rows alone: { chars, games }. The
+// readout's This session (rows since the GM's load) and the migration's.
+export function econOf(rows = []) {
+  const t = { chars: {}, games: {} };
+  for (const row of Array.isArray(rows) ? rows : []) applyEcon(t, row, 1);
+  return { chars: t.chars, games: t.games };
+}
 
 /*
   Adds one row to the tallies (`sign` 1), or takes it out (-1). A refunded
@@ -190,6 +272,7 @@ export function applyRow(tally, row, sign = 1, hidden = null) {
     else delete deck[card];
     if (!Object.keys(deck).length) delete t.decks[row.boxId];
   }
+  applyEcon(t, row, sign);
   return t;
 }
 
@@ -223,7 +306,7 @@ export function tallyOf(log, hidden = {}) {
   What a row counts for, as one string: the columns applyRow reads (and
   its hidden tier). A patch that leaves it the same moves no tally.
 */
-const COUNTED_COLUMNS = ["boxId", "actorId", "roundId", "day", "kind", "cardId", "rollId", "uuid", "at"];
+const COUNTED_COLUMNS = ["boxId", "actorId", "roundId", "day", "kind", "cardId", "rollId", "uuid", "at", "price", "payoutCp", "house", "itemId", "itemIds", "worth", "parted"];
 export function countsOf(row, hidden = null) {
   if (!row) return "";
   return JSON.stringify([!!row.refunded, !!row.redeem, !!row.redeem?.kept, !!row.keep, firstParted(row), (hidden ?? row)?.tier ?? null, ...COUNTED_COLUMNS.map(c => row[c] ?? null)]);
@@ -311,6 +394,7 @@ function trimAll(t) {
 */
 export function migrateLog({ log, tally, legacy = null, states = null } = {}) {
   if (Number(tally?.v) >= TALLY_VERSION) return null;
+  if (Number(tally?.v) === 2) return fromVersion2({ log, tally, legacy });
   const hidden = { ...(legacy?.hidden ?? {}), ...(tally?.hidden ?? {}) };
   const rows = (Array.isArray(log) ? log : []).filter(Boolean).map(r => {
     const split = splitHidden(r);
@@ -319,7 +403,7 @@ export function migrateLog({ log, tally, legacy = null, states = null } = {}) {
   });
   const recount = tallyOf(rows, hidden);
   const base = Number(legacy?.v) >= 1 ? legacy : null;
-  const next = base ? trimAll({ ...emptyTally(), ...deepMax({ buyers: base.buyers, rolls: base.rolls, decks: base.decks }, { buyers: recount.buyers, rolls: recount.rolls, decks: recount.decks }) }) : recount;
+  const next = base ? trimAll({ ...emptyTally(), ...deepMax({ buyers: base.buyers, rolls: base.rolls, decks: base.decks }, { buyers: recount.buyers, rolls: recount.rolls, decks: recount.decks }), chars: recount.chars, games: recount.games }) : recount;
   for (const [key, st] of Object.entries(states ?? {})) {
     if (!key.includes(".") || !Array.isArray(st?.owned) || !st.owned.length) continue;
     const b = (next.buyers[key] ??= {});
@@ -329,6 +413,20 @@ export function migrateLog({ log, tally, legacy = null, states = null } = {}) {
   const ids = new Set(rows.map(r => r.id));
   next.v = TALLY_VERSION;
   next.hidden = Object.fromEntries(Object.entries(hidden).filter(([id]) => ids.has(id)));
+  return { log: rows, tally: next };
+}
+
+/*
+  From version 2 to this one: the economy is new, so it is counted from
+  the rows (econOf); every other count is version 2's own, which holds what
+  rows the trim has dropped since. A row another build wrote meanwhile is
+  caught up first (catchUp, which stamps it), so it counts once like any.
+*/
+function fromVersion2({ log, tally, legacy }) {
+  const rows = (Array.isArray(log) ? log : []).filter(Boolean).map(r => ({ ...r }));
+  const next = shape(JSON.parse(JSON.stringify(tally)));
+  catchUp(next, rows, legacy);
+  Object.assign(next, econOf(rows), { v: TALLY_VERSION });
   return { log: rows, tally: next };
 }
 
@@ -387,3 +485,6 @@ export const wonCount = (tally, { boxId, actorId, uuid }) => Number(buyerTally(t
 export function deckDraws(tally, boxId) {
   return Object.fromEntries(Object.entries(tally?.decks?.[boxId] ?? {}).map(([card, times]) => [card, Object.values(times).map(Number)]));
 }
+
+// The economy, per character and per game: { chars, games } (see the header).
+export const econTally = tally => ({ chars: { ...(tally?.chars ?? {}) }, games: { ...(tally?.games ?? {}) } });

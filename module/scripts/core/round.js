@@ -178,10 +178,11 @@ export function coinsByActor(lines) {
 
 // The log row patch for each plan line. A settled stake that won an item
 // carries it as a crate's row does (itemId, uuid, rarity), so the one
-// Refund finds and removes it.
+// Refund finds and removes it, and what it was worth (worth), which the
+// economy readout counts as paid out in items.
 export function rowPatch(line, now = Date.now()) {
   if (line.action === "settle") {
-    const item = line.itemId ? { itemId: line.itemId, uuid: line.result?.uuid ?? null, rarity: line.result?.rarity ?? null } : {};
+    const item = line.itemId ? { itemId: line.itemId, uuid: line.result?.uuid ?? null, rarity: line.result?.rarity ?? null, ...(line.worth ? { worth: { [line.itemId]: line.worth } } : {}) } : {};
     return { status: "settled", payoutCp: line.payoutCp, settledAt: now, ...(line.name ? { name: line.name } : {}), ...(line.note ? { note: line.note } : {}), ...item };
   }
   return { status: "refunded", payoutCp: 0, refunded: now, refundReason: line.reason };

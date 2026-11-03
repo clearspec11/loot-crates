@@ -70,6 +70,15 @@
     revealExtra(ctx) the fields this kind adds to the reveal broadcast,
                   from the same ctx (the crate: its odds ribbon and the
                   buyer's state before the pull, which the shop holds).
+    payback(game) the payback the GM set, for the economy readout on the
+                  Pull log tab (views/economy.js), when the record can
+                  state it: { pct } (what a play pays back on average, a
+                  percentage of what it takes in; the scratch roll's plan,
+                  the well's coin back, the dice's chance times the
+                  multiplier), or { min, max } where the bets differ (the
+                  wheel's), each with `items: true` when items come on top
+                  (their value isn't the record's to say). Null, or no
+                  hook (a crate, the deck, the auction), reads blank.
     undo(state, row, log, tally) the buyer's state with the row undone,
                   for a refund (`tally` the counts as they stand, core/
                   tally.js); a kind without one leaves the state as it is.

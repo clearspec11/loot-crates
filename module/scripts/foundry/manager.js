@@ -87,7 +87,10 @@
   and "Hide misses" leaves only the plays that gave something; a row that
   paid coins out says what it paid, and a refund the purse can't cover is
   refused naming the shortfall (refund.js shortMessage) instead of taking
-  the purse below zero.
+  the purse below zero. Over the log, for a GM alone, the economy readout
+  (economy.js): what each character spent and won and each game's payback
+  against the one it was set to, All time or This session (econPeriod,
+  view state only).
 */
 import { RARITIES, RARITY_LABEL, SETTINGS } from "../core/config.js";
 import { draftBox, oddsRules, boxPreview, boxPreviewHTML, oddsSummary, quietAnnouncer, refundRulesLine } from "../views/boxcard.js";
@@ -103,6 +106,7 @@ import { lotOf, lotFromEntry, draftAuction, auctionPreview, auctionPreviewHTML, 
 import { newDraft, crateFromPool, crateFromTable, copyOf, editorTitle, addLabel, addedNotice, deleteTitle, deleteGameText, deletedNotice } from "../views/newgame.js";
 import { boxesTabHTML, shelfAllHTML } from "../views/boxestable.js";
 import { logTableHTML, logRarityNote, logPayoutNote, logStakeNote, logLateNote } from "../views/logtable.js";
+import { economyHTML } from "../views/economy.js";
 // The log's notes stay reachable here for the checks that import them from the manager.
 export { logRarityNote, logPayoutNote, logStakeNote, logLateNote };
 // The table window (tablewindow.js), loaded when a wheel's round is opened
@@ -136,6 +140,8 @@ import { wirePoolPicker, poolPickerHTML, madeText, madePoolName } from "../views
 import { t, listAnd } from "../core/i18n.js";
 
 const { ApplicationV2, DialogV2 } = foundry.applications.api;
+// When this client loaded: the economy readout's This session counts the rows since.
+const LOADED_AT = Date.now();
 // Every editor's dialog: DialogV2 that asks before it throws a changed form away (editordialog.js).
 const EditorDialog = guardDialog(DialogV2);
 const esc = s => foundry.utils.escapeHTML(String(s ?? ""));
@@ -162,7 +168,7 @@ export class CrateManager extends ApplicationV2 {
       bulkAdd: CrateManager.#bulkAdd, setUnsetRarity: CrateManager.#setUnsetRarity, removeEntry: CrateManager.#removeEntry, updateEntry: CrateManager.#updateEntry, relinkEntry: CrateManager.#relinkEntry,
       addBox: CrateManager.#addBox, addWell: CrateManager.#addWell, addDice: CrateManager.#addDice, addDeck: CrateManager.#addDeck, addWheel: CrateManager.#addWheel, addAuction: CrateManager.#addAuction, addScratch: CrateManager.#addScratch, crateFromPool: CrateManager.#crateFromPool,
       editBox: CrateManager.#editBox, toggleShelf: CrateManager.#toggleShelf, copyBox: CrateManager.#copyBox, makeTicket: CrateManager.#makeTicket, deleteBox: CrateManager.#deleteBox, reshuffle: CrateManager.#reshuffle, printRoll: CrateManager.#printRoll, openTable: CrateManager.#openTable,
-      refund: CrateManager.#refund, toggleShop: CrateManager.#toggleShop, openShop: CrateManager.#openShop, toggleMisses: CrateManager.#toggleMisses,
+      refund: CrateManager.#refund, toggleShop: CrateManager.#toggleShop, openShop: CrateManager.#openShop, toggleMisses: CrateManager.#toggleMisses, econPeriod: CrateManager.#econPeriod,
       filterChip: CrateManager.#filterChip, showMore: CrateManager.#showMore,
       starterCrates: CrateManager.#starterCrates, shelfAll: CrateManager.#shelfAll,
     },
@@ -1537,6 +1543,10 @@ export class CrateManager extends ApplicationV2 {
   hideMisses = false;
   static #toggleMisses() { this.hideMisses = !this.hideMisses; this.render(); }
 
+  // The economy readout's period, All time or This session (view state only).
+  econPeriod = "all";
+  static #econPeriod(_e, target) { this.econPeriod = target.dataset.period === "session" ? "session" : "all"; this.render(); }
+
   // redraw.js's change count when this render read the settings.
   seen = -1;
 
@@ -1682,8 +1692,13 @@ export class CrateManager extends ApplicationV2 {
 
   // The Pull log (logtable.js): newest first, every game's misses folded per
   // character and day, a table round's stakes under its line, "Hide misses".
+  // Above it, for a GM alone, the economy readout (economy.js): what each
+  // character spent and won and what each game paid back, from the tallies
+  // or this session's rows (since this client loaded).
   _log() {
-    return logTableHTML({ log: getLog(), rounds: getRounds(), hideMisses: this.hideMisses, esc });
+    const log = getLog();
+    const econ = game.user?.isGM ? economyHTML({ tally: getTally(), log, boxes: getBoxes(), period: this.econPeriod, since: LOADED_AT, esc }) : "";
+    return `${econ}${logTableHTML({ log, rounds: getRounds(), hideMisses: this.hideMisses, esc })}`;
   }
 
   #searchTimer = null;
@@ -1753,7 +1768,7 @@ export function tabAfter(keys, current, key) {
 
 // A selector that finds the same control in a fresh render: its tag, its
 // search class, and whichever of the data attributes that identify it are set.
-const FOCUS_ATTRS = ["action", "curate", "pool", "uuid", "chip", "tab", "box", "row", "boxPrice"];
+const FOCUS_ATTRS = ["action", "curate", "pool", "uuid", "chip", "tab", "box", "row", "boxPrice", "period"];
 const dataAttr = key => `data-${key.replace(/[A-Z]/g, c => `-${c.toLowerCase()}`)}`;
 function focusKey(el) {
   if (el.matches("summary")) {

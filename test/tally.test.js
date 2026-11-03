@@ -360,7 +360,7 @@ describe("the owned tally (won) and the move to version 2", () => {
     for (const seed of [7, 8, 9]) {
       const log = fixture(seed);
       const moved = migrateLog({ log, tally: undefined });
-      expect(moved.tally.v).toBe(2);
+      expect(moved.tally.v).toBe(TALLY_VERSION);
       expect(wonFromTally(moved.tally, log)).toEqual(wonFromLog(log));
       expect(Object.keys(wonFromLog(log)).length).toBeGreaterThan(20);
       expect(moved.log.every(r => r.t === (r.refunded ? 0 : 1))).toBe(true);
@@ -481,7 +481,9 @@ describe("day tallies trimmed by date (S5)", () => {
 
   it("says a patch that changes nothing a tally reads changes nothing", () => {
     const row = { id: "x", kind: "crate", boxId: "b", actorId: "a", day: "y1d1", at: 3 };
-    expect(countsChange(row, { ...row, lateCancel: 5, status: "settled", payoutCp: 10 })).toBe(false);
+    expect(countsChange(row, { ...row, lateCancel: 5, status: "settled" })).toBe(false);
+    // A settle's payout moves the economy (VIB-218).
+    expect(countsChange(row, { ...row, status: "settled", payoutCp: 10 })).toBe(true);
     expect(countsChange(row, { ...row, refunded: 5 })).toBe(true);
   });
 });

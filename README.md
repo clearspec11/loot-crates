@@ -112,6 +112,14 @@ When a play hands a character an item, its winner gets two more buttons under th
 
 For the GM: what the house pays is set per game, as **Sell back for N % of an item's price** in the price section of every game that can hand out items (crates, the well, the dice, the deck, scratch tickets). It starts at 50, is worked out from the item's dnd5e price as it was when it was won, and 0 turns it off for that game. Nothing new appears on your screen beyond the line in the log. A play whose item was given away or sold back can't be refunded (the item has left the sheet); the Refund button says so and moves nothing. Each item can only be given or sold once, only by the player who won it.
 
+## Spending and payback
+
+The top of the **Pull log** tab answers "is this game fair, and who is spending?" at a glance, for you alone (players never see it). **By character** lists what each character has spent, won in coins and won in items, and their net, most spent first. **By game** lists each game's plays, what it took in, what it paid out in coins and in items, and its **Payback**: what it paid out for what it took in, as a percentage. Beside it, **Set payback** is the payback the game's own settings give, where they can say: a scratch roll's printed plan, the well's coin back, the dice's chance of beating the dragon times the multiplier, the wheel's bets (a range when they differ), with "+ items" where items come on top. A crate, the deck and the auction have none to state, so it stays blank. A table game counts each stake when it is placed and what it paid when the round settles.
+
+An item counts at its dnd5e price when it was won. One sold back counts as the coins it fetched, and one given away counts for the character who has it now. A refund takes its play back out. Money reads in the same coins as every price in the manager.
+
+**All time** keeps its totals beside the log, so they don't change when old rows leave the 500-row Pull log. They start from the rows the log held when you first loaded 1.8.0, and items won before 1.8.0 count as 0 gp (their price wasn't recorded). **This session** counts the plays since you loaded the world, read from the Pull log. In a narrow window each table scrolls sideways in its own box, the names staying in view.
+
 ## Stock limits and the shelf
 
 - **Stock.** Give a game a stock and the shop says what is left ("3 of 10 left"). Each sale takes one and a refund puts one back. **Restock** in the editor fills it again.

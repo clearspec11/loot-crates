@@ -68,6 +68,15 @@ export function worthColumns(created = []) {
   return Object.keys(worth).length ? { worth } : {};
 }
 
+// What an item worth `worth` (worthOf) is worth in all, in copper: its
+// price times its quantity, rounded to the copper (0 with no price). The
+// economy readout's value of an item won (core/tally.js).
+export function worthCp(worth) {
+  const per = COPPER_PER[worth?.denomination];
+  if (!per || !(Number(worth?.value) > 0)) return 0;
+  return Math.round(Number(worth.value) * Math.max(1, Math.floor(Number(worth.quantity) || 1)) * per);
+}
+
 // What the house pays for an item worth `worth` at `pct`, in copper: 0 when
 // it has no price or the game buys nothing back.
 export function sellCp(worth, pct) {
