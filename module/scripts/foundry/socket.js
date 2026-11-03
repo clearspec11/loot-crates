@@ -176,7 +176,12 @@ export const WAIT_NOTICE_MS = 1500;
 // telling the GM about; a responsive client takes ~0.3 s.
 export const SLOW_PULL_MS = 2000;
 export let TIMED_OUT = "";
-onStrings(() => { TIMED_OUT = t("LOOTCRATES.Error.TimedOut"); });
+// A give or a sell after the reveal isn't a purchase: its own sentence.
+export let TIMED_OUT_PART = "";
+onStrings(() => {
+  TIMED_OUT = t("LOOTCRATES.Error.TimedOut");
+  TIMED_OUT_PART = t("LOOTCRATES.After.TimedOut");
+});
 
 // Only the request's own sender can call it off: a cancel from anyone else
 // (who might have learned the id from the reveal) is refused and logged.
@@ -517,6 +522,9 @@ function answered(msg, answer) {
   if (!answer) return settle(msg.requestId, p => p.reject(new PullError(TIMED_OUT)));
   if (answer.type === "reveal") showOwn(answer);
   if (pending.has(msg.requestId)) return settle(msg.requestId, p => p.resolve(answer));
+  // A give or a sell the GM got to after the wait gave up: the winner's
+  // window says what came of it after all (reveal.js partHeard).
+  if (answer.type === "parted") return tellParted({ ...answer, own: true });
   return toldLate(msg.requestId, answer.sold);
 }
 
@@ -608,7 +616,7 @@ function send(msg, handle, onWait) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => settle(msg.requestId, p => {
       callOff(msg);
-      p.reject(new PullError(TIMED_OUT));
+      p.reject(new PullError(msg.type === "give" || msg.type === "sell" ? TIMED_OUT_PART : TIMED_OUT));
     }), GM_TIMEOUT_MS);
     const entry = { resolve, reject, timer, onWait, waited: false, hidden: false, oldGM: false, heard: null };
     entry.slow = setTimeout(() => {

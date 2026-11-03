@@ -662,9 +662,19 @@ export class CrateReveal extends ApplicationV2 {
   }
 
   // The GM's word that an item of this play was given or sold (heardParted):
-  // a line, once landed, on everyone else's window.
+  // a line, once landed, on everyone else's window; on the winner's, only
+  // their own late answer (`own`), never the socket's.
   partHeard(msg) {
-    if (this.reveal.replay || this.reveal.userId === game.user?.id || !msg?.itemId) return;
+    if (this.reveal.replay || !msg?.itemId) return;
+    // The winner's own give or sell, answered after its wait gave up
+    // (socket.js answered): the row says what came of it after all.
+    if (this.reveal.userId === game.user?.id) {
+      if (msg.own && !this.#closed && !this.#parts.has(msg.itemId)) {
+        this.#landPart(msg);
+        this.linger.resume("picking");
+      }
+      return;
+    }
     const text = partSentence(msg.part, { actor: msg.actorName ?? this.reveal.actorName, item: msg.itemName ?? "" });
     this.#parts.set(msg.itemId, text);
     const slot = this.element?.querySelector(".lc-reveal__after");

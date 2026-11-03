@@ -1483,7 +1483,8 @@
       "SellFailed": "Selling {item} back didn't work, so it stays with {actor} and no coins moved.",
       "SellUndoFailed": "Selling {item} back failed halfway. The GM has been told to put it right.",
       "SellUndoFailedGM": "Selling {item} back from {actor} failed halfway: the item is gone but {price} wasn't paid. Pay it or give the item back by hand.",
-      "Failed": "That didn't work, and nothing moved. Try again in a moment."
+      "Failed": "That didn't work, and nothing moved. Try again in a moment.",
+      "TimedOut": "The GM didn't answer in time, so the request was called off. If the GM had already started it, this window will say what became of the item."
     }
   }
 }

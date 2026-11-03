@@ -11,7 +11,8 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 vi.mock("../module/scripts/foundry/reveal.js", () => ({ showReveal: vi.fn(async () => ({ landed: Promise.resolve() })) }));
 vi.mock("../module/scripts/foundry/chat.js", () => ({ postPullCard: vi.fn(async () => null), postKeptCard: vi.fn(async () => null) }));
 
-const { registerSocket, requestPull, requestKeep, heardRequest, restCompleted, REQUEST_QUERY, SENT_QUERY, GM_TIMEOUT_MS, WAIT_NOTICE_MS } = await import("../module/scripts/foundry/socket.js");
+const { registerSocket, requestPull, requestKeep, requestSell, heardRequest, restCompleted, REQUEST_QUERY, SENT_QUERY, GM_TIMEOUT_MS, WAIT_NOTICE_MS, TIMED_OUT, TIMED_OUT_PART } = await import("../module/scripts/foundry/socket.js");
+const { onParted } = await import("../module/scripts/foundry/handover.js");
 const { showReveal } = await import("../module/scripts/foundry/reveal.js");
 const { registerSettings, enqueueWrite, getLog } = await import("../module/scripts/foundry/store.js");
 const { withQuery } = await import("./requests.js");
@@ -418,5 +419,31 @@ describe("answers come back by the query, never the socket", () => {
     await tick();
     expect(JSON.parse(kept.get("loot-crates.owedRests.w.p1"))).toEqual({ actor1: { at: 86400 * 3 } });
     vi.unstubAllGlobals();
+  });
+
+  it("a sell the GM got to after the wait gave up: said as a request, not a purchase, and the winner's window hears the answer", async () => {
+    vi.useFakeTimers();
+    const world = makeWorld({ user: ANA });
+    const { gm, calls } = deferredGM();
+    world.game.users.activeGM = gm;
+    const heard = [];
+    onParted(msg => heard.push(msg));
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const promise = requestSell({ logId: "row1", itemId: "i1", cp: 7500 }).catch(err => err);
+    const { requestId } = calls[0].data;
+    await vi.advanceTimersByTimeAsync(GM_TIMEOUT_MS + 1);
+    const err = await promise;
+    expect(err.message).toBe(TIMED_OUT_PART);
+    expect(TIMED_OUT_PART).not.toBe(TIMED_OUT);
+    expect(calls[1].data).toMatchObject({ type: "cancel", requestId });
+    // The sale was already under way on the GM: its answer comes after all.
+    const parted = { type: "parted", requestId, logId: "row1", userId: "p1", itemId: "i1", itemName: "Wand", actorName: "Crate Tester", part: { soldCp: 7500 }, purse: { gp: 575 } };
+    calls[0].resolve(parted);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(heard).toEqual([{ ...parted, own: true }]);
+    // The socket's word on one's own (anyone can send it) is still not taken.
+    await world.onSocket({ ...parted, itemId: "i2" });
+    expect(heard).toHaveLength(1);
+    onParted(null);
   });
 });
