@@ -433,7 +433,14 @@
       "HideMisses": "Hide misses",
       "MissesHidden": "{count} that gave nothing hidden",
       "MissesFolded": "{count} that gave nothing, folded by day",
-      "OnlyMisses": "Only misses so far; show them with the button above."
+      "OnlyMisses": "Only misses so far; show them with the button above.",
+      "FilterCharacter": "Character",
+      "FilterGame": "Game",
+      "EveryCharacter": "Every character",
+      "EveryGame": "Every game",
+      "Showing": "Showing {count} of {total} rows",
+      "ShowAll": "Show all",
+      "NoMatch": "Nothing in the log for that character at that game."
     },
     "Well": {
       "CoinBack": "Coin back",

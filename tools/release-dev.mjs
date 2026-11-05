@@ -26,7 +26,9 @@ try {
 } catch { /* no dev release yet */ }
 const dev = nextDevVersion(version, current);
 
-run("npm", ["run", "build", "--", `--dev=${dev}`], { stdio: "inherit" });
+// npm run build, run as node itself: npm is npm.cmd on Windows, which
+// execFileSync can't start without a shell.
+run(process.execPath, [path.join(root, "tools/build.mjs"), `--dev=${dev}`], { stdio: "inherit" });
 if (current) run("gh", ["release", "delete", DEV_TAG, "--cleanup-tag", "--yes"]);
 const notes = `Dev build ${dev} of ${branch} at ${sha.slice(0, 7)}. Not for players: install from ${DEV_MANIFEST} in a test world to get each dev build as an update.`;
 run("gh", ["release", "create", DEV_TAG, "dist/module.zip", "dist/module.json", "--prerelease", "--latest=false",

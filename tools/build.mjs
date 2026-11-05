@@ -8,7 +8,7 @@
    requires in every copy, and says the zip's size and file count.
    `npm run build -- --dev=1.2.0-dev.3` packs a dev-channel build instead:
    the same files with a dev manifest (tools/lib/channel.mjs). */
-import { cp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { glob } from "node:fs/promises";
@@ -53,6 +53,22 @@ const manifestText = `${JSON.stringify(shipped, null, 2)}\n`;
 if (shipped === manifest) await cp(path.join(src, "module.json"), path.join(dist, "module.json"));
 else for (const p of [path.join(dist, "module.json"), path.join(dist, manifest.id, "module.json")]) await writeFile(p, manifestText);
 try { await cp(path.join(root, "LICENSE"), path.join(dist, manifest.id, "LICENSE")); } catch { fail("LICENSE is missing at the repository root"); }
-execFileSync("zip", ["-qr", path.join(dist, "module.zip"), "."], { cwd: path.join(dist, manifest.id) });
+await pack(path.join(dist, manifest.id), path.join(dist, "module.zip"));
 const { size } = await stat(path.join(dist, "module.zip"));
 console.log(`build: ${manifest.id} ${shipped.version}, ${scripts} scripts parsed, dist/module.zip written (${files.length} files, ${Math.round(size / 1024)} KB)`);
+
+// The folder's contents into a zip, module.json at its root: with Info-ZIP's
+// zip where it is installed, else on Windows with the tar that ships with it
+// (bsdtar, which writes a zip for a .zip name). That tar is called by its full
+// path, since Git Bash puts GNU tar, which can't write a zip, first on PATH;
+// it is given the folder's entries by name so none is stored under "./".
+async function pack(dir, out) {
+  try {
+    execFileSync("zip", ["-qr", out, "."], { cwd: dir });
+    return;
+  } catch (e) {
+    if (e.code !== "ENOENT" || process.platform !== "win32") throw e;
+  }
+  const tar = path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe");
+  execFileSync(tar, ["-a", "-c", "-f", out, ...(await readdir(dir))], { cwd: dir });
+}

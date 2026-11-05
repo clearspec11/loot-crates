@@ -971,6 +971,14 @@
    seconds (tickets.js showInItems). Foundry's own highlight colour. */
 .loot-crates-made { outline: 2px solid var(--color-border-highlight, #ff6400); outline-offset: -2px; border-radius: 3px; }
 
+/* The Pull log's pickers (logtable.js logFilterHTML): each label beside
+   its select, a long name cut short in the select rather than widening the
+   row, and the count taking the rest of the line. */
+.loot-crates .lc-log__filter { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--lc-ink-mute); }
+.loot-crates .lc-log__filter select { width: auto; max-width: 14em; min-height: 28px; padding: 0 4px; font-size: 12px; color: var(--lc-ink); }
+.loot-crates .lc-log__count { flex: 1 1 8em; min-width: 0; font-size: 12px; color: var(--lc-ink-mute); text-align: right; }
+.loot-crates .lc-log__count:empty { flex-basis: 0; }
+
 /* An empty Pools or Boxes tab (starter.js starterCallHTML): what the tab
    holds, then the offer of the starter set on a paper card ruled in gold,
    its button the window's one gold action. */

@@ -206,6 +206,10 @@ const STATES = [
   ["manager-log-narrow", "state=manager&tab=log&width=480"],
   ["manager-log-session", "state=manager&tab=log&period=session"],
   ["manager-log-empty", "state=manager&tab=log&empty=1"],
+  // The log narrowed to Tam Thornwick (logtable.js filterLog): her pity
+  // pull, her dice win, the round with her two stakes, her folded throws
+  // and her Pauper's Box buy; the count and Show all beside the pickers.
+  ["manager-log-filtered", "state=manager&tab=log&actor=tam"],
   // A crate made from a roll table (B1): Goblin's Pockets leads the shelf,
   // drawing at the table's own odds, so its card names its items with
   // their real chances (the 1-in-100 Flame Tongue first, "<1%"), "and 3
@@ -494,6 +498,39 @@ function econProblems({ period = "all", empty = false } = {}) {
   if (royal) out.push("the refunded Staff's game still counts");
   const crate = gl.find(l => l[0] === "Pauper's Box");
   if (!crate || crate[6] !== "") out.push(`a crate's Set payback isn't blank: "${crate?.[6]}"`);
+  return out;
+}
+
+// The Pull log narrowed to one character (manager-log-filtered): the
+// pickers named and set, only her rows, the round's line counting only her
+// stakes, the count and Show all, and the pickers on one line in a wide
+// pane and inside the pane in a narrow one.
+function logFilterProblems() {
+  const out = [];
+  const actor = document.querySelector('select[data-log-filter="actor"]');
+  const box = document.querySelector('select[data-log-filter="box"]');
+  if (!actor || !box) return ["no Character and Game pickers"];
+  if (actor.closest("label")?.textContent.trim().split(/\s/)[0] !== "Character" || box.closest("label")?.textContent.trim().split(/\s/)[0] !== "Game") out.push("a picker has no visible name");
+  if (actor.selectedOptions[0]?.textContent !== "Tam Thornwick") out.push(`the Character picker reads "${actor.selectedOptions[0]?.textContent}"`);
+  if (box.value !== "" || box.selectedOptions[0]?.textContent !== "Every game") out.push("the Game picker isn't on Every game");
+  if ([...actor.options].map(o => o.textContent).join("|") !== "Every character|Bo Marrow|Orla Vane|Tam Thornwick") out.push(`the Character picker lists ${[...actor.options].map(o => o.textContent).join(", ")}`);
+  const rows = [...document.querySelectorAll(".lc-table--log tbody tr")];
+  const who = rows.map(r => r.children[1].textContent.trim());
+  if (rows.length !== 7) out.push(`expected 7 rows for Tam, got ${rows.length}`);
+  if (who.some(w => w !== "Tam Thornwick" && w !== "Round")) out.push(`a row for someone else: ${who.join(", ")}`);
+  const round = rows.find(r => r.children[1].textContent.trim() === "Round");
+  if (!round || !/2 stakes, settled/.test(round.textContent)) out.push(`the round's line reads "${round?.textContent.replace(/\s+/g, " ").trim()}"`);
+  const count = document.querySelector(".lc-log__count");
+  if (!/^Showing 10 of \d+ rows$/.test(count?.textContent ?? "") || count.getAttribute("role") !== "status") out.push(`the count reads "${count?.textContent}"`);
+  const all = document.querySelector('[data-action="clearLogFilter"]');
+  if (all?.textContent !== "Show all") out.push("no Show all");
+  // In a wide pane the pickers and the count share one line; in a narrow
+  // one they may wrap, but nothing runs past the pane.
+  const bar = document.querySelector(".lc-log__filters");
+  const pane = bar.closest(".lc-tab").getBoundingClientRect();
+  if (pane.width > 560 && bar.getBoundingClientRect().height > 40) out.push(`the pickers wrap onto ${Math.round(bar.getBoundingClientRect().height)} px in a ${Math.round(pane.width)} px pane`);
+  const past = [...bar.querySelectorAll("select, button, .lc-log__count")].filter(el => el.getBoundingClientRect().right > pane.right + 1);
+  if (past.length) out.push(`${past.length} of the pickers' controls run past the pane`);
   return out;
 }
 
@@ -2955,6 +2992,7 @@ try {
       else if (name === "manager-boxes-shelf") problems0.push(...await page.evaluate(shelfBoxesProblems), ...await page.evaluate(panelProblems));
       else if (name === "manager-boxes-scratch") problems0.push(...await page.evaluate(scratchBoxesProblems), ...await page.evaluate(panelProblems));
       else if (name.startsWith("manager-boxes")) problems0.push(...await page.evaluate(boxesProblems, name.endsWith("narrow")), ...await page.evaluate(panelProblems));
+      else if (name === "manager-log-filtered") problems0.push(...await page.evaluate(logFilterProblems), ...await page.evaluate(panelProblems));
       else if (name === "manager-log-empty") problems0.push(...await page.evaluate(econProblems, { empty: true }));
       else if (name === "manager-log-session") problems0.push(...await page.evaluate(econProblems, { period: "session" }), ...await page.evaluate(panelProblems));
       else if (name.startsWith("manager-log")) problems0.push(...await page.evaluate(logProblems, name.endsWith("narrow")), ...await page.evaluate(econProblems, {}), ...await page.evaluate(panelProblems));

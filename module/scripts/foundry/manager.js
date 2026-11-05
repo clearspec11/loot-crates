@@ -168,7 +168,7 @@ export class CrateManager extends ApplicationV2 {
       bulkAdd: CrateManager.#bulkAdd, setUnsetRarity: CrateManager.#setUnsetRarity, removeEntry: CrateManager.#removeEntry, updateEntry: CrateManager.#updateEntry, relinkEntry: CrateManager.#relinkEntry,
       addBox: CrateManager.#addBox, addWell: CrateManager.#addWell, addDice: CrateManager.#addDice, addDeck: CrateManager.#addDeck, addWheel: CrateManager.#addWheel, addAuction: CrateManager.#addAuction, addScratch: CrateManager.#addScratch, crateFromPool: CrateManager.#crateFromPool,
       editBox: CrateManager.#editBox, toggleShelf: CrateManager.#toggleShelf, copyBox: CrateManager.#copyBox, makeTicket: CrateManager.#makeTicket, deleteBox: CrateManager.#deleteBox, reshuffle: CrateManager.#reshuffle, printRoll: CrateManager.#printRoll, openTable: CrateManager.#openTable,
-      refund: CrateManager.#refund, toggleShop: CrateManager.#toggleShop, openShop: CrateManager.#openShop, toggleMisses: CrateManager.#toggleMisses, econPeriod: CrateManager.#econPeriod,
+      refund: CrateManager.#refund, toggleShop: CrateManager.#toggleShop, openShop: CrateManager.#openShop, toggleMisses: CrateManager.#toggleMisses, econPeriod: CrateManager.#econPeriod, clearLogFilter: CrateManager.#clearLogFilter,
       filterChip: CrateManager.#filterChip, showMore: CrateManager.#showMore,
       starterCrates: CrateManager.#starterCrates, shelfAll: CrateManager.#shelfAll,
     },
@@ -1547,6 +1547,16 @@ export class CrateManager extends ApplicationV2 {
   econPeriod = "all";
   static #econPeriod(_e, target) { this.econPeriod = target.dataset.period === "session" ? "session" : "all"; this.render(); }
 
+  // The Pull log narrowed to one character, one game or both (logtable.js
+  // filterLog; view state only). Show all clears both and puts focus on the
+  // Character picker, since the button goes with the filter.
+  logFilter = { actor: "", box: "" };
+  static async #clearLogFilter() {
+    this.logFilter = { actor: "", box: "" };
+    await this.render();
+    this.element?.querySelector('[data-log-filter="actor"]')?.focus();
+  }
+
   // redraw.js's change count when this render read the settings.
   seen = -1;
 
@@ -1585,6 +1595,8 @@ export class CrateManager extends ApplicationV2 {
       if (el) this.#onCurate(el).catch(err => { console.error(`loot-crates | saving that entry failed`, err); this.render(); });
       const price = e.target.closest?.("[data-box-price]");
       if (price) this.#onPrice(price).catch(err => { console.error(`loot-crates | saving that price failed`, err); this.render(); });
+      const filter = e.target.closest?.("[data-log-filter]");
+      if (filter) { this.logFilter = { ...this.logFilter, [filter.dataset.logFilter]: filter.value }; this.render(); }
     });
     this.#wireRelinks(root);
     root.querySelectorAll(".lc-pool__details").forEach(d => d.addEventListener("toggle", () => this.#onToggle(d)));
@@ -1691,14 +1703,15 @@ export class CrateManager extends ApplicationV2 {
   }
 
   // The Pull log (logtable.js): newest first, every game's misses folded per
-  // character and day, a table round's stakes under its line, "Hide misses".
+  // character and day, a table round's stakes under its line, "Hide misses",
+  // narrowed by the Character and Game pickers.
   // Above it, for a GM alone, the economy readout (economy.js): what each
   // character spent and won and what each game paid back, from the tallies
   // or this session's rows (since this client loaded).
   _log() {
     const log = getLog();
     const econ = game.user?.isGM ? economyHTML({ tally: getTally(), log, boxes: getBoxes(), period: this.econPeriod, since: LOADED_AT, esc }) : "";
-    return `${econ}${logTableHTML({ log, rounds: getRounds(), hideMisses: this.hideMisses, esc })}`;
+    return `${econ}${logTableHTML({ log, rounds: getRounds(), hideMisses: this.hideMisses, filter: this.logFilter, esc })}`;
   }
 
   #searchTimer = null;
@@ -1768,7 +1781,7 @@ export function tabAfter(keys, current, key) {
 
 // A selector that finds the same control in a fresh render: its tag, its
 // search class, and whichever of the data attributes that identify it are set.
-const FOCUS_ATTRS = ["action", "curate", "pool", "uuid", "chip", "tab", "box", "row", "boxPrice", "period"];
+const FOCUS_ATTRS = ["action", "curate", "pool", "uuid", "chip", "tab", "box", "row", "boxPrice", "period", "logFilter"];
 const dataAttr = key => `data-${key.replace(/[A-Z]/g, c => `-${c.toLowerCase()}`)}`;
 function focusKey(el) {
   if (el.matches("summary")) {
