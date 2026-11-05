@@ -145,6 +145,10 @@ A player's client is never trusted for who it is or what it may see. Foundry's m
 - The auction's reserve and the house bidders' budget are in the game's record (`boxes`). The shop, the table window and the chat say only whether a reserve is met, never its amount, and no round message carries either value (`test/auction.test.js`).
 - A scratch ticket's tier, number and winning panels are behind `foundry/hidden.js` (beside the tallies, in `actorState`); a hidden roll's reveal and chat card carry no counts (`revealExtra`, `cleanTicket`). `hidden.js` is the one place to move them if Foundry ever offers storage a player can't read.
 
+## Finding a row in the Pull log
+
+The Pull log keeps its newest 500 rows and what a table round still needs (see What is counted where). Above the table, under the GM's economy readout, a **Character** and a **Game** picker (`logtable.js logFilterHTML`) list each character and game the log holds, once, by the name on its newest row, sorted by name (an auction's house bid adds no character). Picking either narrows the log to those rows (`filterLog`) before the misses are folded and the rounds grouped, so a folded line counts only what it shows and a round's line only that character's stakes. While either is set, the line beside them says "Showing 10 of 230 rows" (a status) with **Show all**, which clears both and puts focus on the Character picker; a pick the log no longer holds (its rows trimmed away) is dropped rather than leaving an empty log (`activeLogFilter`), and a character who never played the picked game reads "Nothing in the log for that character at that game." with the pickers still there. A log of one character at one game has no pickers. The filter is the manager's view state (`logFilter`), kept across redraws and refunds and never written; the picker keeps focus through the redraw (`focusKey`).
+
 ## What is atomic
 
 Foundry gives a module no transaction and no compare-and-set: a world setting (the pools, the boxes, the Pull log, the pity state and the tallies, the rounds) is written whole, an actor's coins are written as the new amounts, and the last write to reach the server wins. What the module guarantees on top of that, and what it does not:
@@ -205,7 +209,7 @@ Setup, the harness, the smoke run, the live checks and what to run before a pull
 |---|---|
 | `boxcard.js` | The shop's box card and odds pills |
 | `boxestable.js` | The Boxes tab's toolbar and table, each price a field typed in place |
-| `logtable.js` | The Pull log's table: misses folded, rounds grouped, notes under a row |
+| `logtable.js` | The Pull log's table: the Character and Game pickers, misses folded, rounds grouped, notes under a row |
 | `economy.js` | The GM's economy readout over the Pull log: spent and won per character, payback actual and set per game, All time or This session |
 | `poolview.js` | The pool editor's rows, search, filter chips and 50-row pages; which pool the tab opens with, New pool's name and Add from compendium's filters |
 | `editorfields.js` | The editors' shared named fields, Sell back among them |

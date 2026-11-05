@@ -38,7 +38,7 @@ Whatever you do in the manager, the line at the top of the tab says what happene
 Every editor asks for things in the order you plan a game: what it is, what's in it, the odds, the price, who can buy, then how it looks. The pools a game uses come first, each saying what it holds ("2 uncommon, 1 rare"); the rest of your pools are folded under **Add a pool**, with a search box. The rarity weights show only the rarities your ticked pools hold (**Show ... too** brings back the rest). A game's pools and weights appear only once it has an item prize turned on: the dice's perfect roll, the wheel's item pocket, an item weight at the well or an item card in a deck. **Who can buy** (stock and the limit per character) and **Extras** (pity, no duplicates) stay folded under a line saying what is set until you open them. In a scratch ticket's editor the pools sit right above **Fill the prize list**, and the card's layout and **Who sees what** fold the same way. The auction's lot list is grouped by pool, with a search: type part of an item's name and press Enter to make it the lot.
 4. **Open the shop.** **View shop** in the manager opens the shop as players see it. Players open it with the **Crates** button at the top of the Items sidebar. The shop starts open; the **Shop open** switch beside View shop closes it for a pause.
 5. **Run a pull.** A player picks their character and presses **Open for 50 gp**. The coins come off the character, the spin plays for everyone, and a chat card names the find once each screen has landed.
-6. **Refund.** Every play is a row on the **Pull log** tab. **Refund** on a row gives the coins back, takes the item off the sheet and undoes the pity count, so a misclick costs nothing.
+6. **Refund.** Every play is a row on the **Pull log** tab. **Refund** on a row gives the coins back, takes the item off the sheet and undoes the pity count, so a misclick costs nothing. The **Character** and **Game** pickers above the log narrow it to one character's plays, one game's, or both.
 
 ![The manager's Boxes tab, listing each game with its price, pools, odds and rules](docs/images/manager-boxes.webp)
 
@@ -135,7 +135,7 @@ Players press **Crates** at the top of the Items sidebar. The shop shows every g
 
 **Does it work with no GM logged in?** No. The GM's Foundry rolls every result and moves every coin, so while no GM is online the shop reads "Closed until a GM is online." and nothing is charged.
 
-**What if I make a mistake, or a player misclicks?** Press **Refund** on the row in the Pull log. The coins come back, the item leaves the sheet and pity and stock go back to where they were. If the player has already spent winnings, the refund says how much is short rather than making coins from nothing. A play whose item was given away or sold back after the reveal can't be refunded.
+**What if I make a mistake, or a player misclicks?** Pick the character (and the game, if you like) above the Pull log and press **Refund** on the row. The coins come back, the item leaves the sheet and pity and stock go back to where they were. If the player has already spent winnings, the refund says how much is short rather than making coins from nothing. A play whose item was given away or sold back after the reveal can't be refunded.
 
 **Can players see what they will get before the spin ends?** No. The result is decided first, but the chat card, the sheet row and the shop's pity line stay hidden on each screen until that screen's spin lands.
 

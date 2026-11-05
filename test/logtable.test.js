@@ -7,7 +7,7 @@
   under a row read through the caller's escape.
 */
 import { describe, it, expect } from "vitest";
-import { logTableHTML, logRarityNote, logPayoutNote, logStakeNote, logLateNote, LOG_COLUMNS } from "../module/scripts/views/logtable.js";
+import { logTableHTML, logRarityNote, logPayoutNote, logStakeNote, logLateNote, LOG_COLUMNS, logFilterOptions, activeLogFilter, filterLog } from "../module/scripts/views/logtable.js";
 import { sampleLog, rouletteRound } from "../harness/sample.js";
 
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -89,5 +89,65 @@ describe("the Pull log table", () => {
     expect(logTableHTML({ log: [], esc })).toBe('<p class="lc-empty">No pulls yet.</p>');
     const miss = { id: "n", at: NOW, kind: "well", outcome: "nothing", boxId: "w", boxName: "Well", actorId: "a", actorName: "A", day: "d", price: 0.1, name: "Nothing" };
     expect(logTableHTML({ log: [miss], hideMisses: true, esc })).toContain("Only misses so far; show them with the button above.");
+  });
+});
+
+describe("the Pull log's Character and Game pickers", () => {
+  const log = sampleLog(NOW);
+  const who = html => rows(html).map(tr => tr.match(/data-label="Who">([^<]*)</)[1]);
+
+  it("lists each character and game the log holds once, by name, and no character for a house bid", () => {
+    const house = { id: "h1", kind: "auction", house: true, actorId: "house1", actorName: "House bidder 1", boxId: "lot", boxName: "The Lot", at: NOW };
+    const { actors, boxes } = logFilterOptions([house, ...log]);
+    expect(actors.map(a => a.name)).toEqual(["Bo Marrow", "Orla Vane", "Tam Thornwick"]);
+    expect(boxes.map(b => b.name)).toEqual([...new Set([...log.map(r => r.boxName), "The Lot"])].sort((a, b) => a.localeCompare(b)));
+  });
+
+  it("names a character by its newest row, so a rename reads as it is now", () => {
+    const { actors } = logFilterOptions([{ id: "a", actorId: "tam", actorName: "Tam the Bold", boxId: "x", boxName: "X" }, { id: "b", actorId: "tam", actorName: "Tam Thornwick", boxId: "x", boxName: "X" }]);
+    expect(actors).toEqual([{ id: "tam", name: "Tam the Bold" }]);
+  });
+
+  it("shows nothing but the picks' rows, with every row while neither is set", () => {
+    expect(filterLog(log, {})).toBe(log);
+    expect(filterLog(log, { actor: "tam" }).every(r => r.actorId === "tam")).toBe(true);
+    expect(filterLog(log, { box: "royal" }).map(r => r.id)).toEqual(["p1"]);
+    expect(filterLog(log, { actor: "tam", box: "royal" })).toEqual([]);
+  });
+
+  it("drops a pick the log no longer holds rather than showing an empty log", () => {
+    expect(activeLogFilter(log, { actor: "gone", box: "royal" })).toEqual({ actor: "", box: "royal" });
+    const html = logTableHTML({ log, rounds, filter: { actor: "gone" }, esc });
+    expect(rows(html)).toHaveLength(13);
+    expect(html).not.toContain("clearLogFilter");
+  });
+
+  it("draws one character's log: her rows, the round counting only her stakes, the count and Show all", () => {
+    const html = logTableHTML({ log, rounds, filter: { actor: "tam" }, esc });
+    expect(who(html)).toEqual(["Tam Thornwick", "Tam Thornwick", "Round", "Tam Thornwick", "Tam Thornwick", "Tam Thornwick", "Tam Thornwick"]);
+    expect(html).toContain("2 stakes, settled");
+    expect(html).toContain('<option value="tam" selected>Tam Thornwick</option>');
+    expect(html).toContain(`<span class="lc-log__count" role="status">Showing ${filterLog(log, { actor: "tam" }).length} of ${log.length} rows</span><button type="button" data-action="clearLogFilter">Show all</button>`);
+  });
+
+  it("says when a character never played that game, keeping the pickers to change it", () => {
+    const html = logTableHTML({ log, rounds, filter: { actor: "tam", box: "royal" }, esc });
+    expect(rows(html)).toHaveLength(0);
+    expect(html).toContain("Nothing in the log for that character at that game.");
+    expect(html).toContain('data-log-filter="actor"');
+    expect(html).toContain("Show all");
+  });
+
+  it("has no pickers for a log of one character at one game", () => {
+    const one = { id: "x", kind: "crate", boxId: "b", boxName: "Box", actorId: "a", actorName: "A", at: NOW, price: 1, name: "Rope" };
+    expect(logTableHTML({ log: [one, { ...one, id: "y" }], esc })).not.toContain("data-log-filter");
+    expect(logTableHTML({ log: [one, { ...one, id: "y", boxId: "c", boxName: "Other" }], esc })).toContain('data-log-filter="box"');
+  });
+
+  it("escapes the names it lists", () => {
+    const row = { id: "x", kind: "crate", boxId: "b", boxName: "<b>Box</b>", actorId: "a", actorName: "A & B", at: NOW, price: 1, name: "Rope" };
+    const html = logTableHTML({ log: [row, { ...row, id: "y", actorId: "c", actorName: "C" }], esc });
+    expect(html).toContain("<option value=\"a\">A &amp; B</option>");
+    expect(html).toContain("&lt;b&gt;Box&lt;/b&gt;");
   });
 });

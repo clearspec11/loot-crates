@@ -34,6 +34,7 @@
   folded throws at the well and the wheel's settled round), under the GM's
   economy readout counted from the same rows (economy.js); &period=session
   presses This session, &empty=1 is a new world's
+  (&actor=tam or &box=royal starts the Character or Game picker set)
   ?dropped=1 (manager: the GM had the 200-entry pool filtered to Rare, then
   dropped its last item, a Very rare one, on it: the pool opens, the chip
   clears, the row is pinned at the top and focused, and the status line says so)
@@ -245,7 +246,7 @@ document.getElementById("title").textContent = appTitle;
 const CRATE_ICON = `<svg class="lc-box__icon" viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M3 8.5 12 4l9 4.5v8L12 21l-9-4.5z"/><path d="M3 8.5 12 13l9-4.5M12 13v8"/></svg>`;
 
 const nav = document.getElementById("nav");
-for (const [label, query] of [["shop", "state=shop"], ["spin", "state=spin"], ["landed", "state=landed"], ["landed, buyer", "state=landed&buyer=1"], ["missed", "state=landed&buyer=1&watched=0"], ["after the reveal", "state=landed&buyer=1&after=1"], ["after, two items", "state=landed&buyer=1&after=multi"], ["replay", "state=replay"], ["well", "state=well&buyer=1"], ["well, coin", "state=well&outcome=coin&buyer=1"], ["well, item", "state=well&outcome=item&buyer=1"], ["dice", "state=dice&buyer=1"], ["dice, lost", "state=dice&outcome=lose&buyer=1"], ["dice, prize", "state=dice&outcome=prize&buyer=1"], ["deck", "state=deck&buyer=1"], ["deck, item", "state=deck&outcome=item&buyer=1"], ["deck, bane", "state=deck&outcome=loss&buyer=1"], ["deck, effect", "state=deck&outcome=effect&buyer=1"], ["table", "state=table"], ["table, GM", "state=table&phase=waiting&gm=1"], ["wheel", "state=table&phase=spinning"], ["wheel, landed", "state=table&phase=landed&duration=0"], ["manager", "state=manager"], ["empty manager", "state=manager&empty=1"], ["boxes", "state=manager&tab=boxes&added=1"], ["starter", "state=manager&tab=boxes&starter=1"], ["pull log", "state=manager&tab=log"], ["box editor", "state=editor"], ["table crate", "state=shop&table=1"], ["table editor", "state=editor&odds=weight"], ["table drop", "state=preview"], ["nothing", "state=landed&nothing=1&buyer=1"], ["auction", "state=auction&phase=open"], ["auction, bids", "state=auction&phase=bid"], ["auction, GM", "state=auction&phase=bid&gm=1"], ["auction, hammer", "state=auction&phase=hammer&duration=0"], ["auction, crate", "state=auction&phase=hammer&lot=crate"], ["auction card", "state=shop&auction=1"], ["scratch card", "state=shop&scratch=1"], ["scratch hidden", "state=shop&scratch=hidden"], ["sold out", "state=shop&scratch=soldout"], ["scratch editor", "state=editor&scratch=1"], ["editor, off the shelf", "state=editor&guard=offshelf"], ["editor, stock", "state=editor&guard=stock"], ["editor, discard", "state=editor&guard=discard"], ["scratch fill", "state=editor&scratch=1&fill=done"], ["scratch", "state=scratch&buyer=1&phase=covered"], ["scratch, half", "state=scratch&buyer=1&phase=half"], ["scratch, watched", "state=scratch&phase=sweep"], ["scratch, match 3", "state=scratch&layout=match3&buyer=1"], ["scratch, fey", "state=scratch&outcome=coins&buyer=1&duration=0&ticket=fey"], ["scratch, combo", "state=scratch&outcome=combo&buyer=1&duration=0"], ["welcome", "state=welcome"], ["welcome, new world", "state=welcome&empty=1"], ["what's new", "state=welcome&view=news"]]) {
+for (const [label, query] of [["shop", "state=shop"], ["spin", "state=spin"], ["landed", "state=landed"], ["landed, buyer", "state=landed&buyer=1"], ["missed", "state=landed&buyer=1&watched=0"], ["after the reveal", "state=landed&buyer=1&after=1"], ["after, two items", "state=landed&buyer=1&after=multi"], ["replay", "state=replay"], ["well", "state=well&buyer=1"], ["well, coin", "state=well&outcome=coin&buyer=1"], ["well, item", "state=well&outcome=item&buyer=1"], ["dice", "state=dice&buyer=1"], ["dice, lost", "state=dice&outcome=lose&buyer=1"], ["dice, prize", "state=dice&outcome=prize&buyer=1"], ["deck", "state=deck&buyer=1"], ["deck, item", "state=deck&outcome=item&buyer=1"], ["deck, bane", "state=deck&outcome=loss&buyer=1"], ["deck, effect", "state=deck&outcome=effect&buyer=1"], ["table", "state=table"], ["table, GM", "state=table&phase=waiting&gm=1"], ["wheel", "state=table&phase=spinning"], ["wheel, landed", "state=table&phase=landed&duration=0"], ["manager", "state=manager"], ["empty manager", "state=manager&empty=1"], ["boxes", "state=manager&tab=boxes&added=1"], ["starter", "state=manager&tab=boxes&starter=1"], ["pull log", "state=manager&tab=log"], ["pull log, filtered", "state=manager&tab=log&actor=tam"], ["box editor", "state=editor"], ["table crate", "state=shop&table=1"], ["table editor", "state=editor&odds=weight"], ["table drop", "state=preview"], ["nothing", "state=landed&nothing=1&buyer=1"], ["auction", "state=auction&phase=open"], ["auction, bids", "state=auction&phase=bid"], ["auction, GM", "state=auction&phase=bid&gm=1"], ["auction, hammer", "state=auction&phase=hammer&duration=0"], ["auction, crate", "state=auction&phase=hammer&lot=crate"], ["auction card", "state=shop&auction=1"], ["scratch card", "state=shop&scratch=1"], ["scratch hidden", "state=shop&scratch=hidden"], ["sold out", "state=shop&scratch=soldout"], ["scratch editor", "state=editor&scratch=1"], ["editor, off the shelf", "state=editor&guard=offshelf"], ["editor, stock", "state=editor&guard=stock"], ["editor, discard", "state=editor&guard=discard"], ["scratch fill", "state=editor&scratch=1&fill=done"], ["scratch", "state=scratch&buyer=1&phase=covered"], ["scratch, half", "state=scratch&buyer=1&phase=half"], ["scratch, watched", "state=scratch&phase=sweep"], ["scratch, match 3", "state=scratch&layout=match3&buyer=1"], ["scratch, fey", "state=scratch&outcome=coins&buyer=1&duration=0&ticket=fey"], ["scratch, combo", "state=scratch&outcome=combo&buyer=1&duration=0"], ["welcome", "state=welcome"], ["welcome, new world", "state=welcome&empty=1"], ["what's new", "state=welcome&view=news"]]) {
   const a = document.createElement("a");
   a.href = `?${query}&seed=${seed}&theme=${theme}`;
   a.textContent = label;
@@ -1151,6 +1152,20 @@ stage.addEventListener("click", e => {
   minutes (the sample's load). Its two period buttons switch here as in
   the manager; Refund and Hide misses need Foundry here.
 */
+const logFilter = { actor: q.get("actor") ?? "", box: q.get("box") ?? "" };
+stage.addEventListener("change", e => {
+  const el = e.target.closest?.("[data-log-filter]");
+  if (!el || state !== "manager") return;
+  logFilter[el.dataset.logFilter] = el.value;
+  renderLog();
+  stage.querySelector(`[data-log-filter="${el.dataset.logFilter}"]`)?.focus();
+});
+stage.addEventListener("click", e => {
+  if (state !== "manager" || !e.target.closest?.('[data-action="clearLogFilter"]')) return;
+  logFilter.actor = logFilter.box = "";
+  renderLog();
+  stage.querySelector('[data-log-filter="actor"]')?.focus();
+});
 function renderLog(period = q.get("period") === "session" ? "session" : "all") {
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   const now = Date.now();
@@ -1161,7 +1176,7 @@ function renderLog(period = q.get("period") === "session" ? "session" : "all") {
       ${managerNavHTML({ tab: "log", shopOpen: true })}
       <section class="lc-tab" role="tabpanel">
         ${economyHTML({ tally: tallyOf(log), log, boxes, period, since: now - 210000, esc })}
-        ${logTableHTML({ log, rounds: { R1: rouletteRound(now - 400000, { status: "resolved", closesAt: now - 380000 }) }, esc })}
+        ${logTableHTML({ log, rounds: { R1: rouletteRound(now - 400000, { status: "resolved", closesAt: now - 380000 }) }, filter: logFilter, esc })}
       </section>
     </div>`;
   stage.onclick = e => {

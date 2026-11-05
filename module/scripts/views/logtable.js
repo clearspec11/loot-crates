@@ -18,8 +18,15 @@
   container); the roles keep it a table for a screen reader once the cells
   are no longer displayed as table cells (boxestable.js tableHTML).
 
-  No Foundry globals: the caller passes the log, the rounds, the toggle
-  and the escape.
+  Above the table, a Character and a Game picker narrow the log to one
+  character's plays, one game's, or both (filterLog), so the misclick to
+  refund is found without scrolling 500 rows; the pickers list only who and
+  what the log holds, and a filtered log says how many rows it shows of
+  how many, with Show all beside it; a log of one character at one game
+  has no pickers. The filter is the manager's view state, never written.
+
+  No Foundry globals: the caller passes the log, the rounds, the toggle,
+  the filter and the escape.
 */
 import { RARITY_LABEL } from "../core/config.js";
 import { normalizeRarity } from "../core/odds.js";
@@ -92,9 +99,62 @@ const REFUND_LABEL = {
 };
 const refundLabel = (n, noun) => t((REFUND_LABEL[noun] ?? REFUND_LABEL.throw)[n === 1 ? 0 : 1], { count: n });
 
-// The whole tab: the misses toolbar when there are any, then the table.
-export function logTableHTML({ log = [], rounds = {}, hideMisses = false, esc = plain }) {
-  if (!log.length) return `<p class="lc-empty">${t("LOOTCRATES.Log.Empty")}</p>`;
+// Who and what the log holds, for its pickers: each character and each
+// game once, by the name on its newest row (the log is newest first, so a
+// renamed character reads as it is now), sorted by name. An auction's house
+// bid has no character, so it adds none.
+export function logFilterOptions(log = []) {
+  const actors = new Map();
+  const boxes = new Map();
+  for (const r of log) {
+    if (r?.actorId && !r.house && !actors.has(r.actorId)) actors.set(r.actorId, String(r.actorName ?? ""));
+    if (r?.boxId && !boxes.has(r.boxId)) boxes.set(r.boxId, String(r.boxName ?? ""));
+  }
+  const sorted = m => [...m].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+  return { actors: sorted(actors), boxes: sorted(boxes) };
+}
+
+// The filter as the log can apply it: a character or game the log no longer
+// holds (its rows trimmed away) is no filter at all, so the GM is never left
+// looking at an empty log behind a picker that can't show why.
+export function activeLogFilter(log = [], filter = {}) {
+  const { actors, boxes } = logFilterOptions(log);
+  const actor = actors.some(a => a.id === filter.actor) ? filter.actor : "";
+  const box = boxes.some(b => b.id === filter.box) ? filter.box : "";
+  return { actor, box };
+}
+
+// The rows one character played, at one game, or both; every row with
+// neither set. Filtered before the folding, so a folded line counts only
+// what it shows and a round's line only that character's stakes.
+export function filterLog(log = [], filter = {}) {
+  const { actor = "", box = "" } = filter;
+  if (!actor && !box) return log;
+  return log.filter(r => (!actor || r.actorId === actor) && (!box || r.boxId === box));
+}
+
+// The pickers' line: Character and Game, and while either is set, how many
+// rows show of how many and Show all. A log of one character at one game
+// has nothing to pick between, so it has no line.
+export function logFilterHTML({ log = [], filter = {}, shown = log.length, esc = plain }) {
+  const { actors, boxes } = logFilterOptions(log);
+  if (actors.length < 2 && boxes.length < 2) return "";
+  const { actor, box } = activeLogFilter(log, filter);
+  const option = (o, at) => `<option value="${esc(o.id)}"${o.id === at ? " selected" : ""}>${esc(o.name)}</option>`;
+  const picker = (key, label, every, list, at) => `<label class="lc-log__filter">${label} <select data-log-filter="${key}"><option value="">${every}</option>${list.map(o => option(o, at)).join("")}</select></label>`;
+  const status = actor || box
+    ? `<span class="lc-log__count" role="status">${t("LOOTCRATES.Log.Showing", { count: shown, total: log.length })}</span><button type="button" data-action="clearLogFilter">${t("LOOTCRATES.Log.ShowAll")}</button>`
+    : `<span class="lc-log__count" role="status"></span>`;
+  return `<div class="lc-toolbar lc-log__filters">${picker("actor", t("LOOTCRATES.Log.FilterCharacter"), t("LOOTCRATES.Log.EveryCharacter"), actors, actor)}${picker("box", t("LOOTCRATES.Log.FilterGame"), t("LOOTCRATES.Log.EveryGame"), boxes, box)}${status}</div>`;
+}
+
+// The whole tab: the pickers, the misses toolbar when there are any, then
+// the table.
+export function logTableHTML({ log: all = [], rounds = {}, hideMisses = false, filter = {}, esc = plain }) {
+  if (!all.length) return `<p class="lc-empty">${t("LOOTCRATES.Log.Empty")}</p>`;
+  const log = filterLog(all, activeLogFilter(all, filter));
+  const filters = logFilterHTML({ log: all, filter, shown: log.length, esc });
+  if (!log.length) return `${filters}<p class="lc-empty">${t("LOOTCRATES.Log.NoMatch")}</p>`;
   const items = groupRounds(collapseMisses(log), rounds);
   const folded = items.filter(x => x.group);
   const misses = folded.reduce((n, g) => n + g.rows.length, 0);
@@ -127,5 +187,5 @@ export function logTableHTML({ log = [], rounds = {}, hideMisses = false, esc = 
         ${got("none", esc(roundLine(g)))}${cell(ACT, "")}
       </tr>${g.rows.map(row).join("")}`;
   const toolbar = misses ? `<div class="lc-toolbar"><button type="button" class="lc-switch" data-action="toggleMisses" aria-pressed="${hideMisses}">${t("LOOTCRATES.Log.HideMisses")}</button><span class="lc-pool__hint">${t(hideMisses ? "LOOTCRATES.Log.MissesHidden" : "LOOTCRATES.Log.MissesFolded", { count: esc(missCountText(folded)) })}</span></div>` : "";
-  return `${toolbar}${shown.length ? tableHTML("lc-table--log", LOG_COLUMNS, shown.map(x => (x.round ? round(x) : x.group ? group(x) : row(x.row))).join("")) : `<p class="lc-empty">${t("LOOTCRATES.Log.OnlyMisses")}</p>`}`;
+  return `${filters}${toolbar}${shown.length ? tableHTML("lc-table--log", LOG_COLUMNS, shown.map(x => (x.round ? round(x) : x.group ? group(x) : row(x.row))).join("")) : `<p class="lc-empty">${t("LOOTCRATES.Log.OnlyMisses")}</p>`}`;
 }

@@ -6,7 +6,7 @@ The newest numbered entry's version is the one in `module/module.json`, and its 
 
 ## Unreleased
 
-- Nothing yet.
+- The Pull log has a **Character** and a **Game** picker above it: pick one or both to see only those plays, so a misclick to refund is found without scrolling. The line beside them says how many rows show of how many, and **Show all** clears them. A log of one character at one game has no pickers.
 
 ## 1.8.0
 
