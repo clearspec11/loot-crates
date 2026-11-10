@@ -30,14 +30,24 @@
 //   5. The player presses Use on the scratch ticket and scratches every
 //      panel with real mouse strokes until the card lands; the ticket is
 //      used up (gone from the sheet) and its row carries the ticket.
+//   6. Forgery (a ticket is counted, not trusted: tickets.js). The player
+//      makes a copy of the used scratch ticket on their own sheet and
+//      presses its Use: refused, nothing played. The GM takes one crate
+//      ticket away by hand, the player types 5 into the stack: one Use
+//      plays, the next is refused with four still on the sheet.
+//
+// The GM's client runs the branch's count of tickets as main.js wires it
+// (lib/ticketcount.cjs), read after each step; the state setting's
+// `tickets` key is put back as it was at the end.
 //
 // Restored in a finally: every row this run made refunded, every ticket on
 // Crate Tester for this run's games deleted, the world tickets it made
 // deleted, the two games deleted; the pool stays seeded and the folder
 // "Loot Crates tickets" stays (checks never delete folders). Needs "Crate
 // Tester" in "Loot Crates Test".
-/* global game, Hooks, foundry, fromUuid, Item, __lc */
+/* global game, Hooks, foundry, fromUuid, Item, ui, __lc */
 const { chromium } = require("playwright");
+const { ticketCount } = require("./lib/ticketcount.cjs");
 const FOUNDRY = process.env.FOUNDRY_URL || "http://localhost:30000";
 const MODULE_BASE = process.env.MODULE_BASE || "http://localhost:8766/";
 const PLAYER = process.env.PLAYER || "Player2";
@@ -163,11 +173,23 @@ async function pressUse(page, itemId) {
   const out = { player: PLAYER };
   let gm = null, pl = null;
   const made = { boxes: [], worldItems: [] };
+  const count = ticketCount(MODULE_BASE);
+  let actorId;
   try {
     pl = await join(browser, PLAYER);
     if (!pl) throw new Error(`${PLAYER} is not free to join`);
     gm = await join(browser, "Gamemaster");
     if (!gm) throw new Error("the Gamemaster seat is taken; this check needs the headless Gamemaster");
+    // The GM's count of tickets, wired as main.js wires it (lib/ticketcount.cjs).
+    out.count = await count.wire(gm.page);
+    out.ledger = {};
+    // What the player is told when a Use is refused (the hook's warn).
+    await pl.page.evaluate(({ helpers }) => {
+      (0, eval)(helpers);
+      __lc.warns = [];
+      const warn = ui.notifications.warn.bind(ui.notifications);
+      ui.notifications.warn = (msg, ...rest) => { __lc.warns.push(String(msg)); return warn(msg, ...rest); };
+    }, { helpers: HELPERS });
 
     // 0. The pool, the two games and the gold.
     out.seed = await gm.page.evaluate(async ({ base, pack: packId, poolName, crate, scratch }) => {
@@ -188,9 +210,10 @@ async function pressUse(page, itemId) {
       const pool = await store.savePool({ ...(old ? { id: old.id } : {}), name: poolName, entries: [{ ...entry, rarity: "common" }], pools: [] });
       const c = await store.saveBox({ name: crate, price: 5, pools: [{ id: pool.id, share: 1 }], weights: { common: 1 }, rules: {} });
       const s = await store.saveBox({ kind: "scratch", name: scratch, price: 1, pools: [{ id: pool.id, share: 1 }], weights: {}, layout: "lucky", grid: { cols: 4, rows: 3 }, bonus: { on: false, gp: 0 }, theme: "hoard", roll: { id: 1, size: 20, prizes: [{ count: 5, parts: [{ gp: 1 }] }] }, rules: {} });
-      return { poolId: pool.id, item: entry.name, crateId: c.id, scratchId: s.id };
+      return { poolId: pool.id, item: entry.name, crateId: c.id, scratchId: s.id, actorId: actor.id };
     }, { base: MODULE_BASE, pack: PACK, poolName: POOL, crate: CRATE, scratch: SCRATCH });
     const { crateId, scratchId } = out.seed;
+    actorId = out.seed.actorId;
     made.boxes.push(crateId, scratchId);
 
     // 1. Make a ticket on each row, the real buttons.
@@ -221,6 +244,8 @@ async function pressUse(page, itemId) {
       return { crateTicket: c.id, scratchTicket: s.id, crateQty: c.system.quantity, scratchQty: s.system.quantity };
     }, { crateItem: out.make.crate.items[0]?.id, scratchItem: out.make.scratch.items[0]?.id });
     const { crateTicket, scratchTicket } = out.given;
+    // The GM's hand-over is heard by the item hooks: two and one issued.
+    out.ledger.given = { crate: await count.until(gm.page, actorId, crateId, 2), scratch: await count.until(gm.page, actorId, scratchId, 1) };
 
     // 3. The player presses Use on the crate ticket.
     const before = await readActor(gm.page, crateTicket);
@@ -236,6 +261,9 @@ async function pressUse(page, itemId) {
     const chatAfter = await gm.page.evaluate(n => game.messages.contents.slice(n).map(m => ({ lc: !!m.flags?.["loot-crates"], dnd5e: !!m.flags?.dnd5e || m.type === "usage" || m.type === "item", text: m.content.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 160) })), chatBefore);
     out.useCrate = { before: { purseCp: before.purseCp, qty: before.qty }, after: { purseCp: usedCrate.purseCp, qty: usedCrate.qty, ms: usedCrate.ms }, rows: crateRows, chat: chatAfter };
     const prizeId = crateRows[0]?.itemId ?? null;
+    // One spent, counted once: 0 here would mean the module's own write
+    // was heard by its hooks as well.
+    out.ledger.used = await count.until(gm.page, actorId, crateId, 1);
     await pl.page.evaluate(() => __lc?.closeReveals?.()).catch(() => {});
     await gm.page.evaluate(() => __lc.closeReveals());
 
@@ -259,6 +287,9 @@ async function pressUse(page, itemId) {
       return { cell, ask, card, refunded: !!store.getLog().find(r => r.id === rowId)?.refunded };
     }, { base: MODULE_BASE, rowId: crateRows[0]?.id });
     out.afterRefund = await untilActor(gm.page, crateTicket, a => a.qty === 2 && !a.items.includes(prizeId), 10000);
+    out.ledger.refunded = await count.until(gm.page, actorId, crateId, 2);
+    // What the player's own scratch ticket is made of, for the forgery in 6.
+    const forgeData = await pl.page.evaluate(id => { const d = game.actors.find(a => a.isOwner && a.name === "Crate Tester").items.get(id).toObject(); delete d._id; return d; }, scratchTicket);
 
     // 5. The player uses the scratch ticket and scratches it by hand.
     const sBefore = await readActor(gm.page, scratchTicket);
@@ -267,9 +298,9 @@ async function pressUse(page, itemId) {
     await reveal.locator(".lc-scratch__ticket [data-panel]").first().waitFor({ timeout: 15000 });
     await gm.page.waitForSelector(".application.lc-reveal", { timeout: 15000 });
     out.scratchHead = (await readReveal(pl.page))?.price ?? null;
-    const count = await reveal.locator(".lc-scratch__ticket [data-panel]").count();
+    const panels = await reveal.locator(".lc-scratch__ticket [data-panel]").count();
     out.strokes = [];
-    for (let i = 0; i < count; i++) {
+    for (let i = 0; i < panels; i++) {
       const panel = reveal.locator(".lc-scratch__ticket [data-panel]").nth(i);
       await panel.scrollIntoViewIfNeeded();
       let tries = 0, opened = await panel.evaluate(p => p.classList.contains("lc-scratch__panel--open"));
@@ -295,6 +326,50 @@ async function pressUse(page, itemId) {
     const sAfter = await untilActor(gm.page, scratchTicket, a => a.qty === null, 10000);
     const scratchRows = await untilRows(gm.page, scratchId);
     out.useScratch = { before: { qty: sBefore.qty, purseCp: sBefore.purseCp }, after: { qty: sAfter.qty, purseCp: sAfter.purseCp, ms: sAfter.ms }, rows: scratchRows };
+    out.ledger.scratchUsed = await count.until(gm.page, actorId, scratchId, 0);
+
+    // 6. Forgery. A ticket is counted, not trusted (tickets.js).
+    const closeAll = async () => { await pl.page.evaluate(() => __lc.closeReveals()); await gm.page.evaluate(() => __lc.closeReveals()); };
+    const reveals = page => page.evaluate(() => document.querySelectorAll(".application.lc-reveal").length);
+    const warns = () => pl.page.evaluate(() => [...__lc.warns]);
+    const untilWarn = async (n, ms = 12000) => { for (const t0 = Date.now(); (await warns()).length < n && Date.now() - t0 < ms;) await pl.page.waitForTimeout(100); return warns(); };
+    await closeAll();
+    // 6a. The player makes a scratch ticket of their own (a copy of the one
+    //     just used): it issues nothing, and its Use is refused.
+    const forgedId = await pl.page.evaluate(async data => (await game.actors.find(a => a.isOwner && a.name === "Crate Tester").createEmbeddedDocuments("Item", [data]))[0].id, forgeData);
+    await untilActor(gm.page, forgedId, a => a.qty === 1, 8000);
+    await gm.page.waitForTimeout(800);
+    const forgedCount = await count.held(gm.page, actorId, scratchId);
+    const fBefore = await readActor(gm.page, forgedId);
+    const warnsBefore = (await warns()).length;
+    await pressUse(pl.page, forgedId);
+    const fWarns = await untilWarn(warnsBefore + 1);
+    await pl.page.waitForTimeout(500);
+    const fAfter = await readActor(gm.page, forgedId);
+    out.forgedTicket = { count: forgedCount, warn: fWarns.slice(warnsBefore), reveals: { player: await reveals(pl.page), gm: await reveals(gm.page) }, qty: [fBefore.qty, fAfter.qty], purse: [fBefore.purseCp, fAfter.purseCp], items: [fBefore.items.length, fAfter.items.length], rows: (await logRows(gm.page, scratchId)).length, countAfter: await count.held(gm.page, actorId, scratchId) };
+
+    // 6b. The GM takes one crate ticket away by hand (2 to 1: the count
+    //     follows); the player types 5 into the stack (the count doesn't);
+    //     one Use plays, the next is refused with four still on the sheet.
+    await gm.page.evaluate(async ({ id }) => game.actors.find(a => a.name === "Crate Tester" && a.folder?.name === "Loot Crates Test").items.get(id).update({ "system.quantity": 1 }), { id: crateTicket });
+    const handEdit = await count.until(gm.page, actorId, crateId, 1);
+    await pl.page.evaluate(async id => game.actors.find(a => a.isOwner && a.name === "Crate Tester").items.get(id).update({ "system.quantity": 5 }), crateTicket);
+    const raised = await untilActor(gm.page, crateTicket, a => a.qty === 5, 8000);
+    await gm.page.waitForTimeout(800);
+    const raisedCount = await count.held(gm.page, actorId, crateId);
+    await pressUse(pl.page, crateTicket);
+    await pl.page.waitForSelector(".application.lc-reveal", { timeout: 15000 });
+    const played = await untilActor(gm.page, crateTicket, a => a.qty === 4, 15000);
+    const playedCount = await count.until(gm.page, actorId, crateId, 0);
+    const rowsPlayed = (await untilRows(gm.page, crateId, 2)).length;
+    await pl.page.waitForSelector(".application.lc-reveal .lc-reveal__result", { timeout: 15000 }).catch(() => {});
+    await closeAll();
+    const warnsMid = (await warns()).length;
+    await pressUse(pl.page, crateTicket);
+    const rWarns = await untilWarn(warnsMid + 1);
+    await pl.page.waitForTimeout(500);
+    const refused = await readActor(gm.page, crateTicket);
+    out.raisedStack = { handEdit, raisedQty: raised.qty, raisedCount, played: { qty: played.qty, count: playedCount, rows: rowsPlayed }, refused: { warn: rWarns.slice(warnsMid), qty: refused.qty, purse: [played.purseCp, refused.purseCp], items: [played.items.length, refused.items.length], rows: (await logRows(gm.page, crateId)).length, reveals: { player: await reveals(pl.page), gm: await reveals(gm.page) }, count: await count.held(gm.page, actorId, crateId) } };
 
     const cRow = crateRows[0];
     const sRow = scratchRows[0];
@@ -312,6 +387,12 @@ async function pressUse(page, itemId) {
         && out.afterRefund.ms != null && out.afterRefund.qty === 2 && !out.afterRefund.items.includes(prizeId) && out.afterRefund.purseCp === out.useCrate.before.purseCp,
       scratchedByHand: out.scratchHead === "with a ticket" && out.strokes.length > 0 && out.strokes.every(s => s.opened) && out.scratchLanded.landed,
       scratchSpent: out.useScratch.before.qty === 1 && out.useScratch.after.qty === null && sRow?.redeem?.itemId === scratchTicket && sRow?.price === 0,
+      counted: out.count.counted && out.ledger.given.crate === 2 && out.ledger.given.scratch === 1 && out.ledger.used === 1 && out.ledger.refunded === 2 && out.ledger.scratchUsed === 0,
+      forgedRefused: out.forgedTicket.count === 0 && out.forgedTicket.countAfter === 0 && out.forgedTicket.warn.length === 1 && /wasn't sold by the shop or handed out by the GM/.test(out.forgedTicket.warn[0])
+        && out.forgedTicket.reveals.player === 0 && out.forgedTicket.reveals.gm === 0 && out.forgedTicket.qty.join() === "1,1" && out.forgedTicket.purse[0] === out.forgedTicket.purse[1] && out.forgedTicket.items[0] === out.forgedTicket.items[1] && out.forgedTicket.rows === 1,
+      raisedRefused: out.raisedStack.handEdit === 1 && out.raisedStack.raisedQty === 5 && out.raisedStack.raisedCount === 1 && out.raisedStack.played.qty === 4 && out.raisedStack.played.count === 0 && out.raisedStack.played.rows === 2
+        && out.raisedStack.refused.warn.length === 1 && /wasn't sold by the shop or handed out by the GM/.test(out.raisedStack.refused.warn[0]) && out.raisedStack.refused.qty === 4 && out.raisedStack.refused.rows === 2
+        && out.raisedStack.refused.purse[0] === out.raisedStack.refused.purse[1] && out.raisedStack.refused.items[0] === out.raisedStack.refused.items[1] && out.raisedStack.refused.reveals.player === 0 && out.raisedStack.refused.reveals.gm === 0 && out.raisedStack.refused.count === 0,
     };
     out.ok = Object.values(out.checks).every(Boolean);
     out.gmConsole = gm.logs.filter(l => !l.includes("timings"));
@@ -329,17 +410,31 @@ async function pressUse(page, itemId) {
         const refunded = [];
         for (const r of store.getLog().filter(x => boxes.includes(x.boxId) && !x.refunded)) refunded.push((await refundPull(r.id)).status);
         const actor = game.actors.find(a => a.name === "Crate Tester" && a.folder?.name === "Loot Crates Test");
+        // Each refund gave its ticket back, counted in the refund's own
+        // task: one for each game here on a full run.
+        const afterRefunds = boxes.map(id => store.ticketsHeld(actor.id, id));
         const tickets = actor.items.filter(i => boxes.includes(i.flags?.["loot-crates"]?.ticket?.boxId)).map(i => i.id);
         if (tickets.length) await actor.deleteEmbeddedDocuments("Item", tickets);
+        // The GM's delete is heard by the hooks and queued: wait it out.
+        await store.enqueueWrite(async () => {});
+        await new Promise(r => setTimeout(r, 300));
+        await store.enqueueWrite(async () => {});
+        const afterDelete = boxes.map(id => store.ticketsHeld(actor.id, id));
         const world = worldItems.filter(id => game.items.get(id));
         if (world.length) await Item.deleteDocuments(world);
         for (const id of boxes) await store.removeBox(id);
         try { await globalThis.__lc?.app?.close(); } catch { /* closed */ }
         __lc.closeReveals?.();
-        return { refunded, tickets: tickets.length, world: world.length, gone: boxes.every(id => !store.getBoxes()[id]), left: actor.items.filter(i => boxes.includes(i.flags?.["loot-crates"]?.ticket?.boxId)).length + worldItems.filter(id => game.items.get(id)).length };
+        return { refunded, afterRefunds, afterDelete, tickets: tickets.length, world: world.length, gone: boxes.every(id => !store.getBoxes()[id]), left: actor.items.filter(i => boxes.includes(i.flags?.["loot-crates"]?.ticket?.boxId)).length + worldItems.filter(id => game.items.get(id)).length };
       }, { base: MODULE_BASE, boxes: made.boxes, worldItems: made.worldItems }) : null;
     } catch (err) { out.restored = { error: String(err) }; out.ok = false; }
     if (out.restored && (out.restored.error || !out.restored.gone || out.restored.left || out.restored.refunded.some(s => s !== "refunded"))) out.ok = false;
+    // The count on a full run: one back for each game after the refunds,
+    // none once the GM has deleted the tickets.
+    if (out.checks && out.restored && !out.restored.error && (out.restored.afterRefunds.join() !== "1,1" || out.restored.afterDelete.join() !== "0,0")) { out.checks.countRestored = false; out.ok = false; }
+    // The world's count put back as it was (taken out when it had none).
+    try { if (gm) out.countRestored = await count.restore(gm.page); } catch (err) { out.countRestored = { error: String(err) }; }
+    if (out.countRestored && !out.countRestored.restored) out.ok = false;
     try { await pl?.page.evaluate(() => { for (const a of [...foundry.applications.instances.values()]) if (/loot-crates/.test(a.id) || a.element?.classList.contains("lc-reveal") || a.document?.name === "Crate Tester") a.close(); }); } catch { /* closing */ }
     console.log(JSON.stringify(out, (k, v) => (k === "items" && Array.isArray(v) && typeof v[0] === "string" ? v.length : v), 1));
     if (!out.ok) process.exitCode = 1;

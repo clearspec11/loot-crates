@@ -27,6 +27,11 @@
 //      from it and emits an "error" for it naming the victim. The victim
 //      must still get the real result (its reveal, no failure said in the
 //      shop or a toast) and be charged once.
+//   5. A forged reveal carrying markup: the forger re-sends the victim's
+//      real reveal under a new id with an <img onerror> in every name,
+//      then in every rarity and picture, then in every string but its
+//      type, kind and ids. The victim and the GM show it, its markup as
+//      words: no script runs and no handler is in the page.
 //
 // Reported: what the GM did with each forged request (charged or not, the
 // rows it wrote, its console), whether the forger heard the victim's
@@ -226,6 +231,8 @@ const ledger = (page, boxId) => page.evaluate(async ({ base, boxId }) => {
     base = now;
     await fo.page.evaluate(({ victimId }) => {
       __lc.forgedErrors = [];
+      // The victim's reveal as everyone hears it, for the forged copy in 5.
+      game.socket.on("module.loot-crates", msg => { if (msg?.type === "reveal" && msg.userId === victimId) __lc.lastReveal = JSON.parse(JSON.stringify(msg)); });
       game.socket.on("module.loot-crates", msg => {
         if (msg?.type !== "ack" || msg.userId !== victimId) return;
         game.socket.emit("module.loot-crates", { type: "error", requestId: msg.requestId, userId: victimId, message: "Forged: this crate jammed." });
@@ -270,7 +277,51 @@ const ledger = (page, boxId) => page.evaluate(async ({ base, boxId }) => {
       gm: gm.logs.slice(mark).filter(l => !l.includes("timings")),
     };
 
+    // 5. A forged reveal carrying markup. Anyone can emit a reveal and every
+    //    other client shows it, so its words must reach the page as text:
+    //    the forger re-sends the victim's real reveal under a new id with
+    //    an <img onerror> in every name, then in every rarity and picture,
+    //    then in every string it holds but its type, kind and ids (that
+    //    last one may be too broken to show; it must still run nothing).
+    const probe = page => page.evaluate(() => ({
+      pwned: globalThis.__lcPwned ?? 0,
+      reveals: document.querySelectorAll(".application.lc-reveal").length,
+      handlers: document.querySelectorAll(".application.lc-reveal [onerror], .application.lc-reveal img[src='x']").length,
+      asText: [...document.querySelectorAll(".application.lc-reveal")].some(r => r.textContent.includes("__lcPwned")),
+    }));
+    out.forgedReveal = { captured: await fo.page.evaluate(() => !!__lc.lastReveal), before: { victim: await probe(vi.page), gm: await probe(gm.page) } };
+    for (const deep of [false, true, "all"]) {
+      const sent = await fo.page.evaluate(({ deep }) => {
+        if (!__lc.lastReveal) return null;
+        const run = "globalThis.__lcPwned=(globalThis.__lcPwned||0)+1";
+        const evil = `"><img src=x onerror="${run}">`;
+        const msg = JSON.parse(JSON.stringify(__lc.lastReveal));
+        const keys = deep === "all" ? /^/ : deep ? /^(name|label|actorName|boxName|rarity|img)$/ : /^(name|label|actorName|boxName)$/;
+        const routing = /^(type|kind|id|uuid|\w+Id|\w+Uuid|\w+Ids|\w+Uuids)$/;
+        let n = 0;
+        const walk = o => {
+          if (!o || typeof o !== "object") return;
+          for (const k of Object.keys(o)) {
+            if (deep === "all" && routing.test(k)) continue;
+            if (typeof o[k] === "string" && keys.test(k)) { o[k] = k === "img" ? `x" onerror="${run}` : k === "rarity" ? `common ${evil}` : `${o[k]} ${evil}`; n++; }
+            else walk(o[k]);
+          }
+        };
+        walk(msg);
+        msg.requestId = `forgeReveal${deep === true ? "Deep" : deep || ""}${Date.now().toString(36)}`;
+        msg.userId = game.user.id;
+        game.socket.emit("module.loot-crates", msg);
+        return { fields: n };
+      }, { deep });
+      await vi.page.waitForTimeout(4000);
+      out.forgedReveal[deep === "all" ? "all" : deep ? "deep" : "names"] = { sent, victim: await probe(vi.page), gm: await probe(gm.page) };
+    }
+    const fr = out.forgedReveal;
+
     out.checks = {
+      // The forged reveal was shown (so the path ran), its markup as words: no script ran, no handler is in the page.
+      forgedRevealShown: fr.captured && fr.names.sent?.fields > 0 && fr.names.victim.reveals > fr.before.victim.reveals && fr.names.gm.reveals > fr.before.gm.reveals && fr.names.victim.asText && fr.names.gm.asText,
+      forgedRevealInert: [fr.names, fr.deep, fr.all].every(r => r.victim.pwned === 0 && r.gm.pwned === 0 && r.victim.handlers === 0 && r.gm.handlers === 0),
       socketRefused: out.forgedSocket.chargedCp === 0 && out.forgedSocket.rows === 0,
       queryRefused: !out.seed.queryOnGM ? null : out.forgedQuery.chargedCp === 0 && out.forgedQuery.rows === 0 && !!out.forgedQuery.answer?.error,
       gmTold: !out.seed.queryOnGM ? null : [...out.forgedSocket.gm, ...out.forgedQuery.gm].some(l => /refused/i.test(l)),
