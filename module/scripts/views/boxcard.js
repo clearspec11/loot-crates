@@ -19,12 +19,21 @@ import { onShelf, offShelfReason } from "../core/shelf.js";
 import { t, words } from "../core/i18n.js";
 import { ticketable } from "../games/ticket.js";
 
+/*
+  Odds rows reach the pills and the ribbon from the shop's own arithmetic
+  and also from a reveal on the module socket, which any client can send
+  (socket.js): every value is escaped here, whoever the caller is, and a
+  rarity that isn't one gets no class of its own.
+*/
+const safe = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const rarityClass = rarity => (rarity === "none" || RARITIES.includes(rarity) ? rarity : "none");
+
 // What an odds row is called: its rarity, or "Nothing" for a crate's miss.
 const rowName = (row, names = RARITY_SHORT) => (row.rarity === "none" ? t("LOOTCRATES.Odds.Nothing") : names[row.rarity] ?? row.rarity);
 
 // "Rare 12%": the rarity's name is on screen, not only its colour.
 export function oddPill(row) {
-  return `<span class="lc-odd lc-rarity-${row.rarity}">${rowName(row)} ${row.label}</span>`;
+  return `<span class="lc-odd lc-rarity-${rarityClass(row.rarity)}">${safe(rowName(row))} ${safe(row.label)}</span>`;
 }
 
 export function oddsPills(rows) {
@@ -77,7 +86,7 @@ export function oddsRibbon(rows) {
   if (!rows?.length) return "";
   const segs = rows.map(row => {
     const share = Math.max(0, Number(row.chance) || 0);
-    return `<span class="lc-ribbon__seg lc-rarity-${row.rarity}" style="flex-grow:${+share.toFixed(4)}" title="${rowName(row, RARITY_LABEL)} ${row.label}"></span>`;
+    return `<span class="lc-ribbon__seg lc-rarity-${rarityClass(row.rarity)}" style="flex-grow:${+share.toFixed(4)}" title="${safe(rowName(row, RARITY_LABEL))} ${safe(row.label)}"></span>`;
   }).join("");
   return `<div class="lc-ribbon" aria-hidden="true">${segs}</div>`;
 }

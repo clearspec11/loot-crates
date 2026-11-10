@@ -11,9 +11,9 @@ vi.mock("../module/scripts/foundry/chat.js", () => ({ postPullCard: vi.fn(async 
 
 const { registerSocket, requestRedeem } = await import("../module/scripts/foundry/socket.js");
 const { deliverTo, withQuery } = await import("./requests.js");
-const { registerSettings, setStoreListener, getLog, getTally, appendLog, getBoxes } = await import("../module/scripts/foundry/store.js");
+const { registerSettings, setStoreListener, getLog, getTally, appendLog, getBoxes, setTicketsHeld, ticketsHeld, enqueueWrite } = await import("../module/scripts/foundry/store.js");
 const { refundPull } = await import("../module/scripts/foundry/refund.js");
-const { ticketUseHook, ticketToRedeem, spendTicket, returnTicket } = await import("../module/scripts/foundry/tickets.js");
+const { ticketUseHook, ticketToRedeem, spendTicket, returnTicket, seedTickets, rememberTickets, ticketItemHooks, keepTicket } = await import("../module/scripts/foundry/tickets.js");
 const { ticketData } = await import("../module/scripts/games/ticket.js");
 const { PullError } = await import("../module/scripts/foundry/pull.js");
 const { toCopper } = await import("../module/scripts/core/currency.js");
@@ -230,6 +230,115 @@ describe("the GM's guards on a redeem: nothing is spent", () => {
     expect(errorsTo(emitted)).toEqual([]);
     expect(emitted.filter(m => m.type === "reveal")).toHaveLength(2);
     expect(boughtBy(getTally(), { boxId: "box", actorId: "actor1" })).toBe(1);
+  });
+});
+
+/*
+  A ticket is counted, not trusted: the GM's count of tickets issued says
+  whether a play is owed, whatever the item on the sheet says.
+*/
+describe("the GM's count of tickets", () => {
+  const NOT_ISSUED = "Crate Tester has no Test Crate ticket left to play: this one wasn't sold by the shop or handed out by the GM. Nothing was played.";
+  const refusals = answers => answers.map(a => a?.refused?.message ?? null);
+
+  it("plays only as many as were issued, however high a player types the quantity", async () => {
+    const { actor, deliver } = makeWorld();
+    await seed();
+    addTicket(actor, CRATE, 1);
+    await setTicketsHeld({ "actor1.box": 1 });
+    actor.items.get("tix").system.quantity = 5;
+    const answers = [await deliver(redeem()), await deliver(redeem()), await deliver(redeem())];
+    expect(refusals(answers)).toEqual([null, NOT_ISSUED, NOT_ISSUED]);
+    expect(getLog()).toHaveLength(1);
+    expect(actor.items.get("tix").system.quantity).toBe(4);
+    expect(ticketsHeld("actor1", "box")).toBe(0);
+  });
+
+  it("refuses an item a player marked as a ticket", async () => {
+    const { actor, deliver } = makeWorld();
+    await seed([{ ...CRATE, rules: { shelved: false } }]);
+    await setTicketsHeld({});
+    actor.items.set("tix", { id: "tix", name: "anything", type: "loot", system: { quantity: 3 }, flags: { "loot-crates": { ticket: { boxId: "box", paid: 0 } } } });
+    expect(refusals([await deliver(redeem())])).toEqual([NOT_ISSUED]);
+    expect(actor.writes).toEqual([]);
+    expect(getLog()).toEqual([]);
+  });
+
+  it("two redeems sent together can't both play the last ticket", async () => {
+    const { actor, deliver } = makeWorld();
+    await seed();
+    addTicket(actor, CRATE, 2);
+    await setTicketsHeld({ "actor1.box": 1 });
+    const answers = await Promise.all([deliver(redeem()), deliver(redeem())]);
+    expect(refusals(answers)).toEqual([null, NOT_ISSUED]);
+  });
+
+  it("counts a ticket bought to keep, spent, put back when the grant fails and returned by a refund", async () => {
+    const actor = makeActor({ grantFails: true });
+    const { deliver } = makeWorld({ actor });
+    await seed();
+    await setTicketsHeld({});
+    const kept = await keepTicket(actor, CRATE, 10);
+    expect(ticketsHeld("actor1", "box")).toBe(1);
+    const err = console.error;
+    console.error = () => {};
+    try { await deliver(redeem({ itemId: kept.item.id })); } finally { console.error = err; }
+    expect(ticketsHeld("actor1", "box")).toBe(1);
+    await kept.undo();
+    expect(ticketsHeld("actor1", "box")).toBe(0);
+  });
+
+  it("gives the count back with the ticket at a refund", async () => {
+    const { actor, deliver } = makeWorld();
+    await seed();
+    addTicket(actor, CRATE, 1);
+    await setTicketsHeld({ "actor1.box": 1 });
+    await deliver(redeem());
+    expect(ticketsHeld("actor1", "box")).toBe(0);
+    await refundPull(getLog()[0].id);
+    expect(ticketsHeld("actor1", "box")).toBe(1);
+  });
+
+  it("counts a world once, taking every ticket on a character as issued", async () => {
+    const { actor } = makeWorld();
+    await seed();
+    addTicket(actor, CRATE, 3);
+    globalThis.game.actors[Symbol.iterator] = function* () { yield actor; };
+    expect(ticketsHeld("actor1", "box")).toBe(null);
+    expect(await seedTickets()).toBe(true);
+    expect(ticketsHeld("actor1", "box")).toBe(3);
+    actor.items.get("tix").system.quantity = 9;
+    expect(await seedTickets()).toBe(false);
+    expect(ticketsHeld("actor1", "box")).toBe(3);
+  });
+
+  it("hears what a GM does to a ticket, and not what a player does", async () => {
+    const { actor } = makeWorld();
+    await seed();
+    await setTicketsHeld({});
+    globalThis.game.user = { ...GM, isGM: true };
+    globalThis.game.users.get = id => ({ gm: { ...GM, isGM: true }, p1: { ...PLAYER, isGM: false } })[id] ?? null;
+    globalThis.game.actors[Symbol.iterator] = function* () { yield actor; };
+    rememberTickets();
+    const hooks = ticketItemHooks();
+    const item = addTicket(actor, CRATE, 2);
+    item.uuid = "Actor.actor1.Item.tix";
+    const settled = () => enqueueWrite(() => null);
+    hooks.created(item, {}, "gm");
+    await settled();
+    expect(ticketsHeld("actor1", "box")).toBe(2);
+    item.system.quantity = 9;
+    hooks.updated(item, {}, {}, "p1");
+    await settled();
+    expect(ticketsHeld("actor1", "box")).toBe(2);
+    item.system.quantity = 3;
+    hooks.updated(item, {}, {}, "gm");
+    await settled();
+    // The GM's change is counted from what the item last held, the player's 9.
+    expect(ticketsHeld("actor1", "box")).toBe(0);
+    hooks.deleted(item, {}, "gm");
+    await settled();
+    expect(ticketsHeld("actor1", "box")).toBe(0);
   });
 });
 

@@ -1399,6 +1399,7 @@
       "NoGM": "No GM is online to play the ticket, so it stays in your pack.",
       "NotInPack": "That ticket is no longer in {actor}'s pack, so nothing was played.",
       "GameGone": "This ticket's game is gone, so the ticket stays in your pack as a keepsake.",
+      "NotIssued": "{actor} has no {box} ticket left to play: this one wasn't sold by the shop or handed out by the GM. Nothing was played.",
       "SpendFailed": "The ticket couldn't be used, so nothing was played.",
       "GrantFailed": "The prize couldn't be added, so your ticket is back in your pack.",
       "GrantAndRestoreFailed": "The prize couldn't be added and the ticket couldn't be put back. Ask the GM for a new ticket.",

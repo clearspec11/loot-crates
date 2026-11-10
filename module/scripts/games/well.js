@@ -226,10 +226,14 @@ export function mountWell(host, { outcome = "nothing", img = "", rarity = "none"
       <div class="lc-well__water"></div>
       <div class="lc-well__ring"></div><div class="lc-well__ring"></div><div class="lc-well__ring"></div>
       <div class="lc-well__glow"></div>
-      <div class="lc-well__prize">${img ? `<img src="${img}" alt="" draggable="false">` : ""}</div>
+      <div class="lc-well__prize">${img ? `<img alt="" draggable="false">` : ""}</div>
       <div class="lc-well__coin"></div>
     </div>`;
   const q = sel => host.querySelector(sel);
+  // The art's path is set as an attribute, never written into the markup: it
+  // comes with the reveal, which any client can send (socket.js).
+  const art = q(".lc-well__prize img");
+  if (art) art.setAttribute("src", String(img));
   const el = { coin: q(".lc-well__coin"), rings: host.querySelectorAll(".lc-well__ring"), glow: q(".lc-well__glow"), prize: q(".lc-well__prize") };
   const set = (node, transform, opacity) => { if (!node?.style) return; node.style.transform = transform; node.style.opacity = String(opacity); };
 

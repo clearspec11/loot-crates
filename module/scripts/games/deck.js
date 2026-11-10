@@ -335,13 +335,17 @@ export function mountDeck(host, { tone = "blank", swatch = "none", label = "", k
       <div class="lc-deck__card">
         <div class="lc-deck__face lc-deck__face--back"></div>
         <div class="lc-deck__face lc-deck__face--front">
-          <div class="lc-deck__art">${img ? `<img src="${img}" alt="" draggable="false">` : `<span class="lc-deck__glyph"></span>`}</div>
+          <div class="lc-deck__art">${img ? `<img alt="" draggable="false">` : `<span class="lc-deck__glyph"></span>`}</div>
           <div class="lc-deck__label"></div>
           <div class="lc-deck__kind"></div>
         </div>
       </div>
     </div>`;
   const card = host.querySelector(".lc-deck__card");
+  // The art's path is set as an attribute, never written into the markup: it
+  // comes with the reveal, which any client can send (socket.js).
+  const art = host.querySelector(".lc-deck__art img");
+  if (art) art.setAttribute("src", String(img));
   // Text goes in as text: the card's label is the GM's.
   host.querySelector(".lc-deck__label").textContent = label;
   host.querySelector(".lc-deck__kind").textContent = kindLabel;
