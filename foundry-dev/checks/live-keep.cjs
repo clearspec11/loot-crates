@@ -222,7 +222,7 @@ const logRows = (page, boxId) => page.evaluate(async ({ base, boxId }) => (await
 
     const t1 = out.first.tickets[0];
     out.checks = {
-      button: out.button.text === `${CRATE}: Buy to keep, 5 gp, a ticket for your pack to use later` && out.button.off == null && out.button.price === "5" && out.button.under,
+      button: out.button.text === `${CRATE}: Buy to keep, 5 gp, a ticket for later` && out.button.off == null && out.button.price === "5" && out.button.under,
       charged: out.first.ms != null && out.first.purseCp === before.purseCp - 500,
       inPack: !!t1 && t1.type === "consumable" && t1.kept && t1.paid === 5 && t1.qty === 1,
       notice: (out.first.notice ?? "").startsWith(`A ${CRATE} ticket is in Crate Tester's pack (1 now).`),

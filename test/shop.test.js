@@ -717,7 +717,7 @@ describe("the shop's Buy to keep", () => {
     await app.last;
     expect(app.content.querySelector(".lc-shop__notice").textContent).toBe("A Pauper's Box ticket is in Tam's pack (2 now). Use it from the character sheet whenever you like.");
     expect(app.content.querySelector(".lc-shop__notice").dataset.tone).toBe("done");
-    expect(btn.textContent.trim()).toBe("Pauper's Box: Buy to keep, 25 gp, a ticket for your pack to use later");
+    expect(btn.textContent.trim()).toBe("Pauper's Box: Buy to keep, 25 gp, a ticket for later");
     expect(btn.getAttribute("aria-disabled")).toBeNull();
   });
 

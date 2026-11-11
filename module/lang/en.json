@@ -101,7 +101,8 @@
       "Waiting": "Waiting for the GM…",
       "Opening": "Opening…",
       "Keep": "Buy to keep",
-      "KeepHint": ", {price}, a ticket for your pack to use later",
+      "KeepPrice": ", {price}, ",
+      "KeepHint": "a ticket for later",
       "Keeping": "Buying…"
     },
     "Shop": {

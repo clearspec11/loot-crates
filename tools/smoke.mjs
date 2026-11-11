@@ -2687,8 +2687,10 @@ function nothingRevealProblems() {
   Buy to keep (boxcard.js cardShell): every card of a pulled game has one,
   right under its Buy, and a table game's card none; it is off exactly when
   its Buy is, described by the same lines; its name starts with the game's
-  and holds its visible words; its text is at least 11px; and it sits
-  inside its card, clear of the Buy, at every width (no crowding at 390).
+  and holds its visible words, which say what it is ("a ticket for
+  later") on one line; its text is at least 11px; it sits inside its card,
+  clear of the Buy, at every width (no crowding at 390); and every Buy in
+  a row of cards without a reason sits on one line, at the card's foot.
 */
 function keepProblems() {
   const out = [];
@@ -2713,7 +2715,10 @@ function keepProblems() {
     const name = card.querySelector(".lc-box__name")?.textContent.trim();
     const visible = [...keep.childNodes].filter(n => !(n.nodeType === 1 && n.classList.contains("lc-sr-only"))).map(n => n.textContent).join("").trim();
     if (!keep.textContent.trim().startsWith(`${name}: `)) out.push(`${id}'s Buy to keep doesn't name its game: "${keep.textContent.trim()}"`);
-    if (visible !== "Buy to keep") out.push(`${id}'s Buy to keep reads "${visible}"`);
+    if (visible !== "Buy to keepa ticket for later") out.push(`${id}'s Buy to keep reads "${visible}"`);
+    const hint = keep.querySelector(".lc-box__keep-hint")?.getBoundingClientRect();
+    if (!hint || hint.width < 1 || hint.height < 1) out.push(`${id}'s Buy to keep doesn't say what it is on screen`);
+    else if (Math.abs(hint.top - keep.querySelector(".lc-box__keep-do").getBoundingClientRect().top) > 3) out.push(`${id}'s Buy to keep runs to two lines`);
     if (parseFloat(getComputedStyle(keep).fontSize) < 11) out.push(`${id}'s Buy to keep is under 11px`);
     const k = keep.getBoundingClientRect(), b = buy.getBoundingClientRect(), c = card.getBoundingClientRect();
     if (k.top < b.bottom - 0.5) out.push(`${id}'s Buy to keep overlaps its Buy`);
@@ -2722,6 +2727,21 @@ function keepProblems() {
     if (keep.scrollWidth > keep.clientWidth + 1) out.push(`${id}'s Buy to keep's words don't fit`);
   }
   if (!seen) out.push("no card has a Buy to keep");
+  // The Buys of one row of cards sit on one line (a card with a reason
+  // under its Buy is a line higher, and isn't counted).
+  const rows = new Map();
+  for (const card of cards) {
+    if (card.querySelector(".lc-box__why")) continue;
+    const top = Math.round(card.getBoundingClientRect().top);
+    (rows.get(top) ?? rows.set(top, []).get(top)).push(card);
+  }
+  for (const row of rows.values()) {
+    const kept = row.filter(c => c.querySelector(".lc-box__keep")), bare = row.filter(c => !c.querySelector(".lc-box__keep"));
+    for (const group of [kept, bare]) {
+      const tops = group.map(c => Math.round(c.querySelector(".lc-box__buy").getBoundingClientRect().top));
+      if (tops.length > 1 && Math.max(...tops) - Math.min(...tops) > 1) out.push(`the Buys of ${group.map(c => c.dataset.box).join(", ")} sit at ${tops.join(", ")}`);
+    }
+  }
   return out;
 }
 
@@ -2743,10 +2763,11 @@ async function keepPressProblems(settled) {
   if (!keep || !buy) return ["no Buy to keep on the Pauper's Box"];
   keep.focus();
   const said = { text: "A Pauper's Box ticket is in Tam Thornwick's pack (2 now). Use it from the character sheet whenever you like.", tone: "done" };
+  const tall = keep.getBoundingClientRect().height;
   const steps = [
     ["keeping", { busy: true, busyBox: "common", busyKeep: true }, "Buying\u2026", true],
     ["waiting", { busy: true, busyBox: "common", busyKeep: true, waiting: "gm" }, "Waiting for the GM\u2026", true],
-    ["kept", { said }, "Buy to keep, 25 gp, a ticket for your pack to use later", false],
+    ["kept", { said }, "Buy to keep, 25 gp, a ticket for later", false],
     ...(settled ? [] : [["keeping again", { busy: true, busyBox: "common", busyKeep: true }, "Buying\u2026", true]]),
   ];
   for (const [label, extra, text, off] of steps) {
@@ -2757,6 +2778,7 @@ async function keepPressProblems(settled) {
     if (document.querySelector('.lc-box__buy[data-box="common"]') !== buy) out.push(`the ${label} render replaced the Pauper's Box's Buy`);
     if (keep.textContent.trim() !== `Pauper's Box: ${text}`) out.push(`after the ${label} render the Buy to keep reads "${keep.textContent.trim()}"`);
     if (buy.textContent.trim() !== "Pauper's Box: Open for 25 gp") out.push(`after the ${label} render the Buy reads "${buy.textContent.trim()}"`);
+    if (Math.abs(keep.getBoundingClientRect().height - tall) > 0.5) out.push(`after the ${label} render the Buy to keep is ${keep.getBoundingClientRect().height}px tall, was ${tall}`);
     const on = [...document.querySelectorAll(".lc-box__buy, .lc-box__keep")].filter(b => b.getAttribute("aria-disabled") !== "true").map(b => b.dataset.box ?? b.dataset.keep);
     if (off && on.length) out.push(`after the ${label} render ${on.join(", ")} are still on`);
     if (!off && (keep.getAttribute("aria-disabled") === "true" || buy.getAttribute("aria-disabled") === "true")) out.push(`after the ${label} render the Pauper's Box is still off`);
