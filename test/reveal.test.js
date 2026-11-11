@@ -144,12 +144,12 @@ describe("sounds in time with the spin", () => {
 
   it("starts the sweep in the frame the strip begins to brake, lasting until it settles", async () => {
     const app = await showReveal(reveal);
-    for (let now = 0; now <= 2768; now += 16) frames.shift()(now);
+    for (let now = 0; now <= 2784; now += 16) frames.shift()(now);
     expect(playSlow).not.toHaveBeenCalled();
-    frames.shift()(2784);
+    frames.shift()(2800);
     expect(playSlow).toHaveBeenCalledTimes(1);
-    expect(playSlow.mock.calls[0][0]).toBeCloseTo(settleAt() - 2784, 6);
-    play(2800);
+    expect(playSlow.mock.calls[0][0]).toBeCloseTo(settleAt() - 2800, 6);
+    play(2816);
     await app.landed;
     expect(playSlow).toHaveBeenCalledTimes(1);
   });

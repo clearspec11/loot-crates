@@ -95,9 +95,26 @@ describe("the spin's speed profile", () => {
     expect(speed(1e-6)).toBeLessThan(1e-3);
   });
 
+  it("never crawls: the marker is inside the result for about a second before it lands, not two", () => {
+    // The default strip on a 680 px viewport: the result is card 40, the
+    // overshoot 18% of a card. From the first millisecond the marker is in
+    // the result card to the landing, brake and settle together.
+    const w = 680, step = CARD_WIDTH + CARD_GAP, x1 = 40 * step + CARD_WIDTH / 2 - w / 2, over = CARD_WIDTH * 0.18;
+    let entered = null;
+    for (let ms = 0; ms <= DEFAULT_DURATION * SPIN_SPLIT && entered == null; ms++) {
+      const x = (x1 + over) * spinDistance(ms / (DEFAULT_DURATION * SPIN_SPLIT));
+      if (Math.floor((x + w / 2) / step) === 40) entered = ms;
+    }
+    const tail = DEFAULT_DURATION - entered;
+    expect(tail).toBeLessThan(1250);
+    expect(tail).toBeGreaterThan(800);
+    // The settle is a beat, not a wait.
+    expect(DEFAULT_DURATION - settleAt()).toBeLessThanOrEqual(500);
+  });
+
   it("cruises for 35 to 40% of the whole spin", () => {
-    // mountSpin runs spinDistance over the first 86% of the duration.
-    const share = SPIN_CRUISE * 0.86;
+    // mountSpin runs spinDistance over the first SPIN_SPLIT of the duration.
+    const share = SPIN_CRUISE * SPIN_SPLIT;
     expect(share).toBeGreaterThanOrEqual(0.35);
     expect(share).toBeLessThanOrEqual(0.4);
   });
@@ -120,25 +137,25 @@ describe("the spin's brake and settle cues", () => {
     return { spin, phases, run, done: spin.play() };
   }
 
-  it("brakes where the ease-out starts: about 2773 ms into the default spin", () => {
+  it("brakes where the ease-out starts: about 2795 ms into the default spin", () => {
     expect(brakeAt()).toBeCloseTo(SPIN_SPLIT * (SPIN_ACCEL + SPIN_CRUISE) * DEFAULT_DURATION, 9);
-    expect(Math.round(brakeAt())).toBe(2773);
-    expect(Math.round(settleAt())).toBe(5332);
+    expect(Math.round(brakeAt())).toBe(2795);
+    expect(Math.round(settleAt())).toBe(5704);
     expect(brakeAt(1000)).toBeCloseTo(1000 * SPIN_SPLIT * (SPIN_ACCEL + SPIN_CRUISE), 9);
   });
 
-  it("fires brake once, in the first frame at or after 2773 ms, and settle once at or after 5332 ms", async () => {
+  it("fires brake once, in the first frame at or after 2795 ms, and settle once at or after 5704 ms", async () => {
     const { spin, phases, run, done } = mount();
     run();
     await done;
     expect(spin.landed).toBe(true);
     expect(phases.map(p => p.phase)).toEqual(["brake", "settle"]);
     const [brake, settle] = phases;
-    // 16 ms frames: 2784 is the first at or after 2772.9, 5344 the first at or after 5332.
-    expect(brake.at).toBe(2784);
+    // 16 ms frames: 2800 is the first at or after 2795.04, 5712 the first at or after 5704.
+    expect(brake.at).toBe(2800);
     expect(brake.at - 16).toBeLessThan(brakeAt());
-    expect(brake.settleIn).toBeCloseTo(settleAt() - 2784, 9);
-    expect(settle.at).toBe(5344);
+    expect(brake.settleIn).toBeCloseTo(settleAt() - 2800, 9);
+    expect(settle.at).toBe(5712);
     expect(settle.at - 16).toBeLessThan(settleAt());
     expect(settle.settleIn).toBe(0);
   });
@@ -210,8 +227,8 @@ describe("the spin's brake and settle cues", () => {
   it("doesn't announce a brake a stalled frame leapt clean past", async () => {
     const { spin, phases, done } = mount();
     frames.shift()(T0);
-    frames.shift()(T0 + 5400);
-    for (let now = T0 + 5416; frames.length; now += 16) frames.shift()(now);
+    frames.shift()(T0 + 5720);
+    for (let now = T0 + 5736; frames.length; now += 16) frames.shift()(now);
     await done;
     expect(spin.landed).toBe(true);
     expect(phases.map(p => p.phase)).toEqual(["settle"]);

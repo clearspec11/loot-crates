@@ -12,7 +12,7 @@ import { createDocument } from "./minidom.js";
 vi.mock("../module/scripts/foundry/sound.js", () => ({ playTick: vi.fn(), playSlow: vi.fn(), playReveal: vi.fn(), playPlop: vi.fn(), playPlink: vi.fn(), playCoinBack: vi.fn(), playBane: vi.fn(), playDrop: vi.fn() }));
 
 const R = await import("../module/scripts/games/roulette.js");
-const { ROULETTE, ROULETTE_DEFAULTS, BET_TYPES, pocketsOf, coloursOf, optionsOf, betOdds, resolve, betWins, normalizeBet, betName, stakeCheck, readBet, pickOptions, betFields, verdictText, netByActor, netText, netLines, wheelPose, pocketUnder, mountWheel, railHTML, roundState, clockText, drawOfRarity, draftRoulette, rouletteRulesText, roulettePreview, betLines, wheelSVG } = R;
+const { ROULETTE, ROULETTE_DEFAULTS, BET_TYPES, pocketsOf, coloursOf, optionsOf, betOdds, resolve, betWins, normalizeBet, betName, stakeCheck, readBet, pickOptions, betFields, verdictText, netByActor, netText, netLines, wheelPose, pocketUnder, WHEEL_TIMING, mountWheel, railHTML, roundState, clockText, drawOfRarity, draftRoulette, rouletteRulesText, roulettePreview, betLines, wheelSVG } = R;
 const { tableBodyHTML, phaseOf, stateText, countText, stakeSentence, countdownText, betClosedText, gateBet } = await import("../module/scripts/views/tableview.js");
 const { PullError } = await import("../module/scripts/games/kinds.js");
 const { seededRng } = await import("../module/scripts/core/odds.js");
@@ -298,6 +298,24 @@ describe("the wheel", () => {
     // It slows: more of the turn is done in the first half than the second.
     const mid = wheelPose(0.5, 6, 12);
     expect(Math.abs(mid.ball)).toBeGreaterThan(Math.abs(wheelPose(1, 6, 12).ball) / 2);
+  });
+
+  it("never crawls: the ball finds its pocket during the drop, under a second before it lands", () => {
+    // The default wheel's 12 pockets, every landing: the last time the ball
+    // crosses into another pocket, in ms of the 5.6 s spin.
+    for (let index = 0; index < 12; index++) {
+      let last = null, crossed = 0, radius = null;
+      for (let ms = 0; ms <= WHEEL_TIMING.spin; ms++) {
+        const at = wheelPose(ms / WHEEL_TIMING.spin, index, 12);
+        const under = pocketUnder(at, 12);
+        if (last != null && under !== last) { crossed = ms; radius = at.radius; }
+        last = under;
+      }
+      expect(crossed).toBeGreaterThan(WHEEL_TIMING.spin * WHEEL_TIMING.dropAt);
+      expect(WHEEL_TIMING.spin - crossed).toBeLessThan(900);
+      // Still well above the pocket's floor (70) as it crosses that last wall.
+      expect(radius).toBeGreaterThan(80);
+    }
   });
 
   it("draws every pocket's wedge, rarity rim and number, and the pin's diamond", () => {
