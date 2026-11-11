@@ -272,6 +272,29 @@ describe("the table's view and reduced motion", () => {
     expect(frames).toHaveLength(0);
   });
 
+  it("asks for one frame at a time, however many shavings and panels wake the loop inside a frame", () => {
+    // The table's sweep: every step spawns shavings and, at 80%, gives a panel.
+    const swept = mount({ buyer: false });
+    layOut(swept.ticket, swept.panels);
+    swept.ctrl.play();
+    let most = frames.length, steps = 0;
+    while (frames.length && steps++ < 2000) { clock += 16; frames.shift()(clock); most = Math.max(most, frames.length); }
+    expect(swept.panels.every(isOpen)).toBe(true);
+    expect(most).toBe(1);
+    // The buyer's hand: strokes wake it between frames, a panel gives inside one.
+    const hand = mount({ buyer: true });
+    layOut(hand.ticket, hand.panels);
+    hand.ctrl.play();
+    most = 0;
+    for (const y of [50, 25, 75]) {
+      stroke(hand.ticket, y);
+      most = Math.max(most, frames.length);
+      for (let i = 0; i < 20 && frames.length; i++) { clock += 16; frames.shift()(clock); most = Math.max(most, frames.length); }
+    }
+    expect(isOpen(hand.panels[0])).toBe(true);
+    expect(most).toBe(1);
+  });
+
   it("lands within about five seconds whatever the grid", () => {
     const onLand = vi.fn();
     const big = { ...GAME, grid: { cols: 6, rows: 5 } };

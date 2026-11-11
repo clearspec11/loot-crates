@@ -6,6 +6,7 @@ The newest numbered entry's version is the one in `module/module.json`, and its 
 
 ## Unreleased
 
+- A scratch ticket's animation no longer piles up work while it plays. Each frame of the coin's sweep started another copy of the same loop, so a card watched to the end was drawing itself dozens of times a frame (and one scratched by hand, several); it now draws once a frame.
 - After the reveal, Sell back asks once before it sells: the first press opens "Sell Wand of Webs back for 75 gp? This can't be undone." with Sell and Cancel in its place, as Give to… opens its list. A sale was the one thing a single click did that nobody could undo.
 - A reveal no longer says two things about an item that was sold or given away. It read "Added to Brinn's inventory" with "Brinn sold Wand of Webs back for 75 gp." under it; now the first line itself changes to "Sold back for 75 gp" or "Given to Saria", on every window showing that play.
 - A player can no longer run code on another player's or the GM's Foundry with a fake reveal. The odds bar of a reveal, and the art of a Wishing Well's find and a deck's card, were written into the window as they arrived; a message a player sent by hand from the browser console could carry markup in them. Each is now escaped or set as an attribute, and a rarity that isn't one gets no colour.

@@ -373,7 +373,9 @@ export function mountFoil(ticket, { cols = 4, buyer = false, reducedMotion, dura
     }
     drawShavings(at);
     const busy = !landed && (sweep || panels.some(p => p.giving || p.dirty));
-    if (busy || shave.list.length) frame = raf(loop);
+    // A step above may have woken the loop already (a shaving, a panel
+    // giving): never ask for a second frame, or the loops multiply.
+    if (busy || shave.list.length) { if (frame == null) frame = raf(loop); }
     else if (shave.ctx) shave.ctx.clearRect(0, 0, shave.w, shave.h);
   }
 
