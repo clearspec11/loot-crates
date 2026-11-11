@@ -6,6 +6,8 @@ The newest numbered entry's version is the one in `module/module.json`, and its 
 
 ## Unreleased
 
+- A crate's spin teases half as often. A spin that could show a better item beside the result did so six times in ten, which made the near-miss the usual ending; it is now three in ten.
+
 - Buttons answer a press: every button dips a pixel and darkens while it is held, where before nothing changed until whatever it started had drawn.
 - An auction for a sealed crate no longer jumps at the hammer. The board grew by about 145px when the crate's strip appeared, pushing everything under it down; the bids now keep that room from the start.
 - With reduced motion on, buttons and the welcome note's links change colour at once on hover instead of fading.
