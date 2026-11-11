@@ -190,6 +190,14 @@ const STATES = [
   // wrap in a 480 px window instead of overflowing.
   ["manager-boxes", "state=manager&tab=boxes&added=1"],
   ["manager-boxes-narrow", "state=manager&tab=boxes&added=1&width=480"],
+  // The tab's menus open (views/menu.js): New game's seven kinds; a row's
+  // More (Make a ticket, Copy, Delete); the last row's, with the pane at
+  // its foot, which opens upward to stay in it; and a row's in a 480 px
+  // window, where the rows stack.
+  ["manager-menu-new", "state=manager&tab=boxes&menu=new"],
+  ["manager-menu-row", "state=manager&tab=boxes&menu=row"],
+  ["manager-menu-last", "state=manager&tab=boxes&menu=last"],
+  ["manager-menu-narrow", "state=manager&tab=boxes&menu=row&width=480"],
   // On the shelf (shelf.js): the GM took the Royal Vault off it. Its row is
   // tagged "Off the shelf" and dimmed, its toggle (focused, as the click
   // leaves it) is unpressed, every other row's is pressed, the
@@ -650,9 +658,10 @@ function shelfBoxesProblems() {
     const t = r.querySelector('[data-action="toggleShelf"]');
     if (!t) { out.push(`${name} has no shelf toggle`); continue; }
     const isOff = r.classList.contains("lc-row--off");
-    const want = isOff ? ["false", "On the shelf"] : ["true", "On the shelf"];
+    // A row's switch reads "Shelf" (the cell stays narrow); its name is the whole one.
+    const want = isOff ? ["false", "Shelf"] : ["true", "Shelf"];
     if (t.getAttribute("aria-pressed") !== want[0] || t.textContent.trim() !== want[1]) out.push(`${name}'s toggle is ${t.getAttribute("aria-pressed")} "${t.textContent.trim()}"`);
-    if (t.getAttribute("aria-label") !== `${want[1]}: ${name}`) out.push(`${name}'s toggle is labelled "${t.getAttribute("aria-label")}"`);
+    if (t.getAttribute("aria-label") !== `On the shelf: ${name}`) out.push(`${name}'s toggle is labelled "${t.getAttribute("aria-label")}"`);
     const tr = t.getBoundingClientRect();
     if (tr.width < 20 || tr.height < 20 || tr.right > app.right + 1) out.push(`${name}'s toggle is not fully visible`);
     if (parseFloat(getComputedStyle(t).fontSize) < 11) out.push(`${name}'s toggle is under 11px`);
@@ -792,6 +801,11 @@ function boxesProblems(narrow) {
   if (!toolbar) return [...out, "no Boxes toolbar"];
   const news = [...toolbar.querySelectorAll('[data-action^="add"]')].map(b => b.textContent.trim());
   if (news.join("|") !== "New crate|New Wishing Well|New Dragon's Teeth|New Deck of Many Things|New Roulette wheel|New auction|New scratch ticket") out.push(`the New buttons read ${news.join(", ")}`);
+  // One New game holds the seven, shut: the toolbar shows it, the starter and the count.
+  const fresh = toolbar.querySelector(".lc-menu--new [data-menu]");
+  if (!fresh || !/^New game$/.test(fresh.textContent.trim()) || fresh.getAttribute("aria-expanded") !== "false") out.push(`the toolbar's New game reads "${fresh?.textContent.trim()}" (${fresh?.getAttribute("aria-expanded")})`);
+  const shownInBar = [...toolbar.querySelectorAll("button")].filter(b => b.getBoundingClientRect().width > 0).map(b => b.textContent.trim());
+  if (shownInBar.join("|") !== "New game|Add starter crates") out.push(`the toolbar shows ${shownInBar.join(", ")}`);
   if (toolbar.scrollWidth > toolbar.clientWidth + 1 || toolbar.getBoundingClientRect().right > app.right + 1) out.push("the Boxes toolbar overflows the window");
   if (document.querySelectorAll('[role="status"]').length !== 1) out.push("expected one role=status");
   const status = document.querySelector(".lc-manager__status");
@@ -814,16 +828,26 @@ function boxesProblems(narrow) {
   const under = document.querySelector(".lc-manager__statusbar")?.getBoundingClientRect().bottom ?? tab?.top;
   if (tab && er && (er.top < under - 1 || er.bottom > tab.bottom + 1)) out.push("the new row is out of view");
   if (!document.querySelector('[data-action="openTable"]') || !document.querySelector('[data-action="reshuffle"]')) out.push("the wheel's Open a round or the deck's Reshuffle is missing");
-  // Every row has a visible Copy naming its game, between Edit and Delete.
+  // Every row shows its shelf switch, Edit in words and one More; Copy and
+  // Delete are in the More, in words, naming the game, Delete last.
   for (const r of rows) {
     const name = r.querySelector(".lc-table__name")?.firstChild?.textContent.trim();
     const copy = r.querySelector('[data-action="copyBox"]');
     if (!copy) { out.push(`${name} has no Copy`); continue; }
     if (copy.getAttribute("aria-label") !== `Copy ${name}`) out.push(`${name}'s Copy is labelled "${copy.getAttribute("aria-label")}"`);
-    if (copy.getBoundingClientRect().width < 20 || copy.getBoundingClientRect().height < 20) out.push(`${name}'s Copy is not visible`);
-    if ((copy.querySelector("i")?.getBoundingClientRect().width ?? 0) < 10) out.push(`${name}'s Copy has no icon`);
-    const order = [...r.lastElementChild.querySelectorAll("[data-action]")].map(b => b.dataset.action).slice(-3).join("|");
-    if (order !== "editBox|copyBox|deleteBox") out.push(`${name}'s row actions end ${order}`);
+    if (copy.textContent.trim() !== "Copy" || !copy.closest(".lc-menu__list")) out.push(`${name}'s Copy isn't in the row's More, in words`);
+    const order = [...r.lastElementChild.querySelectorAll("[data-action]")].map(b => b.dataset.action).slice(-2).join("|");
+    if (order !== "copyBox|deleteBox") out.push(`${name}'s row actions end ${order}`);
+    const shown = [...r.lastElementChild.querySelectorAll("button")].filter(b => b.getBoundingClientRect().width > 0);
+    const want = ["toggleShelf", ...(shown.some(b => b.dataset.action === "openTable") ? ["openTable"] : []), "editBox", "more"];
+    if (shown.map(b => b.dataset.action ?? (b.matches("[data-menu]") ? "more" : "?")).join("|") !== want.join("|")) out.push(`${name}'s row shows ${shown.map(b => b.dataset.action ?? b.getAttribute("aria-label")).join(", ")}`);
+    const editB = r.querySelector('[data-action="editBox"]');
+    if (editB?.textContent.trim() !== "Edit") out.push(`${name}'s Edit reads "${editB?.textContent.trim()}"`);
+    const more = r.querySelector(".lc-menu--row [data-menu]");
+    if (more?.getAttribute("aria-label") !== `More for ${name}` || more.getAttribute("aria-expanded") !== "false") out.push(`${name}'s More is labelled "${more?.getAttribute("aria-label")}"`);
+    const mr = more?.getBoundingClientRect();
+    if (mr && (mr.width < 24 || mr.height < 24 || mr.right > app.right + 1)) out.push(`${name}'s More is not fully visible`);
+    if (more && (more.querySelector("i")?.getBoundingClientRect().width ?? 0) < 10) out.push(`${name}'s More has no icon`);
     // A pulled game's row has Make a ticket in words, as Reshuffle is; the
     // wheel's (a table game) has none.
     const table = /Wheel/.test(r.querySelector(".lc-kind")?.textContent ?? "");
@@ -832,11 +856,48 @@ function boxesProblems(narrow) {
     if (!table && !ticket) out.push(`${name} has no Make a ticket`);
     if (ticket) {
       if (ticket.getAttribute("aria-label") !== `Make a ticket for ${name}`) out.push(`${name}'s Make a ticket is labelled "${ticket.getAttribute("aria-label")}"`);
-      const tr = ticket.getBoundingClientRect();
-      if (tr.width < 20 || tr.height < 20 || ticket.textContent.trim() !== "Make a ticket") out.push(`${name}'s Make a ticket is not visible`);
-      if (parseFloat(getComputedStyle(ticket).fontSize) < 11) out.push(`${name}'s Make a ticket is under 11px`);
-      if (tr.right > app.right + 1) out.push(`${name}'s Make a ticket is past the window's edge`);
+      if (ticket.textContent.trim() !== "Make a ticket" || ticket !== ticket.closest(".lc-menu__list")?.firstElementChild) out.push(`${name}'s Make a ticket isn't first in the row's More`);
     }
+  }
+  return out;
+}
+
+// An open menu (views/menu.js; the harness's ?menu=new|row|last): one list
+// open, its trigger saying so, every item in words at 11px or more and
+// wholly inside the tab's pane and the window (the last row's opens upward
+// to stay there), Delete last and in the warning ink, and no other open.
+function menuProblems(which) {
+  const out = [];
+  const app = document.getElementById("app").getBoundingClientRect();
+  const pane = document.querySelector(".lc-tab")?.getBoundingClientRect();
+  const open = [...document.querySelectorAll('[data-menu][aria-expanded="true"]')];
+  if (open.length !== 1) return [`${open.length} menus open`];
+  const trigger = open[0];
+  const list = trigger.parentNode.querySelector(".lc-menu__list");
+  if (!list || list.hidden) return ["the open menu's list is hidden"];
+  if ([...document.querySelectorAll(".lc-menu__list")].filter(l => !l.hidden).length !== 1) out.push("more than one list showing");
+  const items = [...list.querySelectorAll(".lc-menu__item")];
+  const words = items.map(i => i.textContent.trim());
+  const want = which === "new" ? "New crate|New Wishing Well|New Dragon's Teeth|New Deck of Many Things|New Roulette wheel|New auction|New scratch ticket" : which === "last" ? "Copy|Delete" : "Make a ticket|Copy|Delete";
+  if (words.join("|") !== want) out.push(`the menu reads ${words.join(", ")}`);
+  const lr = list.getBoundingClientRect();
+  if (pane && (lr.top < pane.top - 1 || lr.bottom > pane.bottom + 1 || lr.left < pane.left - 1 || lr.right > pane.right + 1)) out.push(`the open menu leaves the pane (${Math.round(lr.left)},${Math.round(lr.top)} to ${Math.round(lr.right)},${Math.round(lr.bottom)})`);
+  if (lr.left < app.left - 1 || lr.right > app.right + 1) out.push("the open menu leaves the window");
+  if ((which === "last") !== list.classList.contains("lc-menu__list--up")) out.push(which === "last" ? "the last row's menu didn't open upward" : "the menu opened upward");
+  for (const i of items) {
+    const r = i.getBoundingClientRect();
+    if (r.width < 40 || r.height < 24) out.push(`"${i.textContent.trim()}" is too small to press`);
+    if (parseFloat(getComputedStyle(i).fontSize) < 11) out.push(`"${i.textContent.trim()}" is under 11px`);
+    // The item on top at its own centre is the item: nothing covers it
+    // (brought into the viewport first; the harness page is taller than it).
+    i.scrollIntoView({ block: "center" });
+    const at = i.getBoundingClientRect();
+    const top = document.elementFromPoint(at.left + at.width / 2, at.top + at.height / 2);
+    if (top !== i && !i.contains(top)) out.push(`"${i.textContent.trim()}" is covered`);
+  }
+  if (which !== "new") {
+    const del = items.at(-1);
+    if (!del?.classList.contains("lc-menu__item--danger") || getComputedStyle(del).color === getComputedStyle(items[0]).color) out.push("Delete isn't set apart in the warning ink");
   }
   return out;
 }
@@ -945,7 +1006,7 @@ function starterBoxesProblems() {
   const news = [...document.querySelectorAll('.lc-toolbar--boxes [data-action^="add"]')].map(b => b.textContent.trim());
   if (news.join("|") !== "New crate|New Wishing Well|New Dragon's Teeth|New Deck of Many Things|New Roulette wheel|New auction|New scratch ticket") out.push(`the New buttons read ${news.join(", ")}`);
   const status = document.querySelector(".lc-manager__status")?.textContent ?? "";
-  if (status !== "Added 4 starter pools and 10 starter games, all off the shelf. Players can't see them yet: look each one over and press On the shelf on its row, or Put all on the shelf.") out.push(`status line says "${status}"`);
+  if (status !== "Added 4 starter pools and 10 starter games, all off the shelf. Players can't see them yet: look each one over and turn on Shelf on its row, or Put all on the shelf.") out.push(`status line says "${status}"`);
   const first = rows[0]?.querySelector('[data-action="editBox"]');
   if (document.activeElement !== first) out.push("focus is not on the first starter game's Edit");
   const pools = rows.map(r => r.querySelector('td[data-label="Pools"]')?.textContent.trim());
@@ -3010,6 +3071,7 @@ try {
       else if (name === "editor-crate-makepool") problems0.push(...await page.evaluate(makePoolProblems));
       else if (name === "editor-crate-makepool-two") problems0.push(...await page.evaluate(makePoolProblems), ...await page.evaluate(twoMakePoolProblems));
       else if (name === "manager-empty") problems0.push(...await page.evaluate(starterEmptyProblems, "pools"));
+      else if (name.startsWith("manager-menu")) problems0.push(...await page.evaluate(menuProblems, { "manager-menu-new": "new", "manager-menu-last": "last" }[name] ?? "row"));
       else if (name === "manager-boxes-empty") problems0.push(...await page.evaluate(starterEmptyProblems, "boxes"));
       else if (name === "manager-boxes-starter") problems0.push(...await page.evaluate(starterBoxesProblems), ...await page.evaluate(panelProblems));
       else if (name === "manager-boxes-shelf") problems0.push(...await page.evaluate(shelfBoxesProblems), ...await page.evaluate(panelProblems));

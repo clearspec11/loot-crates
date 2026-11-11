@@ -29,6 +29,7 @@
 // No purchase. Needs "Live UI pool" (live-ui.js).
 /* global game, Hooks, foundry, __lc */
 const { chromium } = require("playwright");
+const { pressIn } = require("./lib/menu.cjs");
 const FOUNDRY = process.env.FOUNDRY_URL || "http://localhost:30000";
 const MODULE_BASE = process.env.MODULE_BASE || "http://localhost:8766/";
 const shot = process.argv.includes("--shot") ? process.argv[process.argv.indexOf("--shot") + 1] : null;
@@ -124,7 +125,7 @@ const HELPERS = `
     // 0. Every New's height at 1440x900, closed again with nothing typed.
     out.heights = {};
     for (const [kind, action] of [["crate", "addBox"], ["scratch", "addScratch"], ["well", "addWell"], ["dice", "addDice"], ["deck", "addDeck"], ["wheel", "addWheel"], ["auction", "addAuction"]]) {
-      await page.locator(`#loot-crates-manager [data-action="${action}"]`).click();
+      await pressIn(page, `#loot-crates-manager [data-action="${action}"]`);
       await dlg().locator('input[name="name"]').waitFor({ timeout: 8000 });
       await page.waitForTimeout(400);
       out.heights[kind] = await page.evaluate(() => { const c = __lc.dialog().querySelector(".dialog-content"); return { content: c.scrollHeight, view: c.clientHeight, width: Math.round(__lc.dialog().getBoundingClientRect().width) }; });
@@ -176,7 +177,7 @@ const HELPERS = `
       __lc.click(__lc.app.element.querySelector('.lc-tabs [data-tab="boxes"]'));
       await __lc.until(() => __lc.app.tab === "boxes" && __lc.app.element.querySelector('[data-action="addScratch"]'), 8000);
     });
-    await page.locator('#loot-crates-manager [data-action="addScratch"]').click();
+    await pressIn(page, '#loot-crates-manager [data-action="addScratch"]');
     await dlg().locator('input[name="name"]').waitFor({ timeout: 8000 });
     await page.waitForTimeout(300);
     out.scratch = { layout: await page.evaluate(() => {
@@ -209,7 +210,7 @@ const HELPERS = `
     await discard();
 
     // 3. New auction: a lot found by typing in the search.
-    await page.locator('#loot-crates-manager [data-action="addAuction"]').click();
+    await pressIn(page, '#loot-crates-manager [data-action="addAuction"]');
     await dlg().locator(".lc-auction-lot__search").waitFor({ timeout: 8000 });
     const word = (out.before.item ?? "").split(/\s+/).find(w => w.length >= 4) ?? out.before.item ?? "";
     await dlg().locator(".lc-auction-lot__search").click();

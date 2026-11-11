@@ -332,14 +332,14 @@ const untilCard = (pl, boxId, pred, since) => pl.evaluate(async ({ boxId, pred, 
     const reused = before.present.pools.length;
     const missingPools = STARTER_POOLS.filter(n => !before.present.pools.includes(n));
     const parts = [missingPools.length ? `${missingPools.length} starter pool${missingPools.length === 1 ? "" : "s"}` : "", `${STARTER_GAMES.length} starter games`].filter(Boolean).join(" and ");
-    const said = `Added ${parts}${reused ? " as copies" : ""}, all off the shelf${reused ? ", drawing from the starter pools already here" : ""}. Players can't see them yet: look each one over and press On the shelf on its row, or Put all on the shelf.`;
+    const said = `Added ${parts}${reused ? " as copies" : ""}, all off the shelf${reused ? ", drawing from the starter pools already here" : ""}. Players can't see them yet: look each one over and turn on Shelf on its row, or Put all on the shelf.`;
     out.checks = {
       pressed: a.label === "Add starter crates",
       // The confirm appears exactly when the set is already here, and says so.
       confirm: setPresent ? /^The starter set is already here: .+ Add it again\?/.test(a.confirmText ?? "") : a.confirmText === null,
       poolsFilled: a.pools.length === missingPools.length && a.pools.map(p => p.name).sort().join() === [...missingPools].sort().join() && a.pools.every(p => p.count > 0 && p.compendium),
       tenGames: a.rows.length === STARTER_GAMES.length && a.rows.map(r => r.base).sort().join() === [...STARTER_GAMES].sort().join() && kinds === "auction,crate,crate,crate,deck,dice,roulette,scratch,scratch,well",
-      allOffShelf: a.rows.every(r => r.shelved && r.toggle === "On the shelf" && r.pressed === "false" && r.dimmed && r.tag === "Off the shelf"),
+      allOffShelf: a.rows.every(r => r.shelved && r.toggle === "Shelf" && r.pressed === "false" && r.dimmed && r.tag === "Off the shelf"),
       drawFromStarterPools: a.rows.filter(r => r.kind !== "roulette" && r.kind !== "auction").every(r => r.pools.length > 0 && r.pools.every(id => a.pools.some(p => p.id === id) || before.starterPoolIds.includes(id))),
       auctionLot: a.lot?.type === "crate" && a.lot.boxId === a.chestId,
       said: a.status === said && a.focusedFirst,

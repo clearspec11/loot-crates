@@ -34,12 +34,13 @@ describe("kindTag", () => {
 describe("Make a ticket on the Boxes table", () => {
   const html = boxesTableHTML({ boxes: BOXES, pools: POOLS, log: deckDraws(1), rounds: { R1: rouletteRound() }, esc });
 
-  it("is a button in words, named for the game, on a line of its own after any extra, on every pulled game's row", () => {
+  it("is in words, named for the game, first in the row's More, on every pulled game's row", () => {
     const pulled = BOXES.filter(b => b.kind !== "roulette" && b.kind !== "auction");
     for (const b of pulled) {
-      expect(html).toContain(`<button type="button" class="lc-table__extra" data-action="makeTicket" data-box="${esc(b.id)}" aria-label="Make a ticket for ${esc(b.name)}">Make a ticket</button>`);
+      expect(html).toContain(`<button type="button" class="lc-menu__item" data-action="makeTicket" data-box="${esc(b.id)}" aria-label="Make a ticket for ${esc(b.name)}">Make a ticket</button>`);
     }
-    expect(html).toMatch(/data-action="reshuffle"[^>]*>[^<]*<\/button> <button type="button" class="lc-table__extra" data-action="makeTicket"/);
+    // A deck's Reshuffle follows it, in the same menu.
+    expect(html).toMatch(/data-action="makeTicket"[^>]*>Make a ticket<\/button><button type="button" class="lc-menu__item" data-action="reshuffle"/);
     expect([...html.matchAll(/data-action="makeTicket"/g)]).toHaveLength(pulled.length);
   });
 
@@ -76,19 +77,29 @@ describe("the Boxes table", () => {
     }
   });
 
-  it("keeps the buttons in the last, uncaptioned cell: Edit, Copy, Delete after any extra", () => {
+  it("keeps the buttons in the last, uncaptioned cell: the shelf's switch, Edit in words, and one More holding the rest, Delete last", () => {
     for (const tr of rows(html)) {
       const last = tr.slice(tr.lastIndexOf('<td role="cell" data-label=""'));
       const actions = [...last.matchAll(/data-action="([^"]+)"/g)].map(m => m[1]);
-      expect(actions.slice(-3)).toEqual(["editBox", "copyBox", "deleteBox"]);
+      expect(actions[0]).toBe("toggleShelf");
+      expect(actions.slice(-2)).toEqual(["copyBox", "deleteBox"]);
+      // What shows without opening anything: the switch, a table's round, Edit and More.
+      const shown = last.slice(0, last.indexOf('<span class="lc-menu__list"'));
+      expect([...shown.matchAll(/data-action="([^"]+)"/g)].map(m => m[1]).filter(a => a !== "openTable")).toEqual(["toggleShelf", "editBox"]);
+      expect(shown).toMatch(/class="lc-table__edit" data-action="editBox"[^>]*>Edit<\/button>/);
+      expect(shown).toMatch(/<button type="button" class="lc-menu__trigger" data-menu="[^"]+" aria-haspopup="true" aria-expanded="false" aria-label="More for [^"]+">/);
+      // The list is drawn shut, and nothing in the cell is an icon alone but More.
+      expect(last).toMatch(/<span class="lc-menu__list" role="group" aria-label="More for [^"]+" hidden>/);
+      expect(last).toMatch(/class="lc-menu__item lc-menu__item--danger" data-action="deleteBox"[^>]*>Delete<\/button><\/span><\/span>/);
+      expect(last).not.toContain("fa-trash");
       // A table game is staked in rounds, never pulled: it has no tickets.
       expect(actions.includes("makeTicket")).toBe(!/lc-kind">Wheel</.test(tr));
     }
     expect(html).toContain('data-action="reshuffle"');
     expect(html).toContain('data-action="openTable"');
-    // Each sits on a line of its own over the icons (module.css lc-table__extra),
-    // so the one cell that never wraps is never wider than the three of them.
-    expect(html).toContain('class="lc-table__extra" data-action="reshuffle"');
+    // A deck's Reshuffle is in the row's More; a table's round is the one text
+    // button left in the cell, on a line of its own (module.css lc-table__extra).
+    expect(html).toContain('class="lc-menu__item" data-action="reshuffle"');
     expect(html).toContain('class="lc-table__extra" data-action="openTable"');
   });
 
@@ -118,7 +129,7 @@ describe("the Boxes table", () => {
     expect((out.match(/<tr class="lc-row--off" role="row">/g) ?? []).length).toBe(BOXES.length);
     expect((out.match(/<span class="lc-kind lc-kind--off">Off the shelf<\/span>/g) ?? []).length).toBe(BOXES.length);
     expect(out).toContain(`data-action="toggleShelf" data-box="royal" data-on="false" aria-pressed="false" aria-label="On the shelf: Royal Vault"`);
-    expect(out).toMatch(/aria-pressed="false"[^>]*>On the shelf<\/button>/);
+    expect(out).toMatch(/aria-pressed="false"[^>]*>Shelf<\/button>/);
     expect(out).not.toContain("Put on shelf");
     expect(out).not.toContain('data-action="openTable"');
     // A round already open runs to its resolve: its table stays one click away.
@@ -141,10 +152,15 @@ describe("the Boxes table", () => {
 });
 
 describe("the tab", () => {
-  it("is the status line pinned first, then the toolbar with every New, then the table", () => {
+  it("is the status line pinned first, then the toolbar with one New game holding every New, then the table", () => {
     const html = boxesTabHTML({ boxes: BOXES, pools: POOLS, status: "Royal Vault is on the shelf at 1,200 gp.", esc });
     expect(html).toMatch(/^<div class="lc-manager__statusbar"><span class="lc-pool__hint lc-manager__status" role="status">Royal Vault is on the shelf at 1,200 gp.<\/span><\/div><div class="lc-toolbar lc-toolbar--boxes">/);
-    for (const [action, label] of NEW_BUTTONS) expect(html).toContain(`data-action="${action}"><i class="fas fa-plus"></i> ${label}</button>`);
+    const bar = html.slice(html.indexOf('<div class="lc-toolbar lc-toolbar--boxes">'), html.indexOf("<table"));
+    expect(bar).toMatch(/^<div class="lc-toolbar lc-toolbar--boxes"><span class="lc-menu lc-menu--new"><button type="button" class="lc-menu__trigger" data-menu="new" aria-haspopup="true" aria-expanded="false"><i class="fas fa-plus" inert><\/i> New game /);
+    for (const [action, label] of NEW_BUTTONS) expect(bar).toContain(`<button type="button" class="lc-menu__item" data-action="${action}">${esc(label)}</button>`);
+    // One button to open, the starter beside it: the seven are in the list, shut.
+    expect(bar.slice(0, bar.indexOf('<span class="lc-menu__list"'))).not.toContain("data-action");
+    expect(bar).toContain('<span class="lc-menu__list" role="group" hidden>');
     // One status line, and it is not in the toolbar any more.
     expect(html.match(/lc-manager__status"/g)).toHaveLength(1);
     expect(html).toContain('<table class="lc-table lc-table--stack lc-table--boxes"');

@@ -47,6 +47,7 @@
 // Tester" in "Loot Crates Test".
 /* global game, Hooks, foundry, fromUuid, Item, ui, __lc */
 const { chromium } = require("playwright");
+const { pressIn } = require("./lib/menu.cjs");
 const { ticketCount } = require("./lib/ticketcount.cjs");
 const FOUNDRY = process.env.FOUNDRY_URL || "http://localhost:30000";
 const MODULE_BASE = process.env.MODULE_BASE || "http://localhost:8766/";
@@ -228,7 +229,7 @@ async function pressUse(page, itemId) {
     const ticketsOf = boxId => gm.page.evaluate(({ boxId }) => game.items.filter(i => i.flags?.["loot-crates"]?.ticket?.boxId === boxId).map(i => ({ id: i.id, name: i.name, type: i.type, folder: i.folder?.name ?? null, folderFlag: !!i.folder?.flags?.["loot-crates"]?.tickets, activity: i.system.activities?.contents?.map(a => `${a.type}:${a.name}`) ?? [], value: i.system.price?.value })), { boxId });
     out.make = {};
     for (const [key, boxId] of [["scratch", scratchId], ["crate", crateId]]) {
-      await gm.page.locator(`#loot-crates-manager [data-action="makeTicket"][data-box="${boxId}"]`).click();
+      await pressIn(gm.page, `#loot-crates-manager [data-action="makeTicket"][data-box="${boxId}"]`);
       await gm.page.waitForFunction(id => game.items.some(i => i.flags?.["loot-crates"]?.ticket?.boxId === id), boxId, { timeout: 8000 });
       await gm.page.waitForTimeout(200);
       const items = await ticketsOf(boxId);

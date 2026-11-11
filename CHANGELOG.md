@@ -6,6 +6,8 @@ The newest numbered entry's version is the one in `module/module.json`, and its 
 
 ## Unreleased
 
+- The Boxes tab is quieter. Its eight toolbar buttons are now **New game** (which lists the seven kinds) and Add starter crates, and each row shows three controls where it had six: the shelf's switch, **Edit**, and a **More** menu with Make a ticket, Reshuffle or Print a new roll, Copy and Delete, in words where three were icons. A new game is one press further away than it was. The table also fits its pane at every width now; between 560 and about 580 pixels its last buttons used to run off the edge.
+
 - A crate's spin teases half as often. A spin that could show a better item beside the result did so six times in ten, which made the near-miss the usual ending; it is now three in ten.
 
 - Buttons answer a press: every button dips a pixel and darkens while it is held, where before nothing changed until whatever it started had drawn.

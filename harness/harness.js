@@ -180,6 +180,7 @@ import { wirePoolPicker } from "../module/scripts/views/poolpicker.js";
 import { parsePrice } from "../module/scripts/core/currency.js";
 import { poolRows, sortRows, defaultView, poolToOpen, poolSummary, poolBody, pinRecent, dropNotice, poolUsers, dropPreviewHTML, poolNameHTML, bulkAddHTML } from "../module/scripts/views/poolview.js";
 import { boxesTabHTML, shelfAllHTML } from "../module/scripts/views/boxestable.js";
+import { wireMenus } from "../module/scripts/views/menu.js";
 import { managerNavHTML, shopControls, shopEmptyHTML, statusBarHTML } from "../module/scripts/views/route.js";
 import { logTableHTML } from "../module/scripts/views/logtable.js";
 import { economyHTML } from "../module/scripts/views/economy.js";
@@ -272,6 +273,18 @@ if (state !== "welcome" && state !== "shop" && state !== "manager" && state !== 
 }
 
 const stage = document.getElementById("stage");
+// The manager's menus (views/menu.js), wired once as the manager wires its
+// window's content. ?menu=new|row|last opens one once the state has drawn:
+// the toolbar's New game, the first row's More, or the last row's with the
+// pane scrolled to its foot (where it must open upward).
+wireMenus(stage);
+if (q.get("menu")) setTimeout(() => {
+  const which = q.get("menu");
+  const rows = [...stage.querySelectorAll(".lc-menu--row [data-menu]")];
+  const trigger = which === "new" ? stage.querySelector(".lc-menu--new [data-menu]") : which === "last" ? rows.at(-1) : rows[0];
+  if (which === "last") { const pane = stage.querySelector(".lc-tab"); if (pane) pane.scrollTop = pane.scrollHeight; }
+  trigger?.click();
+}, 0);
 
 /*
   ?linger: the countdown a finished window starts once its result shows

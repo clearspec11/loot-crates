@@ -37,6 +37,7 @@
 // seeded. Needs "Crate Tester" in "Loot Crates Test". One purchase.
 /* global game, Hooks, foundry, fromUuid, __lc */
 const { chromium } = require("playwright");
+const { pressIn } = require("./lib/menu.cjs");
 const FOUNDRY = process.env.FOUNDRY_URL || "http://localhost:30000";
 const MODULE_BASE = process.env.MODULE_BASE || "http://localhost:8766/";
 const PLAYER = process.env.PLAYER || "Player2";
@@ -192,7 +193,7 @@ const lineText = line => [line.count, ...line.parts.map(q => (q.item ? `item.${q
       __lc.click(__lc.app.element.querySelector('.lc-tabs [data-tab="boxes"]'));
       await __lc.until(() => __lc.app.tab === "boxes" && __lc.app.element.querySelector('[data-action="addScratch"]'), 8000);
     }, { base: MODULE_BASE, helpers: HELPERS });
-    await gm.page.locator('#loot-crates-manager [data-action="addScratch"]').click();
+    await pressIn(gm.page, '#loot-crates-manager [data-action="addScratch"]');
     const dlg = gm.page.locator(".application.lc-dialog").last();
     await dlg.locator('input[name="name"]').waitFor({ timeout: 8000 });
     await dlg.locator('input[name="name"]').fill(NAME);

@@ -106,7 +106,8 @@ const shot = process.argv.includes("--shot") ? process.argv[process.argv.indexOf
       const wr = app.getBoundingClientRect();
       const inside = el => { const r = el.getBoundingClientRect(); return r.width > 0 && r.left >= pr.left - 1 && r.right <= pr.right + 1 && r.left >= wr.left - 1 && r.right <= wr.right + 1; };
       const label = b => b.getAttribute("aria-label") ?? b.textContent.trim();
-      const buttons = [...panel.querySelectorAll("button")];
+      // The buttons on show: a shut menu's items (New game's, a row's More) take no room.
+      const buttons = [...panel.querySelectorAll("button")].filter(b => b.getBoundingClientRect().width > 0);
       // The stacking table (Boxes, Pull log), not the economy readout's, which scrolls in its box.
       const rows = [...panel.querySelectorAll(".lc-table--stack tbody tr")];
       return {
@@ -181,7 +182,7 @@ const shot = process.argv.includes("--shot") ? process.argv[process.argv.indexOf
     out.stacks = stacks;
     out.ok = Math.abs(out.resize.to - WIDTH) <= 4
       && b.tab === "boxes" && b.sideways <= 0 && b.toolbarFits && out.newActions.length > 0 && out.newActions.every(a => b.newButtons.includes(a)) && b.rows > 0 && b.stacked === stacks && b.headerHidden === stacks && b.roles
-      && b.tags.every(Boolean) && b.crateTag === "Crate" && b.offScreen.length === 0 && b.actions.every(a => a.slice(-3).join("|") === "editBox|copyBox|deleteBox")
+      && b.tags.every(Boolean) && b.crateTag === "Crate" && b.offScreen.length === 0 && b.actions.every(a => a.slice(-2).join("|") === "copyBox|deleteBox" && a.includes("editBox"))
       && out.edit.opened && out.edit.title === "Edit crate" && out.edit.closed && !out.edit.written
       && l.tab === "log" && l.sideways <= 0 && l.offScreen.length === 0 && (l.rows === 0 || (l.stacked === stacks && l.roles))
       && out.keyboard.focused && out.keyboard.opened && /^Edit /.test(out.keyboard.title ?? "") && (out.keyboard.escapeClosed || out.keyboard.cancelClosed) && !out.keyboard.written

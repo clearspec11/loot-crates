@@ -407,7 +407,7 @@ describe("Put all on the shelf, after starter crates", () => {
     };
     const app = await manager();
     await app.addStarterCrates();
-    expect(status(app)).toBe("Added 3 starter games, all off the shelf. Players can't see them yet: look each one over and press On the shelf on its row, or Put all on the shelf.");
+    expect(status(app)).toBe("Added 3 starter games, all off the shelf. Players can't see them yet: look each one over and turn on Shelf on its row, or Put all on the shelf.");
     const all = app.element.querySelector('[data-action="shelfAll"]');
     expect(all.textContent.trim()).toBe("Put all on the shelf");
     // Beside the words, not inside the region a screen reader reads out.

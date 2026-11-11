@@ -297,7 +297,7 @@ const READ_SHOP = `globalThis.__lcCards = () => [...document.querySelectorAll("#
     const price = Number(source.price) || 0;
     const expectedStatus = out.before.shopOpen ? `${copyName} is on the shelf at ${formatPrice(source.price)}.` : `${copyName} added. The shop is closed, so players can't see it yet.`;
     out.checks = {
-      rowButton: o.label === `Copy ${BOX}` && o.cell.slice(-3).join("|") === "editBox|copyBox|deleteBox",
+      rowButton: o.label === `Copy ${BOX}` && o.cell.slice(-2).join("|") === "copyBox|deleteBox" && o.cell.includes("editBox"),
       dialog: o.title === "Copy crate" && o.okLabel === addLabel && o.name === copyName && o.nameFocused,
       dialogHoldsSource: o.price === price && o.priceText === formatPrice(source.price) && same(o.pools, srcPools) && same(o.weights, weightsOf(source)) && o.pity.minRarity === (source.rules?.pity?.minRarity ?? "") && o.noDuplicates === !!source.rules?.noDuplicates && !o.restock && /\d+%/.test(o.preview ?? ""),
       writesNothingWhileOpen: o.boxes === out.before.boxIds.length && o.boxesLater === out.before.boxIds.length && out.openCards === out.shop.cards,

@@ -105,6 +105,7 @@ import { wireFill } from "../games/scratchplan.js";
 import { lotOf, lotFromEntry, draftAuction, auctionPreview, auctionPreviewHTML, auctionSummary } from "../games/auction.js";
 import { newDraft, crateFromPool, crateFromTable, copyOf, editorTitle, addLabel, addedNotice, deleteTitle, deleteGameText, deletedNotice } from "../views/newgame.js";
 import { boxesTabHTML, shelfAllHTML } from "../views/boxestable.js";
+import { wireMenus } from "../views/menu.js";
 import { logTableHTML, logRarityNote, logPayoutNote, logStakeNote, logLateNote } from "../views/logtable.js";
 import { economyHTML } from "../views/economy.js";
 // The log's notes stay reachable here for the checks that import them from the manager.
@@ -1727,6 +1728,9 @@ export class CrateManager extends ApplicationV2 {
   // focus on the same control when it is drawn again, and the caret in a
   // search, instead of sending a keyboard or screen-reader user to the top.
   _replaceHTML(result, content) {
+    // The tab's menus (New game, a row's More): wired once on the window's
+    // content, which outlives every redraw of what is in it.
+    wireMenus(content);
     const active = content.contains(document.activeElement) ? document.activeElement : null;
     const key = active ? focusKey(active) : null;
     const typed = active?.matches?.("input[data-box-price]") || active?.matches?.('input[data-curate="weight"]');
@@ -1781,7 +1785,7 @@ export function tabAfter(keys, current, key) {
 
 // A selector that finds the same control in a fresh render: its tag, its
 // search class, and whichever of the data attributes that identify it are set.
-const FOCUS_ATTRS = ["action", "curate", "pool", "uuid", "chip", "tab", "box", "row", "boxPrice", "period", "logFilter"];
+const FOCUS_ATTRS = ["action", "curate", "pool", "uuid", "chip", "tab", "box", "row", "boxPrice", "period", "logFilter", "menu"];
 const dataAttr = key => `data-${key.replace(/[A-Z]/g, c => `-${c.toLowerCase()}`)}`;
 function focusKey(el) {
   if (el.matches("summary")) {

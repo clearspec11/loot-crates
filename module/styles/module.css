@@ -1167,9 +1167,9 @@
 .loot-crates .lc-table td:last-child { white-space: nowrap; text-align: right; }
 /* A row's text button (Reshuffle, Open a round) takes a line of its own over
    the icons, and a refund's "refunded <when>" may wrap: the buttons' cell is
-   the one that never wraps, so it stays as narrow as the three icons and the
+   the one that never wraps, so it stays as narrow as Edit and More and the
    table fits every pane wider than the stacked rows' (560 px, below). */
-.loot-crates .lc-table td:last-child .lc-table__extra { display: block; margin: 0 0 4px auto; }
+.loot-crates .lc-table td:last-child .lc-table__extra { display: block; margin: 0 0 4px auto; white-space: normal; text-wrap: balance; }
 .loot-crates .lc-table td:last-child .lc-log__status { white-space: normal; }
 .loot-crates .lc-dot { display: inline-block; width: 7px; height: 7px; background: var(--lc-rarity); margin-right: 7px; transform: rotate(45deg); }
 /* A refunded pull reads as withdrawn, as its chat card does. */
@@ -1210,6 +1210,28 @@
 .loot-crates .lc-table tr.lc-row--off td:not(:last-child) { color: var(--lc-ink-mute); }
 .loot-crates .lc-table tr.lc-row--off td .lc-ribbon, .loot-crates .lc-table tr.lc-row--off td .lc-odds { filter: grayscale(1); }
 .loot-crates .lc-shelf-count { font-size: 12px; color: var(--lc-ink-mute); white-space: nowrap; }
+/* A menu (views/menu.js): one button that opens a short list of the
+   things it holds, in words. The list is a card on the pane, under its
+   trigger (over it, lc-menu__list--up, when the pane has no room beneath),
+   its items quiet rows; a delete sits last, apart, in the warning ink. */
+.loot-crates .lc-menu { position: relative; display: inline-flex; vertical-align: middle; }
+.loot-crates .lc-menu__caret { font-size: 11px; opacity: .8; }
+.loot-crates .lc-menu__list {
+  position: absolute; z-index: 5; top: calc(100% + 4px); left: 0; min-width: 100%; width: max-content; max-width: 260px;
+  display: grid; gap: 1px; padding: 4px; box-sizing: border-box; text-align: left;
+  background: var(--lc-card); border: 1px solid var(--lc-rule); border-radius: var(--lc-radius); box-shadow: var(--lc-shadow);
+}
+.loot-crates .lc-menu__list[hidden] { display: none; }
+.loot-crates .lc-menu__list--up { top: auto; bottom: calc(100% + 4px); }
+.loot-crates .lc-menu--row .lc-menu__list { left: auto; right: 0; }
+.loot-crates .lc-menu__list .lc-menu__item {
+  display: flex; justify-content: flex-start; width: 100%; min-height: 30px; padding: 0 10px; margin: 0;
+  border-color: transparent; background: none; white-space: nowrap; font-size: 13px;
+}
+.loot-crates .lc-menu__list .lc-menu__item:hover, .loot-crates .lc-menu__list .lc-menu__item:focus-visible { background: var(--lc-row-alt); border-color: var(--lc-rule-soft); }
+.loot-crates .lc-menu__list .lc-menu__item--danger { margin-top: 4px; color: var(--lc-warn); }
+.loot-crates .lc-menu--row .lc-menu__trigger { min-width: 34px; padding: 0 9px; }
+.loot-crates .lc-menu__trigger[aria-expanded="true"] { border-color: var(--lc-rule); background: var(--lc-row-alt); }
 .loot-crates .lc-form__shelf { margin-top: 4px; font-weight: 600; }
 /* While the game can't be played (editorguard.js wireShelf) the box is off
    and looks it, and the reason sits right under it, not a full gap away. */

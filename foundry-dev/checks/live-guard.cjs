@@ -31,6 +31,7 @@
 // Needs "Crate Tester" in "Loot Crates Test" and "Live UI pool" (live-ui.js).
 /* global game, Hooks, foundry, __lc */
 const { chromium } = require("playwright");
+const { pressIn } = require("./lib/menu.cjs");
 const FOUNDRY = process.env.FOUNDRY_URL || "http://localhost:30000";
 const MODULE_BASE = process.env.MODULE_BASE || "http://localhost:8766/";
 const PLAYER = process.env.PLAYER || "Player2";
@@ -178,7 +179,7 @@ const READ_SHOP = `globalThis.__lcCards = () => [...document.querySelectorAll("#
     out.unchanged = await read();
 
     // 4. New crate with no pool: Save off the shelf.
-    await gm.page.locator('[data-action="addBox"]').click();
+    await pressIn(gm.page, '[data-action="addBox"]');
     await editor().locator('input[name="name"]').waitFor({ timeout: 8000 });
     await gm.page.waitForTimeout(300);
     out.offShelf = await gm.page.evaluate(() => {

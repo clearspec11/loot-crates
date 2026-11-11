@@ -31,6 +31,7 @@
 // Deleted in a finally: only the crates and pools this run made. No purchase.
 /* global game, foundry, __lc */
 const { chromium } = require("playwright");
+const { openMenuFor } = require("./lib/menu.cjs");
 const FOUNDRY = process.env.FOUNDRY_URL || "http://localhost:30000";
 const MODULE_BASE = process.env.MODULE_BASE || "http://localhost:8766/";
 const shot = process.argv.includes("--shot") ? process.argv[process.argv.indexOf("--shot") + 1] : null;
@@ -195,6 +196,8 @@ const GM_HELPERS = `
     out.made.boxes.push(out.a.saved.id);
 
     // ---------- B. Make a pool inside an empty crate editor ----------
+    // New crate is in the toolbar's New game: two presses, both counted.
+    if (await openMenuFor(page, '#loot-crates-manager [data-action="addBox"]')) out.clicks.b.push("New game");
     await click("b", "New crate", page.locator('#loot-crates-manager [data-action="addBox"]'));
     await untilTitle("New crate");
     out.b = { editor: await page.evaluate(() => {

@@ -466,7 +466,7 @@ describe("Copy", () => {
     await store.setActorState("A", "b1", { pity: 4, owned: ["Item.a"] });
   };
 
-  it("is on every row, naming the game, beside Edit", async () => {
+  it("is on every row, naming the game, in the row's More", async () => {
     await store.saveBox(SOURCE);
     await store.saveBox({ id: "w1", kind: "well", name: "Old Well", price: 0.1, pools: [], weights: {}, odds: { nothing: 90, coin: 8, item: 2 }, rules: { cap: 3 } });
     const app = await manager();
@@ -474,10 +474,11 @@ describe("Copy", () => {
       const copy = app.element.querySelector(`.lc-table [data-action="copyBox"][data-box="${id}"]`);
       expect(copy).not.toBeNull();
       expect(copy.getAttribute("aria-label")).toBe(`Copy ${name}`);
-      expect(copy.getAttribute("data-tooltip")).toBe("Copy");
+      expect(copy.textContent).toBe("Copy");
+      expect(copy.closest(".lc-menu__list").hidden).toBe(true);
       const cell = copy.closest("td");
       const actions = [...cell.querySelectorAll("[data-action]")].map(b => b.getAttribute("data-action"));
-      expect(actions).toEqual(["toggleShelf", "makeTicket", "editBox", "copyBox", "deleteBox"]);
+      expect(actions).toEqual(["toggleShelf", "editBox", "makeTicket", "copyBox", "deleteBox"]);
     }
   });
 
@@ -764,7 +765,7 @@ describe("On the shelf", () => {
     expect(store.getBoxes().b1.rules.shelved).toBe(false);
     expect(store.getBoxes().w1.rules).toEqual({ cap: 3 });
     expect(toggle().getAttribute("aria-pressed")).toBe("false");
-    expect(toggle().textContent).toBe("On the shelf");
+    expect(toggle().textContent).toBe("Shelf");
     expect(focused()).toBe(toggle());
     expect(status(app).textContent).toBe("Gilded Crate is off the shelf; players can't see it.");
     expect(app.element.querySelector(".lc-shelf-count").textContent).toBe("1 of 2 on the shelf");
