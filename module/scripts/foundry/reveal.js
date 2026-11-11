@@ -121,8 +121,8 @@ import { withLimit } from "../core/limits.js";
 // side reaches the other only inside a function.
 import { requestPull, requestGive, requestSell } from "./socket.js";
 import { onParted } from "./handover.js";
-import { rowItems, giveTargets, sellBackOf, sellCp, heldWorth, partSentence } from "../core/afterplay.js";
-import { afterHTML, wireAfter, setBusy, refused, showPart, spectatorLine } from "../views/afterreveal.js";
+import { rowItems, giveTargets, sellBackOf, sellCp, heldWorth, partSentence, partWhere } from "../core/afterplay.js";
+import { afterHTML, wireAfter, setBusy, refused, showPart, spectatorLine, whereAfter } from "../views/afterreveal.js";
 import { formatGold } from "../core/currency.js";
 // The dice game's 3D dice bridge (Dice So Nice), set wherever reveals show.
 import "./dicereveal.js";
@@ -574,9 +574,19 @@ export class CrateReveal extends ApplicationV2 {
 
   /* ---------- After the reveal ---------- */
 
-  // What became of each item, as this window says it (by item id): from
-  // the winner's own answer, or for anyone else from the GM's broadcast.
+  // What became of each item, as this window says it (by item id, { text,
+  // where }): from the winner's own answer, or for anyone else from the
+  // GM's broadcast. A play of one item says it once, in the result's own
+  // line (`where`, in place of "Added to ...'s inventory"); with several,
+  // each item's row says it (`text`), and the result's line stops saying
+  // "Added to" once every item has gone.
   #parts = new Map();
+  #solo() { return rowItems(this.reveal).length === 1; }
+  #sayWhere(root) {
+    const items = rowItems(this.reveal);
+    if (!root || !items.length || items.some(i => !this.#parts.has(i.id))) return;
+    whereAfter(root.querySelector(".lc-reveal__result"), items.length === 1 ? this.#parts.get(items[0].id).where : "");
+  }
 
   // The winner's offer (views/afterreveal.js afterHTML), or null: only for
   // the buyer's own first reveal of a pulled game that granted items.
@@ -618,7 +628,8 @@ export class CrateReveal extends ApplicationV2 {
         onPick: open => (open ? this.linger.pause("picking") : this.linger.resume("picking")),
       });
     }
-    for (const [itemId, text] of this.#parts) spectatorLine(slot, itemId, text, { esc });
+    if (!this.#solo()) for (const [itemId, part] of this.#parts) spectatorLine(slot, itemId, part.text, { esc });
+    this.#sayWhere(root);
     slot.hidden = !slot.childElementCount;
   }
 
@@ -633,12 +644,15 @@ export class CrateReveal extends ApplicationV2 {
         ? await requestGive({ logId: r.logId, itemId: args.itemId, targetId: args.targetId })
         : await requestSell({ logId: r.logId, itemId: args.itemId, cp: args.cp });
       if (answer?.type === "parted") this.#landPart(answer);
-      if (what === "give") this.linger.resume("picking");
+      this.linger.resume("picking");
     } catch (err) {
       // The house's price now, should it have changed (the sell button follows).
       const box = getBoxes()[r.box?.id] ?? null;
       const cp = what === "sell" ? this.#sellCp(args.itemId, box ? sellBackOf(box) : 0) : null;
       refused(li, err?.message ?? "", { cp });
+      // A sale refused is back at Sell back (its "sell it?" shut); a gift
+      // refused keeps its picker open.
+      if (what === "sell") this.linger.resume("picking");
     } finally {
       this.linger.resume("parting");
     }
@@ -651,10 +665,12 @@ export class CrateReveal extends ApplicationV2 {
     const root = this.element;
     const slot = root?.querySelector(".lc-reveal__after");
     if (!slot) return;
-    const text = partSentence(answer.part, { actor: this.reveal.actorName, item: answer.itemName });
-    this.#parts.set(answer.itemId, text);
+    const part = { text: partSentence(answer.part, { actor: this.reveal.actorName, item: answer.itemName }), where: partWhere(answer.part) };
+    this.#parts.set(answer.itemId, part);
     const had = slot.contains(document.activeElement);
-    const next = showPart(slot, answer.itemId, text);
+    const next = showPart(slot, answer.itemId, this.#solo() ? "" : part.text);
+    this.#sayWhere(root);
+    slot.hidden = !slot.childElementCount;
     if (had && !this.#closed) this.linger.focus(next ?? root.querySelector(".lc-reveal__close"));
     if (answer.itemId === this.reveal.itemId) root.querySelector(".lc-reveal__open").hidden = true;
     const gold = root.querySelector(".lc-reveal__gold");
@@ -675,12 +691,15 @@ export class CrateReveal extends ApplicationV2 {
       }
       return;
     }
-    const text = partSentence(msg.part, { actor: msg.actorName ?? this.reveal.actorName, item: msg.itemName ?? "" });
-    this.#parts.set(msg.itemId, text);
+    const part = { text: partSentence(msg.part, { actor: msg.actorName ?? this.reveal.actorName, item: msg.itemName ?? "" }), where: partWhere(msg.part) };
+    this.#parts.set(msg.itemId, part);
     const slot = this.element?.querySelector(".lc-reveal__after");
     if (!slot || this.#landedAt === -Infinity || this.#closed) return;
-    spectatorLine(slot, msg.itemId, text, { esc });
-    slot.hidden = false;
+    if (!this.#solo()) {
+      spectatorLine(slot, msg.itemId, part.text, { esc });
+      slot.hidden = false;
+    }
+    this.#sayWhere(this.element);
   }
 
   static async #openItem(_event, button) {

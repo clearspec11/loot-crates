@@ -1015,7 +1015,7 @@ function result(reveal, { esc = String, canSee = false } = {}) {
   if (outcome === "item" && reveal.result?.rarity && items.length <= 1 && !coins) return resultHTML(reveal, { esc, canSee, extra: left });
   if (outcome === "item" && items.length) {
     const where = [];
-    if (reveal.itemUuid) where.push(t("LOOTCRATES.Reveal.AddedTo", { name: esc(reveal.actorName) }));
+    if (reveal.itemUuid) where.push(`<span class="lc-reveal__added">${t("LOOTCRATES.Reveal.AddedTo", { name: esc(reveal.actorName) })}</span>`);
     if (coins) where.push(intoPurse(reveal, esc));
     if (canSee && reveal.purse) where.push(`<span class="lc-reveal__gold">${t("LOOTCRATES.Reveal.GoldLeft", { gold: esc(formatGold(reveal.purse)) })}</span>`);
     where.push(...left);

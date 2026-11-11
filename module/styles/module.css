@@ -538,10 +538,10 @@
 .loot-crates .lc-after__items { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .loot-crates .lc-after__item { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-width: 0; }
 .loot-crates .lc-after__name { flex: 1 1 10em; min-width: 0; font-family: var(--lc-slab); font-size: 13px; font-weight: 700; color: var(--lc-ink); overflow-wrap: anywhere; }
-.loot-crates .lc-after__acts, .loot-crates .lc-after__pick { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-left: auto; }
-.loot-crates .lc-after__acts[hidden], .loot-crates .lc-after__pick[hidden] { display: none; }
+.loot-crates .lc-after__acts, .loot-crates .lc-after__pick, .loot-crates .lc-after__sure { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-left: auto; }
+.loot-crates .lc-after__acts[hidden], .loot-crates .lc-after__pick[hidden], .loot-crates .lc-after__sure[hidden] { display: none; }
 .loot-crates .lc-after__item button { min-height: 32px; white-space: nowrap; }
-.loot-crates .lc-after__pick-label { font-size: 13px; color: var(--lc-ink-soft); }
+.loot-crates .lc-after__pick-label, .loot-crates .lc-after__sure-label { font-size: 13px; line-height: 1.35; color: var(--lc-ink-soft); }
 .loot-crates .lc-after__target { min-height: 32px; max-width: 100%; min-width: 0; width: auto; }
 .loot-crates .lc-after__said { flex: 1 0 100%; font-size: 13px; line-height: 1.35; color: var(--lc-ink-soft); }
 .loot-crates .lc-after__said:empty { display: none; }
@@ -1485,9 +1485,9 @@
   .loot-crates .lc-shop__field--purse { margin-left: 0; text-align: left; }
   .loot-crates .lc-shop__purse { justify-content: flex-start; }
   .loot-crates .lc-reveal__name { font-size: 28px; }
-  .loot-crates .lc-after__acts, .loot-crates .lc-after__pick { margin-left: 0; flex: 1 1 100%; }
-  .loot-crates .lc-after__acts button, .loot-crates .lc-after__pick button { flex: 1 1 auto; }
-  .loot-crates .lc-after__pick-label { flex: 1 0 100%; }
+  .loot-crates .lc-after__acts, .loot-crates .lc-after__pick, .loot-crates .lc-after__sure { margin-left: 0; flex: 1 1 100%; }
+  .loot-crates .lc-after__acts button, .loot-crates .lc-after__pick button, .loot-crates .lc-after__sure button { flex: 1 1 auto; }
+  .loot-crates .lc-after__pick-label, .loot-crates .lc-after__sure-label { flex: 1 0 100%; }
   .loot-crates .lc-after__target { flex: 1 0 100%; }
   .loot-crates .lc-rail__row--numbers { grid-template-columns: repeat(4, 1fr); }
   .loot-crates .lc-rail__row--outside { grid-template-columns: repeat(2, 1fr); }

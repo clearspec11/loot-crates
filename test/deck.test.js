@@ -669,7 +669,7 @@ describe("the words", () => {
     expect(kind.reveal.result(reveal({ card: { label: "Fortune", kind: "item" }, tone: "blank", note: "its pools held nothing" }), { esc })).toContain("Nothing happens: its pools held nothing");
     const boon = kind.reveal.result(reveal({ card: { label: "Fortune", kind: "item" }, tone: "boon", result: { name: "Ring of Wishes", rarity: "legendary" }, itemUuid: "Actor.a1.Item.i" }), { esc, canSee: true });
     expect(boon).toContain(`<div class="lc-reveal__name">Ring of Wishes</div>`);
-    expect(boon).toContain("Added to Brinn's inventory · <span class=\"lc-reveal__gold\">140 gp left</span> · 5 of 5 cards left");
+    expect(boon).toContain("<span class=\"lc-reveal__added\">Added to Brinn's inventory</span> · <span class=\"lc-reveal__gold\">140 gp left</span> · 5 of 5 cards left");
     expect(cardsLeftText(1, 1)).toBe("1 of 1 card left");
   });
 

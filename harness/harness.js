@@ -142,9 +142,12 @@
   ?after=1 | multi | watch (landed: after the reveal, afterreveal.js, as
   reveal.js mounts it once landed: 1 the buyer's Give to… and Sell back for
   75 gp under the vault, multi the same for a play that granted two items
-  (each named, a pair each), watch the line a spectator sees once the
-  buyer gave the item away. Give (after picking) and Sell back answer here
-  after a beat, as the GM would, and the row says what happened.)
+  (each named, a pair each), watch what a spectator sees once the buyer
+  gave the one item away (the result's own line says "Given to Saria
+  Vell"), watch2 the same for a play of two (a line under the vault).
+  Sell back asks once more in place before it sells. Give (after picking)
+  and Sell (after the ask) answer here after a beat, as the GM would: a
+  play of one item says it in the result's line, of several in its rows.)
   ?state=welcome (the GM's welcome, welcome.js: a world with games, so Open
   the manager is the primary and has focus; ?empty=1, a new world, where
   Add starter crates is; ?view=news, "What's new in 0.14.0" after an
@@ -192,8 +195,8 @@ import { actorPicker, boxCard, oddsRibbon, shopHTML, shopNotice, patchShop, draf
 import { shopOdds } from "../module/scripts/core/odds.js";
 import { loadStrings } from "../module/scripts/core/i18n.js";
 import { Linger, lingerMs } from "../module/scripts/core/linger.js";
-import { afterHTML, wireAfter, setBusy, showPart, spectatorLine } from "../module/scripts/views/afterreveal.js";
-import { partSentence } from "../module/scripts/core/afterplay.js";
+import { afterHTML, wireAfter, setBusy, showPart, spectatorLine, whereAfter } from "../module/scripts/views/afterreveal.js";
+import { partSentence, partWhere } from "../module/scripts/core/afterplay.js";
 
 // The module's words (module/lang/en.json), in before anything is drawn,
 // as main.js loads them in a world.
@@ -449,7 +452,14 @@ function afterReveal(stageEl, { itemName, close, purse: left }) {
   if (!mode || !slot) return;
   const actor = "Tam Thornwick";
   const say = part => partSentence(part, { actor, item: itemName });
+  // A play of one item says what became of it in the result's own line
+  // (whereAfter), as reveal.js does; ?after=watch2 is a spectator of a
+  // play of two, whose rows say it.
   if (mode === "watch") {
+    whereAfter(stageEl, partWhere({ given: { actorName: "Saria Vell" } }));
+    return;
+  }
+  if (mode === "watch2") {
     spectatorLine(slot, "i1", say({ given: { actorName: "Saria Vell" } }));
     slot.hidden = false;
     return;
@@ -460,7 +470,11 @@ function afterReveal(stageEl, { itemName, close, purse: left }) {
   slot.hidden = false;
   const answer = (li, itemId, part) => setTimeout(() => {
     const had = slot.contains(document.activeElement);
-    const next = showPart(slot, itemId, partSentence(part, { actor, item: items.find(i => i.id === itemId).name }));
+    const solo = items.length === 1;
+    const next = showPart(slot, itemId, solo ? "" : partSentence(part, { actor, item: items.find(i => i.id === itemId).name }));
+    if (solo) whereAfter(stageEl, partWhere(part));
+    else if (!slot.querySelector(".lc-after__item:not([data-parted])")) whereAfter(stageEl, "");
+    slot.hidden = !slot.childElementCount;
     if (had) (next ?? close).focus({ preventScroll: true });
     // As reveal.js does: the item is gone from the sheet, a sale's coins in the gold line.
     if (itemId === "i1") stageEl.querySelector(".lc-reveal__open").hidden = true;

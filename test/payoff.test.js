@@ -132,7 +132,7 @@ describe("the reveal's result block", () => {
     const html = resultHTML(reveal, { esc, canSee: true });
     expect(html).toContain('<div class="lc-reveal__name">Flame Tongue</div>');
     expect(html).toContain("Rare");
-    expect(html).toContain("Added to Crate &lt;Tester&gt;'s inventory · <span class=\"lc-reveal__gold\">450 gp 5 sp left</span>");
+    expect(html).toContain("<span class=\"lc-reveal__added\">Added to Crate &lt;Tester&gt;'s inventory</span> · <span class=\"lc-reveal__gold\">450 gp 5 sp left</span>");
   });
 
   it("tells the rest of the table where it went, not the buyer's gold", () => {

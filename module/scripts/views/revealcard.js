@@ -62,7 +62,9 @@ export function canSeePurse(reveal, viewer = {}) {
 export function resultHTML(reveal, { esc = String, canSee = false, extra = [] } = {}) {
   const res = reveal.result;
   const where = [];
-  if (reveal.itemUuid) where.push(t("LOOTCRATES.Reveal.AddedTo", { name: esc(reveal.actorName) }));
+  // In its own span: what became of the item after the reveal is said
+  // here in its place (afterreveal.js whereAfter).
+  if (reveal.itemUuid) where.push(`<span class="lc-reveal__added">${t("LOOTCRATES.Reveal.AddedTo", { name: esc(reveal.actorName) })}</span>`);
   if (canSee && reveal.purse) where.push(`<span class="lc-reveal__gold">${t("LOOTCRATES.Reveal.GoldLeft", { gold: esc(formatGold(reveal.purse)) })}</span>`);
   where.push(...extra);
   return `<div class="lc-reveal__name">${esc(res.name)}</div>`

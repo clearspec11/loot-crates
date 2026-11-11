@@ -58,11 +58,15 @@ const STATES = [
   // buyer's Give to… and Sell back for 75 gp for the one item, and a pair
   // for each of two; Give to… pressed (the picker in its place, the select
   // focused, the other players' characters named with their players); Sell
-  // back pressed (the row says what was sold, focus back on Close); and a
-  // spectator's window, the line alone with no buttons.
+  // back pressed once (it asks in place, "Sell ... back for 75 gp? This
+  // can't be undone.", Sell focused, nothing sold) and pressed through
+  // (the result's own line says "Sold back for 75 gp" where "Added to"
+  // stood, nothing under it, focus on Close); and a spectator's window,
+  // whose result line says who it was given to, with no buttons.
   ["landed-after", "state=landed&seed=7&buyer=1&after=1"],
   ["landed-after-multi", "state=landed&seed=7&buyer=1&after=multi"],
   ["landed-after-give", "state=landed&seed=7&buyer=1&after=1"],
+  ["landed-after-sure", "state=landed&seed=7&buyer=1&after=1"],
   ["landed-after-sold", "state=landed&seed=7&buyer=1&after=1"],
   ["landed-after-watch", "state=landed&seed=7&after=watch"],
   // "Watch again" from the chat card: the replay window, titled as a replay,
@@ -1278,9 +1282,26 @@ function afterProblems(mode) {
   const out = [];
   const shown = el => !!el && !el.hidden && el.getBoundingClientRect().height > 0;
   const slot = document.querySelector(".lc-reveal__after");
-  if (!shown(slot)) return ["no after-the-reveal section"];
   const item = document.querySelector(".lc-reveal__name")?.textContent ?? "";
   const words = el => el?.textContent.replace(/\s+/g, " ").trim() ?? "";
+  // A play of one item says what became of it once, in the result's own
+  // line where "Added to ...'s inventory" stood, and nothing under it.
+  if (mode === "watch" || mode === "sold") {
+    const where = words(document.querySelector(".lc-reveal__where"));
+    const result = words(document.querySelector(".lc-reveal__result"));
+    if (shown(slot)) out.push(`the section under the vault still shows: "${words(slot)}"`);
+    if (/Added to/.test(result)) out.push(`the result still says the item was added: "${where}"`);
+    if (mode === "watch" && where !== "Given to Saria Vell") out.push(`a spectator's result line reads "${where}"`);
+    if (mode === "sold") {
+      if (where !== "Sold back for 75 gp · 345 gp 7 sp 3 cp left") out.push(`the result line reads "${where}" once sold`);
+      if (document.activeElement !== document.querySelector(".lc-reveal__close")) out.push("focus didn't go to Close once sold");
+      if (shown(document.querySelector(".lc-reveal__open"))) out.push("Open item is still offered for the item sold");
+    }
+    const line = document.querySelector(".lc-reveal__where");
+    if (line && parseFloat(getComputedStyle(line).fontSize) < 11) out.push("the result line is under 11px");
+    return out;
+  }
+  if (!shown(slot)) return ["no after-the-reveal section"];
   const s = slot.getBoundingClientRect();
   if (s.top < document.querySelector(".lc-vault").getBoundingClientRect().bottom - 1 || s.bottom > document.querySelector(".lc-reveal__actions").getBoundingClientRect().top + 1) out.push("the section isn't between the vault and the window's buttons");
   if (/\bKeep\b/.test(slot.textContent)) out.push("the section says Keep");
@@ -1288,16 +1309,17 @@ function afterProblems(mode) {
   const rows = [...slot.querySelectorAll(".lc-after__item")];
   const lead = words(slot.querySelector(".lc-after__lead"));
   const close = document.querySelector(".lc-reveal__close");
-  if (mode === "watch") {
-    if (buttons.length) out.push("a spectator sees buttons");
-    if (words(slot) !== `Tam Thornwick gave ${item} to Saria Vell.`) out.push(`a spectator reads "${words(slot)}"`);
-  } else if (mode === "sold") {
-    if (buttons.length) out.push("the sold row still has buttons");
-    if (words(rows[0]?.querySelector(".lc-after__said")) !== `Tam Thornwick sold ${item} back for 75 gp.`) out.push(`the sold row reads "${words(rows[0])}"`);
-    if (lead) out.push("the lead line stayed once nothing is left to choose");
-    if (document.activeElement !== close) out.push("focus didn't go to Close once sold");
-    if (shown(document.querySelector(".lc-reveal__open"))) out.push("Open item is still offered for the item sold");
-    if (!/^345 gp 7 sp 3 cp left$/.test(document.querySelector(".lc-reveal__gold")?.textContent ?? "")) out.push(`the gold line reads "${document.querySelector(".lc-reveal__gold")?.textContent}" once sold`);
+  if (mode === "sure") {
+    // Sell back pressed once: it asks in place, and nothing is sold yet.
+    const sure = rows[0]?.querySelector(".lc-after__sure");
+    const go = sure?.querySelector(".lc-after__sellgo");
+    if (!shown(sure) || shown(rows[0].querySelector(".lc-after__acts"))) out.push("Sell back didn't ask in its place");
+    if (words(sure?.querySelector(".lc-after__sure-label")) !== `Sell ${item} back for 75 gp? This can't be undone.`) out.push(`the ask reads "${words(sure?.querySelector(".lc-after__sure-label"))}"`);
+    if (buttons.map(b => b.textContent).join(" | ") !== "Sell | Cancel") out.push(`the ask's buttons read ${buttons.map(b => b.textContent).join(" | ")}`);
+    if (document.activeElement !== go) out.push("the ask's Sell isn't focused");
+    if (document.body.dataset.parted) out.push("the first press of Sell back sold the item");
+    if (!/Added to Tam Thornwick's inventory/.test(words(document.querySelector(".lc-reveal__where")))) out.push("the result line changed before anything was sold");
+    if (close && document.activeElement === close) out.push("focus left the row");
   } else if (mode === "give") {
     const pick = rows[0]?.querySelector(".lc-after__pick");
     const select = pick?.querySelector("select");
@@ -2962,8 +2984,9 @@ try {
         // Give to… and Sell back pressed as a player does: a click.
         const mode = name.slice("landed-after-".length) || "one";
         if (mode === "give") await page.click(".lc-after__give");
-        if (mode === "sold") { await page.click(".lc-after__sell"); await page.waitForSelector("body[data-parted]", { timeout: 5000 }); }
-        if (mode !== "give" && mode !== "sold") problems0.push(...await page.evaluate(revealProblems, mode !== "watch"));
+        if (mode === "sure") await page.click(".lc-after__sell");
+        if (mode === "sold") { await page.click(".lc-after__sell"); await page.click(".lc-after__sellgo"); await page.waitForSelector("body[data-parted]", { timeout: 5000 }); }
+        if (mode !== "give" && mode !== "sold" && mode !== "sure" && mode !== "watch") problems0.push(...await page.evaluate(revealProblems, mode !== "watch"));
         problems0.push(...await page.evaluate(afterProblems, mode));
       }
       else if (name.startsWith("scratch")) {

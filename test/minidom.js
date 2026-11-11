@@ -21,6 +21,8 @@ class Node {
     for (let n = other; n; n = n.parentNode) if (n === this) return true;
     return false;
   }
+  get nextSibling() { const all = this.parentNode?.childNodes; return all ? all[all.indexOf(this) + 1] ?? null : null; }
+  get previousSibling() { const all = this.parentNode?.childNodes; return all ? all[all.indexOf(this) - 1] ?? null : null; }
   remove() {
     const parent = this.parentNode;
     if (!parent) return;
@@ -55,8 +57,12 @@ class Element extends Node {
     this.dataset = new Proxy({}, {
       get: (_t, k) => el.getAttribute(`data-${String(k).replace(/[A-Z]/g, c => `-${c.toLowerCase()}`)}`) ?? undefined,
       set: (_t, k, v) => { el.setAttribute(`data-${String(k).replace(/[A-Z]/g, c => `-${c.toLowerCase()}`)}`, String(v)); return true; },
+      deleteProperty: (_t, k) => { el.removeAttribute(`data-${String(k).replace(/[A-Z]/g, c => `-${c.toLowerCase()}`)}`); return true; },
     });
   }
+  // The hidden property is the hidden attribute, as in a browser.
+  get hidden() { return this.hasAttribute("hidden"); }
+  set hidden(v) { if (v) this.setAttribute("hidden", ""); else this.removeAttribute("hidden"); }
   getAttribute(name) { return this.attrs.has(name) ? this.attrs.get(name) : null; }
   setAttribute(name, value) { this.attrs.set(name, String(value)); }
   removeAttribute(name) { this.attrs.delete(name); }
