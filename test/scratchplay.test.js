@@ -295,6 +295,40 @@ describe("the table's view and reduced motion", () => {
     expect(most).toBe(1);
   });
 
+  it("on a short screen the stage follows the coin: no panel opens out of its view, and nothing scrolls when it all fits", () => {
+    // A stage 250 px tall over a ticket of four rows, 110 px a row: only two rows fit.
+    const short = (onPanel) => {
+      const m = mount({ buyer: false, onPanel });
+      const stage = m.host.querySelector(".lc-scratch__stage");
+      Object.assign(stage, { scrollTop: 0, clientHeight: 250, scrollHeight: 440 });
+      stage.getBoundingClientRect = () => ({ left: 0, top: 0, width: 440, height: 250, right: 440, bottom: 250 });
+      m.ticket.getBoundingClientRect = () => ({ left: 0, top: -stage.scrollTop, width: 440, height: 440, right: 440, bottom: 440 - stage.scrollTop });
+      m.panels.forEach((p, i) => {
+        const left = (i % 4) * 110, y = Math.floor(i / 4) * 110;
+        p.getBoundingClientRect = () => ({ left, top: y - stage.scrollTop, width: 100, height: 100, right: left + 100, bottom: y + 100 - stage.scrollTop });
+      });
+      return { ...m, stage };
+    };
+    const unseen = [];
+    let s = null;
+    s = short(i => { const r = s.panels[i].getBoundingClientRect(); if (r.top < 0 || r.bottom > 250) unseen.push(i); });
+    s.ctrl.play();
+    const tops = [];
+    while (frames.length) { clock += 16; frames.shift()(clock); tops.push(s.stage.scrollTop); }
+    expect(s.panels.every(isOpen)).toBe(true);
+    expect(unseen).toEqual([]);
+    // It ends with the last row 8 px clear of the stage's foot, having eased there: never a jump of a whole row in one frame.
+    expect(s.stage.scrollTop).toBe(188);
+    expect(Math.max(...tops.map((v, i) => v - (tops[i - 1] ?? 0)))).toBeLessThan(40);
+    expect(tops.every((v, i) => v >= (tops[i - 1] ?? 0))).toBe(true);
+    // A stage that shows the whole ticket is left alone.
+    const tall = short();
+    Object.assign(tall.stage, { clientHeight: 440 });
+    tall.ctrl.play();
+    while (frames.length) { clock += 16; frames.shift()(clock); }
+    expect(tall.stage.scrollTop).toBe(0);
+  });
+
   it("lands within about five seconds whatever the grid", () => {
     const onLand = vi.fn();
     const big = { ...GAME, grid: { cols: 6, rows: 5 } };

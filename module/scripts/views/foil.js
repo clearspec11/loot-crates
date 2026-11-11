@@ -388,10 +388,18 @@ export function mountFoil(ticket, { cols = 4, buyer = false, reducedMotion, dura
       const next = panels.find(p => !p.open && !p.giving);
       if (!next) { sweep.p = null; hideCoin(); return; }
       paint(next);
-      sweep.p = next; sweep.t0 = at; sweep.last = null;
+      sweep.p = next; sweep.t0 = at; sweep.last = null; sweep.ahead = false;
+      follow(next.el);
     }
     const p = sweep.p;
     const k = Math.min(1, (at - sweep.t0) / sweep.per);
+    // Half way across a panel, bring the one after it into view too, so
+    // the coin never starts a row the stage has not reached.
+    if (!sweep.ahead && k > 0.5) {
+      sweep.ahead = true;
+      follow(panels.find(q => q !== p && !q.open && !q.giving)?.el, p.el);
+    }
+    glide(at);
     const x = -p.w * 0.2 + k * p.w * 1.4, y = p.h * (0.35 + 0.3 * Math.sin(k * 7));
     if (p.w > 0) {
       const len = sweep.last ? Math.hypot(x - sweep.last[0], y - sweep.last[1]) : 0;
@@ -406,6 +414,29 @@ export function mountFoil(ticket, { cols = 4, buyer = false, reducedMotion, dura
     }
     sweep.last = [x, y];
     if (k > 0.8) give(p, at);
+  }
+
+  // On a short screen the ticket is taller than its stage: the stage
+  // follows the coin, so the table never watches a panel open out of
+  // view. follow() sets where the stage should be for `el` (never so far
+  // that `keep`, the panel under the coin, leaves the top), and glide()
+  // eases it there on the one loop; nothing else scrolls.
+  function follow(el, keep = null) {
+    const s = scrollFor(el);
+    if (!s) return;
+    if (keep) s.to = Math.min(s.to, Math.max(0, s.box.scrollTop + rectOf(keep).top - rectOf(s.box).top));
+    sweep.scroll = s;
+  }
+  function glide(at) {
+    const dt = at - (sweep.at ?? at);
+    sweep.at = at;
+    if (!sweep.scroll) return;
+    const { box, to } = sweep.scroll;
+    const left = to - box.scrollTop;
+    if (Math.abs(left) < 1) { box.scrollTop = to; sweep.scroll = null; return; }
+    if (!(dt > 0)) return;
+    // At least a pixel a frame: a browser rounds scrollTop, and a smaller step would stall.
+    box.scrollTop += Math.sign(left) * Math.min(Math.abs(left), Math.max(1, Math.abs(left) * (1 - Math.exp(-dt / 90))));
   }
 
   /* ---------- The buyer's hand ---------- */
@@ -462,12 +493,21 @@ export function mountFoil(ticket, { cols = 4, buyer = false, reducedMotion, dura
   // the shelf. Only the stage moves (never the window or the page, which
   // focus's own scroll would shift).
   function showPanel(el) {
+    const s = scrollFor(el);
+    if (s) s.box.scrollTop = s.to;
+  }
+  // Where the stage would have to scroll to for `el` to be in its view:
+  // { box, to }, or null when it is in view already or nothing scrolls.
+  function scrollFor(el) {
     const box = el?.closest?.(".lc-scratch__stage");
-    if (!box || box.scrollHeight <= box.clientHeight) return;
+    if (!box || box.scrollHeight <= box.clientHeight) return null;
     const r = rectOf(el), b = rectOf(box);
     const shelf = box.querySelector(".lc-scratch__tools")?.offsetHeight ?? 0;
-    if (r.top < b.top) box.scrollTop -= b.top - r.top + 8;
-    else if (r.bottom > b.bottom - shelf) box.scrollTop += r.bottom - (b.bottom - shelf) + 8;
+    let by = 0;
+    if (r.top < b.top) by = -(b.top - r.top + 8);
+    else if (r.bottom > b.bottom - shelf) by = r.bottom - (b.bottom - shelf) + 8;
+    if (!by) return null;
+    return { box, to: Math.max(0, Math.min(box.scrollHeight - box.clientHeight, box.scrollTop + by)) };
   }
   function onKey(e) {
     if (landed || e.altKey || e.ctrlKey || e.metaKey) return;
