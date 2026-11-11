@@ -239,11 +239,15 @@ export function mountWell(host, { outcome = "nothing", img = "", rarity = "none"
 
   const pose = at => {
     const { splash, settle, ring, land } = WELL_TIMING;
-    // The coin: an arc from the top left to the water, tumbling; then it
-    // sinks; for a coin back it rises again and hangs over the water.
+    // The coin: an arc from the left to the water, tumbling; then it
+    // sinks; for a coin back it rises again and hangs over the water. The
+    // whole arc is inside the vault (the stage is 168px tall with the
+    // water 101px down, and clips): it starts 40px over the water, tops
+    // out 67px over it and comes down, so the throw is seen from its
+    // first frame, not only its last third.
     if (at < T(splash)) {
       const p = clamp01(at / T(splash));
-      const x = -120 + 120 * p, y = -110 * (1 - p) - 200 * p * (1 - p);
+      const x = -150 + 150 * p, y = -40 * (1 - p) - 180 * p * (1 - p);
       set(el.coin, `translate(${x}px, ${y}px) rotate(${p * 540}deg) scaleX(${Math.max(0.15, Math.abs(Math.cos(p * Math.PI * 3)))})`, 1);
     } else if (at < T(settle) || outcome !== "coin") {
       const p = clamp01((at - T(splash)) / T(settle - splash));
@@ -256,9 +260,11 @@ export function mountWell(host, { outcome = "nothing", img = "", rarity = "none"
     // one stays faint on the water once everything has settled: the mark
     // the throw left.
     [...el.rings].forEach((r, i) => {
-      const p = clamp01((at - T(splash + i * 140)) / T(ring));
+      const from = T(splash + i * 140);
+      const p = clamp01((at - from) / T(ring));
       const last = i === el.rings.length - 1 && at >= T(land[outcome] ?? land.nothing);
-      set(r, `scale(${0.2 + 1.6 * ease(p)})`, last ? 0.25 : 0.9 * (1 - p));
+      // No ring before its own beat: the water is still until the coin meets it.
+      set(r, `scale(${0.2 + 1.6 * ease(p)})`, at < from ? 0 : last ? 0.25 : 0.9 * (1 - p));
     });
     // An item: the glow rises in the rarity's colour and lifts the find.
     const g = outcome === "item" ? ease(clamp01((at - T(settle)) / T(land.item - settle))) : 0;

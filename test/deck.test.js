@@ -546,7 +546,7 @@ describe("the stage", () => {
   });
   afterEach(() => vi.unstubAllGlobals());
   const host = () => doc.createElement("div");
-  const turn = h => Number(h.querySelector(".lc-deck__card").style.transform.match(/rotateY\(([\d.]+)deg\)/)[1]);
+  const turn = h => Number(h.querySelector(".lc-deck__card").style.transform.match(/rotateY\((-?[\d.]+)deg\)/)[1]);
   const lift = h => Number(h.querySelector(".lc-deck__card").style.transform.match(/translateY\((-?[\d.]+)px\)/)[1]);
   const runTo = t => { let now = 0; while (frames.length && now <= t) { const cb = frames.shift(); cb(now); now += 50; } };
 
@@ -569,8 +569,18 @@ describe("the stage", () => {
     expect(lift(h)).toBeLessThan(-13);
     expect(turn(h)).toBe(0);
     expect(onBeat.mock.calls.map(c => c[0])).toEqual([0]);
-    runTo(DECK_TIMING.lift + DECK_TIMING.hold - 1);
+    // The hold is alive: a sixth of the way into a beat the card is at the top of its jump.
+    runTo(DECK_TIMING.lift + DECK_TIMING.hold / DECK_TIMING.beats / 6);
+    expect(lift(h)).toBeCloseTo(-14 - DECK_TIMING.pulse, 1);
     expect(turn(h)).toBe(0);
+    // Half way through the hold it is at rest again, face-down and square.
+    runTo(DECK_TIMING.lift + DECK_TIMING.hold / 2);
+    expect(lift(h)).toBeCloseTo(-14, 1);
+    expect(turn(h)).toBe(0);
+    // At the hold's end it has wound back the wrong way, never past DECK_TIMING.wind.
+    runTo(DECK_TIMING.lift + DECK_TIMING.hold - 1);
+    expect(turn(h)).toBeLessThan(0);
+    expect(turn(h)).toBeGreaterThanOrEqual(-DECK_TIMING.wind);
     expect(onBeat.mock.calls.map(c => c[0])).toEqual([0, 1, 2]);
     runTo(DECK_TIMING.lift + DECK_TIMING.hold + DECK_TIMING.flip / 2);
     expect(turn(h)).toBeGreaterThan(90);

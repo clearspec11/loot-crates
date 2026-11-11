@@ -322,7 +322,7 @@ export function pocketsIn(reveal) {
 /* ---------- The wheel ---------- */
 
 // The spin's length, and when the ball dips into the rim (the drop).
-export const WHEEL_TIMING = { spin: 5600, dropAt: 0.78, wheelTurns: 2, ballTurns: 6 };
+export const WHEEL_TIMING = { spin: 5600, dropAt: 0.78, wheelTurns: 2, ballTurns: 6, runUp: 0.06 };
 
 const RIM = { outer: 97, rim: 86, inner: 84, hub: 26, label: 60, ball: 90, ballIn: 70 };
 const DEG = Math.PI / 180;
@@ -368,11 +368,16 @@ const clamp01 = x => Math.max(0, Math.min(1, x));
 */
 export function wheelPose(p, index, n, timing = WHEEL_TIMING) {
   const q = clamp01(p);
+  // The run-up: over the first runUp of the time the disc and the ball
+  // pick up speed from rest (a linear ramp), so neither starts at full
+  // tilt; u is the share of the eased run done by time q.
+  const a = Math.max(0, Math.min(0.5, timing.runUp ?? 0));
+  const u = a ? (q < a ? (q * q) / (2 * a) : q - a / 2) / (1 - a / 2) : q;
   const step = 360 / Math.max(1, n);
   const wheelTotal = timing.wheelTurns * 360 - (index + 0.5) * step;
   const ballTotal = -timing.ballTurns * 360;
   const dip = clamp01((q - timing.dropAt) / (1 - timing.dropAt));
-  return { wheel: wheelTotal * easeOut2(q), ball: ballTotal * easeOut3(q), radius: RIM.ball - (RIM.ball - RIM.ballIn) * easeInOut2(dip) };
+  return { wheel: wheelTotal * easeOut2(u), ball: ballTotal * easeOut3(u), radius: RIM.ball - (RIM.ball - RIM.ballIn) * easeInOut2(dip) };
 }
 
 // The index of the pocket under the ball for a pose.

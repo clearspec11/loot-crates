@@ -428,9 +428,12 @@ describe("the reveal", () => {
       const playing = spin.play();
       // Frames at 0, mid-flight, past the splash, and past the landing.
       frames.shift()(1000);
-      expect(coin.style.transform).toContain("translate(-120px, -110px)");
+      expect(coin.style.transform).toContain("translate(-150px, -40px)");
+      // The water is still until the coin meets it: no ring shows before the splash.
+      expect([...host.querySelectorAll(".lc-well__ring")].map(r => r.style.opacity)).toEqual(["0", "0", "0"]);
       frames.shift()(1000 + WELL_TIMING.splash / 2);
-      expect(coin.style.transform).toMatch(/translate\(-60px, -[\d.]+px\)/);
+      expect(coin.style.transform).toMatch(/translate\(-75px, -65px\)/);
+      expect([...host.querySelectorAll(".lc-well__ring")].map(r => r.style.opacity)).toEqual(["0", "0", "0"]);
       expect(sound.playPlop).not.toHaveBeenCalled();
       frames.shift()(1000 + WELL_TIMING.splash + 1);
       expect(sound.playPlop).toHaveBeenCalledOnce();

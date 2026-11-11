@@ -66,6 +66,8 @@ export const MIN_GAVEL_SEC = 5;
 export const MAX_HOUSE = 6;
 // The gavel's strike at the hammer, before a sealed crate's strip runs.
 export const HAMMER_MS = 650;
+// The share of the strike spent raising the head before it falls.
+export const HAMMER_RAISE = 0.35;
 
 const num = (v, d = 0) => (v !== "" && v != null && Number.isFinite(Number(v)) ? Number(v) : d);
 const toCp = gp => Math.round(num(gp) * 100);
@@ -480,7 +482,9 @@ export function mountBoard(host, { pockets: view = {}, esc: _esc = s => String(s
           if (landed) return resolve();
           t0 ??= now;
           const p = clamp01((now - t0) / HAMMER_MS);
-          if (head?.style) head.style.transform = `rotate(${(-40 * (1 - easeIn3(p))).toFixed(2)}deg)`;
+          // The head is raised over the first third (never snapped up), then falls.
+          const raised = p < HAMMER_RAISE ? 1 - Math.pow(1 - p / HAMMER_RAISE, 3) : 1 - easeIn3((p - HAMMER_RAISE) / (1 - HAMMER_RAISE));
+          if (head?.style) head.style.transform = `rotate(${(-40 * raised).toFixed(2)}deg)`;
           if (p >= 1) {
             swing = null;
             try { onDrop?.(); } catch (err) { console.error("loot-crates | the gavel's sound failed", err); }

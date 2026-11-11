@@ -821,7 +821,7 @@
 .loot-crates .lc-wheel__pip { fill: var(--lc-pin); stroke: var(--lc-pin-edge); stroke-width: 1; }
 .loot-crates .lc-wheel__orbit { position: absolute; left: 50%; top: 50%; width: 0; height: 0; }
 .loot-crates .lc-wheel__ball {
-  position: absolute; left: -7px; top: -7px; width: 14px; height: 14px; border-radius: 50%; opacity: 0;
+  position: absolute; left: -8px; top: -8px; width: 16px; height: 16px; border-radius: 50%; opacity: 0;
   background: radial-gradient(circle at 35% 30%, #f8e7b4, var(--lc-pin) 45%, #8a7340 92%);
   box-shadow: 0 0 0 1px var(--lc-pin-edge), 0 2px 5px rgba(0, 0, 0, .6);
 }

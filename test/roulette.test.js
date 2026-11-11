@@ -300,6 +300,16 @@ describe("the wheel", () => {
     expect(Math.abs(mid.ball)).toBeGreaterThan(Math.abs(wheelPose(1, 6, 12).ball) / 2);
   });
 
+  it("starts from rest: the disc and the ball pick up speed over the run-up", () => {
+    const speed = (key, p) => Math.abs(wheelPose(p + 0.001, 6, 12)[key] - wheelPose(p, 6, 12)[key]);
+    for (const key of ["wheel", "ball"]) {
+      // Barely moving in the first thousandth, at full speed by the end of the run-up, slowing after.
+      expect(speed(key, 0)).toBeLessThan(speed(key, WHEEL_TIMING.runUp) / 20);
+      expect(speed(key, WHEEL_TIMING.runUp / 2)).toBeLessThan(speed(key, WHEEL_TIMING.runUp));
+      expect(speed(key, 0.5)).toBeLessThan(speed(key, WHEEL_TIMING.runUp));
+    }
+  });
+
   it("never crawls: the ball finds its pocket during the drop, under a second before it lands", () => {
     // The default wheel's 12 pockets, every landing: the last time the ball
     // crosses into another pocket, in ms of the 5.6 s spin.
