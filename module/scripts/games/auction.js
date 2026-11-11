@@ -369,7 +369,7 @@ export function boardHTML(game, stakes = [], { esc = s => String(s ?? ""), outco
   }).join("");
   const clock = !outcome && round?.closesAt != null && round.status !== "resolved" ? `<span class="lc-auction__clock" data-gavel data-closes-at="${esc(round.closesAt)}" data-gavel-ms="${esc(gavelMsOf(game))}" hidden></span>` : "";
   const stamp = outcome ? `<span class="lc-auction__stamp" aria-hidden="true">${outcome.verdict === "sold" ? t("LOOTCRATES.Auction.Sold") : t("LOOTCRATES.Auction.NoSale")}</span>` : "";
-  return `<div class="lc-auction__lot lc-rarity-${esc(lot?.rarity ?? "none")}">
+  return `<div class="lc-auction__lot lc-rarity-${esc(lot?.rarity ?? "none")}" data-lot="${lot?.type === "crate" ? "crate" : "item"}">
         <div class="lc-auction__art" aria-hidden="true">${art}</div>
         <div class="lc-auction__lotname"><strong>${esc(lotName(lot))}</strong><span class="lc-auction__sub">${esc(lotLine(lot))}</span></div>
       </div>

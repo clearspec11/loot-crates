@@ -211,6 +211,10 @@
   transition: border-color 120ms ease, background-color 120ms ease, color 120ms ease;
 }
 :where(.loot-crates .window-content) button:not(:disabled, [aria-disabled="true"]):hover { border-color: var(--lc-rule); }
+/* Pressed: every button that can be pressed answers the press itself, a
+   pixel down and a shade darker, before anything it starts has drawn. */
+:where(.loot-crates .window-content) button:not(:disabled, [aria-disabled="true"]):active,
+.loot-crates .lc-welcome__link:active { transform: translateY(1px); filter: brightness(.92); }
 /* A Buy that is off says so with aria-disabled (it keeps focus; boxcard.js),
    and looks exactly like a disabled button. */
 :where(.loot-crates .window-content) button:is(:disabled, [aria-disabled="true"]) { cursor: not-allowed; color: var(--lc-ink-mute); border-style: dashed; }
@@ -1486,6 +1490,10 @@
 .loot-crates .lc-table__stage--spinning .lc-gavel__head { will-change: transform; }
 .loot-crates .lc-auction__strip[hidden] { display: none; }
 .loot-crates .lc-auction-stage--crate .lc-auction__bids { display: none; }
+/* A sealed crate's strip takes the bids' place at the hammer: the bids
+   keep the strip's room from the start (its 168px viewport and the grid gap it adds; the harness measures the board at one height through the hammer), so
+   nothing under the board moves when it mounts. */
+.loot-crates .lc-auction__board:has(.lc-auction__lot[data-lot="crate"]) .lc-auction__bids { min-height: 178px; align-content: flex-start; box-sizing: border-box; }
 /* The shop card's lot art, the chat card's sealed crate. */
 .loot-crates .lc-box--auction .lc-box__art img { width: 52px; height: 52px; object-fit: contain; border: 0; }
 .loot-crates .lc-auction__icon, .loot-crates .lc-auction__glyph { display: block; }
@@ -1898,6 +1906,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .loot-crates .lc-card, .loot-crates .lc-vault::after, .loot-crates .lc-pool__details > summary::before { transition: none; }
+  :where(.loot-crates .window-content) button, .loot-crates .lc-welcome__link { transition: none; }
+  :where(.loot-crates .window-content) button:not(:disabled, [aria-disabled="true"]):active, .loot-crates .lc-welcome__link:active { transform: none; }
   .loot-crates .lc-well__stage > * { will-change: auto; }
   .loot-crates .lc-dice__die, .loot-crates .lc-dice__total { will-change: auto; }
   .loot-crates .lc-deck__card { will-change: auto; }

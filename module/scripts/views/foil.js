@@ -25,7 +25,7 @@
     opens (its canvas goes, and the number pops in by CSS). The ticket lands
     once every panel is open.
   - Everyone else at the table watches: the same coin scrapes the card by
-    itself, panel by panel (380 ms each, the whole card in about five
+    itself, panel by panel (about 0.3 s each, the whole card in about five
     seconds at most), with the same shavings and rasp, and lands when every
     panel is open.
   - Keyboard: the panels are a roving group (one tab stop); the arrow keys,
@@ -56,7 +56,7 @@ export const FOIL = Object.freeze({
   threshold: 0.6,      // the share of a panel scratched before it gives
   grid: 12,            // coverage samples along each side of a panel
   crumbleMs: 160,
-  perPanelMs: 380,     // the spectators' sweep, per panel
+  perPanelMs: 380,     // the spectators' sweep: a panel's beat (it gives at 80% and the coin moves on, about 0.3 s a panel)
   spectatorMs: 5000,   // and the whole card at most
   shavingsCap: 160,
   touchLift: 26,
@@ -364,8 +364,8 @@ export function mountFoil(ticket, { cols = 4, buyer = false, reducedMotion, dura
     if (sweep && !landed) stepSweep(at);
     for (const p of panels) if (p.giving) crumble(p, at);
     // The hand's 60% check. The table's sweep gives each panel on its own
-    // beat instead (stepSweep), so the card takes the mockup's 380 ms a
-    // panel however much of it the coin's wave happens to cover.
+    // beat instead (stepSweep: at 80% of the mockup's 380 ms), so the card
+    // takes the same time however much of a panel the coin's wave covers.
     for (const p of panels) {
       if (!p.dirty || p.open) continue;
       p.dirty = false;

@@ -6,6 +6,9 @@ The newest numbered entry's version is the one in `module/module.json`, and its 
 
 ## Unreleased
 
+- Buttons answer a press: every button dips a pixel and darkens while it is held, where before nothing changed until whatever it started had drawn.
+- An auction for a sealed crate no longer jumps at the hammer. The board grew by about 145px when the crate's strip appeared, pushing everything under it down; the bids now keep that room from the start.
+- With reduced motion on, buttons and the welcome note's links change colour at once on hover instead of fading.
 - The reveals are staged so their moments are seen. The well's coin flew in from above the window and was only visible for its last third; its whole arc is now in view, and no ripple shows before the splash. The deck's card no longer freezes for its three ticks: it jumps with each and winds back before it turns. The auction's gavel is raised before it falls instead of snapping up, and the roulette wheel and ball start from rest, with a slightly larger ball.
 - The moment of the result is no longer flat. The item's name used to appear in one frame; it now rises into place a beat after the card lifts, and the dice's total comes up the same way. Rarer finds land bigger: the name travels further, the vault's colour swells before it settles, and a pass of light crosses the card, none of it for a common and the most for a legendary or an artifact.
 - A scratch ticket watched on a short screen scrolls with the coin. The ticket is taller than its window there, and the coin used to carry on below the fold, opening the last panels where nobody could see them; the ticket now eases along as the coin reaches each row.
