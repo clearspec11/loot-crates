@@ -38,6 +38,8 @@
 // on. Needs "Crate Tester" in "Loot Crates Test" and "Live UI crate" (live-ui.js).
 /* global game, Hooks -- used inside page.evaluate, which runs in the Foundry page */
 const { chromium } = require("playwright");
+// A Buy over half the purse asks first; pressSpend presses it again then.
+const { pressSpend } = require("./lib/spend.cjs");
 const FOUNDRY = process.env.FOUNDRY_URL || "http://localhost:30000";
 const MODULE_BASE = process.env.MODULE_BASE || "http://localhost:8766/";
 const PLAYER = process.env.PLAYER || "Player2";
@@ -202,7 +204,7 @@ async function setDelay(page, seconds) {
     if (await buy.getAttribute("aria-disabled") === "true") throw new Error(`${BOX} can't be bought: ${await page.locator(`.application.lc-shop .lc-box[data-box="${out.seed.boxId}"] .lc-box__why`).textContent().catch(() => "")}`);
     const logBefore = await page.evaluate(async base => (await import(base + "scripts/foundry/store.js")).getLog().map(r => r.id), MODULE_BASE);
     const before = await pageNow(page);
-    await buy.click();
+    await pressSpend(buy);
     await corner(page);
     const pulled = await nextLanded(page, before);
     await page.waitForTimeout(300);

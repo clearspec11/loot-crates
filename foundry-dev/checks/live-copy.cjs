@@ -240,6 +240,8 @@ const READ_SHOP = `globalThis.__lcCards = () => [...document.querySelectorAll("#
         const buy = () => document.querySelector(`#loot-crates-shop .lc-box[data-box="${id}"] .lc-box__buy`);
         buy().focus();
         click(buy());
+        // Over half the purse the first press only asks (spendguard.js): press again.
+        if (buy()?.hasAttribute("data-armed")) { await wait(450); click(buy()); }
         const closeBtn = () => [...document.querySelectorAll(".lc-reveal")].pop()?.querySelector('[data-action="dismiss"]');
         const landed = await until(() => closeBtn(), 20000);
         const result = [...document.querySelectorAll(".lc-reveal")].pop()?.querySelector(".lc-reveal__result, [role=status]")?.textContent.trim() ?? "";

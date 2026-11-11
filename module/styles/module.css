@@ -218,17 +218,17 @@
 /* A Buy that is off says so with aria-disabled (it keeps focus; boxcard.js),
    and looks exactly like a disabled button. */
 :where(.loot-crates .window-content) button:is(:disabled, [aria-disabled="true"]) { cursor: not-allowed; color: var(--lc-ink-mute); border-style: dashed; }
-.loot-crates .lc-box__buy, .loot-crates .lc-reveal__close, .loot-crates .lc-reveal__again, .loot-crates .lc-table__bet, .loot-crates .lc-table__spin, .loot-crates .lc-starter__add, .loot-crates .lc-welcome__primary {
+.loot-crates .lc-box__buy, .loot-crates .lc-reveal__close, .loot-crates .lc-table__bet, .loot-crates .lc-table__spin, .loot-crates .lc-starter__add, .loot-crates .lc-welcome__primary {
   position: relative; background: var(--lc-btn); color: var(--lc-btn-ink); border: none;
   font-weight: 700; box-shadow: var(--lc-shadow); min-height: 36px; padding: 0 16px;
 }
-.loot-crates .lc-box__buy::after, .loot-crates .lc-reveal__close::after, .loot-crates .lc-reveal__again::after, .loot-crates .lc-table__bet::after, .loot-crates .lc-table__spin::after, .loot-crates .lc-starter__add::after, .loot-crates .lc-welcome__primary::after {
+.loot-crates .lc-box__buy::after, .loot-crates .lc-reveal__close::after, .loot-crates .lc-table__bet::after, .loot-crates .lc-table__spin::after, .loot-crates .lc-starter__add::after, .loot-crates .lc-welcome__primary::after {
   content: ""; position: absolute; inset: 3px; border: 1px solid var(--lc-btn-rule); border-radius: 3px; pointer-events: none;
 }
-.loot-crates .lc-box__buy:not([aria-disabled="true"]):hover, .loot-crates .lc-reveal__close:not(:disabled):hover, .loot-crates .lc-reveal__again:not([aria-disabled="true"]):hover, .loot-crates .lc-table__bet:not([aria-disabled="true"]):hover, .loot-crates .lc-table__spin:not([aria-disabled="true"]):hover, .loot-crates .lc-starter__add:not([aria-disabled="true"]):hover, .loot-crates .lc-welcome__primary:hover { color: var(--lc-pin); }
-.loot-crates .lc-box__buy:not([aria-disabled="true"]):hover::after, .loot-crates .lc-reveal__close:not(:disabled):hover::after, .loot-crates .lc-reveal__again:not([aria-disabled="true"]):hover::after, .loot-crates .lc-table__bet:not([aria-disabled="true"]):hover::after, .loot-crates .lc-table__spin:not([aria-disabled="true"]):hover::after, .loot-crates .lc-starter__add:not([aria-disabled="true"]):hover::after, .loot-crates .lc-welcome__primary:hover::after { border-color: var(--lc-btn-ink); }
-.loot-crates .lc-box__buy[aria-disabled="true"], .loot-crates .lc-reveal__again[aria-disabled="true"], .loot-crates .lc-table__bet[aria-disabled="true"], .loot-crates .lc-table__spin[aria-disabled="true"], .loot-crates .lc-starter__add[aria-disabled="true"] { background: var(--lc-row-alt); color: var(--lc-ink-mute); box-shadow: none; }
-.loot-crates .lc-box__buy[aria-disabled="true"]::after, .loot-crates .lc-reveal__again[aria-disabled="true"]::after, .loot-crates .lc-table__bet[aria-disabled="true"]::after, .loot-crates .lc-table__spin[aria-disabled="true"]::after, .loot-crates .lc-starter__add[aria-disabled="true"]::after { border: 1px dashed var(--lc-rule-soft); }
+.loot-crates .lc-box__buy:not([aria-disabled="true"]):hover, .loot-crates .lc-reveal__close:not(:disabled):hover, .loot-crates .lc-table__bet:not([aria-disabled="true"]):hover, .loot-crates .lc-table__spin:not([aria-disabled="true"]):hover, .loot-crates .lc-starter__add:not([aria-disabled="true"]):hover, .loot-crates .lc-welcome__primary:hover { color: var(--lc-pin); }
+.loot-crates .lc-box__buy:not([aria-disabled="true"]):hover::after, .loot-crates .lc-reveal__close:not(:disabled):hover::after, .loot-crates .lc-table__bet:not([aria-disabled="true"]):hover::after, .loot-crates .lc-table__spin:not([aria-disabled="true"]):hover::after, .loot-crates .lc-starter__add:not([aria-disabled="true"]):hover::after, .loot-crates .lc-welcome__primary:hover::after { border-color: var(--lc-btn-ink); }
+.loot-crates .lc-box__buy[aria-disabled="true"], .loot-crates .lc-table__bet[aria-disabled="true"], .loot-crates .lc-table__spin[aria-disabled="true"], .loot-crates .lc-starter__add[aria-disabled="true"] { background: var(--lc-row-alt); color: var(--lc-ink-mute); box-shadow: none; }
+.loot-crates .lc-box__buy[aria-disabled="true"]::after, .loot-crates .lc-table__bet[aria-disabled="true"]::after, .loot-crates .lc-table__spin[aria-disabled="true"]::after, .loot-crates .lc-starter__add[aria-disabled="true"]::after { border: 1px dashed var(--lc-rule-soft); }
 
 :where(.loot-crates .window-content) :is(input, select) {
   font-family: var(--lc-body); font-size: 13px; min-height: 30px; padding: 0 8px; box-sizing: border-box;
@@ -397,6 +397,16 @@
 .loot-crates .lc-box__keep:not([aria-disabled="true"]):hover .lc-box__keep-do { color: var(--lc-gold-ink); text-decoration-color: currentColor; }
 .loot-crates .lc-box__keep[aria-disabled="true"] { color: var(--lc-ink-mute); }
 .loot-crates .lc-box__keep[aria-disabled="true"] .lc-box__keep-do { color: var(--lc-ink-mute); text-decoration: none; }
+/* A large spend's first press (spendguard.js) arms the button: it asks
+   "Spend 150 gp?" in its own place and size, on one line. The Buy's
+   lettering and inset rule go pin gold (its hover, held); Buy to keep's
+   ask is bold gold ink; the reveal's quiet Draw again takes the gold rule
+   and gold ink. Never the bane, which is a loss of coins. */
+.loot-crates button[data-armed] { white-space: nowrap; }
+.loot-crates .lc-box__buy[data-armed] { color: var(--lc-pin); }
+.loot-crates .lc-box__buy[data-armed]::after { border-color: var(--lc-pin); }
+.loot-crates .lc-box__keep[data-armed] .lc-spend-ask { font-weight: 700; color: var(--lc-gold-ink); }
+.loot-crates .lc-reveal__again[data-armed] { border-color: var(--lc-rule); color: var(--lc-gold-ink); font-weight: 700; }
 /* Why a Buy is off, on screen rather than in a tooltip. */
 .loot-crates .lc-box__why { font-size: 12px; color: var(--lc-ink-mute); margin-top: -3px; }
 
@@ -569,6 +579,20 @@
    screen before the button, as a Buy's is under its card. */
 .loot-crates .lc-reveal__why { font-size: 12px; color: var(--lc-ink-mute); margin-right: auto; }
 .loot-crates .lc-reveal__why[hidden] { display: none; }
+/* The next play (the deck's Draw again, a ticket's Another ticket): a
+   quiet button at the start of the row, after the countdown and its
+   reason, apart from the window's own buttons (Open item, Watch again,
+   Close, grouped in .lc-reveal__own), which keep the row's end: Close
+   stays the one primary there, so a press meant for it never lands on the
+   next play. The group draws nothing of its own (display contents) until
+   there is a next play; then it is one block at the end (margin-left
+   auto), at least 48px from the next play (its 40px and the gap), and
+   where the row is too narrow it wraps whole to a line of its own. */
+.loot-crates .lc-reveal__own { display: contents; }
+.loot-crates .lc-reveal__actions:has(> .lc-reveal__again:not([hidden])) { justify-content: flex-start; }
+.loot-crates .lc-reveal__actions:has(> .lc-reveal__again:not([hidden])) > :is(.lc-linger, .lc-reveal__why) { margin-right: 0; }
+.loot-crates .lc-reveal__again:not([hidden]) { margin-right: 40px; }
+.loot-crates .lc-reveal__again:not([hidden]) ~ .lc-reveal__own { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; margin-left: auto; }
 /* A finished window's countdown (linger.js): one quiet 12px line at the
    start of the actions row, so the result above never moves, with Keep
    open as a small quiet button. Tabular figures, so the line doesn't

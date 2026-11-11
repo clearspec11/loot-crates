@@ -40,6 +40,8 @@
 // the pool stays seeded. Needs "Crate Tester" in "Loot Crates Test".
 /* global game, Hooks, foundry, fromUuid, __lc */
 const { chromium } = require("playwright");
+// A Buy over half the purse asks first; pressSpend presses it again then.
+const { pressSpend } = require("./lib/spend.cjs");
 const { pressIn } = require("./lib/menu.cjs");
 const FOUNDRY = process.env.FOUNDRY_URL || "http://localhost:30000";
 const MODULE_BASE = process.env.MODULE_BASE || "http://localhost:8766/";
@@ -241,7 +243,7 @@ const untilCard = async (pl, boxId, pred, ms = 5000) => {
     let combo = null;
     for (let i = 0; i < 2 && !combo; i++) {
       const before = await untilCard(pl.page, boxId, c => !c.off, 5000);
-      await pl.page.locator(`#loot-crates-shop .lc-box__buy[data-box="${boxId}"]`).click();
+      await pressSpend(pl.page.locator(`#loot-crates-shop .lc-box__buy[data-box="${boxId}"]`));
       await pl.page.locator(".application.lc-reveal .lc-scratch__all").last().click({ timeout: 15000 });
       await pl.page.waitForSelector(".application.lc-reveal .lc-scratch--landed", { timeout: 15000 }).catch(() => {});
       const after = await untilCard(pl.page, boxId, c => c.rows === before.rows + 1, 15000);

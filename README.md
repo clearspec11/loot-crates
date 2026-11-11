@@ -72,7 +72,7 @@ A tavern dice game. The player bets the stake and rolls 2d6 or 3d6 against the d
 
 ### Deck of Many Things
 
-You write the deck: each card gives an item, pays out coins, takes coins, or reads out an effect you play at the table. Cards marked "once" leave the deck until you press **Reshuffle** (under the row's **More**, the three dots beside Edit). Each draw in a row costs more, and **Draw again** in the reveal offers the next one at its price. The five starting cards are placeholders for you to rewrite.
+You write the deck: each card gives an item, pays out coins, takes coins, or reads out an effect you play at the table. Cards marked "once" leave the deck until you press **Reshuffle** (under the row's **More**, the three dots beside Edit). Each draw in a row costs more, and **Draw again** in the reveal offers the next one at its price, away from Close. The five starting cards are placeholders for you to rewrite.
 
 ![A card from the deck turning over to give a rare item](docs/images/deck.webp)
 
@@ -129,7 +129,7 @@ An item counts at its dnd5e price when it was won. One sold back counts as the c
 
 ## What players see
 
-Players press **Crates** at the top of the Items sidebar. The shop shows every game on the shelf with its price and the odds *for their character*: items they already own are left out of a no-duplicates crate, and a pity countdown says how close a guarantee is. A game they can't afford says how much more they need. When someone opens a crate, every player sees the same spin, and the chat card stays sealed until their own spin lands, so nobody spoils it. The found item appears on the character sheet when the spin ends, and while the reveal is still open its winner can give it to another player's character or sell it back to the house (see [After the reveal](#after-the-reveal-give-it-away-or-sell-it-back)). Players never see the GM's manager, and no screen shows them an auction's reserve, the house bidders' budget or a hidden scratch roll's counts. These are not secret from the browser's console, though: Foundry sends every world setting to every player, and offers no storage that it keeps from them.
+Players press **Crates** at the top of the Items sidebar. The shop shows every game on the shelf with its price and the odds *for their character*: items they already own are left out of a no-duplicates crate, and a pity countdown says how close a guarantee is. A game they can't afford says how much more they need. A Buy that costs more than half of what the character carries asks "Spend 150 gp?" on its first press and buys on the second, and so does Draw again in a reveal. When someone opens a crate, every player sees the same spin, and the chat card stays sealed until their own spin lands, so nobody spoils it. The found item appears on the character sheet when the spin ends, and while the reveal is still open its winner can give it to another player's character or sell it back to the house (see [After the reveal](#after-the-reveal-give-it-away-or-sell-it-back)). Players never see the GM's manager, and no screen shows them an auction's reserve, the house bidders' budget or a hidden scratch roll's counts. These are not secret from the browser's console, though: Foundry sends every world setting to every player, and offers no storage that it keeps from them.
 
 ## FAQ
 

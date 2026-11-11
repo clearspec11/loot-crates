@@ -39,6 +39,8 @@
 // Needs "Crate Tester" in "Loot Crates Test" and "Live UI pool" (live-ui.js).
 /* global game, Hooks */
 const { chromium } = require("playwright");
+// A Buy over half the purse asks first; pressSpend presses it again then.
+const { pressSpend } = require("./lib/spend.cjs");
 const FOUNDRY = process.env.FOUNDRY_URL || "http://localhost:30000";
 const MODULE_BASE = process.env.MODULE_BASE || "http://localhost:8766/";
 const PLAYER = process.env.PLAYER || "Player2";
@@ -215,7 +217,7 @@ async function restore(gm, before, purchaseRow) {
     }, { base: MODULE_BASE, before });
     out.start = await until(pl.page, before, c => c.crate.limit !== "" && c.ticket.stock !== "");
     const buy = pl.page.locator(`#loot-crates-shop .lc-box[data-box="${before.crateId}"] .lc-box__buy`);
-    await buy.click();
+    await pressSpend(buy);
     const close = pl.page.locator('.lc-reveal [data-action="dismiss"]').last();
     await close.waitFor({ state: "visible", timeout: 20000 });
     await pl.page.waitForTimeout(700);

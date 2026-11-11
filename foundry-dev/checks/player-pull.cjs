@@ -543,6 +543,8 @@ async function gmWatchCheck(page) {
         const t0 = performance.now();
         const clickedAt = Date.now();
         buy.click();
+        // Over half the purse the first press only asks (spendguard.js): press again.
+        if (buy.hasAttribute("data-armed")) { await new Promise(r => setTimeout(r, 450)); buy.click(); }
         let revealAt = null, landedAt = null, rv = null;
         const stillBuy = () => app.element.querySelector(`.lc-box__buy[data-box="${buy.dataset.box}"]`) === buy;
         for (let i = 0; i < 400 && landedAt == null; i++) {

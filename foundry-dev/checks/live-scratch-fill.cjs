@@ -37,6 +37,8 @@
 // seeded. Needs "Crate Tester" in "Loot Crates Test". One purchase.
 /* global game, Hooks, foundry, fromUuid, __lc */
 const { chromium } = require("playwright");
+// A Buy over half the purse asks first; pressSpend presses it again then.
+const { pressSpend } = require("./lib/spend.cjs");
 const { pressIn } = require("./lib/menu.cjs");
 const FOUNDRY = process.env.FOUNDRY_URL || "http://localhost:30000";
 const MODULE_BASE = process.env.MODULE_BASE || "http://localhost:8766/";
@@ -256,7 +258,7 @@ const lineText = line => [line.count, ...line.parts.map(q => (q.item ? `item.${q
     out.playerCard = await untilCard(pl.page, boxId, c => c.shown && /Top prize/.test(c.text) && !c.off, 8000);
     const before = out.playerCard;
     await pl.page.evaluate(() => { __lc.seen.length = 0; });
-    await pl.page.locator(`#loot-crates-shop .lc-box__buy[data-box="${boxId}"]`).click();
+    await pressSpend(pl.page.locator(`#loot-crates-shop .lc-box__buy[data-box="${boxId}"]`));
     await pl.page.locator(".application.lc-reveal .lc-scratch__all").last().click({ timeout: 15000 });
     out.landed = await pl.page.waitForSelector(".application.lc-reveal .lc-scratch--landed", { timeout: 15000 }).then(() => true).catch(() => false);
     const after = await untilCard(pl.page, boxId, c => c.rows === before.rows + 1, 15000);

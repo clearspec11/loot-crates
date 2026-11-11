@@ -275,6 +275,8 @@ const untilCard = (pl, boxId, pred, since) => pl.evaluate(async ({ boxId, pred, 
       const text = buy.textContent.replace(/\s+/g, " ").trim();
       buy.focus();
       click(buy);
+      // Over half the purse the first press only asks (spendguard.js): press again.
+      if (buy.hasAttribute("data-armed")) { await wait(450); click(buy); }
       const last = () => [...document.querySelectorAll(".lc-reveal")].pop();
       const closeBtn = () => last()?.querySelector('[data-action="dismiss"]');
       // A scratch ticket is the buyer's to scratch: Reveal all, pressed once.

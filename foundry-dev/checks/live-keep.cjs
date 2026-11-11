@@ -36,6 +36,8 @@
 // The pool stays seeded. Needs "Crate Tester" in "Loot Crates Test".
 /* global game, Hooks, foundry, fromUuid, __lc */
 const { chromium } = require("playwright");
+// A Buy over half the purse asks first; pressSpend presses it again then.
+const { pressSpend } = require("./lib/spend.cjs");
 const { ticketCount } = require("./lib/ticketcount.cjs");
 const FOUNDRY = process.env.FOUNDRY_URL || "http://localhost:30000";
 const MODULE_BASE = process.env.MODULE_BASE || "http://localhost:8766/";
@@ -177,7 +179,7 @@ const logRows = (page, boxId) => page.evaluate(async ({ base, boxId }) => (await
     await keepBtn.waitFor({ timeout: 10000 });
     out.button = await keepBtn.evaluate(b => ({ text: b.textContent.replace(/\s+/g, " ").trim(), off: b.getAttribute("aria-disabled"), price: b.dataset.price, under: b.previousElementSibling?.classList.contains("lc-box__buy") ?? false }));
     const chatN = await gm.page.evaluate(() => game.messages.contents.length);
-    await keepBtn.click();
+    await pressSpend(keepBtn);
     const first = await untilActor(gm.page, boxId, a => a.tickets.length === 1 && a.tickets[0].qty === 1 && a.purseCp === before.purseCp - 500, 15000);
     await pl.page.waitForFunction(() => /ticket is in/.test(document.querySelector("#loot-crates-shop .lc-shop__notice")?.textContent ?? ""), null, { timeout: 8000 }).catch(() => {});
     out.first = { ...first, notice: await pl.page.evaluate(() => document.querySelector("#loot-crates-shop .lc-shop__notice")?.textContent ?? null), reveals: await pl.page.evaluate(() => document.querySelectorAll(".application.lc-reveal").length) };
@@ -188,7 +190,7 @@ const logRows = (page, boxId) => page.evaluate(async ({ base, boxId }) => (await
 
     // 2. Again: the same stack, two now.
     await pl.page.waitForFunction(id => document.querySelector(`#loot-crates-shop .lc-box__keep[data-keep="${id}"]`)?.getAttribute("aria-disabled") !== "true", boxId, { timeout: 8000 });
-    await keepBtn.click();
+    await pressSpend(keepBtn);
     out.second = await untilActor(gm.page, boxId, a => a.tickets.length === 1 && a.tickets[0].qty === 2 && a.purseCp === before.purseCp - 1000, 15000);
     out.ledger.second = await count.until(gm.page, actorId, boxId, 2);
     // The row is written just after the ticket (in the same queued task).

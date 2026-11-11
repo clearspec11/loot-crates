@@ -43,6 +43,8 @@
 // The pool stays seeded.
 /* global game, foundry, fromUuid, Actor, __lc */
 const { chromium } = require("playwright");
+// A Buy over half the purse asks first; pressSpend presses it again then.
+const { pressSpend } = require("./lib/spend.cjs");
 const FOUNDRY = process.env.FOUNDRY_URL || "http://localhost:30000";
 const MODULE_BASE = process.env.MODULE_BASE || "http://localhost:8766/";
 const PLAYER = process.env.PLAYER || "Player2";
@@ -141,7 +143,7 @@ async function buy(client, boxId, actorName) {
   const btn = client.page.locator(`#loot-crates-shop .lc-box__buy[data-box="${boxId}"]`);
   await btn.waitFor({ timeout: 10000 });
   await client.page.waitForFunction(id => document.querySelector(`#loot-crates-shop .lc-box__buy[data-box="${id}"]`)?.getAttribute("aria-disabled") !== "true", boxId, { timeout: 10000 });
-  await btn.click();
+  await pressSpend(btn);
 }
 
 // The player's own reveal of the newest pull, landed (Skip pressed as a

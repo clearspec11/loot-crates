@@ -26,6 +26,8 @@
 // One real purchase per run (the second click); never deletes anything.
 /* global game, foundry, ui -- used inside page.evaluate, which runs in the Foundry page */
 const { chromium } = require("playwright");
+// A Buy over half the purse asks first; pressSpend presses it again then.
+const { pressSpend } = require("./lib/spend.cjs");
 const FOUNDRY = process.env.FOUNDRY_URL || "http://localhost:30000";
 const MODULE_BASE = process.env.MODULE_BASE || "http://localhost:8766/";
 const PLAYER = process.env.PLAYER || "Player2";
@@ -174,7 +176,7 @@ async function setPrice(gm, boxId, price) {
     // Only a stale Buy is worth pressing: anything else would be a second sale.
     if (!out.held || stale.label !== `${BOX}: Open for ${oldPrice} gp`) throw new Error(`the player's shop wasn't stale (held ${out.held}, Buy reads "${stale.label}"); nothing pressed`);
     // 2. The player presses the Buy that still says the old price.
-    await buy.click();
+    await pressSpend(buy);
     const want = `${BOX} now costs ${newPrice} gp (you pressed ${oldPrice} gp). Nothing was charged.`;
     await pl.page.waitForFunction(w => document.querySelector("#loot-crates-shop .lc-shop__notice")?.textContent.trim() === w, want, { timeout: 15000 }).catch(() => {});
     await pl.page.waitForTimeout(800);
@@ -198,7 +200,7 @@ async function setPrice(gm, boxId, price) {
     out.redraw = { label: redrawn.label, dataPrice: redrawn.dataPrice, ms: Date.now() - releasedAt, off: redrawn.off, notice: redrawn.notice };
 
     // 4. Pressed again: charged exactly the new price.
-    await buy.click();
+    await pressSpend(buy);
     await pl.page.waitForSelector(".application.lc-reveal .lc-card--landed", { timeout: 20000 });
     await pl.page.waitForTimeout(1200);
     const charged = await facts();

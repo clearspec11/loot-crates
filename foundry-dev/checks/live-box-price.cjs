@@ -31,6 +31,8 @@
 // missing; never deletes anything. Needs "Crate Tester" in "Loot Crates Test".
 /* global game, foundry */
 const { chromium } = require("playwright");
+// A Buy over half the purse asks first; pressSpend presses it again then.
+const { pressSpend } = require("./lib/spend.cjs");
 const FOUNDRY = process.env.FOUNDRY_URL || "http://localhost:30000";
 const MODULE_BASE = process.env.MODULE_BASE || "http://localhost:8766/";
 const PLAYER = process.env.PLAYER || "Player2";
@@ -213,7 +215,7 @@ const storedPrice = (gm, boxId) => gm.evaluate(id => game.settings.get("loot-cra
 
     // 4. One purchase at the new price.
     const pre = await facts(pl.page, before.boxId);
-    await pl.page.locator(`#loot-crates-shop .lc-box__buy[data-box="${before.boxId}"]`).click();
+    await pressSpend(pl.page.locator(`#loot-crates-shop .lc-box__buy[data-box="${before.boxId}"]`));
     await pl.page.waitForSelector(".application.lc-reveal .lc-card--landed", { timeout: 20000 });
     await pl.page.waitForTimeout(1500);
     const post = await facts(pl.page, before.boxId);

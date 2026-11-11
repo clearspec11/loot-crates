@@ -46,6 +46,8 @@
 // Test".
 /* global game, Hooks, foundry, __lc */
 const { chromium } = require("playwright");
+// A Buy over half the purse asks first; pressSpend presses it again then.
+const { pressSpend } = require("./lib/spend.cjs");
 const FOUNDRY = process.env.FOUNDRY_URL || "http://localhost:30000";
 const MODULE_BASE = process.env.MODULE_BASE || "http://localhost:8766/";
 const PLAYER = process.env.PLAYER || "Player2";
@@ -203,7 +205,7 @@ const readChat = (page, logIds) => page.evaluate(ids => {
     const buy = pl.page.locator(`#loot-crates-shop .lc-box__buy[data-box="${boxId}"]`);
     await buy.waitFor({ timeout: 8000 });
     const t0 = Date.now();
-    await buy.click();
+    await pressSpend(buy);
     const reveal = pl.page.locator(".application.lc-reveal").filter({ has: pl.page.locator(".lc-scratch__ticket") }).last();
     await reveal.locator(".lc-scratch__ticket .lc-scratch__foil--painted").first().waitFor({ timeout: 15000 });
     out.revealMs = Date.now() - t0;

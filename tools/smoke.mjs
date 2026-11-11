@@ -43,6 +43,13 @@ const STATES = [
   // saying where the ticket went.
   ["shop-keep", "state=shop"],
   ["shop-kept", "state=shop"],
+  // A large spend asks first (spendguard.js): on a purse of 250 gp the
+  // Adventurer's Crate (150 gp) is over half. Its Buy, then its Buy to
+  // keep, pressed once: armed, the same button says "Spend 150 gp?" on
+  // one line; armedProblems presses Escape, moves focus, presses elsewhere
+  // and redraws, each of which puts its words back, and leaves it armed.
+  ["shop-armed", "state=shop&purse=250"],
+  ["shop-armed-keep", "state=shop&purse=250"],
   // A shop window shorter than its crates (Foundry caps windows at the
   // screen's height; a player can size it down): the grid scrolls under the
   // head, which stays in view, and a wheel over the grid reaches the last crate.
@@ -119,12 +126,15 @@ const STATES = [
   // (the button reads Skip, nothing of the face shows), then landed on an
   // item (a boon), a loss (the bane: cold slate, a dimmed vault, no gold
   // and no amber) and an effect (the GM's text), as the buyer sees them
-  // with Draw again beside Close; the loss is the third draw in a row, so
-  // the head says so and Draw again names the risen price.
+  // with Draw again a quiet button at the row's start, apart from Close;
+  // the loss is the third draw in a row, so the head says so and Draw
+  // again names the risen price. On a purse of 90 gp the bane leaves 47 gp
+  // 5 sp, so its 33 gp 7 sp 5 cp is over half: pressed once, it asks.
   ["deck-held", "state=deck&outcome=coins&buyer=1&phase=held"],
   ["deck-boon", "state=deck&outcome=item&buyer=1&duration=0&seed=3"],
   ["deck-bane", "state=deck&outcome=loss&buyer=1&duration=0&streak=2"],
   ["deck-effect", "state=deck&outcome=effect&buyer=1&duration=0"],
+  ["deck-bane-armed", "state=deck&outcome=loss&buyer=1&duration=0&streak=2&purse=90"],
   // Tam drew from the deck a moment ago: its card prices the next draw at
   // 15 gp and says why.
   ["shop-deck-streak", "state=shop&streak=1"],
@@ -1665,6 +1675,19 @@ function deckProblems(outcome) {
   const again = document.querySelector(".lc-reveal__again");
   if (!shown(again) || !/^Draw again for \d+ gp/.test(again.textContent)) out.push(`Draw again reads "${again?.textContent}"`);
   if (parseFloat(getComputedStyle(again).fontSize) < 11) out.push("Draw again is under 11px");
+  // Kept apart from Close: Close the one primary (dnd5e's black button),
+  // Draw again a quiet button of another ground and weight, at least 24px
+  // tall; on one line they are at the row's two ends, at least 48px
+  // apart, else Draw again is on the line above.
+  if (shown(again) && btn) {
+    const a = again.getBoundingClientRect(), c = btn.getBoundingClientRect();
+    if (getComputedStyle(again).backgroundColor === getComputedStyle(btn).backgroundColor) out.push("Draw again has Close's ground: two primaries side by side");
+    if (Number(getComputedStyle(again).fontWeight) >= 700) out.push("Draw again is bold, as Close is");
+    if (a.height < 24) out.push(`Draw again is only ${Math.round(a.height)}px tall`);
+    const oneLine = Math.abs(a.top - c.top) < 4;
+    if (oneLine && c.left - a.right < 48) out.push(`Draw again sits ${Math.round(c.left - a.right)}px from Close`);
+    if (!oneLine && a.top > c.top) out.push("Draw again wrapped under Close");
+  }
   const kindEl = stage.querySelector(".lc-deck__kind");
   if (parseFloat(getComputedStyle(kindEl).fontSize) < 11) out.push("the card's kind line is under 11px");
   return out;
@@ -2684,6 +2707,129 @@ function nothingRevealProblems() {
 }
 
 /*
+  A large spend's second press (spendguard.js), in the shop as a player
+  presses it, on a purse of 250 gp: the Adventurer's Crate's Buy (or its
+  Buy to keep) pressed once is armed, the same node, focused, saying
+  "Spend 150 gp?" after its name for screen readers, on one line, at the
+  height it had, inside its card, with every attribute it had (aria-
+  disabled never set). A click in the same gesture sends nothing. Escape,
+  focus leaving, a press on another button and a redraw each put its own
+  words back. Buy to keep's second press sends (Buying…); the Pauper's
+  Box (25 gp) is one press. It is left armed for the screenshot.
+*/
+async function armedProblems(which) {
+  const out = [];
+  const frames = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const keep = which === "keep";
+  const sel = keep ? '.lc-box__keep[data-keep="adventurer"]' : '.lc-box__buy[data-box="adventurer"]';
+  const btn = document.querySelector(sel);
+  if (!btn) return [`no ${sel}`];
+  const card = btn.closest(".lc-box");
+  const words = keep ? "Buy to keepa ticket for later" : "Open for 150 gp";
+  const visible = () => [...btn.childNodes].filter(n => !(n.nodeType === 1 && n.classList.contains("lc-sr-only"))).map(n => n.textContent).join("").trim();
+  if (visible() !== words) return [`before any press ${sel} reads "${visible()}"`];
+  const tall = btn.getBoundingClientRect().height, cardTall = card.getBoundingClientRect().height;
+  const names = ["data-action", "data-box", "data-keep", "data-price", "aria-disabled", "aria-describedby"];
+  const attrs = names.map(a => btn.getAttribute(a)).join("|");
+  const arm = async label => {
+    btn.focus();
+    btn.click();
+    await frames();
+    if (document.querySelector(sel) !== btn) out.push(`${label}: the armed button is a new node`);
+    if (!btn.hasAttribute("data-armed")) out.push(`${label}: the press didn't arm it`);
+    if (visible() !== "Spend 150 gp?") out.push(`${label}: armed it reads "${visible()}"`);
+    if (!btn.textContent.trim().startsWith("Adventurer's Crate: ")) out.push(`${label}: armed it lost its name for screen readers: "${btn.textContent.trim()}"`);
+    if (document.activeElement !== btn) out.push(`${label}: focus left the armed button`);
+    if (names.map(a => btn.getAttribute(a)).join("|") !== attrs) out.push(`${label}: arming changed its attributes`);
+    if (btn.disabled) out.push(`${label}: armed it is disabled`);
+    if (Math.abs(btn.getBoundingClientRect().height - tall) > 0.5) out.push(`${label}: armed it is ${btn.getBoundingClientRect().height}px tall, was ${tall}`);
+    if (Math.abs(card.getBoundingClientRect().height - cardTall) > 0.5) out.push(`${label}: arming made its card ${card.getBoundingClientRect().height}px tall, was ${cardTall}`);
+    if (btn.scrollWidth > btn.clientWidth + 1) out.push(`${label}: the ask doesn't fit its button`);
+    const ask = btn.querySelector(".lc-spend-ask");
+    if (!ask || parseFloat(getComputedStyle(ask).fontSize) < 11) out.push(`${label}: the ask is missing or under 11px`);
+    const b = btn.getBoundingClientRect(), c = card.getBoundingClientRect();
+    if (b.left < c.left - 0.5 || b.right > c.right + 0.5) out.push(`${label}: the armed button spills out of its card`);
+  };
+  const back = label => {
+    if (btn.hasAttribute("data-armed") || visible() !== words) out.push(`after ${label} it still reads "${visible()}"`);
+    if (document.querySelector(sel) !== btn) out.push(`after ${label} it is a new node`);
+  };
+  await arm("the first press");
+  // The arming gesture's own second click (well inside the grace) sends nothing.
+  btn.click();
+  await frames();
+  if (!btn.hasAttribute("data-armed")) out.push("a click in the arming gesture disarmed or sent it");
+  btn.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+  back("Escape");
+  await arm("a press after Escape");
+  btn.blur();
+  await frames();
+  back("focus leaving it");
+  await arm("a press after focus left");
+  document.querySelector('.lc-box__buy[data-box="common"]').dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true }));
+  back("a press on another button");
+  await arm("a press after the other button");
+  window.__lootCrates.renderShop();
+  await frames();
+  back("a redraw");
+  if (keep) {
+    await arm("a press before the second");
+    await new Promise(r => setTimeout(r, 500));
+    btn.click();
+    await frames();
+    if (btn.textContent.trim() !== "Adventurer's Crate: Buying…") out.push(`the second press reads "${btn.textContent.trim()}", not Buying…`);
+    window.__lootCrates.renderShop();
+    await frames();
+    // A small spend is one press.
+    const small = document.querySelector('.lc-box__keep[data-keep="common"]');
+    small.focus();
+    small.click();
+    await frames();
+    if (small.textContent.trim() !== "Pauper's Box: Buying…") out.push(`the Pauper's Box's Buy to keep asked first: "${small.textContent.trim()}"`);
+    window.__lootCrates.renderShop();
+    await frames();
+  }
+  await arm("the press for the screenshot");
+  return out;
+}
+
+/*
+  Draw again after a bane, on a purse the bane left at 47 gp 5 sp: its
+  33 gp 7 sp 5 cp is over half. With Close focused (deckProblems), the
+  first press arms it: the same node says "Spend 33 gp 7 sp 5 cp?" on one
+  line at its height, still apart from Close, which keeps its words and
+  its place; a
+  click in the same gesture sends nothing. Left armed for the screenshot.
+*/
+async function againArmedProblems() {
+  const out = [];
+  const frames = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const again = document.querySelector(".lc-reveal__again");
+  const close = document.querySelector(".lc-reveal__close");
+  if (!again || again.hidden) return ["no Draw again on the bane"];
+  const tall = again.getBoundingClientRect().height;
+  again.focus();
+  // After the focus, which can scroll the page.
+  const was = close.getBoundingClientRect();
+  again.click();
+  await frames();
+  again.click();
+  await frames();
+  if (!again.hasAttribute("data-armed")) out.push("Draw again's first press didn't arm it (or its second click sent it)");
+  if (document.querySelector(".lc-reveal__again") !== again) out.push("the armed Draw again is a new node");
+  if (again.textContent.trim() !== "Spend 33 gp 7 sp 5 cp?") out.push(`armed, Draw again reads "${again.textContent.trim()}"`);
+  if (again.getAttribute("aria-disabled") === "true" || again.disabled) out.push("the armed Draw again is off");
+  if (Math.abs(again.getBoundingClientRect().height - tall) > 0.5) out.push(`armed, Draw again is ${again.getBoundingClientRect().height}px tall, was ${tall}`);
+  if (again.scrollWidth > again.clientWidth + 1) out.push("the ask doesn't fit Draw again");
+  if (close?.textContent !== "Close") out.push(`Close reads "${close?.textContent}"`);
+  const now = close.getBoundingClientRect();
+  if (Math.abs(now.top - was.top) > 0.5 || Math.abs(now.left - was.left) > 0.5) out.push(`arming Draw again moved Close from ${Math.round(was.left)},${Math.round(was.top)} to ${Math.round(now.left)},${Math.round(now.top)}`);
+  const a = again.getBoundingClientRect(), c = close.getBoundingClientRect();
+  if (Math.abs(a.top - c.top) < 4 && c.left - a.right < 48) out.push(`armed, Draw again sits ${Math.round(c.left - a.right)}px from Close`);
+  return out;
+}
+
+/*
   Buy to keep (boxcard.js cardShell): every card of a pulled game has one,
   right under its Buy, and a table game's card none; it is off exactly when
   its Buy is, described by the same lines; its name starts with the game's
@@ -3016,6 +3162,7 @@ try {
         problems0.push(...await page.evaluate(limitCardProblems, { reached: name === "shop-limit", off: name === "shop-closed" || busy, shelved: name === "shop-shelf" }));
         problems0.push(...await page.evaluate(keepProblems));
         if (name === "shop-keep" || name === "shop-kept") problems0.push(...await page.evaluate(keepPressProblems, name === "shop-kept"));
+        if (name === "shop-armed" || name === "shop-armed-keep") problems0.push(...await page.evaluate(armedProblems, name === "shop-armed-keep" ? "keep" : "buy"));
         problems0.push(...await page.evaluate(shelfShopProblems, name === "shop-shelf"));
         problems0.push(...await page.evaluate(tableCardProblems, name === "shop-table"));
         problems0.push(...await page.evaluate(auctionCardProblems, name === "shop-auction"));
@@ -3085,7 +3232,10 @@ try {
       else if (name.startsWith("auction")) problems0.push(...await page.evaluate(auctionProblems, { phase: { "auction-open": "open", "auction-bid": "bid", "auction-gm": "bid", "auction-hammer": "hammer", "auction-crate": "hammer" }[name], gm: name === "auction-gm", crate: name === "auction-crate" }));
       else if (name.startsWith("table") || name.startsWith("roulette")) problems0.push(...await page.evaluate(tableProblems, { phase: { "table-betting": "betting", "table-waiting": "waiting", "table-closed": "closed", "roulette-spinning": "spinning", "roulette-won": "landed", "roulette-lost": "landed" }[name], outcome: name === "roulette-lost" ? "lose" : "win", gm: name === "table-waiting" }));
       else if (name.startsWith("dice")) problems0.push(...await page.evaluate(diceProblems, { "dice-rolling": "rolling", "dice-won": "win", "dice-lost": "lose" }[name]));
-      else if (name.startsWith("deck")) problems0.push(...await page.evaluate(deckProblems, { "deck-held": "held", "deck-boon": "item", "deck-bane": "loss", "deck-effect": "effect" }[name]));
+      else if (name.startsWith("deck")) {
+        problems0.push(...await page.evaluate(deckProblems, { "deck-held": "held", "deck-boon": "item", "deck-bane": "loss", "deck-effect": "effect", "deck-bane-armed": "loss" }[name]));
+        if (name === "deck-bane-armed") problems0.push(...await page.evaluate(againArmedProblems));
+      }
       else if (name === "manager-dropped") problems0.push(...await page.evaluate(droppedProblems), ...await page.evaluate(pinnedProblems, false));
       else if (name === "manager-pool-made") problems0.push(...await page.evaluate(poolMadeProblems), ...await page.evaluate(pinnedProblems, true));
       else if (name === "prompt-newpool-discard") problems0.push(...await page.evaluate(newPoolDiscardProblems));

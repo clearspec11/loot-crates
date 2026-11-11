@@ -103,7 +103,8 @@
       "Keep": "Buy to keep",
       "KeepPrice": ", {price}, ",
       "KeepHint": "a ticket for later",
-      "Keeping": "Buying…"
+      "Keeping": "Buying…",
+      "SpendAsk": "Spend {price}?"
     },
     "Shop": {
       "ClosedByGM": "The GM has closed the shop.",

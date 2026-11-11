@@ -68,7 +68,11 @@
   screen reader announced that before the new Close took focus at the
   landing. Shown to the buyer alone, never on a replay; when it can't be
   played (the deck spent, the shop shut, the purse short) the button is
-  off with the reason as a visible line.
+  off with the reason as a visible line. It sits at the start of the
+  actions row as a quiet button, apart from Close (which stays the
+  primary, and where focus lands), so a press meant for Close can't buy
+  another play; and at a price over half the purse it takes two presses
+  (views/spendguard.js), as a Buy in the shop does.
 
   After the reveal (VIB-219, views/afterreveal.js): once landed, the
   winner alone gets, under the vault, Give to… and Sell back for N for
@@ -124,6 +128,7 @@ import { onParted } from "./handover.js";
 import { rowItems, giveTargets, sellBackOf, sellCp, heldWorth, partSentence, partWhere } from "../core/afterplay.js";
 import { afterHTML, wireAfter, setBusy, refused, showPart, spectatorLine, whereAfter } from "../views/afterreveal.js";
 import { formatGold } from "../core/currency.js";
+import { spendPress, disarmSpend } from "../views/spendguard.js";
 // The dice game's 3D dice bridge (Dice So Nice), set wherever reveals show.
 import "./dicereveal.js";
 import { t } from "../core/i18n.js";
@@ -493,12 +498,19 @@ export class CrateReveal extends ApplicationV2 {
   // out) on the reason line beside the button, as the shop says it in its
   // notice line; anything else as a toast.
   #drawing = false;
-  static async #drawAgain(_event, button) {
+  // A price over half the purse asks first (views/spendguard.js): the
+  // first press arms the button ("Spend 33 gp 7 sp 5 cp?"), the second
+  // draws; a price that moved between the two asks again at the new one.
+  static async #drawAgain(event, button) {
     if (this.#drawing || this.#closed || button.getAttribute("aria-disabled") === "true") return;
     const again = this.#againOffer();
     if (!again) return;
+    if (again.off) {
+      this.#showAgain(again);
+      return;
+    }
+    if (!spendPress(button, { purse: again.purse, price: again.price, event })) return;
     this.#showAgain(again);
-    if (again.off) return;
     this.#drawing = true;
     this.linger.pause("drawing");
     button.textContent = t("LOOTCRATES.Reveal.Drawing");
@@ -544,7 +556,8 @@ export class CrateReveal extends ApplicationV2 {
       // The limit per character is the core's (limits.js): once this
       // play reached it, the next one is off with the card's reason.
       const limit = offer && !offer.off ? withLimit(game, "", { tally, actorId: r.actorId, actorName: r.actorName, today: todayKey(r.actorId) }) : "";
-      return limit ? { ...offer, off: limit } : offer;
+      // The purse it was offered against, for the second press (spendguard.js).
+      return offer ? { ...offer, ...(limit ? { off: limit } : {}), purse } : null;
     } catch (err) {
       console.error("loot-crates | the kind's next play couldn't be offered", err);
       return null;
@@ -559,6 +572,8 @@ export class CrateReveal extends ApplicationV2 {
     const btn = root?.querySelector(".lc-reveal__again");
     const why = root?.querySelector(".lc-reveal__why");
     if (!btn || !why) return;
+    // Its own words follow the offer, so an ask it was showing goes.
+    disarmSpend(btn);
     btn.hidden = !again;
     const line = again?.off || said;
     why.hidden = !line;

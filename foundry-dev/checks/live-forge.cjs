@@ -46,6 +46,8 @@
 // "Loot Crates Test", owned by VICTIM and not by FORGER.
 /* global game, foundry, fromUuid, CONFIG, ui, __lc */
 const { chromium } = require("playwright");
+// A Buy over half the purse asks first; pressSpend presses it again then.
+const { pressSpend } = require("./lib/spend.cjs");
 const FOUNDRY = process.env.FOUNDRY_URL || "http://localhost:30000";
 const MODULE_BASE = process.env.MODULE_BASE || "http://localhost:8766/";
 const VICTIM = process.env.VICTIM || process.env.PLAYER || "Player2";
@@ -209,7 +211,7 @@ const ledger = (page, boxId) => page.evaluate(async ({ base, boxId }) => {
     }, { base: MODULE_BASE, helpers: HELPERS });
     const buy = vi.page.locator(`.lc-shop .lc-box__buy[data-box="${boxId}"]`);
     await buy.waitFor({ timeout: 10000 });
-    await buy.click();
+    await pressSpend(buy);
     for (let t0 = Date.now(); Date.now() - t0 < 15000; await gm.page.waitForTimeout(200)) {
       now = await ledger(gm.page, boxId);
       if (now.rows.length > base.rows.length) break;
