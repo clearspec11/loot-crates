@@ -254,7 +254,7 @@ Depth is dnd5e's: one soft, unoffset card shadow on paper, and inset light and s
 - **Landed lift** (`box-shadow: inset 0 0 0 1px var(--lc-rarity), 0 8px 16px rgba(0,0,0,.6)`): the winning strip card only.
 
 ### Named Rules
-**The Neutral Lift Rule.** The landing is a neutral lift (translateY -5px, scale 1.06, 460ms `cubic-bezier(.16,1,.3,1)`) with an inset rarity ring, a 10% rarity tint and a gold-framed portrait; the rest of the strip steps back to 45% opacity. No coloured glow.
+**The Neutral Lift Rule.** The landing is a neutral lift (translateY -5px, scale 1.06, 460ms `cubic-bezier(.16,1,.3,1)`) with an inset rarity ring, a 10% rarity tint and a gold-framed portrait; the rest of the strip steps back to 45% opacity. No coloured glow. **The peak is authored by rank** (`--lc-rank`, 0 to 5), so a legendary doesn't land as a common in another colour: the result's name rises and settles from a little large a beat after the lift (6px and 4% over 320ms for a common, 2px, 3% and 50ms more a rank); the vault's wash swells past its level and settles back (not at all for a common, by .24 for a legendary); one pass of plain white light crosses the landed card (none on a common, 7% a rank). The rarity line follows the name at 280ms and where it went at 460ms. The dice's total comes up from 1.3x over 200ms inside the dice's own loop. All of it is off under reduced motion.
 
 **The Wash Carries The Escalation Rule.** Once landed, the vault takes a radial wash of the rarity colour (55% mix fading out by 70%) at opacity 0.12 + rank x 0.12, from barely tinted for a common to flooded for an artifact, fading in over 600ms after a 120ms delay.
 

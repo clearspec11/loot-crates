@@ -230,7 +230,7 @@ function logRow({ out }) {
 // the left, then the total shows. With Dice So Nice the 3D roll stands in
 // for the tumble: its end (or threeTimeout) tells the total, and the stage
 // lands on the next frame, or after tellFallback where frames have stopped.
-export const DICE_TIMING = { tumble: 900, settleGap: 150, total: 350, flip: 90, threeTimeout: 6000, tellFallback: 500 };
+export const DICE_TIMING = { tumble: 900, settleGap: 150, total: 350, totalIn: 200, flip: 90, threeTimeout: 6000, tellFallback: 500 };
 export const landTime = n => DICE_TIMING.tumble + DICE_TIMING.settleGap * Math.max(0, n - 1) + DICE_TIMING.total;
 
 // The 3D dice bridge (dicereveal.js): (rollData) -> Promise<boolean> that
@@ -299,8 +299,16 @@ export function mountDice(host, { faces = [], sides = 6, target = 0, outcome = "
         }
       }
     }
-    const shown = at >= T(settleAt(n - 1) + DICE_TIMING.total * 0.4);
-    if (totalEl) { totalEl.textContent = shown ? String(sum) : ""; set(totalEl, { opacity: shown ? "1" : "0", transform: shown ? "none" : "translateY(4px)" }); }
+    // The total arrives: from the moment it is told it comes up from a
+    // little large and settles (DICE_TIMING.totalIn), done before the land.
+    const toldAt = T(settleAt(n - 1) + DICE_TIMING.total * 0.4);
+    const shown = at >= toldAt;
+    const k = shown ? Math.min(1, (at - toldAt) / Math.max(1, T(DICE_TIMING.totalIn))) : 0;
+    const e = 1 - Math.pow(1 - k, 3);
+    if (totalEl) {
+      totalEl.textContent = shown ? String(sum) : "";
+      set(totalEl, { opacity: !shown ? "0" : k >= 1 ? "1" : Math.min(1, 0.2 + e).toFixed(2), transform: !shown ? "translateY(4px)" : k >= 1 ? "none" : `translateY(${(4 * (1 - e)).toFixed(2)}px) scale(${(1.3 - 0.3 * e).toFixed(3)})` });
+    }
     if (shown !== told) { told = shown; host.classList[shown ? "add" : "remove"]("lc-dice--told"); }
   };
 

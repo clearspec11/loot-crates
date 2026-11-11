@@ -590,9 +590,17 @@ describe("the stage", () => {
     runTo(1350);
     expect(h.querySelector(".lc-dice__total").textContent).toBe("15");
     expect(h.classList.contains("lc-dice--told")).toBe(true);
+    // The total arrives: just told, it is still large and on its way up.
+    const total = h.querySelector(".lc-dice__total");
+    expect(total.style.transform).toMatch(/^translateY\([\d.]+px\) scale\(1\.[12]\d*\)$/);
+    expect(Number(total.style.opacity)).toBeGreaterThan(0);
+    expect(Number(total.style.opacity)).toBeLessThan(1);
     expect(onLand).not.toHaveBeenCalled();
     runTo(landTime(3) + 50);
     await played;
+    // And is at rest by the land.
+    expect(total.style.transform).toBe("none");
+    expect(total.style.opacity).toBe("1");
     expect(onLand).toHaveBeenCalledTimes(1);
     expect(h.classList.contains("lc-dice--landed")).toBe(true);
     expect(h.classList.contains("lc-dice--told")).toBe(true);

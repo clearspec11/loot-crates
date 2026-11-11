@@ -6,6 +6,7 @@ The newest numbered entry's version is the one in `module/module.json`, and its 
 
 ## Unreleased
 
+- The moment of the result is no longer flat. The item's name used to appear in one frame; it now rises into place a beat after the card lifts, and the dice's total comes up the same way. Rarer finds land bigger: the name travels further, the vault's colour swells before it settles, and a pass of light crosses the card, none of it for a common and the most for a legendary or an artifact.
 - A scratch ticket watched on a short screen scrolls with the coin. The ticket is taller than its window there, and the coin used to carry on below the fold, opening the last panels where nobody could see them; the ticket now eases along as the coin reaches each row.
 - The crate strip and the roulette wheel no longer crawl to a stop. The strip's marker sat inside the winning card for nearly two seconds before the reveal, and the wheel's ball in its pocket for over one; both now brake at a steadier rate over the same total time, so the result is known about a second (the strip) or under a second (the wheel) before it lands. A near-miss rests on the better card for about half as long.
 - A scratch ticket's animation no longer piles up work while it plays. Each frame of the coin's sweep started another copy of the same loop, so a card watched to the end was drawing itself dozens of times a frame (and one scratched by hand, several); it now draws once a frame.
