@@ -290,7 +290,7 @@ const untilCard = async (pl, boxId, pred, ms = 5000) => {
         if (!shopOpen) await store.setShopOpen(false);
         try { await globalThis.__lc?.app?.close(); } catch { /* closed */ }
         globalThis.__lc?.closeReveals?.();
-        for (const n of [...(ui.notifications?.active ?? [])]) { try { ui.notifications.remove?.(n); } catch { /* gone */ } }
+        for (const n of [...(globalThis.ui?.notifications?.active ?? [])]) { try { globalThis.ui.notifications.remove?.(n); } catch { /* gone */ } }
         return { refunded, gone: !store.getBoxes()[boxId], pools: poolIds.filter(id => store.getPools()[id]).length, open: store.isShopOpen() };
       }, { base: MODULE_BASE, boxId, poolIds, shopOpen }) : null;
     } catch (err) { out.restored = { error: String(err) }; out.ok = false; }
