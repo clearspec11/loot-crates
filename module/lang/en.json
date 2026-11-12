@@ -1317,7 +1317,7 @@
       "DudsMany": "{count} duds of {size} tickets",
       "RollGrows": "The prizes need {count} tickets, more than {size}: the roll is printed at {count}.",
       "NoPool": "Tick a pool for the item prizes, or those tickets can't be sold.",
-      "NoneAtRarity": "The ticked pools hold no {rarity} item: those tickets wait in the roll until they do.",
+      "NoneAtRarity": "The ticked pools hold no {rarity} item: no ticket can be sold until they do.",
       "BonusOff": "The bonus spot is off, so its tickets are left out of the roll.",
       "TicketsLeftOne": "{left} of {size} ticket left",
       "TicketsLeftMany": "{left} of {size} tickets left",
@@ -1325,9 +1325,10 @@
       "RollSoldOut": "{roll} is sold out",
       "LeftOf": "{left} of {count}",
       "PrizesLeft": "Prizes left in the roll",
-      "Waiting": "The prizes left need items the pools don't hold",
+      "Waiting": "A prize needs an item the pools don't hold",
+      "RuleStalled": "not selling: a prize needs an item its pools don't hold",
       "SoldOutError": "{name} is sold out. Ask the GM to print a new roll.",
-      "WaitingError": "{name}'s last tickets need items its pools don't hold. Tell the GM.",
+      "WaitingError": "{name} has a prize that needs an item its pools don't hold. Tell the GM.",
       "StillScratching": "Still scratching",
       "BuyFor": "Buy a ticket for {price}",
       "AnotherFor": "Another ticket for {price}",
@@ -1387,7 +1388,7 @@
       "PrizesLegend": "The prizes",
       "LookLegend": "How it looks",
       "SeesLegend": "Who sees what",
-      "NoDrawable": "The ticked pools can't give any prize on this roll: tick a pool that holds the prizes' rarities."
+      "NoDrawable": "The ticked pools can't give every prize on this roll: tick a pool that holds each prize's rarity."
     },
     "Ticket": {
       "UseOpen": "Open",

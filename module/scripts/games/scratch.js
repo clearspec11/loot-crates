@@ -299,10 +299,10 @@ export function poolRarities(game, pools = {}) {
 
 /*
   The tickets one Buy can be drawn from, as weights by what is left of
-  each: every prize line still in the roll that can be handed over (a
-  line with items only while the pools hold an item at each of their
-  rarities), and the duds. `blocked` counts the tickets left whose items
-  the pools can't give, which wait in the roll.
+  each: every prize line still in the roll and the duds. `blocked` counts
+  the tickets left whose items the pools can't give. While there are any,
+  the bag is empty and nothing sells: skipping them would sell the rest of
+  the roll first and leave those prizes, the big ones, at the bottom.
 */
 export function drawBag(game, pools, tally = null) {
   const st = rollState(game, tally);
@@ -315,11 +315,11 @@ export function drawBag(game, pools, tally = null) {
     bag.push({ ...p, weight: p.left });
   }
   if (st.duds.left) bag.push({ key: "dud", kind: "dud", weight: st.duds.left, left: st.duds.left });
-  return { state: st, bag, blocked };
+  return { state: st, bag: blocked ? [] : bag, blocked };
 }
 
-// Why no ticket can be sold now, or "": the roll is empty, or what is left
-// waits on an item the pools can't give.
+// Why no ticket can be sold now, or "": the roll is empty, or a prize left
+// in it needs an item the pools can't give.
 export function rollReason(game, pools, tally = null) {
   const { state, bag } = drawBag(game, pools, tally);
   if (state.soldOut) return t("LOOTCRATES.Card.SoldOut");
@@ -1169,7 +1169,9 @@ const reason = (game, pools, ctx) => scratchState(game, pools, ctx) || shopReaso
 /* ---------- The manager's words ---------- */
 
 // "Lucky numbers 4 × 3, bonus 25 gp, roll 2: 43 of 100 left": the rules cell.
-export function scratchRulesText(game, tally = null) {
+// With the pools, a roll that has stopped selling (drawBag's blocked) says
+// so, so the GM hears of it from the Boxes tab and not from a player.
+export function scratchRulesText(game, tally = null, pools = null) {
   const { cols, rows } = gridOf(game);
   const st = rollState(game, tally);
   const bonus = bonusOf(game);
@@ -1178,6 +1180,7 @@ export function scratchRulesText(game, tally = null) {
     bonus.on ? t("LOOTCRATES.Scratch.RuleBonus", { price: formatPrice(bonus.gp) }) : "",
     st.soldOut ? t("LOOTCRATES.Scratch.RollSoldOut", { roll: rollName(st.id) }) : t("LOOTCRATES.Scratch.RuleRoll", { roll: rollName(st.id), left: ticketsLeftText(st.left, st.size) }),
     showsLeft(game) ? "" : t("LOOTCRATES.Scratch.RuleHidden"),
+    pools && !st.soldOut && drawBag(game, pools, tally).blocked ? t("LOOTCRATES.Scratch.RuleStalled") : "",
   ].filter(Boolean).join(", ");
 }
 

@@ -143,7 +143,7 @@ export function boxesTableHTML({ boxes, pools, tally = null, rounds = {}, recent
     deck: () => deckRulesText(b, tally),
     roulette: () => rouletteRulesText(b),
     auction: () => auctionRulesText(b),
-    scratch: () => scratchRulesText(b, tally),
+    scratch: () => scratchRulesText(b, tally, pools),
   }[kind(b)] ?? (() => [oddsModeOf(b) === "weight" ? (b.fromTable ? t("LOOTCRATES.Boxes.RuleTableOdds") : t("LOOTCRATES.Boxes.RuleByWeight")) : "", b.rules?.pity ? t("LOOTCRATES.Boxes.RulePityPulls", { rarity: RARITY_LABEL[b.rules.pity.minRarity] ?? b.rules.pity.minRarity, after: b.rules.pity.after }) : "", b.rules?.noDuplicates ? t("LOOTCRATES.Boxes.RuleNoDupes") : ""].filter(Boolean).join(", ")))();
   const rules = b => esc([own(b), TABLE_KINDS.includes(kind(b)) ? "" : limitsText(b)].filter(Boolean).join(", "));
   // A wheel's or an auction's row opens its round (or brings the open one

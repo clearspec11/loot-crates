@@ -32,15 +32,18 @@ describe("unplayableReason", () => {
     expect(unplayableReason(draft("scratch", { roll: { id: 1, size: 10, prizes: [{ count: 2, parts: [{ gp: 5 }] }] } }), POOLS)).toBe("");
   });
 
-  it("a scratch roll no ticked pool can give a prize from is unplayable; one undrawable prize beside a drawable one only warns", () => {
+  it("a scratch roll with any prize no ticked pool can give is unplayable", () => {
     // Copilot's review of PR #35: ten rare items in a roll of ten, from a pool that holds no rare item.
     const commonOnly = { ...POOLS, c: { id: "c", name: "Commons", pools: [], entries: [{ uuid: "Item.a", name: "Rope", img: "", rarity: "common", weight: 1 }] } };
     const rares = draft("scratch", { pools: [{ id: "c", share: 1 }], roll: { id: 1, size: 10, prizes: [{ count: 10, parts: [{ item: { rarity: "rare" } }] }] } });
-    expect(unplayableReason(rares, commonOnly)).toBe("The ticked pools can't give any prize on this roll: tick a pool that holds the prizes' rarities.");
+    expect(unplayableReason(rares, commonOnly)).toBe("The ticked pools can't give every prize on this roll: tick a pool that holds each prize's rarity.");
     // With duds beside them, every ticket sold would still be a dud.
     expect(unplayableReason({ ...rares, roll: { id: 1, size: 50, prizes: [{ count: 2, parts: [{ item: { rarity: "rare" } }] }] } }, commonOnly)).not.toBe("");
-    // A coin prize can still be won: the rare item only waits in the roll.
-    expect(unplayableReason({ ...rares, roll: { id: 1, size: 50, prizes: [{ count: 2, parts: [{ item: { rarity: "rare" } }] }, { count: 5, parts: [{ gp: 5 }] }] } }, commonOnly)).toBe("");
+    // A coin prize beside it doesn't help: the roll stops until the rare can be given,
+    // or it would sell the coins first and leave the rare at the bottom.
+    expect(unplayableReason({ ...rares, roll: { id: 1, size: 50, prizes: [{ count: 2, parts: [{ item: { rarity: "rare" } }] }, { count: 5, parts: [{ gp: 5 }] }] } }, commonOnly)).not.toBe("");
+    // A line printed with no tickets asks for nothing.
+    expect(unplayableReason({ ...rares, roll: { id: 1, size: 50, prizes: [{ count: 0, parts: [{ item: { rarity: "rare" } }] }, { count: 5, parts: [{ gp: 5 }] }] } }, commonOnly)).toBe("");
     // The pool that holds a rare makes it playable.
     expect(unplayableReason({ ...rares, pools: [{ id: "p", share: 1 }] }, POOLS)).toBe("");
   });

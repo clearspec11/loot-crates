@@ -6,6 +6,8 @@ The newest numbered entry's version is the one in `module/module.json`, and its 
 
 ## Unreleased
 
+- A scratch roll no longer saves its big prizes for last. An item prize the ticked pools couldn't give was set aside while the rest of the roll kept selling, so the cheap tickets went first and the item prizes all came out at the bottom of the roll once the pools could give them. Now a roll with a prize its pools can't give sells nothing until they can: the card says why, the game's row on the Boxes tab says "not selling", and the editor keeps such a game off the shelf.
+
 - A big purchase asks before it spends. A Buy or Buy to keep that costs more than half of what your character carries now asks "Spend 150 gp?" on the button you pressed; press it again to buy. Pressing anywhere else, moving away from it or Escape puts it back. Anything at half your purse or less is still one press.
 - Draw again is no longer right beside Close. After a deck draw (or a scratch ticket's Another ticket) it sits at the other end of the window's buttons as a quieter button, so reaching for Close after losing coins can't pay for another draw; and when the next draw costs more than half your purse, it asks first too.
 - A shop card has one button. **Buy to keep** was a second full-width button under every Buy, and what it did was told only to screen readers; it is now a line of words under the Buy that says so: "Buy to keep", underlined, then "a ticket for later". The Buy sits at the foot of its card, so a row of cards has its Buys on one line however many lines each card has above.

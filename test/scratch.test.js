@@ -33,7 +33,7 @@ const { NEW_DEFAULTS, copyOf } = await import("../module/scripts/views/newgame.j
 const { boxesTableHTML } = await import("../module/scripts/views/boxestable.js");
 const sound = await import("../module/scripts/foundry/sound.js");
 const { toCopper } = await import("../module/scripts/core/currency.js");
-const { seededRng } = await import("../module/scripts/core/odds.js");
+const { seededRng, weightedPick } = await import("../module/scripts/core/odds.js");
 const { RARITIES } = await import("../module/scripts/core/config.js");
 
 const tick = () => new Promise(r => setTimeout(r, 0));
@@ -133,14 +133,36 @@ describe("the ledger, from the log", () => {
     expect(drawBag(SMALL, POOLS, tallyOf(sold)).bag.map(b => `${b.key}:${b.weight}`)).toEqual(["gp.10:1"]);
   });
 
-  it("leaves an item prize the pools can't give in the roll, undrawn, and says why when nothing else is left", () => {
+  it("sells nothing while an item prize left in the roll is one the pools can't give, so it never sinks to the bottom", () => {
     const noRare = { p: { ...POOLS.p, entries: [POOLS.p.entries[0]] } };
     const { bag, blocked } = drawBag(SMALL, noRare, tallyOf([]));
-    expect(bag.map(b => b.key)).toEqual(["gp.10", "bonus", "dud"]);
+    expect(bag).toEqual([]);
     expect(blocked).toBe(1);
-    const allButRare = ["gp.10", "gp.10", "bonus", "dud", "dud"].map(tier => row({ boxId: "small", tier }));
-    expect(rollReason(SMALL, noRare, tallyOf(allButRare))).toBe("The prizes left need items the pools don't hold");
-    expect(rollReason(SMALL, POOLS, tallyOf(allButRare))).toBe("");
+    expect(rollReason(SMALL, noRare, tallyOf([]))).toBe("A prize needs an item the pools don't hold");
+    expect(drawBag(SMALL, POOLS, tallyOf([])).bag.map(b => b.key)).toEqual(["item.rare", "gp.10", "bonus", "dud"]);
+    expect(rollReason(SMALL, POOLS, tallyOf([]))).toBe("");
+    // The Boxes row tells the GM.
+    expect(scratchRulesText(SMALL, tallyOf([]), noRare)).toContain("not selling: a prize needs an item its pools don't hold");
+    expect(scratchRulesText(SMALL, tallyOf([]), POOLS)).not.toContain("not selling");
+    // Once that prize is sold, the pools needn't hold its rarity.
+    const rareSold = [row({ boxId: "small", tier: "item.rare" })];
+    expect(rollReason(SMALL, noRare, tallyOf(rareSold))).toBe("");
+  });
+
+  it("sells every tier in its turn: no line comes out later than the rest on average", () => {
+    const game = { id: "even", layout: "lucky", roll: { id: 1, size: 40, prizes: [{ count: 10, parts: [{ gp: 5 }] }, { count: 3, parts: [{ gp: 50 }] }, { count: 1, parts: [{ gp: 500 }] }] } };
+    const rng = seededRng(7);
+    const at = {};
+    for (let run = 0; run < 400; run++) {
+      const rows = [];
+      for (let n = 1; n <= 40; n++) {
+        const { bag } = drawBag(game, {}, tallyOf(rows));
+        const line = weightedPick(bag, b => b.weight, rng);
+        rows.push(row({ boxId: "even", tier: line.key }));
+        if (line.key !== "dud") (at[line.key] ??= []).push(n);
+      }
+    }
+    for (const list of Object.values(at)) expect(Math.abs(list.reduce((a, b) => a + b, 0) / list.length - 20.5)).toBeLessThan(2.5);
   });
 });
 
@@ -200,10 +222,10 @@ describe("the draw without replacement, through performPull", () => {
     expect(outs.every(o => o.state === undefined)).toBe(true);
   });
 
-  it("refuses a roll whose last tickets need items the pools don't hold, before anything is charged", async () => {
+  it("refuses a roll with a prize that needs items the pools don't hold, before anything is charged", async () => {
     const actor = actorOf();
     const log = ["gp.10", "gp.10", "bonus", "dud", "dud"].map(tier => row({ boxId: "small", tier }));
-    await expect(performPull({ box: { ...SMALL, pools: [] }, pools: POOLS, actor, rng: seededRng(1), log })).rejects.toThrow("Small Ticket's last tickets need items its pools don't hold. Tell the GM.");
+    await expect(performPull({ box: { ...SMALL, pools: [] }, pools: POOLS, actor, rng: seededRng(1), log })).rejects.toThrow("Small Ticket has a prize that needs an item its pools don't hold. Tell the GM.");
     expect(actor.writes).toHaveLength(0);
   });
 });
@@ -314,7 +336,7 @@ describe("the readout", () => {
     const preview = scratchPreview(draft, POOLS);
     expect(preview.notes.map(n => n.text)).toEqual([
       "The prizes need 13 tickets, more than 10: the roll is printed at 13.",
-      "The ticked pools hold no Legendary item: those tickets wait in the roll until they do.",
+      "The ticked pools hold no Legendary item: no ticket can be sold until they do.",
       "The bonus spot is off, so its tickets are left out of the roll.",
     ]);
     const html = scratchPreviewHTML(preview, esc);
@@ -514,11 +536,11 @@ describe("the words", () => {
 
   it("Another ticket for 5 gp while the roll has tickets, off with the reason when it is sold out or the purse is short", () => {
     const again = SCRATCH.reveal.again;
-    expect(again(reveal(), { game: GAME, tally: null, purse: { gp: 50 } })).toEqual({ price: 5, label: "Another ticket for 5 gp", off: "" });
-    expect(again(reveal(), { game: GAME, tally: null, purse: { gp: 2 } }).off).toBe("Needs 3 gp more");
+    expect(again(reveal(), { game: GAME, pools: POOLS, tally: null, purse: { gp: 50 } })).toEqual({ price: 5, label: "Another ticket for 5 gp", off: "" });
+    expect(again(reveal(), { game: GAME, pools: POOLS, tally: null, purse: { gp: 2 } }).off).toBe("Needs 3 gp more");
     // The last ticket of the roll, before the log has caught up.
-    expect(again(reveal({ ticket: { rollId: 1, no: 100, size: 100 } }), { game: GAME, tally: null, purse: { gp: 50 } }).off).toBe("Sold out");
-    expect(again(reveal(), { game: GAME, tally: null, purse: { gp: 50 }, open: false, gmOnline: true }).off).toBe("The GM has closed the shop.");
+    expect(again(reveal({ ticket: { rollId: 1, no: 100, size: 100 } }), { game: GAME, pools: POOLS, tally: null, purse: { gp: 50 } }).off).toBe("Sold out");
+    expect(again(reveal(), { game: GAME, pools: POOLS, tally: null, purse: { gp: 50 }, open: false, gmOnline: true }).off).toBe("The GM has closed the shop.");
     expect(again(reveal({ replay: true }), { game: GAME })).toBeNull();
     expect(again(reveal(), { game: null })).toBeNull();
   });
