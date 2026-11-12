@@ -211,7 +211,7 @@ const untilCard = async (pl, boxId, pred, ms = 5000) => {
       await __lc.until(() => card(), 15000);
       __lc.closeReveals();
       const notes = [...document.querySelectorAll("#notifications .notification, #notifications li")].map(n => n.textContent.replace(/\s+/g, " ").trim());
-      return { id: row.id, name: row.name, rarity: row.rarity, owed: row.owed, itemId: row.itemId ?? null, uuid: row.uuid ?? null, price: row.price, items: game.actors.get(actorId).items.size, card: card()?.content ?? null, notice: notes.find(n => /Hand it over from the Pull log/.test(n)) ?? null };
+      return { id: row.id, name: row.name, rarity: row.rarity, owed: row.owed, itemId: row.itemId ?? null, uuid: row.uuid ?? null, price: row.price, items: game.actors.get(actorId).items.size, card: card()?.content ?? null, notice: notes.find(n => /Hand it over from the Pull log/.test(n)) ?? null, notices: notes.filter(n => /Hand it over from the Pull log/.test(n)).length };
     }, { base: MODULE_BASE, boxId, actorId: made.actorId });
 
     // 4. Hand over from the Pull log: the button, the dialog's picker, Hand over.
@@ -262,6 +262,7 @@ const untilCard = async (pl, boxId, pred, ms = 5000) => {
       charged: out.start.purseCp - out.after.purseCp === 100,
       row: out.owed.name === "Rare item" && out.owed.rarity === "rare" && JSON.stringify(out.owed.owed) === JSON.stringify([{ rarity: "rare" }]),
       gmTold: /won Rare item at .* which its pools can't give\. Hand it over from the Pull log\./.test(out.owed.notice ?? ""),
+      gmToldOnce: out.owed.notices === 1,
       chatOwed: /lc-chat__owed">Owed by the GM: Rare item</.test(out.owed.card ?? "") && !/data-uuid="Actor\./.test(out.owed.card ?? ""),
       logRow: out.handed.note === "Owed: Rare item" && out.handed.label === "Hand over to Crate Tester. Owed: Rare item",
       dialog: /Crate Tester won Rare item at/.test(out.dialog.text) && out.dialog.options.length >= 1 && out.dialog.options.some(o => o.startsWith(made.rare.name)),
