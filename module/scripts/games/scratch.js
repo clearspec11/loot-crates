@@ -84,6 +84,7 @@ import { weightedPick, flattenPool, rarityRank } from "../core/odds.js";
 import { formatPrice, formatGold, canAfford, shortfall, parsePrice } from "../core/currency.js";
 import { playReveal, playPlop, playScratch, playFoilTick } from "../foundry/sound.js";
 import { resultHTML } from "../views/revealcard.js";
+import { OWED_CLASS } from "../views/chatcard.js";
 import { mountFoil } from "../views/foil.js";
 import { cardShell, shopReason, shortReason, draftBox } from "../views/boxcard.js";
 import { drawItem, grantData, crateLogRow } from "./crate.js";
@@ -299,32 +300,30 @@ export function poolRarities(game, pools = {}) {
 
 /*
   The tickets one Buy can be drawn from, as weights by what is left of
-  each: every prize line still in the roll and the duds. `blocked` counts
-  the tickets left whose items the pools can't give. While there are any,
-  the bag is empty and nothing sells: skipping them would sell the rest of
-  the roll first and leave those prizes, the big ones, at the bottom.
+  each: every prize line still in the roll and the duds, whether or not
+  the pools can give a line's items. Skipping a line the pools can't give
+  would sell the rest of the roll first and leave those prizes, the big
+  ones, at the bottom; such a ticket is drawn in its turn and its item is
+  owed (roll, below). `owing` counts the tickets left whose items the
+  pools can't give now, for the GM's row on the Boxes tab.
 */
 export function drawBag(game, pools, tally = null) {
   const st = rollState(game, tally);
   const held = poolRarities(game, pools);
   const bag = [];
-  let blocked = 0;
+  let owing = 0;
   for (const p of st.prizes) {
     if (!p.left) continue;
-    if (p.items.some(r => !held.has(r))) { blocked += p.left; continue; }
+    if (p.items.some(r => !held.has(r))) owing += p.left;
     bag.push({ ...p, weight: p.left });
   }
   if (st.duds.left) bag.push({ key: "dud", kind: "dud", weight: st.duds.left, left: st.duds.left });
-  return { state: st, bag: blocked ? [] : bag, blocked };
+  return { state: st, bag, owing };
 }
 
-// Why no ticket can be sold now, or "": the roll is empty, or a prize left
-// in it needs an item the pools can't give.
+// Why no ticket can be sold now, or "": the roll is empty.
 export function rollReason(game, pools, tally = null) {
-  const { state, bag } = drawBag(game, pools, tally);
-  if (state.soldOut) return t("LOOTCRATES.Card.SoldOut");
-  if (!bag.length) return t("LOOTCRATES.Scratch.Waiting");
-  return "";
+  return rollState(game, tally).soldOut ? t("LOOTCRATES.Card.SoldOut") : "";
 }
 
 /* ---------- The words for a prize and the odds ---------- */
@@ -626,40 +625,68 @@ async function roll(ctx) {
   const { game, rng, tally = null } = ctx;
   const { state, bag } = drawBag(game, ctx.pools, tally);
   if (state.soldOut) throw new PullError(t("LOOTCRATES.Scratch.SoldOutError", { name: game.name }));
-  if (!bag.length) throw new PullError(t("LOOTCRATES.Scratch.WaitingError", { name: game.name }));
   const line = weightedPick(bag, p => p.weight, rng) ?? bag[0];
   const shown = showsLeft(game);
   const ticket = { rollId: state.id, tier: line.key, no: state.sold + 1, size: state.size, ...(shown ? {} : { hidden: true }) };
   const common = { ticket, ...(shown ? { left: leftOf(state) } : {}), grant: null };
   if (line.kind === "dud") return { ...common, outcome: "nothing", card: layCard(game, { kind: "dud" }, rng), result: null };
+  // The ticket is decided: from here nothing refuses it. An item the pools
+  // can't give (none at its rarity, or its source gone) is owed: the
+  // ticket still wins it, named by its rarity, and the GM hands it over
+  // from the Pull log (foundry/owedprize.js). A refusal here would let the
+  // buyer draw again, a different ticket.
   let pools = ctx.pools;
+  const held = poolRarities(game, pools);
   const granted = [];
+  const items = [];
   for (const rarity of line.items) {
     const only = { ...game, weights: Object.fromEntries(RARITIES.map(r => [r, r === rarity ? 1 : 0])), rules: {} };
-    const drawn = await drawItem({ ...ctx, pools, game: only, state: {} });
-    if (!drawn.result || drawn.result.rarity !== rarity) throw new PullError(t("LOOTCRATES.Scratch.WaitingError", { name: game.name }));
+    const drawn = held.has(rarity) ? await drawItem({ ...ctx, pools, game: only, state: {} }) : null;
+    if (!drawn?.result || drawn.result.rarity !== rarity) {
+      if (drawn?.pools) pools = drawn.pools;
+      items.push(owedItem(rarity));
+      continue;
+    }
     pools = drawn.pools;
-    granted.push(grantData(drawn.source, { ...drawn.result, pity: false }, game));
+    const g = grantData(drawn.source, { ...drawn.result, pity: false }, game);
+    granted.push(g);
+    items.push({ uuid: g.result.uuid, name: g.result.name, img: g.result.img, rarity: g.result.rarity });
   }
   // The line's parts as won, each item named for its panel.
   let next = 0;
   const parts = line.parts.map(p => {
     if (p.kind !== "item") return p.kind === "gp" ? { kind: "gp", gp: p.gp } : { kind: "bonus" };
-    const r = granted[next++].result;
-    return { kind: "item", rarity: p.rarity, name: r.name, img: r.img };
+    const r = items[next++];
+    return { kind: "item", rarity: p.rarity, name: r.name, ...(r.img ? { img: r.img } : {}) };
   });
   const card = layCard(game, { kind: "line", parts }, rng);
   const payoutCp = Math.round(line.gp * 100);
   if (granted.length) {
-    const wonItems = granted.map(g => ({ uuid: g.result.uuid, name: g.result.name, img: g.result.img, rarity: g.result.rarity }));
     return {
-      ...common, ...granted[0], outcome: "item", card, pools, wonItems,
+      ...common, ...granted[0], outcome: "item", card, pools,
+      // Every item of the line by name, an owed one marked (itemsWon).
+      wonItems: items,
       ...(granted.length > 1 ? { grants: granted.map(g => g.grant) } : {}),
       ...(payoutCp ? { payoutCp } : {}),
     };
   }
+  // Every item of the line is owed: an item win with nothing to create.
+  if (items.length) return { ...common, outcome: "item", card, pools, result: items[0], ...(items.length > 1 ? { wonItems: items } : {}), ...(payoutCp ? { payoutCp } : {}) };
   return { ...common, outcome: "coins", card, result: { name: formatPrice(line.gp), outcome: "coins" }, payoutCp };
 }
+
+// An item the ticket won that the pools couldn't give: named by its rarity
+// ("Rare item") until the GM hands one over.
+const owedItem = rarity => ({ name: t("LOOTCRATES.Scratch.ItemPrize", { rarity: RARITY_LABEL[rarity] ?? rarity }), rarity, img: "", owed: true });
+
+// The items a ticket (an outcome, a reveal or a replay) won and is still
+// owed, [{ name, rarity }].
+export const owedWon = r => itemsWon(r).filter(i => i?.owed);
+const owedLine = r => t("LOOTCRATES.Scratch.OwedWhere", { what: listAnd(owedWon(r).map(i => i.name)) });
+
+// The GM's word when a ticket wins an item nobody has been given yet
+// (kinds.js gmNote; socket.js says it once the row is written).
+const gmNote = ({ game, out }, { actorName = "" } = {}) => (owedWon(out).length ? t("LOOTCRATES.Scratch.OwedNotice", { actor: actorName, box: game?.name ?? "", what: listAnd(owedWon(out).map(i => i.name)) }) : null);
 
 // The row's GM-only columns (foundry/hidden.js keeps them by row id).
 const hiddenRow = ({ out }) => ({ tier: out.ticket.tier, ticketNo: out.ticket.no, winners: cardWins(out.card).winners });
@@ -677,7 +704,11 @@ function logRow(ctx) {
   const { out } = ctx;
   const base = { rollId: out.ticket.rollId };
   const names = itemsWon(out).map(i => i.name);
-  if (out.outcome === "item") return { ...base, ...crateLogRow(ctx), ...(names.length > 1 ? { name: listAnd(names) } : {}) };
+  // An owed item is on the row by its rarity (core/owedprize.js) until it
+  // is handed over; the items that were granted keep their names beside
+  // their ids, so one granted beside one owed is still told apart.
+  const owed = owedWon(out).map(i => ({ rarity: i.rarity }));
+  if (out.outcome === "item") return { ...base, ...crateLogRow(ctx), ...(names.length > 1 ? { name: listAnd(names) } : {}), ...(owed.length ? { owed, itemNames: [...(out.itemNames ?? [])] } : {}) };
   if (out.outcome === "coins") return { ...base, outcome: "coins", swatch: "coin", name: out.result.name };
   return { ...base, outcome: "nothing", swatch: "none", name: t("LOOTCRATES.Scratch.Dud") };
 }
@@ -896,13 +927,13 @@ function snapshot(reveal) {
     box: { name: String(reveal.box?.name ?? ""), price: Number(reveal.box?.price) || 0 },
     ...(reveal.redeem ? { redeem: true } : {}),
     actorName: String(reveal.actorName ?? ""),
-    result: outcome === "item" && r ? { name: String(r.name ?? ""), rarity: RARITIES.includes(r.rarity) ? r.rarity : "common", img: String(r.img ?? "") } : outcome === "coins" ? { name: String(r?.name ?? ""), outcome: "coins" } : null,
-    ...(outcome === "item" && itemsWon(reveal).length > 1 ? { wonItems: cleanItems(itemsWon(reveal)) } : {}),
+    result: outcome === "item" && r ? { name: String(r.name ?? ""), rarity: RARITIES.includes(r.rarity) ? r.rarity : "common", img: String(r.img ?? ""), ...(r.owed ? { owed: true } : {}) } : outcome === "coins" ? { name: String(r?.name ?? ""), outcome: "coins" } : null,
+    ...(outcome === "item" && (itemsWon(reveal).length > 1 || owedWon(reveal).length) ? { wonItems: cleanItems(itemsWon(reveal)) } : {}),
   };
 }
 
 // A line's items as a replay keeps them: name, rarity and art, no uuid.
-const cleanItems = list => (Array.isArray(list) ? list.slice(0, MAX_PARTS) : []).filter(i => i?.name).map(i => ({ name: String(i.name), rarity: RARITIES.includes(i.rarity) ? i.rarity : "common", img: String(i.img ?? "") }));
+const cleanItems = list => (Array.isArray(list) ? list.slice(0, MAX_PARTS) : []).filter(i => i?.name).map(i => ({ name: String(i.name), rarity: RARITIES.includes(i.rarity) ? i.rarity : "common", img: String(i.img ?? ""), ...(i.owed ? { owed: true } : {}) }));
 
 // The reveal a replay plays from a stored snapshot (anything can be in a
 // message's flags), or null when it can't be played.
@@ -917,8 +948,8 @@ function fromSnapshot(s) {
     box: { name: String(s.box?.name ?? ""), price: Number(s.box?.price) || 0 },
     ...(s.redeem ? { redeem: {} } : {}),
     actorName: String(s.actorName ?? ""),
-    result: outcome === "item" && r?.name ? { name: String(r.name), rarity: RARITIES.includes(r.rarity) ? r.rarity : "common", img: String(r.img ?? "") } : outcome === "coins" ? { name: String(r?.name ?? ""), outcome: "coins" } : null,
-    ...(outcome === "item" && cleanItems(s.wonItems).length > 1 ? { wonItems: cleanItems(s.wonItems) } : {}),
+    result: outcome === "item" && r?.name ? { name: String(r.name), rarity: RARITIES.includes(r.rarity) ? r.rarity : "common", img: String(r.img ?? ""), ...(r.owed ? { owed: true } : {}) } : outcome === "coins" ? { name: String(r?.name ?? ""), outcome: "coins" } : null,
+    ...(outcome === "item" && cleanItems(s.wonItems).length ? { wonItems: cleanItems(s.wonItems) } : {}),
   };
 }
 
@@ -1012,10 +1043,12 @@ function result(reveal, { esc = String, canSee = false } = {}) {
   const left = leftAfter(reveal) ? [esc(leftAfter(reveal))] : [];
   const items = itemsWon(reveal);
   const coins = (reveal.payoutCp ?? 0) > 0;
-  if (outcome === "item" && reveal.result?.rarity && items.length <= 1 && !coins) return resultHTML(reveal, { esc, canSee, extra: left });
+  const owes = owedWon(reveal).length ? [`<span class="lc-reveal__owed">${esc(owedLine(reveal))}</span>`] : [];
+  if (outcome === "item" && reveal.result?.rarity && items.length <= 1 && !coins) return resultHTML(reveal, { esc, canSee, extra: [...owes, ...left] });
   if (outcome === "item" && items.length) {
     const where = [];
     if (reveal.itemUuid) where.push(`<span class="lc-reveal__added">${t("LOOTCRATES.Reveal.AddedTo", { name: esc(reveal.actorName) })}</span>`);
+    where.push(...owes);
     if (coins) where.push(intoPurse(reveal, esc));
     if (canSee && reveal.purse) where.push(`<span class="lc-reveal__gold">${t("LOOTCRATES.Reveal.GoldLeft", { gold: esc(formatGold(reveal.purse)) })}</span>`);
     where.push(...left);
@@ -1076,7 +1109,11 @@ function chatCard(reveal, { esc, itemLink }) {
   const items = outcome === "item" ? itemsWon(reveal) : [];
   const uuids = Array.isArray(reveal.itemUuids) ? reveal.itemUuids : [];
   const coins = (reveal.payoutCp ?? 0) > 0 ? [esc(formatPrice(reveal.payoutCp / 100))] : [];
-  const name = items.length ? listAnd([...items.map((i, k) => itemLink(uuids[k] ?? (k === 0 ? reveal.itemUuid ?? r.uuid : i.uuid), i.name)), ...coins])
+  // A granted item links to its copy on the sheet, in the order they were
+  // made; an owed one has no copy, so it is words alone.
+  let made = 0;
+  const linked = i => { if (i.owed) return esc(i.name); const k = made++; return itemLink(uuids[k] ?? (k === 0 ? reveal.itemUuid ?? r.uuid : i.uuid), i.name); };
+  const name = items.length ? listAnd([...items.map(linked), ...coins])
     : esc(outcome === "coins" ? formatPrice((reveal.payoutCp ?? 0) / 100) : t("LOOTCRATES.Scratch.Dud"));
   const line = items.length ? esc(listAnd([...new Set(items.map(i => RARITY_LABEL[i.rarity] ?? i.rarity ?? ""))])) : esc(outcome === "coins" ? coinsLine(reveal) : t("LOOTCRATES.Scratch.DudLine"));
   return `
@@ -1088,7 +1125,8 @@ function chatCard(reveal, { esc, itemLink }) {
           <div class="lc-chat__name">${name}</div>
           <div class="lc-chat__rarity">${line}</div>
         </div>
-      </div>
+      </div>${owedWon(reveal).length ? `
+      <div class="${OWED_CLASS}">${esc(owedLine(reveal))}</div>` : ""}
     </div>`;
 }
 
@@ -1169,8 +1207,8 @@ const reason = (game, pools, ctx) => scratchState(game, pools, ctx) || shopReaso
 /* ---------- The manager's words ---------- */
 
 // "Lucky numbers 4 × 3, bonus 25 gp, roll 2: 43 of 100 left": the rules cell.
-// With the pools, a roll that has stopped selling (drawBag's blocked) says
-// so, so the GM hears of it from the Boxes tab and not from a player.
+// With the pools, a roll holding a prize they can't give (drawBag's owing)
+// says so, so the GM hears of it from the Boxes tab before a player wins it.
 export function scratchRulesText(game, tally = null, pools = null) {
   const { cols, rows } = gridOf(game);
   const st = rollState(game, tally);
@@ -1180,7 +1218,7 @@ export function scratchRulesText(game, tally = null, pools = null) {
     bonus.on ? t("LOOTCRATES.Scratch.RuleBonus", { price: formatPrice(bonus.gp) }) : "",
     st.soldOut ? t("LOOTCRATES.Scratch.RollSoldOut", { roll: rollName(st.id) }) : t("LOOTCRATES.Scratch.RuleRoll", { roll: rollName(st.id), left: ticketsLeftText(st.left, st.size) }),
     showsLeft(game) ? "" : t("LOOTCRATES.Scratch.RuleHidden"),
-    pools && !st.soldOut && drawBag(game, pools, tally).blocked ? t("LOOTCRATES.Scratch.RuleStalled") : "",
+    pools && !st.soldOut && drawBag(game, pools, tally).owing ? t("LOOTCRATES.Scratch.RuleOwing") : "",
   ].filter(Boolean).join(", ");
 }
 
@@ -1539,6 +1577,7 @@ export const SCRATCH = registerKind({
   hiddenRow,
   revealExtra,
   gotText,
+  gmNote,
   reveal: {
     get title() { return t("LOOTCRATES.Scratch.Title"); },
     head,

@@ -82,6 +82,10 @@
     undo(state, row, log, tally) the buyer's state with the row undone,
                   for a refund (`tally` the counts as they stand, core/
                   tally.js); a kind without one leaves the state as it is.
+    gmNote(ctx, { actorName }) a sentence for the GM's client alone once
+                  the row is written, or null (the scratch ticket: an item
+                  won that its pools couldn't give, to hand over from the
+                  Pull log). A notification on the GM, never broadcast.
     gotText(out)  what the buyer came away with, as a verb phrase after
                   their name, for the late-cancel messages (socket.js
                   lateCancel): the crate's "got Sling +2" or "got nothing"

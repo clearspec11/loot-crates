@@ -439,7 +439,8 @@ function fromVersion2({ log, tally, legacy }) {
 export function trimLog(log, { cap = LOG_CAP, rounds = {} } = {}) {
   const rows = Array.isArray(log) ? log : [];
   if (rows.length <= cap) return { log: rows, dropped: [] };
-  const pinned = r => (r?.status === "open" && !r.refunded) || (r?.roundId && rounds?.[r.roundId] && rounds[r.roundId].status !== "resolved");
+  // An item still owed (scratch.js) is a debt the row alone records.
+  const pinned = r => (r?.status === "open" && !r.refunded) || (r?.roundId && rounds?.[r.roundId] && rounds[r.roundId].status !== "resolved") || (Array.isArray(r?.owed) && r.owed.length > 0 && !r.refunded);
   const kept = rows.slice(0, cap);
   const dropped = [];
   for (const r of rows.slice(cap)) {

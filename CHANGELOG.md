@@ -6,6 +6,8 @@ The newest numbered entry's version is the one in `module/module.json`, and its 
 
 ## Unreleased
 
+- A scratch roll never stops selling over a prize its pools can't give. If a pool changes after a game is on the shelf and a player draws a ticket for an item no ticked pool holds, they still win it: the ticket shows the prize by its rarity ("Rare item"), the window and the chat card say "Owed by the GM", and you get a notice. On the Pull log that row says "Owed: Rare item" with **Hand over** under it: pick any item at that rarity from your pools and it goes onto their sheet and into the log like any other win, or choose "I gave it by hand" if you already gave them one. The ticket's coins, and any item the pools could give, are paid straight away. The draw stays random over every ticket left, so the big prizes still don't sink to the bottom of the roll. The editor still keeps a game off the shelf while its pools can't give one of its prizes.
+
 - A scratch roll no longer saves its big prizes for last. An item prize the ticked pools couldn't give was set aside while the rest of the roll kept selling, so the cheap tickets went first and the item prizes all came out at the bottom of the roll once the pools could give them. Now a roll with a prize its pools can't give sells nothing until they can: the card says why, the game's row on the Boxes tab says "not selling", and the editor keeps such a game off the shelf.
 
 - A big purchase asks before it spends. A Buy or Buy to keep that costs more than half of what your character carries now asks "Spend 150 gp?" on the button you pressed; press it again to buy. Pressing anywhere else, moving away from it or Escape puts it back. Anything at half your purse or less is still one press.
