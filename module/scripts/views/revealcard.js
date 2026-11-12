@@ -62,7 +62,9 @@ export function canSeePurse(reveal, viewer = {}) {
 export function resultHTML(reveal, { esc = String, canSee = false, extra = [] } = {}) {
   const res = reveal.result;
   const where = [];
-  if (reveal.itemUuid) where.push(t("LOOTCRATES.Reveal.AddedTo", { name: esc(reveal.actorName) }));
+  // In its own span: what became of the item after the reveal is said
+  // here in its place (afterreveal.js whereAfter).
+  if (reveal.itemUuid) where.push(`<span class="lc-reveal__added">${t("LOOTCRATES.Reveal.AddedTo", { name: esc(reveal.actorName) })}</span>`);
   if (canSee && reveal.purse) where.push(`<span class="lc-reveal__gold">${t("LOOTCRATES.Reveal.GoldLeft", { gold: esc(formatGold(reveal.purse)) })}</span>`);
   where.push(...extra);
   return `<div class="lc-reveal__name">${esc(res.name)}</div>`
@@ -171,17 +173,23 @@ export const replayWindowId = key => `loot-crates-reveal-replay-${key}`;
 /*
   The reveal's buttons, in reading order. Draw again (the buyer alone, once
   landed, for a kind whose next play starts from the window: the deck's
-  "Draw again for 15 gp"; its reason when off is the line before it). Open
-  item (the buyer and GMs, once landed). Watch again (once landed, only on
-  a client that didn't see the spin play out: it landed hidden or was
-  skipped; it reads Skip while its replay plays). Then the one button that
-  reads Skip and becomes Close. They sit beside Close, not in the vault:
-  actions on the window, like Close, needing no new pattern.
+  "Draw again for 15 gp"; its reason when off is the line before it): a
+  quiet button at the row's start, two presses at a price over half the
+  purse (spendguard.js). Then the window's own buttons, grouped in
+  .lc-reveal__own, which draws nothing of its own until there is a next
+  play and then keeps them at the row's end, apart from it (module.css):
+  Open item (the buyer and GMs, once landed), Watch again (once landed,
+  only on a client that didn't see the spin play out: it landed hidden or
+  was skipped; it reads Skip while its replay plays), and the one button
+  that reads Skip and becomes Close. They sit in the window's actions row,
+  not in the vault: actions on the window, needing no new pattern.
 */
 export const revealActionsHTML = () => `<div class="lc-reveal__actions">
         <span class="lc-reveal__why" role="status" hidden></span>
         <button type="button" class="lc-reveal__again" data-action="drawAgain" hidden>${t("LOOTCRATES.Reveal.DrawAgain")}</button>
-        <button type="button" class="lc-reveal__open" data-action="openItem" hidden>${t("LOOTCRATES.Reveal.OpenItem")}</button>
-        <button type="button" class="lc-reveal__watch" data-action="watchAgain" hidden>${t("LOOTCRATES.Reveal.WatchAgain")}</button>
-        <button type="button" class="lc-reveal__close" data-action="skip">${t("LOOTCRATES.Reveal.Skip")}</button>
+        <span class="lc-reveal__own">
+          <button type="button" class="lc-reveal__open" data-action="openItem" hidden>${t("LOOTCRATES.Reveal.OpenItem")}</button>
+          <button type="button" class="lc-reveal__watch" data-action="watchAgain" hidden>${t("LOOTCRATES.Reveal.WatchAgain")}</button>
+          <button type="button" class="lc-reveal__close" data-action="skip">${t("LOOTCRATES.Reveal.Skip")}</button>
+        </span>
       </div>`;

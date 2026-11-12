@@ -2,7 +2,8 @@
   The manager's Boxes tab as markup, drawn by the manager (manager.js
   _boxes) and by the harness: the tab's status line, pinned to the top of
   the pane (the manager writes there what a New did), the toolbar with one
-  New button per kind, then one row per game the shop sells.
+  New game button holding a New per kind (views/menu.js), then one row per
+  game the shop sells.
 
   Every row's name carries its kind's tag (Crate, Well, Dice, Deck, Wheel),
   so the six kinds read the same way in one table and a crate is told from
@@ -16,13 +17,18 @@
   to the table" from the live rounds. Every pulled game's row shows its
   stock and limit per character ("3 of 10 left, 1 per character",
   limits.js). Every row's price is a field the GM types into (priceInputHTML
-  below). Every row's last cell holds Edit, Copy (the same editor on an
-  unsaved copy of the game, newgame.js copyOf) and Delete, under Make a
-  ticket on a pulled game's row (one ticket for it in the Items sidebar,
-  games/ticket.js; not a table game's, which is staked, never pulled).
+  below). Every row's last cell shows three things: the shelf's switch,
+  Edit in words, and one More (views/menu.js) holding the rest in words:
+  Make a ticket on a pulled game's row (one ticket for it in the Items
+  sidebar, games/ticket.js; not a table game's, which is staked, never
+  pulled), a deck's Reshuffle, a scratch ticket's Print a new roll, Copy
+  (the same editor on an unsaved copy of the game, newgame.js copyOf) and,
+  last and apart, Delete. A table game's row also keeps its round's button
+  in view, since that is what its row is for.
   Every row says whether players can see the game (shelf.js): its buttons'
-  cell leads with the On the shelf toggle (aria-pressed, as the shop's own
-  switch), on a line of its own as Reshuffle is, so the table is no wider
+  cell leads with the shelf's switch (aria-pressed, as the shop's own
+  switch; it reads "Shelf" here and is named "On the shelf: <game>"), on a
+  line of its own, so the table is no wider
   for it; a game off the shelf is tagged so beside its kind, its row
   dimmed, its toggle unpressed, and a wheel's "Open a round"
   left out (a round already open still offers "Go to the table"). The
@@ -59,6 +65,7 @@ import { limitsText } from "../core/limits.js";
 import { onShelf, shelfCountText, shelfToggleHTML } from "../core/shelf.js";
 import { starterCallHTML, STARTER_LABEL } from "./starter.js";
 import { statusBarHTML } from "./route.js";
+import { menuHTML } from "./menu.js";
 import { t, words, onStrings } from "../core/i18n.js";
 import { ticketable } from "../games/ticket.js";
 
@@ -107,7 +114,8 @@ export function tableHTML(cls, columns, rowsHTML) {
 export function boxesToolbarHTML(esc = s => String(s ?? ""), boxes = []) {
   const count = shelfCountText(boxes);
   const starter = boxes.length ? `<button type="button" class="lc-toolbar__starter" data-action="starterCrates"><i class="fas fa-box-open" inert></i> ${STARTER_LABEL}</button>` : "";
-  return `<div class="lc-toolbar lc-toolbar--boxes">${NEW_BUTTONS.map(([action, label]) => `<button type="button" data-action="${action}"><i class="fas fa-plus"></i> ${label}</button>`).join("")}${starter}${count ? `<span class="lc-shelf-count">${esc(count)}</span>` : ""}</div>`;
+  const fresh = menuHTML({ label: `<i class="fas fa-plus" inert></i> ${t("LOOTCRATES.Boxes.NewGame")} <i class="fas fa-caret-down lc-menu__caret" inert></i>`, id: "new", cls: "lc-menu--new", items: NEW_BUTTONS.map(([action, label]) => ({ action, label })), esc });
+  return `<div class="lc-toolbar lc-toolbar--boxes">${fresh}${starter}${count ? `<span class="lc-shelf-count">${esc(count)}</span>` : ""}</div>`;
 }
 
 /*
@@ -135,17 +143,28 @@ export function boxesTableHTML({ boxes, pools, tally = null, rounds = {}, recent
     deck: () => deckRulesText(b, tally),
     roulette: () => rouletteRulesText(b),
     auction: () => auctionRulesText(b),
-    scratch: () => scratchRulesText(b, tally),
+    scratch: () => scratchRulesText(b, tally, pools),
   }[kind(b)] ?? (() => [oddsModeOf(b) === "weight" ? (b.fromTable ? t("LOOTCRATES.Boxes.RuleTableOdds") : t("LOOTCRATES.Boxes.RuleByWeight")) : "", b.rules?.pity ? t("LOOTCRATES.Boxes.RulePityPulls", { rarity: RARITY_LABEL[b.rules.pity.minRarity] ?? b.rules.pity.minRarity, after: b.rules.pity.after }) : "", b.rules?.noDuplicates ? t("LOOTCRATES.Boxes.RuleNoDupes") : ""].filter(Boolean).join(", ")))();
   const rules = b => esc([own(b), TABLE_KINDS.includes(kind(b)) ? "" : limitsText(b)].filter(Boolean).join(", "));
-  // A deck's row reshuffles; a scratch ticket's prints a new roll; a wheel's opens its round (or brings the open one
-  // forward). The text button sits on a line of its own over the icons
-  // (module.css lc-table__extra), so the buttons' cell, the one that never
-  // wraps, is never wider than the three icons and the table fits every
-  // pane down to where its rows stack.
-  const extra = b => (kind(b) === "deck" ? `<button type="button" class="lc-table__extra" data-action="reshuffle" data-box="${esc(b.id)}" aria-label="${t("LOOTCRATES.Boxes.ReshuffleLabel", { name: esc(b.name) })}">${t("LOOTCRATES.Boxes.Reshuffle")}</button> `
-    : kind(b) === "scratch" ? `<button type="button" class="lc-table__extra" data-action="printRoll" data-box="${esc(b.id)}" aria-label="${t("LOOTCRATES.Boxes.PrintRollLabel", { name: esc(b.name) })}">${t("LOOTCRATES.Boxes.PrintRoll")}</button> `
-    : TABLE_KINDS.includes(kind(b)) && (onShelf(b) || liveRoundOf(rounds, b.id)) ? `<button type="button" class="lc-table__extra" data-action="openTable" data-box="${esc(b.id)}" aria-label="${t("LOOTCRATES.Boxes.TableAt", { label: tableLabel(b, rounds), name: esc(b.name) })}">${tableLabel(b, rounds)}</button> ` : "");
+  // A wheel's or an auction's row opens its round (or brings the open one
+  // forward): the one text button left in the cell, on a line of its own
+  // (module.css lc-table__extra) and free to wrap, so the cell is never
+  // wider than Edit and More and the table fits every pane down to where
+  // its rows stack.
+  const extra = b => (TABLE_KINDS.includes(kind(b)) && (onShelf(b) || liveRoundOf(rounds, b.id)) ? `<button type="button" class="lc-table__extra" data-action="openTable" data-box="${esc(b.id)}" aria-label="${t("LOOTCRATES.Boxes.TableAt", { label: tableLabel(b, rounds), name: esc(b.name) })}">${tableLabel(b, rounds)}</button> ` : "");
+  // Everything else a row can do, in words, behind one More: what is done
+  // now and then (a ticket, a reshuffle, a new roll, a copy) and the one
+  // thing that can't be undone (Delete, last and apart).
+  const more = b => menuHTML({
+    label: `<i class="fas fa-ellipsis" inert></i>`, name: t("LOOTCRATES.Boxes.MoreFor", { name: b.name ?? "" }), id: b.id, cls: "lc-menu--row", esc,
+    items: [
+      ticketable(b) ? { action: "makeTicket", box: b.id, label: t("LOOTCRATES.Boxes.Ticket"), name: t("LOOTCRATES.Boxes.TicketLabel", { name: b.name ?? "" }) } : null,
+      kind(b) === "deck" ? { action: "reshuffle", box: b.id, label: t("LOOTCRATES.Boxes.Reshuffle"), name: t("LOOTCRATES.Boxes.ReshuffleLabel", { name: b.name ?? "" }) } : null,
+      kind(b) === "scratch" ? { action: "printRoll", box: b.id, label: t("LOOTCRATES.Boxes.PrintRoll"), name: t("LOOTCRATES.Boxes.PrintRollLabel", { name: b.name ?? "" }) } : null,
+      { action: "copyBox", box: b.id, label: t("LOOTCRATES.Boxes.Copy"), name: t("LOOTCRATES.Boxes.CopyLabel", { name: b.name ?? "" }) },
+      { action: "deleteBox", box: b.id, label: t("LOOTCRATES.Boxes.Delete"), name: t("LOOTCRATES.Boxes.DeleteLabel", { name: b.name ?? "" }), cls: "lc-menu__item--danger" },
+    ].filter(Boolean),
+  });
   const [BOX, PRICE, POOLS, ODDS, RULES, ACT] = BOXES_COLUMNS;
   const rowClass = b => [b.id === recent ? "lc-row--new" : "", onShelf(b) ? "" : "lc-row--off"].filter(Boolean).join(" ");
   return tableHTML("lc-table--boxes", BOXES_COLUMNS, boxes.map(b => `<tr${rowClass(b) ? ` class="${rowClass(b)}"` : ""} role="row">
@@ -153,14 +172,9 @@ export function boxesTableHTML({ boxes, pools, tally = null, rounds = {}, recent
           ${cell(POOLS, (b.pools ?? []).map(r => esc(pools[r.id]?.name ?? t("LOOTCRATES.Boxes.MissingPool"))).join(", ") || `<em>${t("LOOTCRATES.Boxes.NoPools")}</em>`)}
           ${cell(ODDS, odds(b))}
           ${cell(RULES, rules(b))}
-          ${cell(ACT, `${shelfToggleHTML(b, esc)} ${extra(b)}${ticketButton(b, esc)}<button type="button" data-action="editBox" data-box="${esc(b.id)}" aria-label="${t("LOOTCRATES.Boxes.EditLabel", { name: esc(b.name) })}" data-tooltip="${t("LOOTCRATES.Boxes.Edit")}"><i class="fas fa-pen" inert></i></button> <button type="button" data-action="copyBox" data-box="${esc(b.id)}" aria-label="${t("LOOTCRATES.Boxes.CopyLabel", { name: esc(b.name) })}" data-tooltip="${t("LOOTCRATES.Boxes.Copy")}"><i class="fas fa-copy" inert></i></button> <button type="button" data-action="deleteBox" data-box="${esc(b.id)}" aria-label="${t("LOOTCRATES.Boxes.DeleteLabel", { name: esc(b.name) })}" data-tooltip="${t("LOOTCRATES.Boxes.Delete")}"><i class="fas fa-trash" inert></i></button>`)}
+          ${cell(ACT, `${shelfToggleHTML(b, esc, { short: true })} ${extra(b)}<button type="button" class="lc-table__edit" data-action="editBox" data-box="${esc(b.id)}" aria-label="${t("LOOTCRATES.Boxes.EditLabel", { name: esc(b.name) })}">${t("LOOTCRATES.Boxes.Edit")}</button> ${more(b)}`)}
         </tr>`).join(""));
 }
-
-// Make a ticket, on a pulled game's row only (manager.js #makeTicket): in
-// words on a line of its own, as Reshuffle is, so the icons' line stays
-// three wide and the table fits the pane down to where its rows stack.
-export const ticketButton = (b, esc = s => String(s ?? "")) => (ticketable(b) ? `<button type="button" class="lc-table__extra" data-action="makeTicket" data-box="${esc(b.id)}" aria-label="${t("LOOTCRATES.Boxes.TicketLabel", { name: esc(b.name) })}">${t("LOOTCRATES.Boxes.Ticket")}</button> ` : "");
 
 /*
   The Price cell is the price, typed in place as a pool row's weight is

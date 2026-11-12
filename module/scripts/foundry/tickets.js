@@ -31,11 +31,126 @@
                            when none is left to take
 
   Only a GM client writes: the hook on a player's client only asks.
+
+  A ticket is counted, not trusted. The item sits on a sheet its player
+  owns, and an owner can type a new quantity into it or write the ticket
+  mark onto any item, so the item only says a play is asked for. Whether
+  one is owed is the GM's own count (store.js ticketsHeld: tickets issued
+  and not yet spent, by character and game), and a play past it is refused
+  before anything is spent (ticketToRedeem). The count moves two ways:
+  - the module's own moves, inside the queued task that makes them: a
+    ticket spent or put back, bought to keep, given back by a refund, or
+    granted as a prize (creditTickets, from pull.js createGrants);
+  - anything else a GM does to a ticket on a character (a drag onto a
+    sheet, a quantity changed, a delete, another module trading it as the
+    GM), heard on the active GM by the item hooks (ticketItemHooks). A
+    player's own change to a ticket moves nothing.
+  A world is counted once, on the active GM (seedTickets): every ticket
+  already on a character then is taken as issued.
 */
 import { MODULE_ID } from "../core/config.js";
 import { PullError, getKind, kindOf } from "../games/kinds.js";
 import { ticketData, ticketOf, ticketCount, redeemRow, keptStack, keptTicketFor } from "../games/ticket.js";
 import { t } from "../core/i18n.js";
+import { ticketsHeld, moveTickets, setTicketsHeld, enqueueWrite } from "./store.js";
+
+/*
+  A write the module makes itself, whose count it moves in the same task:
+  the item hooks below let it by. Foundry runs a write's hooks on the
+  client that made it before the write's promise resolves, so the mark is
+  up exactly while they fire.
+*/
+let ownWrites = 0;
+export async function own(write) {
+  ownWrites++;
+  try { return await write(); } finally { ownWrites--; }
+}
+
+// Tickets among items just created on a character (a prize that is a
+// ticket, an item given after the reveal), added to its count.
+export async function creditTickets(actor, created = []) {
+  for (const item of created) {
+    const mark = ticketOf(item);
+    if (mark && actor?.id) await moveTickets(actor.id, mark.boxId, ticketCount(item));
+  }
+}
+
+// A ticket on a character in the world (not on an unlinked token's copy,
+// nor a world or compendium item): what the count is kept for.
+function heldTicket(item) {
+  const actor = item?.parent;
+  if (actor?.documentName !== "Actor" || actor.isToken) return null;
+  const mark = ticketOf(item);
+  return mark ? { actorId: actor.id, boxId: mark.boxId, count: ticketCount(item) } : null;
+}
+
+/*
+  The world counted once: every ticket on a character now is taken as
+  issued. On the active GM, in the write queue; a world already counted is
+  left as it is. Returns whether it wrote.
+*/
+const amActiveGM = () => !!globalThis.game?.user && game.users?.activeGM?.id === game.user.id;
+export function seedTickets() {
+  if (!amActiveGM()) return Promise.resolve(false);
+  return enqueueWrite(async () => {
+    if (!amActiveGM() || ticketsHeld("", "") != null) return false;
+    const held = {};
+    for (const actor of game.actors ?? []) {
+      for (const item of actor.items?.values?.() ?? []) {
+        const tk = heldTicket(item);
+        if (tk?.count) held[`${tk.actorId}.${tk.boxId}`] = (held[`${tk.actorId}.${tk.boxId}`] ?? 0) + tk.count;
+      }
+    }
+    await setTicketsHeld(held);
+    return true;
+  });
+}
+
+/*
+  The item hooks (main.js): { created, updated, deleted }, each (item,
+  ..., userId) as Foundry calls createItem, updateItem and deleteItem on
+  every client. What each ticket held is remembered on a GM's client
+  (updateItem doesn't say what the quantity was), and the active GM moves
+  the count by the difference when a GM made the change, unless it was the
+  module's own write (own). A player's change is remembered and counts for
+  nothing: raising a quantity, or marking an item as a ticket, issues none.
+*/
+const known = new Map(); // item uuid -> { actorId, boxId, count }
+export function rememberTickets() {
+  known.clear();
+  if (!globalThis.game?.user?.isGM) return;
+  for (const actor of game.actors ?? []) {
+    for (const item of actor.items?.values?.() ?? []) {
+      const tk = heldTicket(item);
+      if (tk) known.set(item.uuid, tk);
+    }
+  }
+}
+function heardTicket(item, userId, gone = false) {
+  if (!globalThis.game?.user?.isGM || !item?.uuid) return;
+  const was = known.get(item.uuid) ?? null;
+  const now = gone ? null : heldTicket(item);
+  if (now) known.set(item.uuid, now);
+  else known.delete(item.uuid);
+  const byGM = !!game.users?.get?.(userId)?.isGM;
+  const mine = ownWrites > 0 && userId === game.user.id;
+  if (!byGM || mine || !amActiveGM()) return;
+  const moves = [];
+  if (was && now && was.actorId === now.actorId && was.boxId === now.boxId) moves.push([now, now.count - was.count]);
+  else {
+    if (was) moves.push([was, -was.count]);
+    if (now) moves.push([now, now.count]);
+  }
+  for (const [tk, by] of moves) {
+    if (!by) continue;
+    enqueueWrite(() => moveTickets(tk.actorId, tk.boxId, by)).catch(err => console.error(`loot-crates | counting a ticket on ${tk.actorId} failed`, err));
+  }
+}
+export const ticketItemHooks = () => ({
+  created: (item, _options, userId) => heardTicket(item, userId),
+  updated: (item, _changes, _options, userId) => heardTicket(item, userId),
+  deleted: (item, _options, userId) => heardTicket(item, userId, true),
+});
 
 // The Items folder tickets are made in, found by its flag, so a GM who
 // renames it keeps it (and a translation names a new one in its words).
@@ -125,6 +240,8 @@ export function ticketToRedeem(actor, itemId, boxes = {}) {
   const box = boxes[mark.boxId] ?? null;
   const kind = box ? getKind(kindOf(box)) : null;
   if (!box || !kind || kind.table) throw new PullError(t("LOOTCRATES.Ticket.GameGone"));
+  // The item asks; the GM's count says whether a play is owed (see the header).
+  if (ticketsHeld(actor.id, mark.boxId) === 0) throw new PullError(t("LOOTCRATES.Ticket.NotIssued", { actor: actor.name ?? "", box: box.name }));
   const source = typeof item.toObject === "function" ? item.toObject() : { ...item };
   return { item, mark, box, row: redeemRow({ ...source, _id: item.id }, mark) };
 }
@@ -137,13 +254,15 @@ export function ticketToRedeem(actor, itemId, boxes = {}) {
 */
 export async function spendTicket(actor, item) {
   const qty = ticketCount(item);
+  const boxId = ticketOf(item)?.boxId ?? null;
+  const counted = async (write, by) => { const out = await own(write); await moveTickets(actor?.id, boxId, by); return out; };
   if (qty > 1) {
-    await item.update({ "system.quantity": qty - 1 });
-    return () => item.update({ "system.quantity": qty });
+    await counted(() => item.update({ "system.quantity": qty - 1 }), -1);
+    return () => counted(() => item.update({ "system.quantity": qty }), 1);
   }
   const data = typeof item.toObject === "function" ? item.toObject() : { ...item };
-  await item.delete();
-  return () => actor.createEmbeddedDocuments("Item", [data], { keepId: true });
+  await counted(() => item.delete(), -1);
+  return () => counted(() => actor.createEmbeddedDocuments("Item", [data], { keepId: true }), 1);
 }
 
 /*
@@ -155,12 +274,14 @@ export async function returnTicket(actor, row) {
   const keep = row?.redeem;
   const item = keep?.itemId ? actor?.items?.get?.(keep.itemId) : null;
   if (item && ticketOf(item)?.boxId === row.boxId) {
-    await item.update({ "system.quantity": ticketCount(item) + 1 });
+    await own(() => item.update({ "system.quantity": ticketCount(item) + 1 }));
+    await moveTickets(actor.id, row.boxId, 1);
     return "stack";
   }
   const data = keep?.data ?? ticketData({ id: row.boxId, name: row.boxName, kind: row.kind, price: keep?.paid ?? 0 }, { paid: keep?.paid ?? 0 });
-  const made = await actor.createEmbeddedDocuments("Item", [data]);
+  const made = await own(() => actor.createEmbeddedDocuments("Item", [data]));
   if (!made?.length) throw new Error(`the ticket for ${row.boxName} was not made again on ${actor.name}`);
+  await moveTickets(actor.id, row.boxId, 1);
   return "made";
 }
 
@@ -177,12 +298,14 @@ export async function keepTicket(actor, box, paid) {
   const stack = keptStack(actor?.items?.values?.() ?? [], { boxId: String(box.id), paid });
   if (stack) {
     const qty = ticketCount(stack);
-    await stack.update({ "system.quantity": qty + 1 });
-    return { item: stack, stacked: true, undo: () => stack.update({ "system.quantity": qty }) };
+    await own(() => stack.update({ "system.quantity": qty + 1 }));
+    await moveTickets(actor.id, String(box.id), 1);
+    return { item: stack, stacked: true, undo: async () => { await own(() => stack.update({ "system.quantity": qty })); await moveTickets(actor.id, String(box.id), -1); } };
   }
-  const [item] = (await actor.createEmbeddedDocuments("Item", [ticketData(box, { paid, kept: true })])) ?? [];
+  const [item] = (await own(() => actor.createEmbeddedDocuments("Item", [ticketData(box, { paid, kept: true })]))) ?? [];
   if (!item) throw new Error(`the ${box.name} ticket was not made on ${actor.name} (another module's preCreateItem hook cancelled it)`);
-  return { item, stacked: false, undo: () => item.delete() };
+  await moveTickets(actor.id, String(box.id), 1);
+  return { item, stacked: false, undo: async () => { await own(() => item.delete()); await moveTickets(actor.id, String(box.id), -1); } };
 }
 
 /*

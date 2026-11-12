@@ -43,6 +43,13 @@ const STATES = [
   // saying where the ticket went.
   ["shop-keep", "state=shop"],
   ["shop-kept", "state=shop"],
+  // A large spend asks first (spendguard.js): on a purse of 250 gp the
+  // Adventurer's Crate (150 gp) is over half. Its Buy, then its Buy to
+  // keep, pressed once: armed, the same button says "Spend 150 gp?" on
+  // one line; armedProblems presses Escape, moves focus, presses elsewhere
+  // and redraws, each of which puts its words back, and leaves it armed.
+  ["shop-armed", "state=shop&purse=250"],
+  ["shop-armed-keep", "state=shop&purse=250"],
   // A shop window shorter than its crates (Foundry caps windows at the
   // screen's height; a player can size it down): the grid scrolls under the
   // head, which stays in view, and a wheel over the grid reaches the last crate.
@@ -58,11 +65,15 @@ const STATES = [
   // buyer's Give to… and Sell back for 75 gp for the one item, and a pair
   // for each of two; Give to… pressed (the picker in its place, the select
   // focused, the other players' characters named with their players); Sell
-  // back pressed (the row says what was sold, focus back on Close); and a
-  // spectator's window, the line alone with no buttons.
+  // back pressed once (it asks in place, "Sell ... back for 75 gp? This
+  // can't be undone.", Sell focused, nothing sold) and pressed through
+  // (the result's own line says "Sold back for 75 gp" where "Added to"
+  // stood, nothing under it, focus on Close); and a spectator's window,
+  // whose result line says who it was given to, with no buttons.
   ["landed-after", "state=landed&seed=7&buyer=1&after=1"],
   ["landed-after-multi", "state=landed&seed=7&buyer=1&after=multi"],
   ["landed-after-give", "state=landed&seed=7&buyer=1&after=1"],
+  ["landed-after-sure", "state=landed&seed=7&buyer=1&after=1"],
   ["landed-after-sold", "state=landed&seed=7&buyer=1&after=1"],
   ["landed-after-watch", "state=landed&seed=7&after=watch"],
   // "Watch again" from the chat card: the replay window, titled as a replay,
@@ -115,12 +126,15 @@ const STATES = [
   // (the button reads Skip, nothing of the face shows), then landed on an
   // item (a boon), a loss (the bane: cold slate, a dimmed vault, no gold
   // and no amber) and an effect (the GM's text), as the buyer sees them
-  // with Draw again beside Close; the loss is the third draw in a row, so
-  // the head says so and Draw again names the risen price.
+  // with Draw again a quiet button at the row's start, apart from Close;
+  // the loss is the third draw in a row, so the head says so and Draw
+  // again names the risen price. On a purse of 90 gp the bane leaves 47 gp
+  // 5 sp, so its 33 gp 7 sp 5 cp is over half: pressed once, it asks.
   ["deck-held", "state=deck&outcome=coins&buyer=1&phase=held"],
   ["deck-boon", "state=deck&outcome=item&buyer=1&duration=0&seed=3"],
   ["deck-bane", "state=deck&outcome=loss&buyer=1&duration=0&streak=2"],
   ["deck-effect", "state=deck&outcome=effect&buyer=1&duration=0"],
+  ["deck-bane-armed", "state=deck&outcome=loss&buyer=1&duration=0&streak=2&purse=90"],
   // Tam drew from the deck a moment ago: its card prices the next draw at
   // 15 gp and says why.
   ["shop-deck-streak", "state=shop&streak=1"],
@@ -186,6 +200,14 @@ const STATES = [
   // wrap in a 480 px window instead of overflowing.
   ["manager-boxes", "state=manager&tab=boxes&added=1"],
   ["manager-boxes-narrow", "state=manager&tab=boxes&added=1&width=480"],
+  // The tab's menus open (views/menu.js): New game's seven kinds; a row's
+  // More (Make a ticket, Copy, Delete); the last row's, with the pane at
+  // its foot, which opens upward to stay in it; and a row's in a 480 px
+  // window, where the rows stack.
+  ["manager-menu-new", "state=manager&tab=boxes&menu=new"],
+  ["manager-menu-row", "state=manager&tab=boxes&menu=row"],
+  ["manager-menu-last", "state=manager&tab=boxes&menu=last"],
+  ["manager-menu-narrow", "state=manager&tab=boxes&menu=row&width=480"],
   // On the shelf (shelf.js): the GM took the Royal Vault off it. Its row is
   // tagged "Off the shelf" and dimmed, its toggle (focused, as the click
   // leaves it) is unpressed, every other row's is pressed, the
@@ -646,9 +668,10 @@ function shelfBoxesProblems() {
     const t = r.querySelector('[data-action="toggleShelf"]');
     if (!t) { out.push(`${name} has no shelf toggle`); continue; }
     const isOff = r.classList.contains("lc-row--off");
-    const want = isOff ? ["false", "On the shelf"] : ["true", "On the shelf"];
+    // A row's switch reads "Shelf" (the cell stays narrow); its name is the whole one.
+    const want = isOff ? ["false", "Shelf"] : ["true", "Shelf"];
     if (t.getAttribute("aria-pressed") !== want[0] || t.textContent.trim() !== want[1]) out.push(`${name}'s toggle is ${t.getAttribute("aria-pressed")} "${t.textContent.trim()}"`);
-    if (t.getAttribute("aria-label") !== `${want[1]}: ${name}`) out.push(`${name}'s toggle is labelled "${t.getAttribute("aria-label")}"`);
+    if (t.getAttribute("aria-label") !== `On the shelf: ${name}`) out.push(`${name}'s toggle is labelled "${t.getAttribute("aria-label")}"`);
     const tr = t.getBoundingClientRect();
     if (tr.width < 20 || tr.height < 20 || tr.right > app.right + 1) out.push(`${name}'s toggle is not fully visible`);
     if (parseFloat(getComputedStyle(t).fontSize) < 11) out.push(`${name}'s toggle is under 11px`);
@@ -788,6 +811,11 @@ function boxesProblems(narrow) {
   if (!toolbar) return [...out, "no Boxes toolbar"];
   const news = [...toolbar.querySelectorAll('[data-action^="add"]')].map(b => b.textContent.trim());
   if (news.join("|") !== "New crate|New Wishing Well|New Dragon's Teeth|New Deck of Many Things|New Roulette wheel|New auction|New scratch ticket") out.push(`the New buttons read ${news.join(", ")}`);
+  // One New game holds the seven, shut: the toolbar shows it, the starter and the count.
+  const fresh = toolbar.querySelector(".lc-menu--new [data-menu]");
+  if (!fresh || !/^New game$/.test(fresh.textContent.trim()) || fresh.getAttribute("aria-expanded") !== "false") out.push(`the toolbar's New game reads "${fresh?.textContent.trim()}" (${fresh?.getAttribute("aria-expanded")})`);
+  const shownInBar = [...toolbar.querySelectorAll("button")].filter(b => b.getBoundingClientRect().width > 0).map(b => b.textContent.trim());
+  if (shownInBar.join("|") !== "New game|Add starter crates") out.push(`the toolbar shows ${shownInBar.join(", ")}`);
   if (toolbar.scrollWidth > toolbar.clientWidth + 1 || toolbar.getBoundingClientRect().right > app.right + 1) out.push("the Boxes toolbar overflows the window");
   if (document.querySelectorAll('[role="status"]').length !== 1) out.push("expected one role=status");
   const status = document.querySelector(".lc-manager__status");
@@ -810,16 +838,26 @@ function boxesProblems(narrow) {
   const under = document.querySelector(".lc-manager__statusbar")?.getBoundingClientRect().bottom ?? tab?.top;
   if (tab && er && (er.top < under - 1 || er.bottom > tab.bottom + 1)) out.push("the new row is out of view");
   if (!document.querySelector('[data-action="openTable"]') || !document.querySelector('[data-action="reshuffle"]')) out.push("the wheel's Open a round or the deck's Reshuffle is missing");
-  // Every row has a visible Copy naming its game, between Edit and Delete.
+  // Every row shows its shelf switch, Edit in words and one More; Copy and
+  // Delete are in the More, in words, naming the game, Delete last.
   for (const r of rows) {
     const name = r.querySelector(".lc-table__name")?.firstChild?.textContent.trim();
     const copy = r.querySelector('[data-action="copyBox"]');
     if (!copy) { out.push(`${name} has no Copy`); continue; }
     if (copy.getAttribute("aria-label") !== `Copy ${name}`) out.push(`${name}'s Copy is labelled "${copy.getAttribute("aria-label")}"`);
-    if (copy.getBoundingClientRect().width < 20 || copy.getBoundingClientRect().height < 20) out.push(`${name}'s Copy is not visible`);
-    if ((copy.querySelector("i")?.getBoundingClientRect().width ?? 0) < 10) out.push(`${name}'s Copy has no icon`);
-    const order = [...r.lastElementChild.querySelectorAll("[data-action]")].map(b => b.dataset.action).slice(-3).join("|");
-    if (order !== "editBox|copyBox|deleteBox") out.push(`${name}'s row actions end ${order}`);
+    if (copy.textContent.trim() !== "Copy" || !copy.closest(".lc-menu__list")) out.push(`${name}'s Copy isn't in the row's More, in words`);
+    const order = [...r.lastElementChild.querySelectorAll("[data-action]")].map(b => b.dataset.action).slice(-2).join("|");
+    if (order !== "copyBox|deleteBox") out.push(`${name}'s row actions end ${order}`);
+    const shown = [...r.lastElementChild.querySelectorAll("button")].filter(b => b.getBoundingClientRect().width > 0);
+    const want = ["toggleShelf", ...(shown.some(b => b.dataset.action === "openTable") ? ["openTable"] : []), "editBox", "more"];
+    if (shown.map(b => b.dataset.action ?? (b.matches("[data-menu]") ? "more" : "?")).join("|") !== want.join("|")) out.push(`${name}'s row shows ${shown.map(b => b.dataset.action ?? b.getAttribute("aria-label")).join(", ")}`);
+    const editB = r.querySelector('[data-action="editBox"]');
+    if (editB?.textContent.trim() !== "Edit") out.push(`${name}'s Edit reads "${editB?.textContent.trim()}"`);
+    const more = r.querySelector(".lc-menu--row [data-menu]");
+    if (more?.getAttribute("aria-label") !== `More for ${name}` || more.getAttribute("aria-expanded") !== "false") out.push(`${name}'s More is labelled "${more?.getAttribute("aria-label")}"`);
+    const mr = more?.getBoundingClientRect();
+    if (mr && (mr.width < 24 || mr.height < 24 || mr.right > app.right + 1)) out.push(`${name}'s More is not fully visible`);
+    if (more && (more.querySelector("i")?.getBoundingClientRect().width ?? 0) < 10) out.push(`${name}'s More has no icon`);
     // A pulled game's row has Make a ticket in words, as Reshuffle is; the
     // wheel's (a table game) has none.
     const table = /Wheel/.test(r.querySelector(".lc-kind")?.textContent ?? "");
@@ -828,11 +866,48 @@ function boxesProblems(narrow) {
     if (!table && !ticket) out.push(`${name} has no Make a ticket`);
     if (ticket) {
       if (ticket.getAttribute("aria-label") !== `Make a ticket for ${name}`) out.push(`${name}'s Make a ticket is labelled "${ticket.getAttribute("aria-label")}"`);
-      const tr = ticket.getBoundingClientRect();
-      if (tr.width < 20 || tr.height < 20 || ticket.textContent.trim() !== "Make a ticket") out.push(`${name}'s Make a ticket is not visible`);
-      if (parseFloat(getComputedStyle(ticket).fontSize) < 11) out.push(`${name}'s Make a ticket is under 11px`);
-      if (tr.right > app.right + 1) out.push(`${name}'s Make a ticket is past the window's edge`);
+      if (ticket.textContent.trim() !== "Make a ticket" || ticket !== ticket.closest(".lc-menu__list")?.firstElementChild) out.push(`${name}'s Make a ticket isn't first in the row's More`);
     }
+  }
+  return out;
+}
+
+// An open menu (views/menu.js; the harness's ?menu=new|row|last): one list
+// open, its trigger saying so, every item in words at 11px or more and
+// wholly inside the tab's pane and the window (the last row's opens upward
+// to stay there), Delete last and in the warning ink, and no other open.
+function menuProblems(which) {
+  const out = [];
+  const app = document.getElementById("app").getBoundingClientRect();
+  const pane = document.querySelector(".lc-tab")?.getBoundingClientRect();
+  const open = [...document.querySelectorAll('[data-menu][aria-expanded="true"]')];
+  if (open.length !== 1) return [`${open.length} menus open`];
+  const trigger = open[0];
+  const list = trigger.parentNode.querySelector(".lc-menu__list");
+  if (!list || list.hidden) return ["the open menu's list is hidden"];
+  if ([...document.querySelectorAll(".lc-menu__list")].filter(l => !l.hidden).length !== 1) out.push("more than one list showing");
+  const items = [...list.querySelectorAll(".lc-menu__item")];
+  const words = items.map(i => i.textContent.trim());
+  const want = which === "new" ? "New crate|New Wishing Well|New Dragon's Teeth|New Deck of Many Things|New Roulette wheel|New auction|New scratch ticket" : which === "last" ? "Copy|Delete" : "Make a ticket|Copy|Delete";
+  if (words.join("|") !== want) out.push(`the menu reads ${words.join(", ")}`);
+  const lr = list.getBoundingClientRect();
+  if (pane && (lr.top < pane.top - 1 || lr.bottom > pane.bottom + 1 || lr.left < pane.left - 1 || lr.right > pane.right + 1)) out.push(`the open menu leaves the pane (${Math.round(lr.left)},${Math.round(lr.top)} to ${Math.round(lr.right)},${Math.round(lr.bottom)})`);
+  if (lr.left < app.left - 1 || lr.right > app.right + 1) out.push("the open menu leaves the window");
+  if ((which === "last") !== list.classList.contains("lc-menu__list--up")) out.push(which === "last" ? "the last row's menu didn't open upward" : "the menu opened upward");
+  for (const i of items) {
+    const r = i.getBoundingClientRect();
+    if (r.width < 40 || r.height < 24) out.push(`"${i.textContent.trim()}" is too small to press`);
+    if (parseFloat(getComputedStyle(i).fontSize) < 11) out.push(`"${i.textContent.trim()}" is under 11px`);
+    // The item on top at its own centre is the item: nothing covers it
+    // (brought into the viewport first; the harness page is taller than it).
+    i.scrollIntoView({ block: "center" });
+    const at = i.getBoundingClientRect();
+    const top = document.elementFromPoint(at.left + at.width / 2, at.top + at.height / 2);
+    if (top !== i && !i.contains(top)) out.push(`"${i.textContent.trim()}" is covered`);
+  }
+  if (which !== "new") {
+    const del = items.at(-1);
+    if (!del?.classList.contains("lc-menu__item--danger") || getComputedStyle(del).color === getComputedStyle(items[0]).color) out.push("Delete isn't set apart in the warning ink");
   }
   return out;
 }
@@ -941,7 +1016,7 @@ function starterBoxesProblems() {
   const news = [...document.querySelectorAll('.lc-toolbar--boxes [data-action^="add"]')].map(b => b.textContent.trim());
   if (news.join("|") !== "New crate|New Wishing Well|New Dragon's Teeth|New Deck of Many Things|New Roulette wheel|New auction|New scratch ticket") out.push(`the New buttons read ${news.join(", ")}`);
   const status = document.querySelector(".lc-manager__status")?.textContent ?? "";
-  if (status !== "Added 4 starter pools and 10 starter games, all off the shelf. Players can't see them yet: look each one over and press On the shelf on its row, or Put all on the shelf.") out.push(`status line says "${status}"`);
+  if (status !== "Added 4 starter pools and 10 starter games, all off the shelf. Players can't see them yet: look each one over and turn on Shelf on its row, or Put all on the shelf.") out.push(`status line says "${status}"`);
   const first = rows[0]?.querySelector('[data-action="editBox"]');
   if (document.activeElement !== first) out.push("focus is not on the first starter game's Edit");
   const pools = rows.map(r => r.querySelector('td[data-label="Pools"]')?.textContent.trim());
@@ -1278,9 +1353,26 @@ function afterProblems(mode) {
   const out = [];
   const shown = el => !!el && !el.hidden && el.getBoundingClientRect().height > 0;
   const slot = document.querySelector(".lc-reveal__after");
-  if (!shown(slot)) return ["no after-the-reveal section"];
   const item = document.querySelector(".lc-reveal__name")?.textContent ?? "";
   const words = el => el?.textContent.replace(/\s+/g, " ").trim() ?? "";
+  // A play of one item says what became of it once, in the result's own
+  // line where "Added to ...'s inventory" stood, and nothing under it.
+  if (mode === "watch" || mode === "sold") {
+    const where = words(document.querySelector(".lc-reveal__where"));
+    const result = words(document.querySelector(".lc-reveal__result"));
+    if (shown(slot)) out.push(`the section under the vault still shows: "${words(slot)}"`);
+    if (/Added to/.test(result)) out.push(`the result still says the item was added: "${where}"`);
+    if (mode === "watch" && where !== "Given to Saria Vell") out.push(`a spectator's result line reads "${where}"`);
+    if (mode === "sold") {
+      if (where !== "Sold back for 75 gp · 345 gp 7 sp 3 cp left") out.push(`the result line reads "${where}" once sold`);
+      if (document.activeElement !== document.querySelector(".lc-reveal__close")) out.push("focus didn't go to Close once sold");
+      if (shown(document.querySelector(".lc-reveal__open"))) out.push("Open item is still offered for the item sold");
+    }
+    const line = document.querySelector(".lc-reveal__where");
+    if (line && parseFloat(getComputedStyle(line).fontSize) < 11) out.push("the result line is under 11px");
+    return out;
+  }
+  if (!shown(slot)) return ["no after-the-reveal section"];
   const s = slot.getBoundingClientRect();
   if (s.top < document.querySelector(".lc-vault").getBoundingClientRect().bottom - 1 || s.bottom > document.querySelector(".lc-reveal__actions").getBoundingClientRect().top + 1) out.push("the section isn't between the vault and the window's buttons");
   if (/\bKeep\b/.test(slot.textContent)) out.push("the section says Keep");
@@ -1288,16 +1380,17 @@ function afterProblems(mode) {
   const rows = [...slot.querySelectorAll(".lc-after__item")];
   const lead = words(slot.querySelector(".lc-after__lead"));
   const close = document.querySelector(".lc-reveal__close");
-  if (mode === "watch") {
-    if (buttons.length) out.push("a spectator sees buttons");
-    if (words(slot) !== `Tam Thornwick gave ${item} to Saria Vell.`) out.push(`a spectator reads "${words(slot)}"`);
-  } else if (mode === "sold") {
-    if (buttons.length) out.push("the sold row still has buttons");
-    if (words(rows[0]?.querySelector(".lc-after__said")) !== `Tam Thornwick sold ${item} back for 75 gp.`) out.push(`the sold row reads "${words(rows[0])}"`);
-    if (lead) out.push("the lead line stayed once nothing is left to choose");
-    if (document.activeElement !== close) out.push("focus didn't go to Close once sold");
-    if (shown(document.querySelector(".lc-reveal__open"))) out.push("Open item is still offered for the item sold");
-    if (!/^345 gp 7 sp 3 cp left$/.test(document.querySelector(".lc-reveal__gold")?.textContent ?? "")) out.push(`the gold line reads "${document.querySelector(".lc-reveal__gold")?.textContent}" once sold`);
+  if (mode === "sure") {
+    // Sell back pressed once: it asks in place, and nothing is sold yet.
+    const sure = rows[0]?.querySelector(".lc-after__sure");
+    const go = sure?.querySelector(".lc-after__sellgo");
+    if (!shown(sure) || shown(rows[0].querySelector(".lc-after__acts"))) out.push("Sell back didn't ask in its place");
+    if (words(sure?.querySelector(".lc-after__sure-label")) !== `Sell ${item} back for 75 gp? This can't be undone.`) out.push(`the ask reads "${words(sure?.querySelector(".lc-after__sure-label"))}"`);
+    if (buttons.map(b => b.textContent).join(" | ") !== "Sell | Cancel") out.push(`the ask's buttons read ${buttons.map(b => b.textContent).join(" | ")}`);
+    if (document.activeElement !== go) out.push("the ask's Sell isn't focused");
+    if (document.body.dataset.parted) out.push("the first press of Sell back sold the item");
+    if (!/Added to Tam Thornwick's inventory/.test(words(document.querySelector(".lc-reveal__where")))) out.push("the result line changed before anything was sold");
+    if (close && document.activeElement === close) out.push("focus left the row");
   } else if (mode === "give") {
     const pick = rows[0]?.querySelector(".lc-after__pick");
     const select = pick?.querySelector("select");
@@ -1582,6 +1675,19 @@ function deckProblems(outcome) {
   const again = document.querySelector(".lc-reveal__again");
   if (!shown(again) || !/^Draw again for \d+ gp/.test(again.textContent)) out.push(`Draw again reads "${again?.textContent}"`);
   if (parseFloat(getComputedStyle(again).fontSize) < 11) out.push("Draw again is under 11px");
+  // Kept apart from Close: Close the one primary (dnd5e's black button),
+  // Draw again a quiet button of another ground and weight, at least 24px
+  // tall; on one line they are at the row's two ends, at least 48px
+  // apart, else Draw again is on the line above.
+  if (shown(again) && btn) {
+    const a = again.getBoundingClientRect(), c = btn.getBoundingClientRect();
+    if (getComputedStyle(again).backgroundColor === getComputedStyle(btn).backgroundColor) out.push("Draw again has Close's ground: two primaries side by side");
+    if (Number(getComputedStyle(again).fontWeight) >= 700) out.push("Draw again is bold, as Close is");
+    if (a.height < 24) out.push(`Draw again is only ${Math.round(a.height)}px tall`);
+    const oneLine = Math.abs(a.top - c.top) < 4;
+    if (oneLine && c.left - a.right < 48) out.push(`Draw again sits ${Math.round(c.left - a.right)}px from Close`);
+    if (!oneLine && a.top > c.top) out.push("Draw again wrapped under Close");
+  }
   const kindEl = stage.querySelector(".lc-deck__kind");
   if (parseFloat(getComputedStyle(kindEl).fontSize) < 11) out.push("the card's kind line is under 11px");
   return out;
@@ -2601,11 +2707,136 @@ function nothingRevealProblems() {
 }
 
 /*
+  A large spend's second press (spendguard.js), in the shop as a player
+  presses it, on a purse of 250 gp: the Adventurer's Crate's Buy (or its
+  Buy to keep) pressed once is armed, the same node, focused, saying
+  "Spend 150 gp?" after its name for screen readers, on one line, at the
+  height it had, inside its card, with every attribute it had (aria-
+  disabled never set). A click in the same gesture sends nothing. Escape,
+  focus leaving, a press on another button and a redraw each put its own
+  words back. Buy to keep's second press sends (Buying…); the Pauper's
+  Box (25 gp) is one press. It is left armed for the screenshot.
+*/
+async function armedProblems(which) {
+  const out = [];
+  const frames = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const keep = which === "keep";
+  const sel = keep ? '.lc-box__keep[data-keep="adventurer"]' : '.lc-box__buy[data-box="adventurer"]';
+  const btn = document.querySelector(sel);
+  if (!btn) return [`no ${sel}`];
+  const card = btn.closest(".lc-box");
+  const words = keep ? "Buy to keepa ticket for later" : "Open for 150 gp";
+  const visible = () => [...btn.childNodes].filter(n => !(n.nodeType === 1 && n.classList.contains("lc-sr-only"))).map(n => n.textContent).join("").trim();
+  if (visible() !== words) return [`before any press ${sel} reads "${visible()}"`];
+  const tall = btn.getBoundingClientRect().height, cardTall = card.getBoundingClientRect().height;
+  const names = ["data-action", "data-box", "data-keep", "data-price", "aria-disabled", "aria-describedby"];
+  const attrs = names.map(a => btn.getAttribute(a)).join("|");
+  const arm = async label => {
+    btn.focus();
+    btn.click();
+    await frames();
+    if (document.querySelector(sel) !== btn) out.push(`${label}: the armed button is a new node`);
+    if (!btn.hasAttribute("data-armed")) out.push(`${label}: the press didn't arm it`);
+    if (visible() !== "Spend 150 gp?") out.push(`${label}: armed it reads "${visible()}"`);
+    if (!btn.textContent.trim().startsWith("Adventurer's Crate: ")) out.push(`${label}: armed it lost its name for screen readers: "${btn.textContent.trim()}"`);
+    if (document.activeElement !== btn) out.push(`${label}: focus left the armed button`);
+    if (names.map(a => btn.getAttribute(a)).join("|") !== attrs) out.push(`${label}: arming changed its attributes`);
+    if (btn.disabled) out.push(`${label}: armed it is disabled`);
+    if (Math.abs(btn.getBoundingClientRect().height - tall) > 0.5) out.push(`${label}: armed it is ${btn.getBoundingClientRect().height}px tall, was ${tall}`);
+    if (Math.abs(card.getBoundingClientRect().height - cardTall) > 0.5) out.push(`${label}: arming made its card ${card.getBoundingClientRect().height}px tall, was ${cardTall}`);
+    if (btn.scrollWidth > btn.clientWidth + 1) out.push(`${label}: the ask doesn't fit its button`);
+    const ask = btn.querySelector(".lc-spend-ask");
+    if (!ask || parseFloat(getComputedStyle(ask).fontSize) < 11) out.push(`${label}: the ask is missing or under 11px`);
+    const b = btn.getBoundingClientRect(), c = card.getBoundingClientRect();
+    if (b.left < c.left - 0.5 || b.right > c.right + 0.5) out.push(`${label}: the armed button spills out of its card`);
+  };
+  const back = label => {
+    if (btn.hasAttribute("data-armed") || visible() !== words) out.push(`after ${label} it still reads "${visible()}"`);
+    if (document.querySelector(sel) !== btn) out.push(`after ${label} it is a new node`);
+  };
+  await arm("the first press");
+  // The arming gesture's own second click (well inside the grace) sends nothing.
+  btn.click();
+  await frames();
+  if (!btn.hasAttribute("data-armed")) out.push("a click in the arming gesture disarmed or sent it");
+  btn.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+  back("Escape");
+  await arm("a press after Escape");
+  btn.blur();
+  await frames();
+  back("focus leaving it");
+  await arm("a press after focus left");
+  document.querySelector('.lc-box__buy[data-box="common"]').dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true }));
+  back("a press on another button");
+  await arm("a press after the other button");
+  window.__lootCrates.renderShop();
+  await frames();
+  back("a redraw");
+  if (keep) {
+    await arm("a press before the second");
+    await new Promise(r => setTimeout(r, 500));
+    btn.click();
+    await frames();
+    if (btn.textContent.trim() !== "Adventurer's Crate: Buying…") out.push(`the second press reads "${btn.textContent.trim()}", not Buying…`);
+    window.__lootCrates.renderShop();
+    await frames();
+    // A small spend is one press.
+    const small = document.querySelector('.lc-box__keep[data-keep="common"]');
+    small.focus();
+    small.click();
+    await frames();
+    if (small.textContent.trim() !== "Pauper's Box: Buying…") out.push(`the Pauper's Box's Buy to keep asked first: "${small.textContent.trim()}"`);
+    window.__lootCrates.renderShop();
+    await frames();
+  }
+  await arm("the press for the screenshot");
+  return out;
+}
+
+/*
+  Draw again after a bane, on a purse the bane left at 47 gp 5 sp: its
+  33 gp 7 sp 5 cp is over half. With Close focused (deckProblems), the
+  first press arms it: the same node says "Spend 33 gp 7 sp 5 cp?" on one
+  line at its height, still apart from Close, which keeps its words and
+  its place; a
+  click in the same gesture sends nothing. Left armed for the screenshot.
+*/
+async function againArmedProblems() {
+  const out = [];
+  const frames = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const again = document.querySelector(".lc-reveal__again");
+  const close = document.querySelector(".lc-reveal__close");
+  if (!again || again.hidden) return ["no Draw again on the bane"];
+  const tall = again.getBoundingClientRect().height;
+  again.focus();
+  // After the focus, which can scroll the page.
+  const was = close.getBoundingClientRect();
+  again.click();
+  await frames();
+  again.click();
+  await frames();
+  if (!again.hasAttribute("data-armed")) out.push("Draw again's first press didn't arm it (or its second click sent it)");
+  if (document.querySelector(".lc-reveal__again") !== again) out.push("the armed Draw again is a new node");
+  if (again.textContent.trim() !== "Spend 33 gp 7 sp 5 cp?") out.push(`armed, Draw again reads "${again.textContent.trim()}"`);
+  if (again.getAttribute("aria-disabled") === "true" || again.disabled) out.push("the armed Draw again is off");
+  if (Math.abs(again.getBoundingClientRect().height - tall) > 0.5) out.push(`armed, Draw again is ${again.getBoundingClientRect().height}px tall, was ${tall}`);
+  if (again.scrollWidth > again.clientWidth + 1) out.push("the ask doesn't fit Draw again");
+  if (close?.textContent !== "Close") out.push(`Close reads "${close?.textContent}"`);
+  const now = close.getBoundingClientRect();
+  if (Math.abs(now.top - was.top) > 0.5 || Math.abs(now.left - was.left) > 0.5) out.push(`arming Draw again moved Close from ${Math.round(was.left)},${Math.round(was.top)} to ${Math.round(now.left)},${Math.round(now.top)}`);
+  const a = again.getBoundingClientRect(), c = close.getBoundingClientRect();
+  if (Math.abs(a.top - c.top) < 4 && c.left - a.right < 48) out.push(`armed, Draw again sits ${Math.round(c.left - a.right)}px from Close`);
+  return out;
+}
+
+/*
   Buy to keep (boxcard.js cardShell): every card of a pulled game has one,
   right under its Buy, and a table game's card none; it is off exactly when
   its Buy is, described by the same lines; its name starts with the game's
-  and holds its visible words; its text is at least 11px; and it sits
-  inside its card, clear of the Buy, at every width (no crowding at 390).
+  and holds its visible words, which say what it is ("a ticket for
+  later") on one line; its text is at least 11px; it sits inside its card,
+  clear of the Buy, at every width (no crowding at 390); and every Buy in
+  a row of cards without a reason sits on one line, at the card's foot.
 */
 function keepProblems() {
   const out = [];
@@ -2630,7 +2861,10 @@ function keepProblems() {
     const name = card.querySelector(".lc-box__name")?.textContent.trim();
     const visible = [...keep.childNodes].filter(n => !(n.nodeType === 1 && n.classList.contains("lc-sr-only"))).map(n => n.textContent).join("").trim();
     if (!keep.textContent.trim().startsWith(`${name}: `)) out.push(`${id}'s Buy to keep doesn't name its game: "${keep.textContent.trim()}"`);
-    if (visible !== "Buy to keep") out.push(`${id}'s Buy to keep reads "${visible}"`);
+    if (visible !== "Buy to keepa ticket for later") out.push(`${id}'s Buy to keep reads "${visible}"`);
+    const hint = keep.querySelector(".lc-box__keep-hint")?.getBoundingClientRect();
+    if (!hint || hint.width < 1 || hint.height < 1) out.push(`${id}'s Buy to keep doesn't say what it is on screen`);
+    else if (Math.abs(hint.top - keep.querySelector(".lc-box__keep-do").getBoundingClientRect().top) > 3) out.push(`${id}'s Buy to keep runs to two lines`);
     if (parseFloat(getComputedStyle(keep).fontSize) < 11) out.push(`${id}'s Buy to keep is under 11px`);
     const k = keep.getBoundingClientRect(), b = buy.getBoundingClientRect(), c = card.getBoundingClientRect();
     if (k.top < b.bottom - 0.5) out.push(`${id}'s Buy to keep overlaps its Buy`);
@@ -2639,6 +2873,21 @@ function keepProblems() {
     if (keep.scrollWidth > keep.clientWidth + 1) out.push(`${id}'s Buy to keep's words don't fit`);
   }
   if (!seen) out.push("no card has a Buy to keep");
+  // The Buys of one row of cards sit on one line (a card with a reason
+  // under its Buy is a line higher, and isn't counted).
+  const rows = new Map();
+  for (const card of cards) {
+    if (card.querySelector(".lc-box__why")) continue;
+    const top = Math.round(card.getBoundingClientRect().top);
+    (rows.get(top) ?? rows.set(top, []).get(top)).push(card);
+  }
+  for (const row of rows.values()) {
+    const kept = row.filter(c => c.querySelector(".lc-box__keep")), bare = row.filter(c => !c.querySelector(".lc-box__keep"));
+    for (const group of [kept, bare]) {
+      const tops = group.map(c => Math.round(c.querySelector(".lc-box__buy").getBoundingClientRect().top));
+      if (tops.length > 1 && Math.max(...tops) - Math.min(...tops) > 1) out.push(`the Buys of ${group.map(c => c.dataset.box).join(", ")} sit at ${tops.join(", ")}`);
+    }
+  }
   return out;
 }
 
@@ -2660,10 +2909,11 @@ async function keepPressProblems(settled) {
   if (!keep || !buy) return ["no Buy to keep on the Pauper's Box"];
   keep.focus();
   const said = { text: "A Pauper's Box ticket is in Tam Thornwick's pack (2 now). Use it from the character sheet whenever you like.", tone: "done" };
+  const tall = keep.getBoundingClientRect().height;
   const steps = [
     ["keeping", { busy: true, busyBox: "common", busyKeep: true }, "Buying\u2026", true],
     ["waiting", { busy: true, busyBox: "common", busyKeep: true, waiting: "gm" }, "Waiting for the GM\u2026", true],
-    ["kept", { said }, "Buy to keep, 25 gp, a ticket for your pack to use later", false],
+    ["kept", { said }, "Buy to keep, 25 gp, a ticket for later", false],
     ...(settled ? [] : [["keeping again", { busy: true, busyBox: "common", busyKeep: true }, "Buying\u2026", true]]),
   ];
   for (const [label, extra, text, off] of steps) {
@@ -2674,6 +2924,7 @@ async function keepPressProblems(settled) {
     if (document.querySelector('.lc-box__buy[data-box="common"]') !== buy) out.push(`the ${label} render replaced the Pauper's Box's Buy`);
     if (keep.textContent.trim() !== `Pauper's Box: ${text}`) out.push(`after the ${label} render the Buy to keep reads "${keep.textContent.trim()}"`);
     if (buy.textContent.trim() !== "Pauper's Box: Open for 25 gp") out.push(`after the ${label} render the Buy reads "${buy.textContent.trim()}"`);
+    if (Math.abs(keep.getBoundingClientRect().height - tall) > 0.5) out.push(`after the ${label} render the Buy to keep is ${keep.getBoundingClientRect().height}px tall, was ${tall}`);
     const on = [...document.querySelectorAll(".lc-box__buy, .lc-box__keep")].filter(b => b.getAttribute("aria-disabled") !== "true").map(b => b.dataset.box ?? b.dataset.keep);
     if (off && on.length) out.push(`after the ${label} render ${on.join(", ")} are still on`);
     if (!off && (keep.getAttribute("aria-disabled") === "true" || buy.getAttribute("aria-disabled") === "true")) out.push(`after the ${label} render the Pauper's Box is still off`);
@@ -2911,6 +3162,7 @@ try {
         problems0.push(...await page.evaluate(limitCardProblems, { reached: name === "shop-limit", off: name === "shop-closed" || busy, shelved: name === "shop-shelf" }));
         problems0.push(...await page.evaluate(keepProblems));
         if (name === "shop-keep" || name === "shop-kept") problems0.push(...await page.evaluate(keepPressProblems, name === "shop-kept"));
+        if (name === "shop-armed" || name === "shop-armed-keep") problems0.push(...await page.evaluate(armedProblems, name === "shop-armed-keep" ? "keep" : "buy"));
         problems0.push(...await page.evaluate(shelfShopProblems, name === "shop-shelf"));
         problems0.push(...await page.evaluate(tableCardProblems, name === "shop-table"));
         problems0.push(...await page.evaluate(auctionCardProblems, name === "shop-auction"));
@@ -2962,8 +3214,9 @@ try {
         // Give to… and Sell back pressed as a player does: a click.
         const mode = name.slice("landed-after-".length) || "one";
         if (mode === "give") await page.click(".lc-after__give");
-        if (mode === "sold") { await page.click(".lc-after__sell"); await page.waitForSelector("body[data-parted]", { timeout: 5000 }); }
-        if (mode !== "give" && mode !== "sold") problems0.push(...await page.evaluate(revealProblems, mode !== "watch"));
+        if (mode === "sure") await page.click(".lc-after__sell");
+        if (mode === "sold") { await page.click(".lc-after__sell"); await page.click(".lc-after__sellgo"); await page.waitForSelector("body[data-parted]", { timeout: 5000 }); }
+        if (mode !== "give" && mode !== "sold" && mode !== "sure" && mode !== "watch") problems0.push(...await page.evaluate(revealProblems, mode !== "watch"));
         problems0.push(...await page.evaluate(afterProblems, mode));
       }
       else if (name.startsWith("scratch")) {
@@ -2979,7 +3232,10 @@ try {
       else if (name.startsWith("auction")) problems0.push(...await page.evaluate(auctionProblems, { phase: { "auction-open": "open", "auction-bid": "bid", "auction-gm": "bid", "auction-hammer": "hammer", "auction-crate": "hammer" }[name], gm: name === "auction-gm", crate: name === "auction-crate" }));
       else if (name.startsWith("table") || name.startsWith("roulette")) problems0.push(...await page.evaluate(tableProblems, { phase: { "table-betting": "betting", "table-waiting": "waiting", "table-closed": "closed", "roulette-spinning": "spinning", "roulette-won": "landed", "roulette-lost": "landed" }[name], outcome: name === "roulette-lost" ? "lose" : "win", gm: name === "table-waiting" }));
       else if (name.startsWith("dice")) problems0.push(...await page.evaluate(diceProblems, { "dice-rolling": "rolling", "dice-won": "win", "dice-lost": "lose" }[name]));
-      else if (name.startsWith("deck")) problems0.push(...await page.evaluate(deckProblems, { "deck-held": "held", "deck-boon": "item", "deck-bane": "loss", "deck-effect": "effect" }[name]));
+      else if (name.startsWith("deck")) {
+        problems0.push(...await page.evaluate(deckProblems, { "deck-held": "held", "deck-boon": "item", "deck-bane": "loss", "deck-effect": "effect", "deck-bane-armed": "loss" }[name]));
+        if (name === "deck-bane-armed") problems0.push(...await page.evaluate(againArmedProblems));
+      }
       else if (name === "manager-dropped") problems0.push(...await page.evaluate(droppedProblems), ...await page.evaluate(pinnedProblems, false));
       else if (name === "manager-pool-made") problems0.push(...await page.evaluate(poolMadeProblems), ...await page.evaluate(pinnedProblems, true));
       else if (name === "prompt-newpool-discard") problems0.push(...await page.evaluate(newPoolDiscardProblems));
@@ -2987,6 +3243,7 @@ try {
       else if (name === "editor-crate-makepool") problems0.push(...await page.evaluate(makePoolProblems));
       else if (name === "editor-crate-makepool-two") problems0.push(...await page.evaluate(makePoolProblems), ...await page.evaluate(twoMakePoolProblems));
       else if (name === "manager-empty") problems0.push(...await page.evaluate(starterEmptyProblems, "pools"));
+      else if (name.startsWith("manager-menu")) problems0.push(...await page.evaluate(menuProblems, { "manager-menu-new": "new", "manager-menu-last": "last" }[name] ?? "row"));
       else if (name === "manager-boxes-empty") problems0.push(...await page.evaluate(starterEmptyProblems, "boxes"));
       else if (name === "manager-boxes-starter") problems0.push(...await page.evaluate(starterBoxesProblems), ...await page.evaluate(panelProblems));
       else if (name === "manager-boxes-shelf") problems0.push(...await page.evaluate(shelfBoxesProblems), ...await page.evaluate(panelProblems));

@@ -1,7 +1,7 @@
 /*
   The crate-opening reveal: a strip of item cards picks up speed, runs past a
   centre marker at a constant speed for a beat (the cards blur, the tick
-  rattles), slows with a long ease-out, overshoots into the next card when it outranks the
+  rattles), brakes at a steady rate (so it never crawls), overshoots into the next card when it outranks the
   result (the marker sits a quarter into it, then clicks back), settles, then
   the winning card lifts out of the strip, ringed in its rarity colour.
 
@@ -37,31 +37,34 @@ export const CARD_WIDTH = 120;
 export const CARD_GAP = 8;
 export const DEFAULT_DURATION = 6200;
 
-const easeOutCubic = p => 1 - Math.pow(1 - p, 3);
+const easeOutQuad = p => 1 - Math.pow(1 - p, 2);
 
 // The run to the overshoot point, as shares of its time: a short linear
-// run-up, a cruise at full speed, then the cubic ease-out. With the 86% split
+// run-up, a cruise at full speed, then the brake. With the 92% split
 // below the cruise is about 39% of the whole spin.
 export const SPIN_ACCEL = 0.07;
-export const SPIN_CRUISE = 0.45;
+export const SPIN_CRUISE = 0.42;
 
 /* Share of the distance covered at share p of the run's time. Velocity is
-   continuous: it ramps from 0 to v, holds v, and the ease-out starts at v
-   (cubic ease-out's initial slope is 3, over a third of the distance it
-   covers per unit time) and ends at 0. v is whatever makes the total 1. */
+   continuous: it ramps from 0 to v, holds v, and the brake starts at v
+   (a quadratic ease-out's initial slope is 2, over half the distance it
+   covers per unit time) and ends at 0. v is whatever makes the total 1.
+   The brake is quadratic, a steady deceleration, and not a higher power:
+   a cubic spends its last second covering the last card, with the marker
+   already inside the result and nothing left to find out. */
 export function spinDistance(p, accel = SPIN_ACCEL, cruise = SPIN_CRUISE) {
   if (p <= 0) return 0;
   if (p >= 1) return 1;
   const decel = 1 - accel - cruise;
-  const v = 1 / (accel / 2 + cruise + decel / 3);
+  const v = 1 / (accel / 2 + cruise + decel / 2);
   if (p < accel) return v * p * p / (2 * accel);
   if (p < accel + cruise) return v * (accel / 2 + p - accel);
-  return v * (accel / 2 + cruise + (decel / 3) * easeOutCubic((p - accel - cruise) / decel));
+  return v * (accel / 2 + cruise + (decel / 2) * easeOutQuad((p - accel - cruise) / decel));
 }
 
 // Share of the spin's time spent running to the overshoot point; the rest
-// settles back onto the result.
-export const SPIN_SPLIT = 0.86;
+// settles back onto the result (about half a second of the default spin).
+export const SPIN_SPLIT = 0.92;
 
 // When the ease-out starts and when the settle starts, in ms from the first frame.
 export const brakeAt = (duration = DEFAULT_DURATION) => duration * SPIN_SPLIT * (SPIN_ACCEL + SPIN_CRUISE);

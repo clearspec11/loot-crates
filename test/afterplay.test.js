@@ -7,8 +7,9 @@
 import { describe, it, expect, beforeAll, vi } from "vitest";
 import { createDocument } from "./minidom.js";
 
-const { SELL_BACK_DEFAULT, PART_WINDOW_MS, sellBackOf, sellBackFromForm, worthOf, worthColumns, sellCp, heldWorth, rowItems, giveTargets, isGiveTarget, partRefusal, partsLine, partSentence, anyParted, firstParted } = await import("../module/scripts/core/afterplay.js");
-const { afterHTML, wireAfter, setBusy, refused, showPart, spectatorLine } = await import("../module/scripts/views/afterreveal.js");
+const { SELL_BACK_DEFAULT, PART_WINDOW_MS, sellBackOf, sellBackFromForm, worthOf, worthColumns, sellCp, heldWorth, rowItems, giveTargets, isGiveTarget, partRefusal, partsLine, partSentence, partWhere, anyParted, firstParted } = await import("../module/scripts/core/afterplay.js");
+const { afterHTML, wireAfter, setBusy, refused, showPart, spectatorLine, whereAfter } = await import("../module/scripts/views/afterreveal.js");
+const { resultHTML } = await import("../module/scripts/views/revealcard.js");
 const { applyRow, emptyTally, wonCount, countsChange } = await import("../module/scripts/core/tally.js");
 const { ownedAfterPart } = await import("../module/scripts/core/odds.js");
 const { logPartedNote, logTableHTML } = await import("../module/scripts/views/logtable.js");
@@ -248,8 +249,63 @@ describe("the reveal's section", () => {
     press(give);
     press(el.querySelector(".lc-after__confirm"));
     press(el.querySelector(".lc-after__cancel"));
+    expect(calls).toEqual([["pick", true], ["pick", false], ["pick", true], ["give", "i1", "a2"], ["pick", false]]);
+    el.remove();
+  });
+
+  it("Sell back asks once more in place before anything is sold; Escape or Cancel puts focus back on Sell back", () => {
+    const el = root(afterHTML(offer, { esc, key: "r1" }));
+    document.body.append(el);
+    const calls = [];
+    wireAfter(el, { onGive: () => calls.push(["give"]), onSell: (...a) => calls.push(["sell", a[0], a[1]]), onPick: open => calls.push(["pick", open]) });
+    const press = target => el.dispatchEvent(event("click", target));
+    const sell = el.querySelector(".lc-after__sell");
+    const sure = el.querySelector(".lc-after__sure");
+    const go = el.querySelector(".lc-after__sellgo");
+    expect(sure.hidden).toBe(true);
+    press(sell);
+    // The first press sells nothing: it asks, with the item and the price.
+    expect(calls).toEqual([["pick", true]]);
+    expect(sure.hidden).toBe(false);
+    expect(el.querySelector(".lc-after__acts").hidden).toBe(true);
+    expect(sure.querySelector(".lc-after__sure-label").textContent).toBe("Sell Wand of Webs back for 75 gp? This can't be undone.");
+    expect(go.textContent).toBe("Sell");
+    expect(go.getAttribute("aria-describedby")).toBe(sure.querySelector(".lc-after__sure-label").id);
+    expect(document.activeElement).toBe(go);
+    el.dispatchEvent(event("keydown", go, { key: "Escape" }));
+    expect(sure.hidden).toBe(true);
+    expect(document.activeElement).toBe(sell);
+    press(sell);
+    press(sure.querySelector(".lc-after__cancel"));
+    expect(sure.hidden).toBe(true);
+    expect(calls).toEqual([["pick", true], ["pick", false], ["pick", true], ["pick", false]]);
+    // The second press sells, at the price on the Sell back button.
+    press(sell);
+    press(go);
+    expect(calls.at(-1)).toEqual(["sell", "i1", 7500]);
+    el.remove();
+  });
+
+  it("a sale refused goes back to Sell back at the house's price now, and the next press asks at that price", () => {
+    const el = root(afterHTML(offer, { esc, key: "r1" }));
+    document.body.append(el);
+    const calls = [];
+    wireAfter(el, { onSell: (...a) => calls.push(a[1]) });
+    const press = target => el.dispatchEvent(event("click", target));
+    const li = el.querySelector(".lc-after__item");
+    const sure = el.querySelector(".lc-after__sure");
     press(el.querySelector(".lc-after__sell"));
-    expect(calls).toEqual([["pick", true], ["pick", false], ["pick", true], ["give", "i1", "a2"], ["pick", false], ["sell", "i1", 7500]]);
+    press(el.querySelector(".lc-after__sellgo"));
+    setBusy(li, "sell");
+    refused(li, "Test Crate now buys Wand of Webs back for 60 gp.", { cp: 6000 });
+    expect(sure.hidden).toBe(true);
+    expect(el.querySelector(".lc-after__acts").hidden).toBe(false);
+    expect(document.activeElement).toBe(el.querySelector(".lc-after__sell"));
+    expect(el.querySelector(".lc-after__sellgo").textContent).toBe("Sell");
+    press(el.querySelector(".lc-after__sell"));
+    expect(sure.querySelector(".lc-after__sure-label").textContent).toBe("Sell Wand of Webs back for 60 gp? This can't be undone.");
+    press(el.querySelector(".lc-after__sellgo"));
+    expect(calls).toEqual([7500, 6000]);
     el.remove();
   });
 
@@ -259,7 +315,8 @@ describe("the reveal's section", () => {
     wireAfter(el, { onSell: () => calls.push("sell") });
     const li = el.querySelector(".lc-after__item");
     setBusy(li, "sell");
-    expect(el.querySelector(".lc-after__sell").textContent).toBe("Selling…");
+    expect(el.querySelector(".lc-after__sellgo").textContent).toBe("Selling…");
+    el.dispatchEvent(event("click", el.querySelector(".lc-after__sellgo")));
     el.dispatchEvent(event("click", el.querySelector(".lc-after__sell")));
     expect(calls).toEqual([]);
     refused(li, "Test Crate now buys Wand of Webs back for 60 gp.", { cp: 6000 });
@@ -279,6 +336,36 @@ describe("the reveal's section", () => {
     expect(next).toBe(second.querySelector(".lc-after__give"));
     expect(showPart(el, "i2", "Brinn gave Potion to Saria.")).toBeNull();
     expect(el.querySelector(".lc-after__lead")).toBeNull();
+  });
+
+  it("a play of one item says what became of it once, in the result's own line, and its row goes", () => {
+    const el = root(`<div class="lc-reveal__result">${resultHTML({ result: { name: "Wand of Webs", rarity: "rare" }, itemUuid: "Actor.a1.Item.i1", actorName: "Brinn", purse: { gp: 345 } }, { esc, canSee: true })}</div><div class="lc-reveal__after">${afterHTML(offer, { esc, key: "r1" })}</div>`);
+    const where = el.querySelector(".lc-reveal__where");
+    expect(where.textContent).toBe("Added to Brinn's inventory · 345 gp left");
+    const slot = el.querySelector(".lc-reveal__after");
+    expect(showPart(slot, "i1")).toBeNull();
+    whereAfter(el, partWhere({ soldCp: 7500 }));
+    // Never both: "Added to Brinn's inventory" and, under it, that it was sold.
+    expect(where.textContent).toBe("Sold back for 75 gp · 345 gp left");
+    expect(el.textContent).not.toContain("Added to");
+    expect(slot.querySelector(".lc-after")).toBeNull();
+    expect(slot.textContent.trim()).toBe("");
+    whereAfter(el, partWhere({ given: { actorName: "Saria" } }));
+    expect(where.textContent).toBe("Given to Saria · 345 gp left");
+  });
+
+  it("with every item of a play gone, the result's line stops saying it was added to the sheet", () => {
+    const seen = root(`<div class="lc-reveal__result">${resultHTML({ result: { name: "Wand of Webs", rarity: "rare" }, itemUuid: "Actor.a1.Item.i1", actorName: "Brinn", purse: { gp: 345 } }, { esc, canSee: true })}</div>`);
+    whereAfter(seen, "");
+    expect(seen.querySelector(".lc-reveal__where").textContent).toBe("345 gp left");
+    // A spectator's line held that phrase alone: the line goes with it.
+    const unseen = root(`<div class="lc-reveal__result">${resultHTML({ result: { name: "Wand of Webs", rarity: "rare" }, itemUuid: "Actor.a1.Item.i1", actorName: "Brinn" }, { esc })}</div>`);
+    whereAfter(unseen, "");
+    expect(unseen.querySelector(".lc-reveal__where")).toBeNull();
+    // A result with no such phrase (a miss) is left as it is.
+    const miss = root(`<div class="lc-reveal__result"><div class="lc-reveal__quiet">Nothing this time.</div></div>`);
+    whereAfter(miss, "Sold back for 75 gp");
+    expect(miss.textContent).toBe("Nothing this time.");
   });
 
   it("everyone else sees only the lines", () => {

@@ -82,11 +82,13 @@ export const addedOffNotice = (game, why) => t("LOOTCRATES.Shelf.AddedOffWhy", {
   focusKey).
 */
 export const shelfToggleLabel = () => t("LOOTCRATES.Shelf.Toggle");
-export function shelfToggleHTML(game, esc = s => String(s ?? "")) {
+export function shelfToggleHTML(game, esc = s => String(s ?? ""), { short = false } = {}) {
   const on = onShelf(game);
   const tip = on ? t("LOOTCRATES.Shelf.TipOn") : t("LOOTCRATES.Shelf.TipOff");
   const label = shelfToggleLabel();
-  return `<button type="button" class="lc-shelf-toggle lc-switch" data-action="toggleShelf" data-box="${esc(game.id)}" data-on="${on}" aria-pressed="${on}" aria-label="${label}: ${esc(game.name)}" title="${tip}">${label}</button>`;
+  // `short`: a table row shows "Shelf" beside the switch (the row's cell
+  // must stay narrow); its name for a screen reader is still the whole one.
+  return `<button type="button" class="lc-shelf-toggle lc-switch" data-action="toggleShelf" data-box="${esc(game.id)}" data-on="${on}" aria-pressed="${on}" aria-label="${label}: ${esc(game.name)}" title="${tip}">${short ? t("LOOTCRATES.Shelf.Short") : label}</button>`;
 }
 
 // The Boxes tab's status line once the toggle wrote.

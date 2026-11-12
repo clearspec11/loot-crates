@@ -33,6 +33,8 @@
 // real purchase per run. Needs Crate Tester in "Loot Crates Test".
 /* global game, Hooks, RollTable, foundry, __lc */
 const { chromium } = require("playwright");
+// A Buy over half the purse asks first; pressSpend presses it again then.
+const { pressSpend } = require("./lib/spend.cjs");
 const FOUNDRY = process.env.FOUNDRY_URL || "http://localhost:30000";
 const MODULE_BASE = process.env.MODULE_BASE || "http://localhost:8766/";
 const PLAYER = process.env.PLAYER || "Player2";
@@ -225,7 +227,7 @@ const GM_HELPERS = `
       } : null;
     }, { base: MODULE_BASE, id: box.id }) : null;
     if (box && out.card && !out.card.off) {
-      await pl.page.locator(`#loot-crates-shop .lc-box[data-box="${box.id}"] .lc-box__buy`).click();
+      await pressSpend(pl.page.locator(`#loot-crates-shop .lc-box[data-box="${box.id}"] .lc-box__buy`));
       out.pull = await pl.page.evaluate(async () => {
         const wait = ms => new Promise(r => setTimeout(r, ms));
         const until = async (fn, ms = 20000) => { for (let t = 0; t < ms && !fn(); t += 50) await wait(50); return fn(); };

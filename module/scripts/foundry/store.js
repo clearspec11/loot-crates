@@ -173,6 +173,39 @@ export function countRest(actorId) {
   });
 }
 
+/*
+  The tickets the GM's side has issued and not yet seen spent, by character
+  and game: STATE's `tickets`, { v, held: { "actorId.boxId": n } }. A ticket
+  is an item on a sheet its player can edit (its quantity, its flags), so
+  the item says only that a play is asked for; this count says whether one
+  is owed (foundry/tickets.js). ticketsHeld is null until the world has been
+  counted once (tickets.js seedTickets), and nothing is refused or counted
+  before that. moveTickets and setTicketsHeld run inside a queued write.
+*/
+export const TICKETS_KEY = "tickets";
+const ticketKey = (actorId, boxId) => `${actorId}.${boxId}`;
+export function ticketsHeld(actorId, boxId) {
+  let tickets;
+  try { tickets = game.settings.get(MODULE_ID, SETTINGS.STATE)?.[TICKETS_KEY]; } catch { return null; }
+  if (!tickets?.v) return null;
+  return Math.max(0, Math.floor(Number(tickets.held?.[ticketKey(actorId, boxId)]) || 0));
+}
+export async function moveTickets(actorId, boxId, by) {
+  const n = Math.round(Number(by) || 0);
+  if (!actorId || !boxId || !n || ticketsHeld(actorId, boxId) == null) return;
+  const all = get(SETTINGS.STATE);
+  const held = { ...(all[TICKETS_KEY].held ?? {}) };
+  const key = ticketKey(actorId, boxId);
+  const next = Math.max(0, (Number(held[key]) || 0) + n);
+  if (next) held[key] = next;
+  else delete held[key];
+  await set(SETTINGS.STATE, { ...all, [TICKETS_KEY]: { ...all[TICKETS_KEY], held } });
+}
+export async function setTicketsHeld(held) {
+  const all = get(SETTINGS.STATE) ?? {};
+  await set(SETTINGS.STATE, { ...all, [TICKETS_KEY]: { v: 1, held: { ...held } } });
+}
+
 export const getPools = () => get(SETTINGS.POOLS);
 export const getBoxes = () => get(SETTINGS.BOXES);
 export const getLog = () => get(SETTINGS.LOG);

@@ -21,6 +21,8 @@ class Node {
     for (let n = other; n; n = n.parentNode) if (n === this) return true;
     return false;
   }
+  get nextSibling() { const all = this.parentNode?.childNodes; return all ? all[all.indexOf(this) + 1] ?? null : null; }
+  get previousSibling() { const all = this.parentNode?.childNodes; return all ? all[all.indexOf(this) - 1] ?? null : null; }
   remove() {
     const parent = this.parentNode;
     if (!parent) return;
@@ -55,8 +57,12 @@ class Element extends Node {
     this.dataset = new Proxy({}, {
       get: (_t, k) => el.getAttribute(`data-${String(k).replace(/[A-Z]/g, c => `-${c.toLowerCase()}`)}`) ?? undefined,
       set: (_t, k, v) => { el.setAttribute(`data-${String(k).replace(/[A-Z]/g, c => `-${c.toLowerCase()}`)}`, String(v)); return true; },
+      deleteProperty: (_t, k) => { el.removeAttribute(`data-${String(k).replace(/[A-Z]/g, c => `-${c.toLowerCase()}`)}`); return true; },
     });
   }
+  // The hidden property is the hidden attribute, as in a browser.
+  get hidden() { return this.hasAttribute("hidden"); }
+  set hidden(v) { if (v) this.setAttribute("hidden", ""); else this.removeAttribute("hidden"); }
   getAttribute(name) { return this.attrs.has(name) ? this.attrs.get(name) : null; }
   setAttribute(name, value) { this.attrs.set(name, String(value)); }
   removeAttribute(name) { this.attrs.delete(name); }
@@ -75,6 +81,7 @@ class Element extends Node {
   // Listeners run on the target only (no bubbling): enough for a test that
   // dispatches on the element a handler was added to.
   addEventListener(type, fn) { ((this._listeners ??= new Map()).get(type) ?? this._listeners.set(type, []).get(type)).push(fn); }
+  removeEventListener(type, fn) { const all = this._listeners?.get(type); if (all?.includes(fn)) all.splice(all.indexOf(fn), 1); }
   dispatchEvent(event) {
     // A real Event's target is a getter, so it is set as an own property.
     if (event.target == null) Object.defineProperty(event, "target", { value: this, configurable: true });
@@ -203,5 +210,12 @@ export function createDocument() {
   doc.querySelector = sel => doc.documentElement.querySelector(sel);
   doc.querySelectorAll = sel => doc.documentElement.querySelectorAll(sel);
   doc.getElementById = id => doc.documentElement.querySelectorAll("[id]").find(el => el.id === id) ?? null;
+  // The document's own listeners (a press anywhere, spendguard.js), run on
+  // a dispatch to it: a test sends the event a click elsewhere would.
+  const own = new Map();
+  doc.addEventListener = (type, fn) => (own.get(type) ?? own.set(type, []).get(type)).push(fn);
+  doc.removeEventListener = (type, fn) => { const all = own.get(type); if (all?.includes(fn)) all.splice(all.indexOf(fn), 1); };
+  doc.dispatchEvent = event => { for (const fn of [...(own.get(event.type) ?? [])]) fn(event); return !event.defaultPrevented; };
+  doc.listenerCount = type => own.get(type)?.length ?? 0;
   return doc;
 }

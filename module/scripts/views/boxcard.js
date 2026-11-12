@@ -19,12 +19,21 @@ import { onShelf, offShelfReason } from "../core/shelf.js";
 import { t, words } from "../core/i18n.js";
 import { ticketable } from "../games/ticket.js";
 
+/*
+  Odds rows reach the pills and the ribbon from the shop's own arithmetic
+  and also from a reveal on the module socket, which any client can send
+  (socket.js): every value is escaped here, whoever the caller is, and a
+  rarity that isn't one gets no class of its own.
+*/
+const safe = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const rarityClass = rarity => (rarity === "none" || RARITIES.includes(rarity) ? rarity : "none");
+
 // What an odds row is called: its rarity, or "Nothing" for a crate's miss.
 const rowName = (row, names = RARITY_SHORT) => (row.rarity === "none" ? t("LOOTCRATES.Odds.Nothing") : names[row.rarity] ?? row.rarity);
 
 // "Rare 12%": the rarity's name is on screen, not only its colour.
 export function oddPill(row) {
-  return `<span class="lc-odd lc-rarity-${row.rarity}">${rowName(row)} ${row.label}</span>`;
+  return `<span class="lc-odd lc-rarity-${rarityClass(row.rarity)}">${safe(rowName(row))} ${safe(row.label)}</span>`;
 }
 
 export function oddsPills(rows) {
@@ -77,7 +86,7 @@ export function oddsRibbon(rows) {
   if (!rows?.length) return "";
   const segs = rows.map(row => {
     const share = Math.max(0, Number(row.chance) || 0);
-    return `<span class="lc-ribbon__seg lc-rarity-${row.rarity}" style="flex-grow:${+share.toFixed(4)}" title="${rowName(row, RARITY_LABEL)} ${row.label}"></span>`;
+    return `<span class="lc-ribbon__seg lc-rarity-${rarityClass(row.rarity)}" style="flex-grow:${+share.toFixed(4)}" title="${safe(rowName(row, RARITY_LABEL))} ${safe(row.label)}"></span>`;
   }).join("");
   return `<div class="lc-ribbon" aria-hidden="true">${segs}</div>`;
 }
@@ -355,13 +364,21 @@ export function boxCard(box, pools, ctx) {
   GM refuses a pull on it from anyone, the GM included.
 
   Every game a player pulls (games/ticket.js ticketable: not a table game)
-  has a second, quieter button under the Buy: Buy to keep (data-action
-  "keep"), at the same price and off for the same reasons, described by the
-  same lines, which puts a ticket in the character's pack instead of
-  playing now (shop.js, socket.js doKeep). Its name starts with the game's
-  and ends with the price and what it does, for screen readers only; the
-  visible words stay "Buy to keep". While one is out (`ctx.busyKeep`) the
-  pressed card's keep button says "Buying…" and its Buy keeps its label.
+  has a second way to buy under the Buy, drawn as a line of words rather
+  than a second button (the card has one button's weight): Buy to keep
+  (data-action "keep"), at the same price and off for the same reasons,
+  described by the same lines, which puts a ticket in the character's pack
+  instead of playing now (shop.js, socket.js doKeep). It says what it is
+  on the card: "Buy to keep" underlined, then "a ticket for later" in
+  quieter ink, on one line. Its name starts with the game's and has the
+  price between the two, for screen readers only. While one is out
+  (`ctx.busyKeep`) the pressed card's keep says "Buying…", one line still,
+  and its Buy keeps its label.
+
+  The Buy sits at the card's foot (module.css: the body is a column and the
+  Buy takes the slack above it), so a row of cards with different lines
+  has its Buys on one line; a card with a reason sits one line higher,
+  since the reason goes under the two.
   It names its game in data-keep, not data-box: patchShop's morph pairs
   nodes by data-box, and two buttons with one key in a card would swap.
 */
@@ -394,7 +411,7 @@ export function cardShell(box, ctx, { rarityClass, art = "", middle: lines = [],
             <span class="lc-sr-only">${esc(box.name)}: </span>${opening ? (waiting ? t("LOOTCRATES.Card.Waiting") : t("LOOTCRATES.Card.Opening")) : label}
           </button>
           ${ticketable(box) ? `<button type="button" class="lc-box__keep" data-action="keep" data-keep="${esc(box.id)}"${price ? ` data-price="${esc(price)}"` : ""}${off ? ` aria-disabled="true"` : ""}${off && describedBy ? ` aria-describedby="${esc(describedBy)}"` : ""}>
-            <span class="lc-sr-only">${esc(box.name)}: </span>${keeping ? (waiting ? t("LOOTCRATES.Card.Waiting") : t("LOOTCRATES.Card.Keeping")) : `${t("LOOTCRATES.Card.Keep")}<span class="lc-sr-only">${t("LOOTCRATES.Card.KeepHint", { price: esc(formatPrice(cost)) })}</span>`}
+            <span class="lc-sr-only">${esc(box.name)}: </span>${keeping ? (waiting ? t("LOOTCRATES.Card.Waiting") : t("LOOTCRATES.Card.Keeping")) : `<span class="lc-box__keep-do">${t("LOOTCRATES.Card.Keep")}</span><span class="lc-sr-only">${t("LOOTCRATES.Card.KeepPrice", { price: esc(formatPrice(cost)) })}</span><span class="lc-box__keep-hint">${t("LOOTCRATES.Card.KeepHint")}</span>`}
           </button>` : ""}
           ${reason ? `<div class="lc-box__why" id="${esc(whyId)}">${esc(reason)}</div>` : ""}
         </div>

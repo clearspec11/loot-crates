@@ -212,6 +212,52 @@ describe("Draw again", () => {
   });
 });
 
+describe("Draw again at a price over half the purse", () => {
+  // The buyer holds 40 gp: 25 gp is over half, so it takes two presses (views/spendguard.js).
+  let now, clock;
+  beforeEach(() => {
+    now = 1000;
+    clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+    offer = { price: 25, label: "Draw again for 25 gp", off: "" };
+  });
+  afterEach(() => clock.mockRestore());
+
+  it("only arms the button on the first press, and draws on the second", async () => {
+    const app = await showReveal(reveal());
+    await app.landed;
+    const btn = app.element.querySelector(".lc-reveal__again");
+    requestPull.mockResolvedValue({ type: "reveal" });
+    await press(app, btn);
+    expect(requestPull).not.toHaveBeenCalled();
+    expect(btn.getAttribute("data-armed")).toBe("");
+    expect(btn.getAttribute("aria-disabled")).toBeNull();
+    expect(app.closed).toBe(0);
+    now += 1000;
+    await press(app, btn);
+    expect(requestPull).toHaveBeenCalledWith({ boxId: "d1", actorId: "a1", price: 25 });
+    expect(btn.getAttribute("data-armed")).toBeNull();
+    expect(app.closed).toBe(1);
+  });
+
+  it("asks again when the price moved between the presses, and draws at once at half the purse or less", async () => {
+    const app = await showReveal(reveal());
+    await app.landed;
+    const btn = app.element.querySelector(".lc-reveal__again");
+    requestPull.mockReturnValue(new Promise(() => {}));
+    await press(app, btn);
+    offer = { price: 30, label: "Draw again for 30 gp", off: "" };
+    now += 1000;
+    await press(app, btn);
+    expect(requestPull).not.toHaveBeenCalled();
+    offer = { price: 20, label: "Draw again for 20 gp", off: "" };
+    now += 1000;
+    press(app, btn);
+    expect(requestPull).toHaveBeenCalledWith({ boxId: "d1", actorId: "a1", price: 20 });
+    expect(btn.getAttribute("data-armed")).toBeNull();
+    expect(btn.textContent).toBe("Drawing…");
+  });
+});
+
 describe("Foundry v14's Detach", () => {
   it("is not offered on the reveal: it reads the main page's tab, focus, Buy and chat card", async () => {
     const app = await showReveal(reveal());

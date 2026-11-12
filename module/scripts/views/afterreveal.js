@@ -13,9 +13,19 @@
   Escape is Cancel and focus goes back to Give to…. While a request is out
   its button reads Giving… or Selling… and the row's other buttons are
   off; a refusal is said on the row's own line and the buttons come back.
+  Sell back asks once more in place, as Give to… does with its picker: a
+  sale can't be undone, so the first press only opens "Sell X back for N?
+  This can't be undone." with Sell (focused) and Cancel; Escape is Cancel
+  and focus goes back to Sell back.
   Once done the row's buttons give way to what happened, said in the row's
   status line, and focus goes to the next row's first button, else to the
   window's Close. Everyone else sees only those lines (spectatorLine).
+
+  A play of one item says what became of it once, in the result's own
+  line (whereAfter: "Sold back for 75 gp" where "Added to Tam's
+  inventory" stood), not under it as well: the row goes (showPart with no
+  text). With several items the rows say it, and the result's line stops
+  saying "Added to" once none of them is left on the sheet.
 
   The section's buttons carry data-after, never data-action: ApplicationV2
   routes data-action itself, and the harness has no ApplicationV2.
@@ -41,8 +51,9 @@ export function afterHTML(offer, { esc = plain, key = "x" } = {}) {
   const row = (item, i) => {
     const name = esc(item.name);
     const pickId = `lc-after-pick-${esc(key)}-${i}`;
+    const sureId = `lc-after-sure-${esc(key)}-${i}`;
     const price = item.sellCp > 0 ? esc(formatPrice(item.sellCp / 100)) : "";
-    return `<li class="lc-after__item" data-after-item="${esc(item.id)}">
+    return `<li class="lc-after__item" data-after-item="${esc(item.id)}" data-after-name="${name}">
           ${several ? `<span class="lc-after__name">${name}</span>` : ""}
           <span class="lc-after__acts">
             <button type="button" class="lc-after__give" data-after="give" aria-label="${t("LOOTCRATES.After.GiveLabel", { item: name })}"${none ? ` aria-disabled="true" aria-describedby="${noneId}"` : ""}>${t("LOOTCRATES.After.Give")}</button>
@@ -54,6 +65,11 @@ export function afterHTML(offer, { esc = plain, key = "x" } = {}) {
             <button type="button" class="lc-after__confirm" data-after="confirm">${t("LOOTCRATES.After.Confirm")}</button>
             <button type="button" class="lc-after__cancel" data-after="cancel">${t("LOOTCRATES.Common.Cancel")}</button>
           </span>
+          ${price ? `<span class="lc-after__sure" hidden>
+            <span class="lc-after__sure-label" id="${sureId}"></span>
+            <button type="button" class="lc-after__sellgo" data-after="sellgo" aria-describedby="${sureId}">${t("LOOTCRATES.After.SellConfirm")}</button>
+            <button type="button" class="lc-after__cancel" data-after="cancel">${t("LOOTCRATES.Common.Cancel")}</button>
+          </span>` : ""}
           <span class="lc-after__said" role="status"></span>
         </li>`;
   };
@@ -77,6 +93,28 @@ export function openPick(li, open) {
   (open ? pick.querySelector(".lc-after__target") : acts.querySelector(".lc-after__give"))?.focus({ preventScroll: true });
 }
 
+// The row's "sell it?" open (its Sell focused, asking at the price on the
+// Sell back button now) or shut (focus back on Sell back).
+export function openSure(li, open) {
+  const sure = li?.querySelector(".lc-after__sure");
+  const acts = li?.querySelector(".lc-after__acts");
+  const sell = acts?.querySelector(".lc-after__sell");
+  if (!sure || !acts || !sell) return;
+  if (open) sure.querySelector(".lc-after__sure-label").textContent = t("LOOTCRATES.After.SellSure", { item: li.dataset.afterName ?? "", price: formatPrice((Number(sell.dataset.cp) || 0) / 100) });
+  sure.hidden = !open;
+  acts.hidden = open;
+  (open ? sure.querySelector(".lc-after__sellgo") : sell).focus({ preventScroll: true });
+}
+
+// Whichever of the row's two asks is open, shut. Returns whether one was.
+function shut(li) {
+  const pick = li?.querySelector(".lc-after__pick");
+  const sure = li?.querySelector(".lc-after__sure");
+  if (sure && !sure.hidden) { openSure(li, false); return true; }
+  if (pick && !pick.hidden) { openPick(li, false); return true; }
+  return false;
+}
+
 // A request out for this row: the pressed button says so, every button off.
 export function setBusy(li, which) {
   if (!li) return;
@@ -87,7 +125,7 @@ export function setBusy(li, which) {
   }
   const said = li.querySelector(".lc-after__said");
   if (said) said.textContent = "";
-  const btn = which === "sell" ? li.querySelector(".lc-after__sell") : li.querySelector(".lc-after__confirm");
+  const btn = which === "sell" ? li.querySelector(".lc-after__sellgo") ?? li.querySelector(".lc-after__sell") : li.querySelector(".lc-after__confirm");
   if (btn) btn.textContent = t(which === "sell" ? "LOOTCRATES.After.Selling" : "LOOTCRATES.After.Giving");
 }
 
@@ -108,27 +146,59 @@ export function refused(li, text, { cp = null, none = false } = {}) {
       sell.textContent = sell.dataset.label = t("LOOTCRATES.After.Sell", { price });
     } else sell.remove();
   }
+  // A sale refused goes back to Sell back, at the house's price now: the
+  // next press asks again at that price.
+  const sure = li.querySelector(".lc-after__sure");
+  if (sure && !sure.hidden) {
+    const had = sure.contains(globalThis.document?.activeElement ?? null);
+    sure.hidden = true;
+    const acts = li.querySelector(".lc-after__acts");
+    if (acts) acts.hidden = false;
+    if (had) (acts?.querySelector(".lc-after__sell") ?? acts?.querySelector(".lc-after__give"))?.focus({ preventScroll: true });
+    if (!li.querySelector(".lc-after__sell")) sure.remove();
+  }
   const said = li.querySelector(".lc-after__said");
   if (said) said.textContent = text ?? "";
 }
 
 /*
   What happened to an item: the row's buttons go and its line says it.
-  Returns the element focus should move to when it was on the row (the
-  next row's first button still there), else null.
+  With no `text` the row goes too (a play of one item says it in the
+  result's line, whereAfter), and the section with its last row. Returns
+  the element focus should move to when it was on the row (the next row's
+  first button still there), else null.
 */
-export function showPart(root, itemId, text) {
+export function showPart(root, itemId, text = "") {
   const li = rowOf(root, itemId);
   if (!li) return null;
   delete li.dataset.busy;
   li.dataset.parted = "1";
-  li.querySelector(".lc-after__acts")?.remove();
-  li.querySelector(".lc-after__pick")?.remove();
+  for (const sel of [".lc-after__acts", ".lc-after__pick", ".lc-after__sure"]) li.querySelector(sel)?.remove();
   const said = li.querySelector(".lc-after__said");
   if (said) said.textContent = text;
+  if (!text) li.remove();
   const open = [...root.querySelectorAll(".lc-after__item")].filter(row => !row.dataset.parted);
   if (!open.length) for (const sel of [".lc-after__lead", ".lc-after__none"]) root.querySelector(sel)?.remove();
+  if (!root.querySelector(".lc-after__item")) root.querySelector(".lc-after")?.remove();
   return open.flatMap(row => [...row.querySelectorAll(".lc-after__acts button")]).find(b => !off(b)) ?? null;
+}
+
+/*
+  The result's own line, where it said the item was added to the sheet
+  (revealcard.js resultHTML, .lc-reveal__added): `text` in its place ("Sold
+  back for 75 gp"), or with "" the phrase gone, with the dot that joined it
+  to the gold. `root` is the reveal's result block or anything around it.
+*/
+export function whereAfter(root, text) {
+  const added = root?.querySelector?.(".lc-reveal__added");
+  if (!added) return;
+  if (text) { added.textContent = text; return; }
+  const dot = n => n?.nodeType === 3 && /^\s*·\s*$/.test(n.textContent);
+  const where = added.parentNode;
+  if (dot(added.nextSibling)) added.nextSibling.remove();
+  else if (dot(added.previousSibling)) added.previousSibling.remove();
+  added.remove();
+  if (where && !where.textContent.trim()) where.remove();
 }
 
 // Everyone else's line, once per item (a second word on it replaces the first).
@@ -148,10 +218,12 @@ export function spectatorLine(root, itemId, text, { esc = plain } = {}) {
 }
 
 /*
-  Wires a section: Give to… opens the row's picker, Cancel or Escape shuts
-  it, Give calls onGive(itemId, targetId, li), Sell back onSell(itemId, cp,
-  li). Nothing pressed while off or busy reaches them. onPick(open) is told
-  when a picker opens or shuts (the window holds its countdown meanwhile).
+  Wires a section: Give to… opens the row's picker and Sell back its "sell
+  it?", Cancel or Escape shuts either, Give calls onGive(itemId, targetId,
+  li), and Sell (the second press) onSell(itemId, cp, li) at the price on
+  the Sell back button. Nothing pressed while off or busy reaches them.
+  onPick(open) is told when either opens or shuts (the window holds its
+  countdown meanwhile).
 */
 export function wireAfter(root, { onGive, onSell, onPick = null } = {}) {
   if (typeof root?.addEventListener !== "function") return;
@@ -163,20 +235,21 @@ export function wireAfter(root, { onGive, onSell, onPick = null } = {}) {
     const itemId = li.dataset.afterItem;
     const what = btn.dataset.after;
     if (what === "give") { openPick(li, true); onPick?.(true); }
-    else if (what === "cancel") { openPick(li, false); onPick?.(false); }
+    else if (what === "cancel") { shut(li); onPick?.(false); }
     else if (what === "confirm") {
       const target = li.querySelector(".lc-after__target")?.value;
       if (target) onGive?.(itemId, target, li);
-    } else if (what === "sell") onSell?.(itemId, Number(btn.dataset.cp) || 0, li);
+    } else if (what === "sell") { openSure(li, true); onPick?.(true); }
+    else if (what === "sellgo") onSell?.(itemId, Number(li.querySelector(".lc-after__sell")?.dataset.cp) || 0, li);
   });
   root.addEventListener("keydown", event => {
     if (event.key !== "Escape") return;
     const li = event.target.closest?.(".lc-after__item");
-    const pick = li?.querySelector(".lc-after__pick");
-    if (!pick || pick.hidden || li.dataset.busy) return;
+    const open = [".lc-after__pick", ".lc-after__sure"].some(sel => { const el = li?.querySelector(sel); return !!el && !el.hidden; });
+    if (!open || li.dataset.busy) return;
     event.preventDefault();
     event.stopPropagation();
-    openPick(li, false);
+    shut(li);
     onPick?.(false);
   });
 }

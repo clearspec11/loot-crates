@@ -444,7 +444,7 @@ describe("the shop card's Buy to keep", () => {
   it("sits under the Buy of every pulled game, at the same price, named for the game", () => {
     const html = shell(CRATE);
     expect(html).toMatch(/class="lc-box__buy"[\s\S]*class="lc-box__keep" data-action="keep" data-keep="box" data-price="10"/);
-    expect(html).toContain(`<span class="lc-sr-only">Test Crate: </span>Buy to keep<span class="lc-sr-only">, 10 gp, a ticket for your pack to use later</span>`);
+    expect(html).toContain(`<span class="lc-sr-only">Test Crate: </span><span class="lc-box__keep-do">Buy to keep</span><span class="lc-sr-only">, 10 gp, </span><span class="lc-box__keep-hint">a ticket for later</span>`);
     expect(shell(SCRATCH)).toContain('data-action="keep"');
   });
 
@@ -464,6 +464,8 @@ describe("the shop card's Buy to keep", () => {
     const html = shell(CRATE, ctx({ busy: true, busyBox: "box", busyKeep: true }));
     expect(html).toMatch(/lc-box__buy[\s\S]*Open for 10 gp[\s\S]*lc-box__keep[\s\S]*Buying…/);
     expect(html).not.toContain("Opening…");
+    // One line either way: the hint goes while it says Buying….
+    expect(html).not.toContain("lc-box__keep-hint");
     expect(shell(CRATE, ctx({ busy: true, busyBox: "box" }))).toMatch(/Opening…[\s\S]*Buy to keep/);
   });
 });

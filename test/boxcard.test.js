@@ -97,6 +97,15 @@ describe("the crate's peek and ribbon", () => {
     expect([...html.matchAll(/flex-grow:([\d.]+)/g)].map(m => +m[1])).toEqual([0.85, 0.15]);
     expect(oddsRibbon([])).toBe("");
   });
+  it("escapes odds rows that came with a reveal anyone could have sent", async () => {
+    const { oddsRibbon, oddPill } = await import("../module/scripts/views/boxcard.js");
+    const forged = { rarity: '"><img src=x onerror=alert(1)>', chance: 1, label: '"><img src=x onerror=alert(2)>' };
+    for (const html of [oddsRibbon([forged]), oddPill(forged)]) {
+      expect(html).not.toContain("<img");
+      expect(html).toContain("lc-rarity-none");
+    }
+    expect(oddPill({ rarity: "rare", label: "<1%" })).toBe('<span class="lc-odd lc-rarity-rare">Rare &lt;1%</span>');
+  });
   const button = html => html.match(/<button[^>]*>/)[0];
   it("names its crate in the Buy for screen readers, before the visible label, in every state", () => {
     const sr = `<span class="lc-sr-only">Pauper's Box: </span>`;

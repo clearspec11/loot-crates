@@ -38,9 +38,15 @@
   "keep" (socket.js requestKeep). The GM charges it and puts a ticket in
   the character's pack, and the notice says where it went, so the player
   hears it without a reveal.
+
+  A Buy or a Buy to keep whose price is more than half the purse takes two
+  presses (views/spendguard.js): the first arms that button ("Spend 150
+  gp?"), the second sends as above. Arming draws nothing: the next render,
+  for whatever reason, puts the button's own words back.
 */
 import { getBoxes, getPools, getLog, getTally, getRounds, getActorState, isShopOpen, todayKey } from "./store.js";
 import { formatGold } from "../core/currency.js";
+import { spendPress } from "../views/spendguard.js";
 import { actorPicker, boxCard, buyReason, changedCharacterLine, crateReason, refusalLine, shopHTML, shopNotice, shopReason, patchShop, pickActor } from "../views/boxcard.js";
 import { shopOdds } from "../core/odds.js";
 import { limitState, limitRefusal, withLimit } from "../core/limits.js";
@@ -193,16 +199,16 @@ export class CrateShop extends ApplicationV2 {
     click or Enter on it still lands here: check again, from fresh data, that
     nothing is out and this crate can be bought now.
   */
-  static async #buy(_event, target) {
-    return this.#press(target, false);
+  static async #buy(event, target) {
+    return this.#press(target, false, event);
   }
 
   // Buy to keep: the same press, sent as a keep (see the head comment).
-  static async #keep(_event, target) {
-    return this.#press(target, true);
+  static async #keep(event, target) {
+    return this.#press(target, true, event);
   }
 
-  async #press(target, keep) {
+  async #press(target, keep, event = null) {
     if (this.busy) return;
     // The cards on screen were drawn for this.actorId. If the player no
     // longer owns it (or now owns one where they had none), those cards
@@ -236,6 +242,11 @@ export class CrateShop extends ApplicationV2 {
       try { await openTableFor(boxId); } catch (err) { ui.notifications.warn(err.message); }
       return;
     }
+    // A price over half the purse asks first (views/spendguard.js): this
+    // press only arms the button, at the price it charges (data-price, the
+    // deck's risen draw), and the next press on it sends as below.
+    const charges = target.dataset.price != null && target.dataset.price !== "" ? Number(target.dataset.price) : priceNow(box, ctx);
+    if (!spendPress(target, { purse: ctx.purse, price: charges, event })) return;
     this.busy = true;
     this.busyBox = boxId;
     this.busyKeep = keep;

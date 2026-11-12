@@ -66,6 +66,8 @@ export const MIN_GAVEL_SEC = 5;
 export const MAX_HOUSE = 6;
 // The gavel's strike at the hammer, before a sealed crate's strip runs.
 export const HAMMER_MS = 650;
+// The share of the strike spent raising the head before it falls.
+export const HAMMER_RAISE = 0.35;
 
 const num = (v, d = 0) => (v !== "" && v != null && Number.isFinite(Number(v)) ? Number(v) : d);
 const toCp = gp => Math.round(num(gp) * 100);
@@ -367,7 +369,7 @@ export function boardHTML(game, stakes = [], { esc = s => String(s ?? ""), outco
   }).join("");
   const clock = !outcome && round?.closesAt != null && round.status !== "resolved" ? `<span class="lc-auction__clock" data-gavel data-closes-at="${esc(round.closesAt)}" data-gavel-ms="${esc(gavelMsOf(game))}" hidden></span>` : "";
   const stamp = outcome ? `<span class="lc-auction__stamp" aria-hidden="true">${outcome.verdict === "sold" ? t("LOOTCRATES.Auction.Sold") : t("LOOTCRATES.Auction.NoSale")}</span>` : "";
-  return `<div class="lc-auction__lot lc-rarity-${esc(lot?.rarity ?? "none")}">
+  return `<div class="lc-auction__lot lc-rarity-${esc(lot?.rarity ?? "none")}" data-lot="${lot?.type === "crate" ? "crate" : "item"}">
         <div class="lc-auction__art" aria-hidden="true">${art}</div>
         <div class="lc-auction__lotname"><strong>${esc(lotName(lot))}</strong><span class="lc-auction__sub">${esc(lotLine(lot))}</span></div>
       </div>
@@ -480,7 +482,9 @@ export function mountBoard(host, { pockets: view = {}, esc: _esc = s => String(s
           if (landed) return resolve();
           t0 ??= now;
           const p = clamp01((now - t0) / HAMMER_MS);
-          if (head?.style) head.style.transform = `rotate(${(-40 * (1 - easeIn3(p))).toFixed(2)}deg)`;
+          // The head is raised over the first third (never snapped up), then falls.
+          const raised = p < HAMMER_RAISE ? 1 - Math.pow(1 - p / HAMMER_RAISE, 3) : 1 - easeIn3((p - HAMMER_RAISE) / (1 - HAMMER_RAISE));
+          if (head?.style) head.style.transform = `rotate(${(-40 * raised).toFixed(2)}deg)`;
           if (p >= 1) {
             swing = null;
             try { onDrop?.(); } catch (err) { console.error("loot-crates | the gavel's sound failed", err); }

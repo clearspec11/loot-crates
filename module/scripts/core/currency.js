@@ -18,6 +18,18 @@ export function canAfford(purse, priceGp) {
   return toCopper(purse) >= Math.round(priceGp * 100);
 }
 
+/*
+  Whether a price is a large spend for this purse: more than half of what
+  it holds, counted in copper. Exactly half is not; nor is a price of
+  nothing. A Buy or a play-again at a large spend asks once more before it
+  sends (views/spendguard.js); the GM's side never reads this.
+*/
+export function largeSpend(purse, priceGp) {
+  const cp = Math.round(Number(priceGp) * 100);
+  if (!Number.isFinite(cp) || cp <= 0) return false;
+  return cp * 2 > toCopper(purse);
+}
+
 // How much more the purse needs for priceGp, in gp (0 when it can afford it).
 export function shortfall(purse, priceGp) {
   return Math.max(0, Math.round(priceGp * 100) - toCopper(purse)) / 100;

@@ -54,7 +54,10 @@ export function pickFiller(source, rng) {
   on a result at the box's best rarity, on a pity result (the floor already
   decided it), or on a box that drops only one rarity.
 */
-export const TEASE_RATE = 0.6;
+// How often an eligible spin teases. Three in ten: often enough to be a
+// beat the table knows, rare enough that it isn't how most spins end (at
+// six in ten it was the usual ending, and read as the house's habit).
+export const TEASE_RATE = 0.3;
 export const TEASE_TWO_UP = 0.2;
 
 export function teaseRarity(result, droppable, rng) {

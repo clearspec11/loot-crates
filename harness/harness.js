@@ -12,6 +12,10 @@
   character select; aria-disabled while a pull is out)
   ?pity=due (shop: Tam has gone 8 pulls without a Rare from the Adventurer's
   Crate, so its pity is due: only Rare or better shows, and its line says so)
+  ?purse=<gp> (shop, deck, scratch: Tam carries that many gold pieces instead
+  of 420 gp 7 sp 3 cp, so a Buy, a Buy to keep or a play-again over half of
+  it asks first, spendguard.js: purse=250 for the Adventurer's Crate's
+  150 gp; purse=90 with the deck's bane at streak=2 for its 33 gp 7 sp 5 cp)
   "landed" plays the spin at zero duration, for deterministic screenshots.
   ?watched=0 (landed: this client didn't see it spin, it landed hidden or was
   skipped, so the reveal offers Watch again beside Close, which replays the
@@ -142,9 +146,12 @@
   ?after=1 | multi | watch (landed: after the reveal, afterreveal.js, as
   reveal.js mounts it once landed: 1 the buyer's Give to… and Sell back for
   75 gp under the vault, multi the same for a play that granted two items
-  (each named, a pair each), watch the line a spectator sees once the
-  buyer gave the item away. Give (after picking) and Sell back answer here
-  after a beat, as the GM would, and the row says what happened.)
+  (each named, a pair each), watch what a spectator sees once the buyer
+  gave the one item away (the result's own line says "Given to Saria
+  Vell"), watch2 the same for a play of two (a line under the vault).
+  Sell back asks once more in place before it sells. Give (after picking)
+  and Sell (after the ask) answer here after a beat, as the GM would: a
+  play of one item says it in the result's line, of several in its rows.)
   ?state=welcome (the GM's welcome, welcome.js: a world with games, so Open
   the manager is the primary and has focus; ?empty=1, a new world, where
   Add starter crates is; ?view=news, "What's new in 0.14.0" after an
@@ -177,6 +184,7 @@ import { wirePoolPicker } from "../module/scripts/views/poolpicker.js";
 import { parsePrice } from "../module/scripts/core/currency.js";
 import { poolRows, sortRows, defaultView, poolToOpen, poolSummary, poolBody, pinRecent, dropNotice, poolUsers, dropPreviewHTML, poolNameHTML, bulkAddHTML } from "../module/scripts/views/poolview.js";
 import { boxesTabHTML, shelfAllHTML } from "../module/scripts/views/boxestable.js";
+import { wireMenus } from "../module/scripts/views/menu.js";
 import { managerNavHTML, shopControls, shopEmptyHTML, statusBarHTML } from "../module/scripts/views/route.js";
 import { logTableHTML } from "../module/scripts/views/logtable.js";
 import { economyHTML } from "../module/scripts/views/economy.js";
@@ -192,8 +200,9 @@ import { actorPicker, boxCard, oddsRibbon, shopHTML, shopNotice, patchShop, draf
 import { shopOdds } from "../module/scripts/core/odds.js";
 import { loadStrings } from "../module/scripts/core/i18n.js";
 import { Linger, lingerMs } from "../module/scripts/core/linger.js";
-import { afterHTML, wireAfter, setBusy, showPart, spectatorLine } from "../module/scripts/views/afterreveal.js";
-import { partSentence } from "../module/scripts/core/afterplay.js";
+import { afterHTML, wireAfter, setBusy, showPart, spectatorLine, whereAfter } from "../module/scripts/views/afterreveal.js";
+import { spendPress } from "../module/scripts/views/spendguard.js";
+import { partSentence, partWhere } from "../module/scripts/core/afterplay.js";
 
 // The module's words (module/lang/en.json), in before anything is drawn,
 // as main.js loads them in a world.
@@ -203,7 +212,9 @@ const q = new URLSearchParams(location.search);
 const state = q.get("state") ?? "shop";
 const seed = Number(q.get("seed") ?? 7);
 const duration = q.has("duration") ? Number(q.get("duration")) : state === "landed" || state === "replay" ? 0 : undefined;
-const purse = { pp: 0, gp: 420, ep: 0, sp: 7, cp: 3 };
+// ?purse=<gp>: a leaner purse, so a Buy or a play-again costs more than
+// half of it and asks first (spendguard.js).
+const purse = Number(q.get("purse")) > 0 ? { pp: 0, gp: Number(q.get("purse")), ep: 0, sp: 0, cp: 0 } : { pp: 0, gp: 420, ep: 0, sp: 7, cp: 3 };
 const buyer = q.get("buyer") === "1";
 const unwatched = q.get("watched") === "0";
 const waiting = q.get("waiting");
@@ -246,7 +257,7 @@ document.getElementById("title").textContent = appTitle;
 const CRATE_ICON = `<svg class="lc-box__icon" viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M3 8.5 12 4l9 4.5v8L12 21l-9-4.5z"/><path d="M3 8.5 12 13l9-4.5M12 13v8"/></svg>`;
 
 const nav = document.getElementById("nav");
-for (const [label, query] of [["shop", "state=shop"], ["spin", "state=spin"], ["landed", "state=landed"], ["landed, buyer", "state=landed&buyer=1"], ["missed", "state=landed&buyer=1&watched=0"], ["after the reveal", "state=landed&buyer=1&after=1"], ["after, two items", "state=landed&buyer=1&after=multi"], ["replay", "state=replay"], ["well", "state=well&buyer=1"], ["well, coin", "state=well&outcome=coin&buyer=1"], ["well, item", "state=well&outcome=item&buyer=1"], ["dice", "state=dice&buyer=1"], ["dice, lost", "state=dice&outcome=lose&buyer=1"], ["dice, prize", "state=dice&outcome=prize&buyer=1"], ["deck", "state=deck&buyer=1"], ["deck, item", "state=deck&outcome=item&buyer=1"], ["deck, bane", "state=deck&outcome=loss&buyer=1"], ["deck, effect", "state=deck&outcome=effect&buyer=1"], ["table", "state=table"], ["table, GM", "state=table&phase=waiting&gm=1"], ["wheel", "state=table&phase=spinning"], ["wheel, landed", "state=table&phase=landed&duration=0"], ["manager", "state=manager"], ["empty manager", "state=manager&empty=1"], ["boxes", "state=manager&tab=boxes&added=1"], ["starter", "state=manager&tab=boxes&starter=1"], ["pull log", "state=manager&tab=log"], ["pull log, filtered", "state=manager&tab=log&actor=tam"], ["box editor", "state=editor"], ["table crate", "state=shop&table=1"], ["table editor", "state=editor&odds=weight"], ["table drop", "state=preview"], ["nothing", "state=landed&nothing=1&buyer=1"], ["auction", "state=auction&phase=open"], ["auction, bids", "state=auction&phase=bid"], ["auction, GM", "state=auction&phase=bid&gm=1"], ["auction, hammer", "state=auction&phase=hammer&duration=0"], ["auction, crate", "state=auction&phase=hammer&lot=crate"], ["auction card", "state=shop&auction=1"], ["scratch card", "state=shop&scratch=1"], ["scratch hidden", "state=shop&scratch=hidden"], ["sold out", "state=shop&scratch=soldout"], ["scratch editor", "state=editor&scratch=1"], ["editor, off the shelf", "state=editor&guard=offshelf"], ["editor, stock", "state=editor&guard=stock"], ["editor, discard", "state=editor&guard=discard"], ["scratch fill", "state=editor&scratch=1&fill=done"], ["scratch", "state=scratch&buyer=1&phase=covered"], ["scratch, half", "state=scratch&buyer=1&phase=half"], ["scratch, watched", "state=scratch&phase=sweep"], ["scratch, match 3", "state=scratch&layout=match3&buyer=1"], ["scratch, fey", "state=scratch&outcome=coins&buyer=1&duration=0&ticket=fey"], ["scratch, combo", "state=scratch&outcome=combo&buyer=1&duration=0"], ["welcome", "state=welcome"], ["welcome, new world", "state=welcome&empty=1"], ["what's new", "state=welcome&view=news"]]) {
+for (const [label, query] of [["shop", "state=shop"], ["lean purse", "state=shop&purse=250"], ["spin", "state=spin"], ["landed", "state=landed"], ["landed, buyer", "state=landed&buyer=1"], ["missed", "state=landed&buyer=1&watched=0"], ["after the reveal", "state=landed&buyer=1&after=1"], ["after, two items", "state=landed&buyer=1&after=multi"], ["replay", "state=replay"], ["well", "state=well&buyer=1"], ["well, coin", "state=well&outcome=coin&buyer=1"], ["well, item", "state=well&outcome=item&buyer=1"], ["dice", "state=dice&buyer=1"], ["dice, lost", "state=dice&outcome=lose&buyer=1"], ["dice, prize", "state=dice&outcome=prize&buyer=1"], ["deck", "state=deck&buyer=1"], ["deck, item", "state=deck&outcome=item&buyer=1"], ["deck, bane", "state=deck&outcome=loss&buyer=1"], ["bane, lean purse", "state=deck&outcome=loss&buyer=1&streak=2&purse=90"], ["deck, effect", "state=deck&outcome=effect&buyer=1"], ["table", "state=table"], ["table, GM", "state=table&phase=waiting&gm=1"], ["wheel", "state=table&phase=spinning"], ["wheel, landed", "state=table&phase=landed&duration=0"], ["manager", "state=manager"], ["empty manager", "state=manager&empty=1"], ["boxes", "state=manager&tab=boxes&added=1"], ["starter", "state=manager&tab=boxes&starter=1"], ["pull log", "state=manager&tab=log"], ["pull log, filtered", "state=manager&tab=log&actor=tam"], ["box editor", "state=editor"], ["table crate", "state=shop&table=1"], ["table editor", "state=editor&odds=weight"], ["table drop", "state=preview"], ["nothing", "state=landed&nothing=1&buyer=1"], ["auction", "state=auction&phase=open"], ["auction, bids", "state=auction&phase=bid"], ["auction, GM", "state=auction&phase=bid&gm=1"], ["auction, hammer", "state=auction&phase=hammer&duration=0"], ["auction, crate", "state=auction&phase=hammer&lot=crate"], ["auction card", "state=shop&auction=1"], ["scratch card", "state=shop&scratch=1"], ["scratch hidden", "state=shop&scratch=hidden"], ["sold out", "state=shop&scratch=soldout"], ["scratch editor", "state=editor&scratch=1"], ["editor, off the shelf", "state=editor&guard=offshelf"], ["editor, stock", "state=editor&guard=stock"], ["editor, discard", "state=editor&guard=discard"], ["scratch fill", "state=editor&scratch=1&fill=done"], ["scratch", "state=scratch&buyer=1&phase=covered"], ["scratch, half", "state=scratch&buyer=1&phase=half"], ["scratch, watched", "state=scratch&phase=sweep"], ["scratch, match 3", "state=scratch&layout=match3&buyer=1"], ["scratch, fey", "state=scratch&outcome=coins&buyer=1&duration=0&ticket=fey"], ["scratch, combo", "state=scratch&outcome=combo&buyer=1&duration=0"], ["welcome", "state=welcome"], ["welcome, new world", "state=welcome&empty=1"], ["what's new", "state=welcome&view=news"]]) {
   const a = document.createElement("a");
   a.href = `?${query}&seed=${seed}&theme=${theme}`;
   a.textContent = label;
@@ -269,6 +280,18 @@ if (state !== "welcome" && state !== "shop" && state !== "manager" && state !== 
 }
 
 const stage = document.getElementById("stage");
+// The manager's menus (views/menu.js), wired once as the manager wires its
+// window's content. ?menu=new|row|last opens one once the state has drawn:
+// the toolbar's New game, the first row's More, or the last row's with the
+// pane scrolled to its foot (where it must open upward).
+wireMenus(stage);
+if (q.get("menu")) setTimeout(() => {
+  const which = q.get("menu");
+  const rows = [...stage.querySelectorAll(".lc-menu--row [data-menu]")];
+  const trigger = which === "new" ? stage.querySelector(".lc-menu--new [data-menu]") : which === "last" ? rows.at(-1) : rows[0];
+  if (which === "last") { const pane = stage.querySelector(".lc-tab"); if (pane) pane.scrollTop = pane.scrollHeight; }
+  trigger?.click();
+}, 0);
 
 /*
   ?linger: the countdown a finished window starts once its result shows
@@ -349,12 +372,34 @@ function renderShop(extra = {}) {
   patchShop(stage, fresh, notice);
   window.__lootCrates = { renderShop };
 }
-// One listener for every Buy, since patchShop keeps the buttons across
-// renders; an aria-disabled one is off.
+// The reveal's play-again from a kind's offer, as reveal.js #showAgain
+// draws it: hidden without one, its label, and when it is off
+// aria-disabled with its reason on the line before it.
+function showAgain(root, offer) {
+  const btn = root.querySelector(".lc-reveal__again");
+  const why = root.querySelector(".lc-reveal__why");
+  btn.hidden = !offer;
+  why.hidden = !offer?.off;
+  if (!offer) return;
+  btn.textContent = offer.label;
+  why.textContent = offer.off ?? "";
+  why.id = "lc-reveal-why-harness";
+  if (offer.off) btn.setAttribute("aria-disabled", "true");
+  else btn.removeAttribute("aria-disabled");
+  if (offer.off) btn.setAttribute("aria-describedby", why.id);
+  else btn.removeAttribute("aria-describedby");
+}
+
+// One listener for every Buy and Buy to keep, since patchShop keeps the
+// buttons across renders; an aria-disabled one is off. A price over half
+// the purse asks first, as shop.js does (spendguard.js); a Buy to keep
+// that goes out reads Buying… on its card.
 stage.addEventListener("click", e => {
-  const btn = e.target.closest?.(".lc-box__buy");
+  const btn = e.target.closest?.(".lc-box__buy, .lc-box__keep");
   if (state !== "shop" || !btn || btn.getAttribute("aria-disabled") === "true") return;
-  location.search = `?state=spin&seed=${Date.now() % 100000}&box=${btn.dataset.box}&buyer=1&theme=${theme}`;
+  if (!spendPress(btn, { purse, price: Number(btn.dataset.price), event: e })) return;
+  if (btn.matches(".lc-box__keep")) renderShop({ busy: true, busyBox: btn.dataset.keep, busyKeep: true });
+  else location.search = `?state=spin&seed=${Date.now() % 100000}&box=${btn.dataset.box}&buyer=1&theme=${theme}`;
 });
 
 async function renderSpin() {
@@ -449,7 +494,14 @@ function afterReveal(stageEl, { itemName, close, purse: left }) {
   if (!mode || !slot) return;
   const actor = "Tam Thornwick";
   const say = part => partSentence(part, { actor, item: itemName });
+  // A play of one item says what became of it in the result's own line
+  // (whereAfter), as reveal.js does; ?after=watch2 is a spectator of a
+  // play of two, whose rows say it.
   if (mode === "watch") {
+    whereAfter(stageEl, partWhere({ given: { actorName: "Saria Vell" } }));
+    return;
+  }
+  if (mode === "watch2") {
     spectatorLine(slot, "i1", say({ given: { actorName: "Saria Vell" } }));
     slot.hidden = false;
     return;
@@ -460,7 +512,11 @@ function afterReveal(stageEl, { itemName, close, purse: left }) {
   slot.hidden = false;
   const answer = (li, itemId, part) => setTimeout(() => {
     const had = slot.contains(document.activeElement);
-    const next = showPart(slot, itemId, partSentence(part, { actor, item: items.find(i => i.id === itemId).name }));
+    const solo = items.length === 1;
+    const next = showPart(slot, itemId, solo ? "" : partSentence(part, { actor, item: items.find(i => i.id === itemId).name }));
+    if (solo) whereAfter(stageEl, partWhere(part));
+    else if (!slot.querySelector(".lc-after__item:not([data-parted])")) whereAfter(stageEl, "");
+    slot.hidden = !slot.childElementCount;
     if (had) (next ?? close).focus({ preventScroll: true });
     // As reveal.js does: the item is gone from the sheet, a sale's coins in the gold line.
     if (itemId === "i1") stageEl.querySelector(".lc-reveal__open").hidden = true;
@@ -739,6 +795,7 @@ async function renderDeck() {
   const open = stage.querySelector(".lc-reveal__open");
   const again = stage.querySelector(".lc-reveal__again");
   let landed = false;
+  let offer = null;
   const ctrl = mountDeck(stage.querySelector(".lc-reveal__spin"), {
     tone: reveal.tone, swatch: rarity, label: card.label, kindLabel: drawn ? RARITY_LABEL[drawn.rarity] : CARD_KIND_LABEL[outcome], img: drawn ? drawn.entry.img : "",
     duration, reducedMotion: held ? false : undefined, freezeAt: held ? 300 + 450 : null,
@@ -747,9 +804,8 @@ async function renderDeck() {
       outEl.innerHTML = kind.result(reveal, { esc, canSee: buyer });
       open.hidden = !(buyer && drawn);
       // Draw again, as the core offers it to the buyer: the next draw's price from the record.
-      const offer = buyer ? kind.again(reveal, { game: DECK, tally: tallyOf(deckDraws(streak)), pools: POOLS, purse: reveal.purse, now: Date.now() }) : null;
-      again.hidden = !offer;
-      if (offer) again.textContent = offer.label;
+      offer = buyer ? kind.again(reveal, { game: DECK, tally: tallyOf(deckDraws(streak)), pools: POOLS, purse: reveal.purse, now: Date.now() }) : null;
+      showAgain(stage, offer);
       btn.dataset.action = "dismiss";
       btn.textContent = "Close";
       btn.focus({ preventScroll: true });
@@ -757,7 +813,11 @@ async function renderDeck() {
     },
   });
   btn.addEventListener("click", () => { if (landed) location.search = `?state=shop&seed=${seed}&theme=${theme}`; else ctrl.skip(); });
-  again.addEventListener("click", () => { location.search = `?state=deck&seed=${seed + 1}&buyer=1&streak=${streak}&theme=${theme}`; });
+  // Over half the purse, the first press asks (spendguard.js), as reveal.js #drawAgain.
+  again.addEventListener("click", e => {
+    if (!offer || offer.off || !spendPress(again, { purse: reveal.purse, price: offer.price, event: e })) return;
+    location.search = `?state=deck&seed=${seed + 1}&buyer=1&streak=${streak}&theme=${theme}`;
+  });
   window.__lootCrates = { reveal };
   await ctrl.play();
   document.body.dataset.landed = "1";
@@ -814,7 +874,9 @@ async function renderScratch() {
   const outEl = stage.querySelector(".lc-reveal__result");
   const btn = stage.querySelector(".lc-reveal__close");
   const open = stage.querySelector(".lc-reveal__open");
+  const again = stage.querySelector(".lc-reveal__again");
   let landed = false;
+  let offer = null;
   const ctrl = mountScratch(stage.querySelector(".lc-reveal__spin"), {
     reveal, buyer: buyer && phase !== "sweep",
     // The phases show the scratch as it looks with motion on.
@@ -824,6 +886,9 @@ async function renderScratch() {
       landed = true;
       outEl.innerHTML = kind.result(reveal, { esc, canSee: buyer });
       open.hidden = !(buyer && drawn);
+      // Another ticket, as the core offers it to the buyer (reveal.js #showAgain).
+      offer = buyer && phase !== "sweep" ? kind.again(reveal, { game, tally: tallyOf(scratchTickets()), pools: POOLS, purse: reveal.purse }) : null;
+      showAgain(stage, offer);
       btn.dataset.action = "dismiss";
       btn.textContent = "Close";
       if (!stage.contains(document.activeElement) || document.activeElement === document.body) btn.focus({ preventScroll: true });
@@ -831,6 +896,10 @@ async function renderScratch() {
     },
   });
   btn.addEventListener("click", () => { if (landed) location.search = `?state=shop&scratch=1&seed=${seed}&theme=${theme}`; else ctrl.skip(); });
+  again.addEventListener("click", e => {
+    if (!offer || offer.off || !spendPress(again, { purse: reveal.purse, price: offer.price, event: e })) return;
+    location.search = `?state=scratch&seed=${seed + 1}&buyer=1&theme=${theme}`;
+  });
   window.__lootCrates = { reveal, ctrl };
   const played = ctrl.play();
   const ticket = stage.querySelector(".lc-scratch__ticket");

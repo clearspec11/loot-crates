@@ -12,7 +12,7 @@
 import { MODULE_ID, SETTINGS } from "./core/config.js";
 import { registerSettings, setStoreListener, registerIndexFields, getPools, getBoxes, getLog, getTally, migrateTallies, getRounds, savePool, saveBox, entriesFromCompendium, entryFromItem, sweepAllPools } from "./foundry/store.js";
 import { registerSocket, requestPull, requestStake, requestRedeem, isActiveGM, restCompleted, settleOwedRests } from "./foundry/socket.js";
-import { makeTicket, ticketUseHook } from "./foundry/tickets.js";
+import { makeTicket, ticketUseHook, seedTickets, rememberTickets, ticketItemHooks } from "./foundry/tickets.js";
 import { registerKind, getKind, kindOf } from "./games/kinds.js";
 import { openShop, refreshShop, registerShopHooks } from "./foundry/shop.js";
 import { addDirectoryButtons, placeMenuEntry } from "./views/route.js";
@@ -71,6 +71,10 @@ Hooks.once("ready", () => {
   // migrateTallies), on the active GM, first in the write queue, so no
   // play is counted from a half-moved world.
   migrateTallies({ isActiveGM }).catch(err => console.error("loot-crates | moving the Pull log's counts to the tallies failed", err));
+  // Tickets are counted on the GM's side, not read off the sheet
+  // (tickets.js): a world's tickets are counted once, after the tallies.
+  rememberTickets();
+  seedTickets().catch(err => console.error("loot-crates | counting the world's tickets failed", err));
   registerSocket();
   const mod = game.modules.get(MODULE_ID);
   // registerKind adds a game of chance that runs on the crate's core (kinds.js).
@@ -118,6 +122,8 @@ Hooks.on("getRollTableContextOptions", (_app, options) => { placeMenuEntry(optio
 // a round is refunded and a live auction's gavel falls while any GM is
 // online, not at the next load.
 const followActiveGM = () => { watchStale(); watchTables(); };
+// A GM who becomes the active one counts the world's tickets if no GM has yet.
+Hooks.on("userConnected", () => { if (game.ready) seedTickets().catch(err => console.error("loot-crates | counting the world's tickets failed", err)); });
 Hooks.on("userConnected", () => { if (game.ready) followActiveGM(); });
 Hooks.on("updateUser", (_user, change) => { if (game.ready && change && "role" in change) followActiveGM(); });
 
@@ -141,3 +147,10 @@ Hooks.on("renderChatMessageHTML", watchAgain);
 // A pull's item reaches the sheet just before its reveal: hidden until the
 // spin lands here (reveal.js hold), as the chat card is.
 Hooks.on("createItem", preSealItem);
+
+// What a GM does to a ticket on a character moves the GM's count of
+// tickets issued (tickets.js); a player's own edit of one issues nothing.
+const ticketItems = ticketItemHooks();
+Hooks.on("createItem", ticketItems.created);
+Hooks.on("updateItem", ticketItems.updated);
+Hooks.on("deleteItem", ticketItems.deleted);

@@ -211,20 +211,24 @@
   transition: border-color 120ms ease, background-color 120ms ease, color 120ms ease;
 }
 :where(.loot-crates .window-content) button:not(:disabled, [aria-disabled="true"]):hover { border-color: var(--lc-rule); }
+/* Pressed: every button that can be pressed answers the press itself, a
+   pixel down and a shade darker, before anything it starts has drawn. */
+:where(.loot-crates .window-content) button:not(:disabled, [aria-disabled="true"]):active,
+.loot-crates .lc-welcome__link:active { transform: translateY(1px); filter: brightness(.92); }
 /* A Buy that is off says so with aria-disabled (it keeps focus; boxcard.js),
    and looks exactly like a disabled button. */
 :where(.loot-crates .window-content) button:is(:disabled, [aria-disabled="true"]) { cursor: not-allowed; color: var(--lc-ink-mute); border-style: dashed; }
-.loot-crates .lc-box__buy, .loot-crates .lc-reveal__close, .loot-crates .lc-reveal__again, .loot-crates .lc-table__bet, .loot-crates .lc-table__spin, .loot-crates .lc-starter__add, .loot-crates .lc-welcome__primary {
+.loot-crates .lc-box__buy, .loot-crates .lc-reveal__close, .loot-crates .lc-table__bet, .loot-crates .lc-table__spin, .loot-crates .lc-starter__add, .loot-crates .lc-welcome__primary {
   position: relative; background: var(--lc-btn); color: var(--lc-btn-ink); border: none;
   font-weight: 700; box-shadow: var(--lc-shadow); min-height: 36px; padding: 0 16px;
 }
-.loot-crates .lc-box__buy::after, .loot-crates .lc-reveal__close::after, .loot-crates .lc-reveal__again::after, .loot-crates .lc-table__bet::after, .loot-crates .lc-table__spin::after, .loot-crates .lc-starter__add::after, .loot-crates .lc-welcome__primary::after {
+.loot-crates .lc-box__buy::after, .loot-crates .lc-reveal__close::after, .loot-crates .lc-table__bet::after, .loot-crates .lc-table__spin::after, .loot-crates .lc-starter__add::after, .loot-crates .lc-welcome__primary::after {
   content: ""; position: absolute; inset: 3px; border: 1px solid var(--lc-btn-rule); border-radius: 3px; pointer-events: none;
 }
-.loot-crates .lc-box__buy:not([aria-disabled="true"]):hover, .loot-crates .lc-reveal__close:not(:disabled):hover, .loot-crates .lc-reveal__again:not([aria-disabled="true"]):hover, .loot-crates .lc-table__bet:not([aria-disabled="true"]):hover, .loot-crates .lc-table__spin:not([aria-disabled="true"]):hover, .loot-crates .lc-starter__add:not([aria-disabled="true"]):hover, .loot-crates .lc-welcome__primary:hover { color: var(--lc-pin); }
-.loot-crates .lc-box__buy:not([aria-disabled="true"]):hover::after, .loot-crates .lc-reveal__close:not(:disabled):hover::after, .loot-crates .lc-reveal__again:not([aria-disabled="true"]):hover::after, .loot-crates .lc-table__bet:not([aria-disabled="true"]):hover::after, .loot-crates .lc-table__spin:not([aria-disabled="true"]):hover::after, .loot-crates .lc-starter__add:not([aria-disabled="true"]):hover::after, .loot-crates .lc-welcome__primary:hover::after { border-color: var(--lc-btn-ink); }
-.loot-crates .lc-box__buy[aria-disabled="true"], .loot-crates .lc-reveal__again[aria-disabled="true"], .loot-crates .lc-table__bet[aria-disabled="true"], .loot-crates .lc-table__spin[aria-disabled="true"], .loot-crates .lc-starter__add[aria-disabled="true"] { background: var(--lc-row-alt); color: var(--lc-ink-mute); box-shadow: none; }
-.loot-crates .lc-box__buy[aria-disabled="true"]::after, .loot-crates .lc-reveal__again[aria-disabled="true"]::after, .loot-crates .lc-table__bet[aria-disabled="true"]::after, .loot-crates .lc-table__spin[aria-disabled="true"]::after, .loot-crates .lc-starter__add[aria-disabled="true"]::after { border: 1px dashed var(--lc-rule-soft); }
+.loot-crates .lc-box__buy:not([aria-disabled="true"]):hover, .loot-crates .lc-reveal__close:not(:disabled):hover, .loot-crates .lc-table__bet:not([aria-disabled="true"]):hover, .loot-crates .lc-table__spin:not([aria-disabled="true"]):hover, .loot-crates .lc-starter__add:not([aria-disabled="true"]):hover, .loot-crates .lc-welcome__primary:hover { color: var(--lc-pin); }
+.loot-crates .lc-box__buy:not([aria-disabled="true"]):hover::after, .loot-crates .lc-reveal__close:not(:disabled):hover::after, .loot-crates .lc-table__bet:not([aria-disabled="true"]):hover::after, .loot-crates .lc-table__spin:not([aria-disabled="true"]):hover::after, .loot-crates .lc-starter__add:not([aria-disabled="true"]):hover::after, .loot-crates .lc-welcome__primary:hover::after { border-color: var(--lc-btn-ink); }
+.loot-crates .lc-box__buy[aria-disabled="true"], .loot-crates .lc-table__bet[aria-disabled="true"], .loot-crates .lc-table__spin[aria-disabled="true"], .loot-crates .lc-starter__add[aria-disabled="true"] { background: var(--lc-row-alt); color: var(--lc-ink-mute); box-shadow: none; }
+.loot-crates .lc-box__buy[aria-disabled="true"]::after, .loot-crates .lc-table__bet[aria-disabled="true"]::after, .loot-crates .lc-table__spin[aria-disabled="true"]::after, .loot-crates .lc-starter__add[aria-disabled="true"]::after { border: 1px dashed var(--lc-rule-soft); }
 
 :where(.loot-crates .window-content) :is(input, select) {
   font-family: var(--lc-body); font-size: 13px; min-height: 30px; padding: 0 8px; box-sizing: border-box;
@@ -342,7 +346,9 @@
   margin: 0; border: 0; padding: 0; font-family: var(--lc-display); font-size: 21px; font-weight: 700; line-height: 1.05;
   color: var(--lc-band-ink); letter-spacing: .01em; text-wrap: balance; overflow-wrap: anywhere;
 }
-.loot-crates .lc-box__body { display: grid; gap: 9px; padding: 12px 12px 12px; text-align: center; flex: 1; align-content: start; }
+/* A column, so the Buy can take the slack above it (margin-top: auto) and
+   sit at the card's foot whatever the lines over it. */
+.loot-crates .lc-box__body { display: flex; flex-direction: column; gap: 9px; padding: 12px 12px 12px; text-align: center; flex: 1; }
 .loot-crates .lc-box__art { display: flex; justify-content: center; align-items: center; min-height: 56px; color: var(--lc-gold-ink); }
 .loot-crates .lc-box__art > i { font-size: 34px; }
 .loot-crates .lc-box--empty .lc-box__art { color: var(--lc-ink-mute); opacity: .7; }
@@ -376,11 +382,31 @@
 .loot-crates .lc-box__stock { font-family: var(--lc-label); font-size: 12px; font-weight: 700; color: var(--lc-ink-mute); }
 /* How many more this character may buy (limits.js), quiet under the stock. */
 .loot-crates .lc-box__limit { font-size: 12px; line-height: 1.3; color: var(--lc-ink-mute); margin-top: -3px; }
-.loot-crates .lc-box__buy { width: 100%; margin-top: 2px; }
-/* Buy to keep: the quiet second way to buy, under the gold one. Outlined,
-   smaller lettering, no shadow, so the Buy stays the obvious play-now. */
-.loot-crates .lc-box__keep { width: 100%; margin-top: -3px; min-height: 30px; font-size: 12px; background: transparent; color: var(--lc-ink); border: 1px solid var(--lc-rule-soft); }
-.loot-crates .lc-box__keep[aria-disabled="true"] { color: var(--lc-ink-mute); border-style: dashed; }
+.loot-crates .lc-box__buy { width: 100%; margin-top: auto; flex: none; }
+/* Buy to keep: the second way to buy, a line of words under the gold
+   button, not a second button: its name underlined, what it is in quieter
+   ink beside it, on one line (so "Buying…" in its place moves nothing). */
+.loot-crates .lc-box__keep {
+  display: flex; align-items: center; justify-content: center; gap: 5px; flex: none;
+  width: 100%; margin-top: -5px; min-height: 26px; padding: 0 2px;
+  font-size: 12px; line-height: 1.3; white-space: nowrap;
+  background: transparent; border: 0; box-shadow: none; color: var(--lc-ink-mute);
+}
+.loot-crates .lc-box__keep-do { font-weight: 700; color: var(--lc-ink); text-decoration: underline; text-decoration-color: var(--lc-rule); text-underline-offset: 3px; }
+.loot-crates .lc-box__keep:not([aria-disabled="true"]):hover { background: transparent; border: 0; box-shadow: none; }
+.loot-crates .lc-box__keep:not([aria-disabled="true"]):hover .lc-box__keep-do { color: var(--lc-gold-ink); text-decoration-color: currentColor; }
+.loot-crates .lc-box__keep[aria-disabled="true"] { color: var(--lc-ink-mute); }
+.loot-crates .lc-box__keep[aria-disabled="true"] .lc-box__keep-do { color: var(--lc-ink-mute); text-decoration: none; }
+/* A large spend's first press (spendguard.js) arms the button: it asks
+   "Spend 150 gp?" in its own place and size, on one line. The Buy's
+   lettering and inset rule go pin gold (its hover, held); Buy to keep's
+   ask is bold gold ink; the reveal's quiet Draw again takes the gold rule
+   and gold ink. Never the bane, which is a loss of coins. */
+.loot-crates button[data-armed] { white-space: nowrap; }
+.loot-crates .lc-box__buy[data-armed] { color: var(--lc-pin); }
+.loot-crates .lc-box__buy[data-armed]::after { border-color: var(--lc-pin); }
+.loot-crates .lc-box__keep[data-armed] .lc-spend-ask { font-weight: 700; color: var(--lc-gold-ink); }
+.loot-crates .lc-reveal__again[data-armed] { border-color: var(--lc-rule); color: var(--lc-gold-ink); font-weight: 700; }
 /* Why a Buy is off, on screen rather than in a tooltip. */
 .loot-crates .lc-box__why { font-size: 12px; color: var(--lc-ink-mute); margin-top: -3px; }
 
@@ -418,6 +444,19 @@
   transition: opacity 600ms cubic-bezier(.16, 1, .3, 1) 120ms;
 }
 .loot-crates .lc-vault:has(.lc-spin--landed)::after { opacity: calc(.12 + var(--lc-rank, 0) * .12); }
+/* The wash arrives by rank: a common's fades up and stays, a rarer find's
+   swells past its level and settles back, further and for longer the
+   rarer it is (a legendary's by .24 over a second). */
+.loot-crates .lc-vault:has(.lc-spin--landed)::after,
+.loot-crates .lc-vault:has(.lc-well--landed[data-outcome="item"])::after,
+.loot-crates .lc-vault:has(.lc-dice--landed[data-outcome="win"])::after {
+  animation: lc-wash-in calc(600ms + var(--lc-rank, 0) * 110ms) cubic-bezier(.16, 1, .3, 1) 120ms both;
+}
+@keyframes lc-wash-in {
+  from { opacity: 0; }
+  40% { opacity: calc(.12 + var(--lc-rank, 0) * .18); }
+  to { opacity: calc(.12 + var(--lc-rank, 0) * .12); }
+}
 
 /* The spin. */
 .loot-crates .lc-spin { position: relative; width: 100%; }
@@ -485,6 +524,17 @@
   box-shadow: 0 0 0 2px var(--lc-vault-card), 0 0 0 3px color-mix(in srgb, var(--lc-pin) 60%, transparent);
 }
 .loot-crates .lc-card--landed .lc-card__art--empty { border-style: dashed; box-shadow: none; }
+/* One pass of plain light across the landed card, as it lifts: none on a
+   common, brighter the rarer the find. White, never the rarity's colour
+   (DESIGN.md: nothing glows). */
+.loot-crates .lc-card--landed { position: relative; }
+.loot-crates .lc-card--landed::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(105deg, transparent 35%, #fff 50%, transparent 65%);
+  opacity: calc(var(--lc-rank, 0) * .07); transform: translateX(-110%);
+  animation: lc-card-sheen calc(520ms + var(--lc-rank, 0) * 60ms) ease-out 180ms both;
+}
+@keyframes lc-card-sheen { from { transform: translateX(-110%); } to { transform: translateX(110%); } }
 .loot-crates .lc-spin--landed .lc-card:not(.lc-card--landed) { opacity: .45; }
 
 /* The result, inside the vault, under the strip. */
@@ -496,13 +546,23 @@
   font-family: var(--lc-display); font-size: 34px; font-weight: 700; line-height: 1;
   color: var(--lc-rarity, var(--lc-vault-ink)); overflow-wrap: anywhere; text-wrap: balance;
   text-shadow: 0 2px 8px rgba(0, 0, 0, .7);
+  /* The name arrives: it rises and settles from a little large, a beat
+     after the card lifts. The rarer the find the further it comes and the
+     longer it takes (a common 6px and 4% over 320ms, a legendary 14px and
+     16% over 520ms). */
+  animation: lc-name-in calc(320ms + var(--lc-rank, 0) * 50ms) cubic-bezier(.16, 1, .3, 1) 100ms both;
+}
+@keyframes lc-name-in {
+  from { opacity: 0; transform: translateY(calc(6px + var(--lc-rank, 0) * 2px)) scale(calc(1.04 + var(--lc-rank, 0) * .03)); }
+  to { opacity: 1; transform: none; }
 }
 .loot-crates .lc-reveal__rarity {
   margin-top: 4px; font-family: var(--lc-label); font-size: 12px; font-weight: 700;
   letter-spacing: .08em; text-transform: uppercase; color: var(--lc-vault-soft);
+  animation: lc-reveal-after 260ms ease 280ms both;
 }
 /* Where it went and the gold left come in after the card's lift, so the
-   name lands first. */
+   name lands first, its rarity next, then these. */
 .loot-crates .lc-reveal__where { margin-top: 8px; font-size: 13px; color: var(--lc-vault-soft); animation: lc-reveal-after 260ms ease 460ms both; }
 .loot-crates .lc-reveal__gold { white-space: nowrap; color: var(--lc-pin); }
 @keyframes lc-reveal-after { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
@@ -511,7 +571,7 @@
    upper-case face, kept for names that matter, DESIGN.md Labels Not
    Kickers), smaller than a find's name, in vault-soft rather than a
    rarity's colour: it is a result, not a prize. */
-.loot-crates .lc-reveal__quiet { font-family: var(--lc-slab); font-size: 18px; font-weight: 700; line-height: 1.25; color: var(--lc-vault-soft); text-wrap: balance; }
+.loot-crates .lc-reveal__quiet { font-family: var(--lc-slab); font-size: 18px; font-weight: 700; line-height: 1.25; color: var(--lc-vault-soft); text-wrap: balance; animation: lc-reveal-after 260ms ease 100ms both; }
 .loot-crates .lc-reveal__actions { display: flex; justify-content: flex-end; align-items: center; flex-wrap: wrap; gap: 8px; }
 .loot-crates .lc-reveal__actions button { flex: 0 0 auto; min-width: 104px; min-height: 36px; }
 .loot-crates .lc-reveal__actions button[hidden] { display: none; }
@@ -519,6 +579,20 @@
    screen before the button, as a Buy's is under its card. */
 .loot-crates .lc-reveal__why { font-size: 12px; color: var(--lc-ink-mute); margin-right: auto; }
 .loot-crates .lc-reveal__why[hidden] { display: none; }
+/* The next play (the deck's Draw again, a ticket's Another ticket): a
+   quiet button at the start of the row, after the countdown and its
+   reason, apart from the window's own buttons (Open item, Watch again,
+   Close, grouped in .lc-reveal__own), which keep the row's end: Close
+   stays the one primary there, so a press meant for it never lands on the
+   next play. The group draws nothing of its own (display contents) until
+   there is a next play; then it is one block at the end (margin-left
+   auto), at least 48px from the next play (its 40px and the gap), and
+   where the row is too narrow it wraps whole to a line of its own. */
+.loot-crates .lc-reveal__own { display: contents; }
+.loot-crates .lc-reveal__actions:has(> .lc-reveal__again:not([hidden])) { justify-content: flex-start; }
+.loot-crates .lc-reveal__actions:has(> .lc-reveal__again:not([hidden])) > :is(.lc-linger, .lc-reveal__why) { margin-right: 0; }
+.loot-crates .lc-reveal__again:not([hidden]) { margin-right: 40px; }
+.loot-crates .lc-reveal__again:not([hidden]) ~ .lc-reveal__own { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; margin-left: auto; }
 /* A finished window's countdown (linger.js): one quiet 12px line at the
    start of the actions row, so the result above never moves, with Keep
    open as a small quiet button. Tabular figures, so the line doesn't
@@ -538,10 +612,10 @@
 .loot-crates .lc-after__items { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .loot-crates .lc-after__item { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-width: 0; }
 .loot-crates .lc-after__name { flex: 1 1 10em; min-width: 0; font-family: var(--lc-slab); font-size: 13px; font-weight: 700; color: var(--lc-ink); overflow-wrap: anywhere; }
-.loot-crates .lc-after__acts, .loot-crates .lc-after__pick { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-left: auto; }
-.loot-crates .lc-after__acts[hidden], .loot-crates .lc-after__pick[hidden] { display: none; }
+.loot-crates .lc-after__acts, .loot-crates .lc-after__pick, .loot-crates .lc-after__sure { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-left: auto; }
+.loot-crates .lc-after__acts[hidden], .loot-crates .lc-after__pick[hidden], .loot-crates .lc-after__sure[hidden] { display: none; }
 .loot-crates .lc-after__item button { min-height: 32px; white-space: nowrap; }
-.loot-crates .lc-after__pick-label { font-size: 13px; color: var(--lc-ink-soft); }
+.loot-crates .lc-after__pick-label, .loot-crates .lc-after__sure-label { font-size: 13px; line-height: 1.35; color: var(--lc-ink-soft); }
 .loot-crates .lc-after__target { min-height: 32px; max-width: 100%; min-width: 0; width: auto; }
 .loot-crates .lc-after__said { flex: 1 0 100%; font-size: 13px; line-height: 1.35; color: var(--lc-ink-soft); }
 .loot-crates .lc-after__said:empty { display: none; }
@@ -787,7 +861,7 @@
 .loot-crates .lc-wheel__pip { fill: var(--lc-pin); stroke: var(--lc-pin-edge); stroke-width: 1; }
 .loot-crates .lc-wheel__orbit { position: absolute; left: 50%; top: 50%; width: 0; height: 0; }
 .loot-crates .lc-wheel__ball {
-  position: absolute; left: -7px; top: -7px; width: 14px; height: 14px; border-radius: 50%; opacity: 0;
+  position: absolute; left: -8px; top: -8px; width: 16px; height: 16px; border-radius: 50%; opacity: 0;
   background: radial-gradient(circle at 35% 30%, #f8e7b4, var(--lc-pin) 45%, #8a7340 92%);
   box-shadow: 0 0 0 1px var(--lc-pin-edge), 0 2px 5px rgba(0, 0, 0, .6);
 }
@@ -1129,9 +1203,9 @@
 .loot-crates .lc-table td:last-child { white-space: nowrap; text-align: right; }
 /* A row's text button (Reshuffle, Open a round) takes a line of its own over
    the icons, and a refund's "refunded <when>" may wrap: the buttons' cell is
-   the one that never wraps, so it stays as narrow as the three icons and the
+   the one that never wraps, so it stays as narrow as Edit and More and the
    table fits every pane wider than the stacked rows' (560 px, below). */
-.loot-crates .lc-table td:last-child .lc-table__extra { display: block; margin: 0 0 4px auto; }
+.loot-crates .lc-table td:last-child .lc-table__extra { display: block; margin: 0 0 4px auto; white-space: normal; text-wrap: balance; }
 .loot-crates .lc-table td:last-child .lc-log__status { white-space: normal; }
 .loot-crates .lc-dot { display: inline-block; width: 7px; height: 7px; background: var(--lc-rarity); margin-right: 7px; transform: rotate(45deg); }
 /* A refunded pull reads as withdrawn, as its chat card does. */
@@ -1172,6 +1246,28 @@
 .loot-crates .lc-table tr.lc-row--off td:not(:last-child) { color: var(--lc-ink-mute); }
 .loot-crates .lc-table tr.lc-row--off td .lc-ribbon, .loot-crates .lc-table tr.lc-row--off td .lc-odds { filter: grayscale(1); }
 .loot-crates .lc-shelf-count { font-size: 12px; color: var(--lc-ink-mute); white-space: nowrap; }
+/* A menu (views/menu.js): one button that opens a short list of the
+   things it holds, in words. The list is a card on the pane, under its
+   trigger (over it, lc-menu__list--up, when the pane has no room beneath),
+   its items quiet rows; a delete sits last, apart, in the warning ink. */
+.loot-crates .lc-menu { position: relative; display: inline-flex; vertical-align: middle; }
+.loot-crates .lc-menu__caret { font-size: 11px; opacity: .8; }
+.loot-crates .lc-menu__list {
+  position: absolute; z-index: 5; top: calc(100% + 4px); left: 0; min-width: 100%; width: max-content; max-width: 260px;
+  display: grid; gap: 1px; padding: 4px; box-sizing: border-box; text-align: left;
+  background: var(--lc-card); border: 1px solid var(--lc-rule); border-radius: var(--lc-radius); box-shadow: var(--lc-shadow);
+}
+.loot-crates .lc-menu__list[hidden] { display: none; }
+.loot-crates .lc-menu__list--up { top: auto; bottom: calc(100% + 4px); }
+.loot-crates .lc-menu--row .lc-menu__list { left: auto; right: 0; }
+.loot-crates .lc-menu__list .lc-menu__item {
+  display: flex; justify-content: flex-start; width: 100%; min-height: 30px; padding: 0 10px; margin: 0;
+  border-color: transparent; background: none; white-space: nowrap; font-size: 13px;
+}
+.loot-crates .lc-menu__list .lc-menu__item:hover, .loot-crates .lc-menu__list .lc-menu__item:focus-visible { background: var(--lc-row-alt); border-color: var(--lc-rule-soft); }
+.loot-crates .lc-menu__list .lc-menu__item--danger { margin-top: 4px; color: var(--lc-warn); }
+.loot-crates .lc-menu--row .lc-menu__trigger { min-width: 34px; padding: 0 9px; }
+.loot-crates .lc-menu__trigger[aria-expanded="true"] { border-color: var(--lc-rule); background: var(--lc-row-alt); }
 .loot-crates .lc-form__shelf { margin-top: 4px; font-weight: 600; }
 /* While the game can't be played (editorguard.js wireShelf) the box is off
    and looks it, and the reason sits right under it, not a full gap away. */
@@ -1452,6 +1548,10 @@
 .loot-crates .lc-table__stage--spinning .lc-gavel__head { will-change: transform; }
 .loot-crates .lc-auction__strip[hidden] { display: none; }
 .loot-crates .lc-auction-stage--crate .lc-auction__bids { display: none; }
+/* A sealed crate's strip takes the bids' place at the hammer: the bids
+   keep the strip's room from the start (its 168px viewport and the grid gap it adds; the harness measures the board at one height through the hammer), so
+   nothing under the board moves when it mounts. */
+.loot-crates .lc-auction__board:has(.lc-auction__lot[data-lot="crate"]) .lc-auction__bids { min-height: 178px; align-content: flex-start; box-sizing: border-box; }
 /* The shop card's lot art, the chat card's sealed crate. */
 .loot-crates .lc-box--auction .lc-box__art img { width: 52px; height: 52px; object-fit: contain; border: 0; }
 .loot-crates .lc-auction__icon, .loot-crates .lc-auction__glyph { display: block; }
@@ -1485,9 +1585,9 @@
   .loot-crates .lc-shop__field--purse { margin-left: 0; text-align: left; }
   .loot-crates .lc-shop__purse { justify-content: flex-start; }
   .loot-crates .lc-reveal__name { font-size: 28px; }
-  .loot-crates .lc-after__acts, .loot-crates .lc-after__pick { margin-left: 0; flex: 1 1 100%; }
-  .loot-crates .lc-after__acts button, .loot-crates .lc-after__pick button { flex: 1 1 auto; }
-  .loot-crates .lc-after__pick-label { flex: 1 0 100%; }
+  .loot-crates .lc-after__acts, .loot-crates .lc-after__pick, .loot-crates .lc-after__sure { margin-left: 0; flex: 1 1 100%; }
+  .loot-crates .lc-after__acts button, .loot-crates .lc-after__pick button, .loot-crates .lc-after__sure button { flex: 1 1 auto; }
+  .loot-crates .lc-after__pick-label, .loot-crates .lc-after__sure-label { flex: 1 0 100%; }
   .loot-crates .lc-after__target { flex: 1 0 100%; }
   .loot-crates .lc-rail__row--numbers { grid-template-columns: repeat(4, 1fr); }
   .loot-crates .lc-rail__row--outside { grid-template-columns: repeat(2, 1fr); }
@@ -1864,10 +1964,14 @@
 
 @media (prefers-reduced-motion: reduce) {
   .loot-crates .lc-card, .loot-crates .lc-vault::after, .loot-crates .lc-pool__details > summary::before { transition: none; }
+  :where(.loot-crates .window-content) button, .loot-crates .lc-welcome__link { transition: none; }
+  :where(.loot-crates .window-content) button:not(:disabled, [aria-disabled="true"]):active, .loot-crates .lc-welcome__link:active { transform: none; }
   .loot-crates .lc-well__stage > * { will-change: auto; }
   .loot-crates .lc-dice__die, .loot-crates .lc-dice__total { will-change: auto; }
   .loot-crates .lc-deck__card { will-change: auto; }
-  .loot-crates .lc-reveal__where { animation: none; }
+  .loot-crates .lc-reveal__where, .loot-crates .lc-reveal__name, .loot-crates .lc-reveal__rarity, .loot-crates .lc-reveal__quiet { animation: none; }
+  .loot-crates .lc-vault::after { animation: none !important; }
+  .loot-crates .lc-card--landed::after { content: none; }
   .loot-crates .lc-token--new { animation: none; }
   .loot-crates .lc-spot { transition: none; }
   .loot-crates .lc-wheel__turn, .loot-crates .lc-wheel__orbit { will-change: auto; }

@@ -306,7 +306,7 @@ function logRow(ctx) {
 
 // The timeline, in ms: the card lifts, holds face-down under the ticks,
 // then turns once.
-export const DECK_TIMING = { lift: 300, hold: 900, flip: 420, beats: 3 };
+export const DECK_TIMING = { lift: 300, hold: 900, flip: 420, beats: 3, pulse: 3, wind: 12 };
 export const deckLandTime = () => DECK_TIMING.lift + DECK_TIMING.hold + DECK_TIMING.flip;
 
 const clamp01 = x => Math.max(0, Math.min(1, x));
@@ -335,13 +335,17 @@ export function mountDeck(host, { tone = "blank", swatch = "none", label = "", k
       <div class="lc-deck__card">
         <div class="lc-deck__face lc-deck__face--back"></div>
         <div class="lc-deck__face lc-deck__face--front">
-          <div class="lc-deck__art">${img ? `<img src="${img}" alt="" draggable="false">` : `<span class="lc-deck__glyph"></span>`}</div>
+          <div class="lc-deck__art">${img ? `<img alt="" draggable="false">` : `<span class="lc-deck__glyph"></span>`}</div>
           <div class="lc-deck__label"></div>
           <div class="lc-deck__kind"></div>
         </div>
       </div>
     </div>`;
   const card = host.querySelector(".lc-deck__card");
+  // The art's path is set as an attribute, never written into the markup: it
+  // comes with the reveal, which any client can send (socket.js).
+  const art = host.querySelector(".lc-deck__art img");
+  if (art) art.setAttribute("src", String(img));
   // Text goes in as text: the card's label is the GM's.
   host.querySelector(".lc-deck__label").textContent = label;
   host.querySelector(".lc-deck__kind").textContent = kindLabel;
@@ -350,8 +354,17 @@ export function mountDeck(host, { tone = "blank", swatch = "none", label = "", k
   const pose = ms => {
     if (!card?.style) return;
     const up = ease(clamp01(ms / T(lift)));
+    const holding = ms >= T(lift) && ms < T(lift + hold);
+    const h = clamp01((ms - T(lift)) / T(hold));
+    // The hold is not a freeze: the card jumps a little on each of its
+    // beats (the first third of the beat, with the sound's tick), and over
+    // the hold's last fifth it winds back a few degrees the wrong way, so
+    // the flip is seen coming.
+    const bump = holding ? Math.sin(Math.PI * Math.min(1, ((h * beats) % 1) * 3)) : 0;
+    const wind = ms < T(lift + hold) ? Math.pow(clamp01((h - 0.8) / 0.2), 2) : 1;
     const turn = ms < T(lift + hold) ? 0 : ease(clamp01((ms - T(lift + hold)) / T(flip)));
-    card.style.transform = `translateY(${(-14 * up).toFixed(2)}px) scale(${(1 + 0.06 * Math.sin(Math.PI * turn)).toFixed(3)}) rotateY(${(180 * turn).toFixed(1)}deg)`;
+    const angle = -DECK_TIMING.wind * wind + (180 + DECK_TIMING.wind) * turn;
+    card.style.transform = `translateY(${(-14 * up - DECK_TIMING.pulse * bump).toFixed(2)}px) scale(${(1 + 0.03 * bump + 0.06 * Math.sin(Math.PI * turn)).toFixed(3)}) rotateY(${angle.toFixed(1)}deg)`;
   };
   const beatAt = i => T(lift + (i * hold) / beats);
 

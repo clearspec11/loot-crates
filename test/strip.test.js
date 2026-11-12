@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildStrip, STRIP_LENGTH, LAND_INDEX, fillerSource } from "../module/scripts/core/strip.js";
+import { buildStrip, STRIP_LENGTH, LAND_INDEX, TEASE_RATE, fillerSource } from "../module/scripts/core/strip.js";
 import { draw, seededRng, rarityRank, flattenPool } from "../module/scripts/core/odds.js";
 import { POOLS, BOX, BOXES } from "../harness/sample.js";
 
@@ -122,8 +122,9 @@ describe("the near-miss tease is one droppable rank up", () => {
     expect(counts.rare / teases).toBeGreaterThanOrEqual(0.7);
     expect(counts.veryRare).toBeGreaterThan(0);
     expect(counts.legendary).toBeUndefined();
-    // The tease rate is unchanged at 0.6.
-    expect(teases / 2000).toBeCloseTo(0.6, 1);
+    // Three eligible spins in ten tease (TEASE_RATE).
+    expect(TEASE_RATE).toBe(0.3);
+    expect(teases / 2000).toBeCloseTo(0.3, 1);
   });
 
   it("gives no near-miss on a result at the box's best droppable rarity", () => {

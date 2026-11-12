@@ -210,6 +210,13 @@ export function partSentence(part, { actor = "", item = "" } = {}) {
   return t("LOOTCRATES.After.SoldSentence", { actor, item, price: formatPrice((Number(part?.soldCp) || 0) / 100) });
 }
 
+// The same, short, for the result's own line where "Added to Brinn's
+// inventory" stood: "Given to Saria" / "Sold back for 75 gp".
+export function partWhere(part) {
+  if (part?.given) return t("LOOTCRATES.After.GaveWhere", { target: part.given.actorName });
+  return t("LOOTCRATES.After.SoldWhere", { price: formatPrice((Number(part?.soldCp) || 0) / 100) });
+}
+
 // Why a row with a given or sold item can't be refunded (refund.js).
 export function partedRefundMessage(row) {
   return t("LOOTCRATES.After.NoRefund", { actor: row.actorName, what: partsLine(row) });

@@ -717,7 +717,7 @@ describe("the shop's Buy to keep", () => {
     await app.last;
     expect(app.content.querySelector(".lc-shop__notice").textContent).toBe("A Pauper's Box ticket is in Tam's pack (2 now). Use it from the character sheet whenever you like.");
     expect(app.content.querySelector(".lc-shop__notice").dataset.tone).toBe("done");
-    expect(btn.textContent.trim()).toBe("Pauper's Box: Buy to keep, 25 gp, a ticket for your pack to use later");
+    expect(btn.textContent.trim()).toBe("Pauper's Box: Buy to keep, 25 gp, a ticket for later");
     expect(btn.getAttribute("aria-disabled")).toBeNull();
   });
 
@@ -833,5 +833,83 @@ describe("a card whose price runs out by itself", () => {
     await draw(app);
     expect(deckBuy(app).dataset.price).toBe("10");
     expect(app.redrawArmed).toBe(false);
+  });
+});
+
+/*
+  A Buy or a Buy to keep at a price over half the purse (Tam holds 420 gp
+  7 sp 3 cp) takes two presses (views/spendguard.js): the first only arms
+  the pressed button, sending and drawing nothing; the second, past the
+  arming gesture, sends as one press always did, at its data-price.
+*/
+describe("a large spend in the shop", () => {
+  let now, clock;
+  beforeEach(() => {
+    boxes.big = { ...boxes.common, id: "big", name: "Big Box", price: 300, rules: {} };
+    now = 1000;
+    clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+  });
+  afterEach(() => {
+    delete boxes.big;
+    clock.mockRestore();
+  });
+  const button = (attrs, label) => {
+    const doc = createDocument();
+    const btn = doc.createElement("button");
+    for (const [k, v] of Object.entries(attrs)) btn.setAttribute(k, v);
+    btn.innerHTML = `<span class="lc-sr-only">Big Box: </span>${label}`;
+    doc.body.append(btn);
+    btn.focus();
+    return btn;
+  };
+  const press = (app, action, btn, detail = 1) => CrateShop.DEFAULT_OPTIONS.actions[action].call(app, { detail }, btn);
+
+  it("arms Buy on the first press and sends on the second, at the price on the button", async () => {
+    const app = new CrateShop();
+    const btn = button({ "data-action": "buy", "data-box": "big", "data-price": "300" }, "Open for 300 gp");
+    await press(app, "buy", btn);
+    expect(requestPull).not.toHaveBeenCalled();
+    expect(app.busy).toBe(false);
+    expect(app.renders).toBe(0);
+    expect(btn.textContent).toBe("Big Box: Spend 300 gp?");
+    // The same gesture's second click sends nothing.
+    await press(app, "buy", btn, 2);
+    expect(requestPull).not.toHaveBeenCalled();
+    now += 1000;
+    await press(app, "buy", btn);
+    expect(requestPull).toHaveBeenCalledTimes(1);
+    expect(requestPull.mock.calls[0][0]).toEqual({ boxId: "big", actorId: "a1", price: 300 });
+  });
+
+  it("arms Buy to keep the same way, and sends the keep on its second press", async () => {
+    const app = new CrateShop();
+    const btn = button({ "data-action": "keep", "data-keep": "big", "data-price": "300" }, `<span class="lc-box__keep-do">Buy to keep</span><span class="lc-box__keep-hint">a ticket for later</span>`);
+    await press(app, "keep", btn);
+    expect(requestKeep).not.toHaveBeenCalled();
+    expect(btn.textContent).toBe("Big Box: Spend 300 gp?");
+    now += 1000;
+    await press(app, "keep", btn);
+    expect(requestKeep).toHaveBeenCalledTimes(1);
+    expect(requestKeep.mock.calls[0][0]).toEqual({ boxId: "big", actorId: "a1", price: 300 });
+    expect(requestPull).not.toHaveBeenCalled();
+  });
+
+  it("judges the price the button charges (a deck's risen draw), and sends a buy of half the purse or less at once", async () => {
+    const app = new CrateShop();
+    const risen = button({ "data-action": "buy", "data-box": "common", "data-price": "250" }, "Open for 250 gp");
+    await press(app, "buy", risen);
+    expect(requestPull).not.toHaveBeenCalled();
+    const small = button({ "data-action": "buy", "data-box": "common", "data-price": "25" }, "Open for 25 gp");
+    await press(app, "buy", small);
+    expect(requestPull).toHaveBeenCalledTimes(1);
+    expect(small.textContent).toBe("Big Box: Open for 25 gp");
+  });
+
+  it("asks nothing for a Buy that is off: it says why, as before", async () => {
+    const app = new CrateShop();
+    const btn = button({ "data-action": "buy", "data-box": "royal", "data-price": "1200", "aria-disabled": "true" }, "Open for 1200 gp");
+    await press(app, "buy", btn);
+    expect(btn.getAttribute("data-armed")).toBeNull();
+    expect(requestPull).not.toHaveBeenCalled();
   });
 });

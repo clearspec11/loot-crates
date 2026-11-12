@@ -4,16 +4,15 @@
   readout already gives (nothing new is ruled here). A crate that can drop
   nothing, a well that is dry, a dragon nobody can beat, a deck with no
   card that can be drawn, a wheel of fewer than two pockets, an auction
-  with no lot, and a scratch ticket whose item prizes have no pool or
-  whose every ticket is a dud.
+  with no lot, and a scratch ticket whose item prizes have no pool, whose
+  pools can't give one of its prizes, or whose every ticket is a dud.
 
   The editor keeps such a game off the shelf (manager.js): its default
   button reads "Save off the shelf" and the On the shelf box is unticked
   and off with this reason beside it, and Save writes it off the shelf, so
   players never see a game the GM would refuse. Once the GM fixes it the
   button and the box come back. A softer warning (a well with no pool for
-  its rare find, a scratch prize waiting on a rarity no pool holds yet)
-  doesn't stop a game: some plays still work.
+  its rare find) doesn't stop a game: some plays still work.
 
   A deck whose cards are all drawn is not judged here: that is the state
   of the deck, which Reshuffle fixes, not how it is built.
@@ -43,11 +42,10 @@ const VERDICTS = {
     // ticket could never be won.
     if (p.roll.prizes.some(line => line.items.length) && !game.pools?.length) return t("LOOTCRATES.Scratch.NoPool");
     if (!p.odds.wins) return t("LOOTCRATES.Scratch.AllDudsWhy");
-    // With pools ticked, a prize at a rarity they don't hold waits in the
-    // roll undrawn: a soft warning while another prize can still be won.
-    // When none can, every ticket is refused or a dud.
-    const drawable = line => line.count > 0 && line.items.every(r => p.held.has(r));
-    return p.roll.prizes.some(drawable) ? "" : t("LOOTCRATES.Scratch.NoDrawable");
+    // With pools ticked, a prize at a rarity they don't hold stops the
+    // whole roll (scratch.js drawBag), so no ticket could be sold.
+    const drawable = line => !line.count || line.items.every(r => p.held.has(r));
+    return p.roll.prizes.every(drawable) ? "" : t("LOOTCRATES.Scratch.NoDrawable");
   },
 };
 

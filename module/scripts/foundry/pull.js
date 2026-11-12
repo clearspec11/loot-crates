@@ -27,7 +27,7 @@ import { limitState, limitRefusal } from "../core/limits.js";
 import { tallyOf } from "../core/tally.js";
 import { onShelf, shelfRefusal } from "../core/shelf.js";
 import { t } from "../core/i18n.js";
-import { spendTicket, keepTicket } from "./tickets.js";
+import { spendTicket, keepTicket, own, creditTickets } from "./tickets.js";
 import { worthColumns } from "../core/afterplay.js";
 
 export { PullError } from "../games/kinds.js";
@@ -149,11 +149,15 @@ function guardPlay({ box, actor, state = {}, expectedPrice, log = [], tally = ta
 */
 export async function createGrants(actor, datas) {
   const docs = datas.map(readyToGrant);
-  const created = ((await actor.createEmbeddedDocuments("Item", docs)) ?? []).filter(Boolean);
-  if (created.length === docs.length) return created;
+  // A prize that is itself a ticket is counted as issued (tickets.js).
+  const created = ((await own(() => actor.createEmbeddedDocuments("Item", docs))) ?? []).filter(Boolean);
+  if (created.length === docs.length) {
+    await creditTickets(actor, created);
+    return created;
+  }
   if (created.length) {
     try {
-      await actor.deleteEmbeddedDocuments("Item", created.map(d => d.id));
+      await own(() => actor.deleteEmbeddedDocuments("Item", created.map(d => d.id)));
     } catch (err) {
       const names = created.map(d => d.name).join(", ");
       console.error(`loot-crates | could not take ${names} back from ${actor.name} after a cancelled grant; remove by hand`, err);

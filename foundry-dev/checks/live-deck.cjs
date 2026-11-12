@@ -126,7 +126,9 @@ async function seed(gm) {
     const folder = game.folders.find(f => f.type === "Actor" && f.name === "Loot Crates Test");
     const actor = game.actors.find(a => a.name === "Crate Tester" && a.folder?.id === folder?.id);
     if (!actor) throw new Error("no Crate Tester in Loot Crates Test: run live-pull.js first");
-    if ((actor.system.currency.gp ?? 0) < 60) await actor.update({ "system.currency.gp": 1000 });
+    // Well over twice each draw's price after the draws and a bane, so no
+    // press asks first (views/spendguard.js): the draws are timed from one press.
+    if ((actor.system.currency.gp ?? 0) < 200) await actor.update({ "system.currency.gp": 1000 });
     const pool = Object.values(store.getPools()).find(p => p.name === "Live UI pool");
     if (!pool) throw new Error("no Live UI pool: run live-ui.js first");
     const old = Object.values(store.getBoxes()).find(b => b.name === name) ?? null;

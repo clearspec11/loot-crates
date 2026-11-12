@@ -20,10 +20,12 @@
 //      gift tester" for OTHER if there is none, deleted again at the end).
 //   1. The player opens the shop on Crate Tester and presses the crate's
 //      Buy; on its reveal (Skip, as a player does) presses "Sell back for
-//      N": the purse rises by exactly N, the item is gone from Crate
-//      Tester, the row says sold for N, the window says it, the GM's
-//      window of the same pull says it too (with no buttons), and the
-//      chat card has the line.
+//      N": it asks in place ("Sell ... back for N? This can't be undone.")
+//      and nothing moves; the player presses its Sell: the purse rises by
+//      exactly N, the item is gone from Crate Tester, the row says sold
+//      for N, the window's result line says "Sold back for N" where it
+//      said "Added to", the GM's window of the same pull says it too (with
+//      no buttons), and the chat card has the line.
 //   2. Closes it, presses Buy again, and on the new reveal presses Give to…,
 //      picks OTHER's character in the list and presses Give: the item is on
 //      that character and gone from Crate Tester, and the row says given.
@@ -41,6 +43,8 @@
 // The pool stays seeded.
 /* global game, foundry, fromUuid, Actor, __lc */
 const { chromium } = require("playwright");
+// A Buy over half the purse asks first; pressSpend presses it again then.
+const { pressSpend } = require("./lib/spend.cjs");
 const FOUNDRY = process.env.FOUNDRY_URL || "http://localhost:30000";
 const MODULE_BASE = process.env.MODULE_BASE || "http://localhost:8766/";
 const PLAYER = process.env.PLAYER || "Player2";
@@ -139,7 +143,7 @@ async function buy(client, boxId, actorName) {
   const btn = client.page.locator(`#loot-crates-shop .lc-box__buy[data-box="${boxId}"]`);
   await btn.waitFor({ timeout: 10000 });
   await client.page.waitForFunction(id => document.querySelector(`#loot-crates-shop .lc-box__buy[data-box="${id}"]`)?.getAttribute("aria-disabled") !== "true", boxId, { timeout: 10000 });
-  await btn.click();
+  await pressSpend(btn);
 }
 
 // The player's own reveal of the newest pull, landed (Skip pressed as a
@@ -209,18 +213,26 @@ async function landedReveal(page, known = []) {
     out.targets = await pl.page.$$eval(`#${first} .lc-after__target option`, os => os.map(o => o.textContent));
     const granted = await untilActor(gm.page, seed.testerId, boxId, a => a.items.length === before.items.length + 1);
     if (shot) await pl.page.screenshot({ path: shot });
+    // The first press only asks; a second later nothing has moved.
     await sell.click();
+    await pl.page.locator(`#${first} .lc-after__sellgo`).waitFor({ timeout: 5000 });
+    out.sellAsk = (await pl.page.textContent(`#${first} .lc-after__sure-label`)).trim();
+    await pl.page.waitForTimeout(1000);
+    const asked = await readActor(gm.page, seed.testerId, boxId);
+    out.askedNothingMoved = asked.items.length === granted.items.length && asked.purseCp === granted.purseCp;
+    await pl.page.locator(`#${first} .lc-after__sellgo`).click();
     out.sold = await untilActor(gm.page, seed.testerId, boxId, a => a.items.length === before.items.length && a.purseCp === granted.purseCp + wantCp, 15000);
-    await pl.page.waitForFunction(id => /sold .+ back for/.test(document.querySelector(`#${id} .lc-after__said`)?.textContent ?? ""), first, { timeout: 8000 }).catch(() => {});
-    out.soldLine = await pl.page.evaluate(id => document.querySelector(`#${id} .lc-after__item`)?.textContent.replace(/\s+/g, " ").trim() ?? null, first);
+    await pl.page.waitForFunction(id => /^Sold back for/.test(document.querySelector(`#${id} .lc-reveal__added`)?.textContent ?? ""), first, { timeout: 8000 }).catch(() => {});
+    out.soldLine = await pl.page.evaluate(id => document.querySelector(`#${id} .lc-reveal__where`)?.textContent.replace(/\s+/g, " ").trim() ?? null, first);
+    out.soldUnder = await pl.page.evaluate(id => document.querySelector(`#${id} .lc-reveal__after`)?.textContent.replace(/\s+/g, " ").trim() ?? null, first);
     out.soldFocus = await pl.page.evaluate(id => document.activeElement?.matches?.(`#${id} .lc-reveal__close`) ?? false, first);
     let rows = await untilRows(gm.page, boxId, 1);
     out.soldRow = rows[0];
     // The GM's window of the same pull (a spectator): the line, no buttons.
-    await gm.page.waitForFunction(() => [...document.querySelectorAll(".application.lc-reveal .lc-after__said")].some(s => /sold .+ back for/.test(s.textContent)), null, { timeout: 15000 }).catch(() => {});
+    await gm.page.waitForFunction(() => [...document.querySelectorAll(".application.lc-reveal .lc-reveal__added")].some(s => /^Sold back for/.test(s.textContent)), null, { timeout: 15000 }).catch(() => {});
     out.gmWindow = await gm.page.evaluate(() => {
-      const win = [...document.querySelectorAll(".application.lc-reveal")].find(a => a.querySelector(".lc-after__said"));
-      return win ? { text: win.querySelector(".lc-reveal__after").textContent.replace(/\s+/g, " ").trim(), buttons: win.querySelectorAll(".lc-reveal__after button").length } : null;
+      const win = [...document.querySelectorAll(".application.lc-reveal")].find(a => /^Sold back for/.test(a.querySelector(".lc-reveal__added")?.textContent ?? ""));
+      return win ? { text: win.querySelector(".lc-reveal__added").textContent.trim(), under: win.querySelector(".lc-reveal__after").textContent.replace(/\s+/g, " ").trim(), buttons: win.querySelectorAll(".lc-reveal__after button").length } : null;
     });
     await gm.page.waitForTimeout(500);
     out.card = await gm.page.evaluate(logId => game.messages.contents.find(m => m.flags?.["loot-crates"]?.logId === logId)?.content.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() ?? null, rows[0]?.id);
@@ -237,8 +249,8 @@ async function landedReveal(page, known = []) {
     await pl.page.locator(`#${second} .lc-after__confirm`).click();
     out.given = await untilActor(gm.page, seed.targetId, boxId, a => a.items.some(i => i.given), 15000);
     out.afterGive = await untilActor(gm.page, seed.testerId, boxId, a => !a.items.some(i => i.id === giftItemId), 8000);
-    await pl.page.waitForFunction(id => /gave .+ to/.test(document.querySelector(`#${id} .lc-after__said`)?.textContent ?? ""), second, { timeout: 8000 }).catch(() => {});
-    out.gaveLine = await pl.page.evaluate(id => document.querySelector(`#${id} .lc-after__item`)?.textContent.replace(/\s+/g, " ").trim() ?? null, second);
+    await pl.page.waitForFunction(id => /^Given to/.test(document.querySelector(`#${id} .lc-reveal__added`)?.textContent ?? ""), second, { timeout: 8000 }).catch(() => {});
+    out.gaveLine = await pl.page.evaluate(id => document.querySelector(`#${id} .lc-reveal__added`)?.textContent.trim() ?? null, second);
     rows = await untilRows(gm.page, boxId, 2);
     out.givenRow = rows[0];
     await pl.page.locator(`#${second} .lc-reveal__close`).click().catch(() => {});
@@ -292,12 +304,13 @@ async function landedReveal(page, known = []) {
       soldPaid: out.sold.ms != null && out.sold.purseCp === granted.purseCp + wantCp,
       soldGone: out.sold.items.length === before.items.length,
       soldRow: soldPart?.soldCp === wantCp,
-      soldSaid: out.soldLine === `Crate Tester sold ${seed.itemName} back for ${price}.` && out.soldFocus,
-      spectator: out.gmWindow?.text === `Crate Tester sold ${seed.itemName} back for ${price}.` && out.gmWindow.buttons === 0,
+      askedFirst: out.sellAsk === `Sell ${seed.itemName} back for ${price}? This can't be undone.` && out.askedNothingMoved,
+      soldSaid: (out.soldLine ?? "").startsWith(`Sold back for ${price}`) && !/Added to/.test(out.soldLine ?? "") && out.soldUnder === "" && out.soldFocus,
+      spectator: out.gmWindow?.text === `Sold back for ${price}` && out.gmWindow.under === "" && out.gmWindow.buttons === 0,
       chatLine: (out.card ?? "").includes(`Crate Tester sold it back for ${price}.`),
       givenMoved: out.given.ms != null && out.given.items.some(i => i.name === seed.itemName && i.given) && out.afterGive.ms != null,
       givenRow: givenPart?.given?.actorId === seed.targetId,
-      gaveSaid: out.gaveLine === `Crate Tester gave ${seed.itemName} to ${seed.targetName}.`,
+      gaveSaid: out.gaveLine === `Given to ${seed.targetName}`,
       forgedRefused: out.forged.give?.type === "error" && out.forged.sell?.type === "error" && /Only the player who won/.test(out.forged.give.message ?? "") && /Only the player who won/.test(out.forged.sell.message ?? ""),
       forgedNothingMoved: out.otherAfter.items.length === withOther.items.length && out.otherAfter.purseCp === withOther.purseCp && !out.otherRowAfter?.parted,
       refundRefused: out.refund.note === `Crate Tester sold it back for ${price}.` && /can't be refunded/.test(out.refund.said ?? "") && !out.refund.refunded,

@@ -322,7 +322,7 @@ export function pocketsIn(reveal) {
 /* ---------- The wheel ---------- */
 
 // The spin's length, and when the ball dips into the rim (the drop).
-export const WHEEL_TIMING = { spin: 5600, dropAt: 0.78, wheelTurns: 2, ballTurns: 6 };
+export const WHEEL_TIMING = { spin: 5600, dropAt: 0.78, wheelTurns: 2, ballTurns: 6, runUp: 0.06 };
 
 const RIM = { outer: 97, rim: 86, inner: 84, hub: 26, label: 60, ball: 90, ballIn: 70 };
 const DEG = Math.PI / 180;
@@ -349,8 +349,9 @@ export function wheelSVG(pockets, esc = s => String(s ?? "")) {
   return `<svg class="lc-wheel__disc" viewBox="-100 -100 200 200" aria-hidden="true"><circle class="lc-wheel__ground" r="99"></circle>${parts}<circle class="lc-wheel__hub" r="${RIM.hub}"></circle><rect class="lc-wheel__pip" x="-4" y="-4" width="8" height="8" transform="rotate(45)"></rect></svg>`;
 }
 
+const easeOut2 = p => 1 - Math.pow(1 - p, 2);
 const easeOut3 = p => 1 - Math.pow(1 - p, 3);
-const easeOut4 = p => 1 - Math.pow(1 - p, 4);
+const easeInOut2 = p => (p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2);
 const clamp01 = x => Math.max(0, Math.min(1, x));
 
 /*
@@ -358,17 +359,25 @@ const clamp01 = x => Math.max(0, Math.min(1, x));
   pocket `index` of n: { wheel, ball, radius }. The disc turns clockwise
   wheelTurns and comes to rest with the pocket's centre under the pin at
   the top; the ball runs anticlockwise ballTurns and stops at the pin, so
-  at p = 1 it sits in the pocket. Both ease out, the ball harder, and the
-  ball dips from the rim to the pocket's floor from dropAt on. The pocket
+  at p = 1 it sits in the pocket. Both ease out, the ball harder (a cubic
+  to the disc's quadratic; a power higher and the ball sits in its last
+  pocket for over a second while both crawl to a stop), and the
+  ball dips from the rim to the pocket's floor from dropAt on, easing in
+  and out so it is still coming down as it crosses its last pockets. The pocket
   under the ball at any moment is pocketUnder(pose, n), for the ticks.
 */
 export function wheelPose(p, index, n, timing = WHEEL_TIMING) {
   const q = clamp01(p);
+  // The run-up: over the first runUp of the time the disc and the ball
+  // pick up speed from rest (a linear ramp), so neither starts at full
+  // tilt; u is the share of the eased run done by time q.
+  const a = Math.max(0, Math.min(0.5, timing.runUp ?? 0));
+  const u = a ? (q < a ? (q * q) / (2 * a) : q - a / 2) / (1 - a / 2) : q;
   const step = 360 / Math.max(1, n);
   const wheelTotal = timing.wheelTurns * 360 - (index + 0.5) * step;
   const ballTotal = -timing.ballTurns * 360;
   const dip = clamp01((q - timing.dropAt) / (1 - timing.dropAt));
-  return { wheel: wheelTotal * easeOut3(q), ball: ballTotal * easeOut4(q), radius: RIM.ball - (RIM.ball - RIM.ballIn) * easeOut3(dip) };
+  return { wheel: wheelTotal * easeOut2(u), ball: ballTotal * easeOut3(u), radius: RIM.ball - (RIM.ball - RIM.ballIn) * easeInOut2(dip) };
 }
 
 // The index of the pocket under the ball for a pose.
