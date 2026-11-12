@@ -12,6 +12,9 @@
 import { t } from "../core/i18n.js";
 
 export const REFUNDED_CLASS = "lc-chat--refunded";
+// The card's foot line for an item the ticket won that the GM still owes
+// (scratch.js), and what became of it once handed over (owedCardContent).
+export const OWED_CLASS = "lc-chat__owed";
 // A card from before pulls carried their log row's id is matched by item,
 // buyer and time instead: the card posts when the spin lands, a few seconds
 // after the row is written.
@@ -94,6 +97,22 @@ export function partedCardContent(content, row, { esc = String, line = "", actor
   }
   const note = `<div class="${AFTER_CLASS}">${esc(line)}</div>`;
   const had = new RegExp(`<div class="${AFTER_CLASS}">[\\s\\S]*?</div>`);
+  if (had.test(html)) return html.replace(had, note);
+  const end = html.lastIndexOf("</div>");
+  return end < 0 ? html + note : html.slice(0, end) + note + html.slice(end);
+}
+
+/*
+  The card's content once an owed item was handed over (core/owedprize.js):
+  `line`, already in words ("The GM handed over Flame Tongue."), in place
+  of the card's "Owed by the GM" line, or at its foot when it has none. A
+  refunded card is left as it is.
+*/
+export function owedCardContent(content, { esc = String, line = "" } = {}) {
+  const html = String(content ?? "");
+  if (isRefundedCard(html) || !line) return html;
+  const note = `<div class="${OWED_CLASS}">${esc(line)}</div>`;
+  const had = new RegExp(`<div class="${OWED_CLASS}">[\\s\\S]*?</div>`);
   if (had.test(html)) return html.replace(had, note);
   const end = html.lastIndexOf("</div>");
   return end < 0 ? html + note : html.slice(0, end) + note + html.slice(end);

@@ -321,6 +321,13 @@ const STATES = [
   // gem in the bonus spot, the ribbon naming the line in full, and the
   // result naming the item with the coins going into the purse.
   ["scratch-combo", "state=scratch&outcome=combo&buyer=1&duration=0"],
+  // A ticket that won an item its pools couldn't give (VIB-221): the prize
+  // by its rarity on a winning panel, "Owed by the GM" in the result, no
+  // "Added to" and no Open item, there being no item yet.
+  ["scratch-owed", "state=scratch&outcome=owed&buyer=1&duration=0"],
+  // The Pull log with one such row still owed (its Hand over under the
+  // note, the Refund's cell no wider) and one the GM has handed over.
+  ["manager-log-owed", "state=manager&tab=log&owed=1"],
   ["manager-empty", "state=manager&empty=1"],
   ["manager-boxes-empty", "state=manager&tab=boxes&empty=1"],
   ["manager-boxes-starter", "state=manager&tab=boxes&starter=1"],
@@ -2589,6 +2596,48 @@ function scratchPrintProblems(mode) {
 // spectator (mid auto-scratch) | fey (the coin win in Fey market green).
 // The foil's pixels are read back, so a panel counts as scraped only
 // where the coin really took the foil off.
+// A ticket whose item is owed (scratch-owed): said in the result, with
+// nothing that points at an item on the sheet.
+function owedTicketProblems() {
+  const out = [];
+  const result = document.querySelector(".lc-reveal__result");
+  const text = (result?.textContent ?? "").replace(/\s+/g, " ").trim();
+  if (!document.body.dataset.landed) out.push("the owed ticket never landed");
+  if (!/Rare item/.test(text)) out.push(`the result doesn't name the prize by its rarity: "${text}"`);
+  if (!/Owed by the GM: Rare item/.test(text)) out.push(`the result doesn't say the GM owes it: "${text}"`);
+  if (/Added to/.test(text)) out.push("the result says an owed item was added to the sheet");
+  const open = document.querySelector(".lc-reveal__open");
+  if (open && !open.hidden && open.getBoundingClientRect().height > 0) out.push("Open item shows for an item that doesn't exist yet");
+  const wins = [...document.querySelectorAll(".lc-scratch__panel--win")];
+  if (!wins.some(p => /Rare item/.test(p.textContent))) out.push("no winning panel shows the Rare item");
+  const owed = result?.querySelector(".lc-reveal__owed");
+  if (owed && parseFloat(getComputedStyle(owed).fontSize) < 11) out.push("the owed line is under 11px");
+  return out;
+}
+
+// The Pull log's owed rows (manager-log-owed): the note, a Hand over that
+// is a real button inside its cell and no wider than it, and the handed
+// row's line with no button.
+function owedLogProblems() {
+  const out = [];
+  const notes = [...document.querySelectorAll(".lc-log__owed")];
+  if (notes.length !== 1 || notes[0].textContent.trim() !== "Owed: Rare item") out.push(`the log's owed notes read ${JSON.stringify(notes.map(n => n.textContent.trim()))}`);
+  const btns = [...document.querySelectorAll('[data-action="handOver"]')];
+  if (btns.length !== 1) return [...out, `${btns.length} Hand over buttons`];
+  const btn = btns[0];
+  if (btn.tagName !== "BUTTON" || btn.textContent.trim() !== "Hand over") out.push(`Hand over reads "${btn.textContent.trim()}"`);
+  if (!/^Hand over to Tam Thornwick\. Owed: Rare item$/.test(btn.getAttribute("aria-label") ?? "")) out.push(`Hand over is named "${btn.getAttribute("aria-label")}"`);
+  if (parseFloat(getComputedStyle(btn).fontSize) < 11) out.push("Hand over's text is under 11px");
+  const b = btn.getBoundingClientRect(), c = btn.closest("td").getBoundingClientRect();
+  if (b.height < 24) out.push(`Hand over is ${Math.round(b.height)}px tall`);
+  if (b.left < c.left - 0.5 || b.right > c.right + 0.5) out.push("Hand over runs outside its cell");
+  const row = btn.closest("tr");
+  if (!row.querySelector('[data-action="refund"]')) out.push("the owed row has no Refund");
+  if (b.bottom > row.querySelector('[data-action="refund"]').closest("td").getBoundingClientRect().bottom + 0.5 && b.top < notes[0].getBoundingClientRect().bottom - 0.5) out.push("Hand over overlaps its note");
+  if (![...document.querySelectorAll(".lc-log__parted")].some(n => n.textContent.trim() === "Handed over by the GM: Flame Tongue")) out.push("the handed row doesn't say what was handed over");
+  return out;
+}
+
 function scratchRevealProblems(mode) {
   const out = [];
   if (mode === "fey") mode = "won";
@@ -3219,6 +3268,8 @@ try {
         if (mode !== "give" && mode !== "sold" && mode !== "sure" && mode !== "watch") problems0.push(...await page.evaluate(revealProblems, mode !== "watch"));
         problems0.push(...await page.evaluate(afterProblems, mode));
       }
+      else if (name === "scratch-owed") problems0.push(...await page.evaluate(owedTicketProblems));
+      else if (name === "manager-log-owed") problems0.push(...await page.evaluate(owedLogProblems), ...await page.evaluate(panelProblems));
       else if (name.startsWith("scratch")) {
         const mode = { "scratch-unscratched": "covered", "scratch-half": "half", "scratch-won": "won", "scratch-dud": "dud", "scratch-item": "item", "scratch-match3-won": "match3", "scratch-spectator": "spectator", "scratch-theme-fey": "fey", "scratch-combo": "combo" }[name];
         problems0.push(...await page.evaluate(scratchPrintProblems, mode), ...await page.evaluate(scratchRevealProblems, mode));
@@ -3262,6 +3313,9 @@ try {
       if (name === "landed-missed") problems0.push(...await page.evaluate(missedProblems));
       if (name === "shop-short") {
         const grid = await page.$(".lc-shop__grid");
+        // Into view first: the harness's own links above the stage can push
+        // the grid below the fold at 390, and a wheel there scrolls the page.
+        await grid.scrollIntoViewIfNeeded();
         const box = await grid.boundingBox();
         const before = await page.evaluate(() => ({ scrollable: (g => g.scrollHeight > g.clientHeight + 1)(document.querySelector(".lc-shop__grid")), top: document.querySelector(".lc-shop__grid").scrollTop }));
         if (!before.scrollable) problems0.push("short shop: the grid doesn't overflow, so the state tests nothing");

@@ -867,6 +867,10 @@ async function doPull(msg, timer, sent, stopWatching, early = null) {
     // the row, which every client reads (hidden.js).
     await recordPull({ box, actor, out, log, hidden: kind.hiddenRow?.(ctx) ?? null });
     timer.mark("record");
+    // The kind's word for the GM alone, once the row it points at exists
+    // (a scratch ticket that won an item its pools couldn't give).
+    const note = kind.gmNote?.(ctx, { actorName: actor.name });
+    if (note) globalThis.ui?.notifications?.warn(note, { permanent: true });
     return answer;
   } catch (err) {
     failPlay(msg, box, err);

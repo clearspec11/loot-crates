@@ -9,7 +9,8 @@
   (a toggle with one label, pressed while they are hidden) leaves only the
   pulls that gave something (the misses stay in the setting). Under a row, in small print: where a GM-set rarity came from,
   what a game paid or took, a stake's state, a sale its buyer called
-  off too late, and an item given away or sold back after the reveal. An auction's house bid (auction.js) is a row with no
+  off too late, an item given away or sold back after the reveal, and an
+  item the play won that the GM still owes, with its Hand over. An auction's house bid (auction.js) is a row with no
   character and no coins: it names its bidder and its bid, and has no
   Refund, there being nothing to give back.
 
@@ -39,6 +40,7 @@ import { tableHTML, cell } from "./boxestable.js";
 import { t, words } from "../core/i18n.js";
 import { rowPriceTag } from "../games/ticket.js";
 import { anyParted, partsLine } from "../core/afterplay.js";
+import { owedNote, handedNote } from "../core/owedprize.js";
 
 const plain = s => String(s ?? "");
 const rarityName = r => RARITY_LABEL[normalizeRarity(r)] ?? String(r);
@@ -88,6 +90,16 @@ export function logLateNote(row) {
 export function logPartedNote(row, esc = plain) {
   if (!anyParted(row)) return "";
   return `<small class="lc-log__parted">${esc(t("LOOTCRATES.After.CardLine", { actor: row.actorName, what: partsLine(row) }))}</small>`;
+}
+
+// An item the play won that nobody has been given yet (core/owedprize.js):
+// "Owed: Rare item" with Hand over on a line of its own under it (the
+// Refund's cell stays as wide as it was), and once handed over, what was.
+export function logOwedNote(row, esc = plain) {
+  const handed = handedNote(row);
+  const owed = owedNote(row);
+  return (handed ? `<small class="lc-log__parted">${esc(handed)}</small>` : "")
+    + (owed ? `<small class="lc-log__owed">${esc(owed)}</small><button type="button" class="lc-log__settle" data-action="handOver" data-row="${esc(row.id)}" aria-label="${esc(t("LOOTCRATES.Owed.HandOverLabel", { actor: row.actorName ?? "", what: owed }))}">${t("LOOTCRATES.Owed.HandOver")}</button>` : "");
 }
 
 // A folded line's Refund, named for what it gives back: "Refund the
@@ -169,7 +181,7 @@ export function logTableHTML({ log: all = [], rounds = {}, hideMisses = false, f
       </tr>`;
   const row = r => (r.house ? house(r) : `<tr class="${r.refunded ? "lc-row--refunded" : r.lateCancel ? "lc-row--late" : ""}" role="row">
         ${cell(WHEN, new Date(r.at).toLocaleString())}${cell(WHO, esc(r.actorName))}${cell(BOX, `${esc(r.boxName)} (${esc(rowPriceTag(r))})`)}
-        ${got(r.rarity ?? r.swatch ?? r.stake?.swatch ?? (r.win ? "coin" : "none"), `${r.refunded ? `<s>${esc(r.name)}</s>` : esc(r.name)}${r.pity ? ` · ${t("LOOTCRATES.Common.Pity")}` : ""}${logRarityNote(r, esc)}${logPayoutNote(r, esc)}${logStakeNote(r, esc)}${logLateNote(r)}${logPartedNote(r, esc)}`)}
+        ${got(r.rarity ?? r.swatch ?? r.stake?.swatch ?? (r.win ? "coin" : "none"), `${r.refunded ? `<s>${esc(r.name)}</s>` : esc(r.name)}${r.pity ? ` · ${t("LOOTCRATES.Common.Pity")}` : ""}${logRarityNote(r, esc)}${logPayoutNote(r, esc)}${logStakeNote(r, esc)}${logLateNote(r)}${logPartedNote(r, esc)}${logOwedNote(r, esc)}`)}
         ${cell(ACT, r.refunded ? status(r.id, r.refunded) : `<button type="button" data-action="refund" data-row="${esc(r.id)}">${t("LOOTCRATES.Log.Refund")}</button>`)}
       </tr>`);
   const group = g => {

@@ -1281,6 +1281,13 @@
 .loot-crates .lc-log__late { display: block; margin-left: 14px; font-size: 12px; color: var(--lc-warn); }
 /* An item given away or sold back after the reveal (logtable.js logPartedNote). */
 .loot-crates .lc-log__parted { display: block; margin-left: 14px; font-size: 12px; color: var(--lc-ink-soft); }
+/* An item still owed on a row, with its Hand over on a line of its own
+   under it, so the Refund's cell is no wider than it was. */
+.loot-crates .lc-log__owed { display: block; margin-left: 14px; font-size: 12px; color: var(--lc-ink); font-weight: 600; }
+.loot-crates .lc-log__settle { display: block; margin: 4px 0 0 14px; }
+/* Hand over's dialog: the picker on one line, its list taking the room. */
+.loot-crates .lc-owed__pick { display: flex; align-items: center; gap: 8px; }
+.loot-crates .lc-owed__pick select { flex: 1; min-width: 0; }
 
 /* The economy readout over the Pull log, for the GM (views/economy.js):
    a heading with the period as two pressed-or-not buttons (the chips'
@@ -1452,6 +1459,8 @@
 .loot-crates .lc-chat__refund { font-size: 12px; margin-top: 6px; color: var(--lc-ink-soft); }
 /* What became of an item after the reveal (chatcard.js partedCardContent). */
 .loot-crates .lc-chat__after { font-size: 12px; margin-top: 6px; color: var(--lc-ink-soft); }
+/* An item the ticket won that the GM still owes, then what was handed over. */
+.loot-crates .lc-chat__owed { font-size: 12px; margin-top: 6px; color: var(--lc-ink-soft); }
 /* A card whose spin is still playing on this client: the head, and
    "Opening…" where the item will be (reveal.js sealChatCard). */
 .loot-crates.lc-chat--sealed { --lc-rarity: var(--lc-ink-mute); }

@@ -176,6 +176,7 @@ import { lotOf, draftAuction, auctionPreview, auctionPreviewHTML } from "../modu
 import { wireScratchEditor, draftScratch, scratchPreview, scratchPreviewHTML, rollState, layCard, mountScratch, poolRarities, THEMES } from "../module/scripts/games/scratch.js";
 import { wireFill } from "../module/scripts/games/scratchplan.js";
 import { tallyOf } from "../module/scripts/core/tally.js";
+import { owedName } from "../module/scripts/core/owedprize.js";
 
 // A sample log and the tallies a world would hold for it.
 const withTally = log => ({ log, tally: tallyOf(log) });
@@ -257,7 +258,7 @@ document.getElementById("title").textContent = appTitle;
 const CRATE_ICON = `<svg class="lc-box__icon" viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M3 8.5 12 4l9 4.5v8L12 21l-9-4.5z"/><path d="M3 8.5 12 13l9-4.5M12 13v8"/></svg>`;
 
 const nav = document.getElementById("nav");
-for (const [label, query] of [["shop", "state=shop"], ["lean purse", "state=shop&purse=250"], ["spin", "state=spin"], ["landed", "state=landed"], ["landed, buyer", "state=landed&buyer=1"], ["missed", "state=landed&buyer=1&watched=0"], ["after the reveal", "state=landed&buyer=1&after=1"], ["after, two items", "state=landed&buyer=1&after=multi"], ["replay", "state=replay"], ["well", "state=well&buyer=1"], ["well, coin", "state=well&outcome=coin&buyer=1"], ["well, item", "state=well&outcome=item&buyer=1"], ["dice", "state=dice&buyer=1"], ["dice, lost", "state=dice&outcome=lose&buyer=1"], ["dice, prize", "state=dice&outcome=prize&buyer=1"], ["deck", "state=deck&buyer=1"], ["deck, item", "state=deck&outcome=item&buyer=1"], ["deck, bane", "state=deck&outcome=loss&buyer=1"], ["bane, lean purse", "state=deck&outcome=loss&buyer=1&streak=2&purse=90"], ["deck, effect", "state=deck&outcome=effect&buyer=1"], ["table", "state=table"], ["table, GM", "state=table&phase=waiting&gm=1"], ["wheel", "state=table&phase=spinning"], ["wheel, landed", "state=table&phase=landed&duration=0"], ["manager", "state=manager"], ["empty manager", "state=manager&empty=1"], ["boxes", "state=manager&tab=boxes&added=1"], ["starter", "state=manager&tab=boxes&starter=1"], ["pull log", "state=manager&tab=log"], ["pull log, filtered", "state=manager&tab=log&actor=tam"], ["box editor", "state=editor"], ["table crate", "state=shop&table=1"], ["table editor", "state=editor&odds=weight"], ["table drop", "state=preview"], ["nothing", "state=landed&nothing=1&buyer=1"], ["auction", "state=auction&phase=open"], ["auction, bids", "state=auction&phase=bid"], ["auction, GM", "state=auction&phase=bid&gm=1"], ["auction, hammer", "state=auction&phase=hammer&duration=0"], ["auction, crate", "state=auction&phase=hammer&lot=crate"], ["auction card", "state=shop&auction=1"], ["scratch card", "state=shop&scratch=1"], ["scratch hidden", "state=shop&scratch=hidden"], ["sold out", "state=shop&scratch=soldout"], ["scratch editor", "state=editor&scratch=1"], ["editor, off the shelf", "state=editor&guard=offshelf"], ["editor, stock", "state=editor&guard=stock"], ["editor, discard", "state=editor&guard=discard"], ["scratch fill", "state=editor&scratch=1&fill=done"], ["scratch", "state=scratch&buyer=1&phase=covered"], ["scratch, half", "state=scratch&buyer=1&phase=half"], ["scratch, watched", "state=scratch&phase=sweep"], ["scratch, match 3", "state=scratch&layout=match3&buyer=1"], ["scratch, fey", "state=scratch&outcome=coins&buyer=1&duration=0&ticket=fey"], ["scratch, combo", "state=scratch&outcome=combo&buyer=1&duration=0"], ["welcome", "state=welcome"], ["welcome, new world", "state=welcome&empty=1"], ["what's new", "state=welcome&view=news"]]) {
+for (const [label, query] of [["shop", "state=shop"], ["lean purse", "state=shop&purse=250"], ["spin", "state=spin"], ["landed", "state=landed"], ["landed, buyer", "state=landed&buyer=1"], ["missed", "state=landed&buyer=1&watched=0"], ["after the reveal", "state=landed&buyer=1&after=1"], ["after, two items", "state=landed&buyer=1&after=multi"], ["replay", "state=replay"], ["well", "state=well&buyer=1"], ["well, coin", "state=well&outcome=coin&buyer=1"], ["well, item", "state=well&outcome=item&buyer=1"], ["dice", "state=dice&buyer=1"], ["dice, lost", "state=dice&outcome=lose&buyer=1"], ["dice, prize", "state=dice&outcome=prize&buyer=1"], ["deck", "state=deck&buyer=1"], ["deck, item", "state=deck&outcome=item&buyer=1"], ["deck, bane", "state=deck&outcome=loss&buyer=1"], ["bane, lean purse", "state=deck&outcome=loss&buyer=1&streak=2&purse=90"], ["deck, effect", "state=deck&outcome=effect&buyer=1"], ["table", "state=table"], ["table, GM", "state=table&phase=waiting&gm=1"], ["wheel", "state=table&phase=spinning"], ["wheel, landed", "state=table&phase=landed&duration=0"], ["manager", "state=manager"], ["empty manager", "state=manager&empty=1"], ["boxes", "state=manager&tab=boxes&added=1"], ["starter", "state=manager&tab=boxes&starter=1"], ["pull log", "state=manager&tab=log"], ["pull log, filtered", "state=manager&tab=log&actor=tam"], ["box editor", "state=editor"], ["table crate", "state=shop&table=1"], ["table editor", "state=editor&odds=weight"], ["table drop", "state=preview"], ["nothing", "state=landed&nothing=1&buyer=1"], ["auction", "state=auction&phase=open"], ["auction, bids", "state=auction&phase=bid"], ["auction, GM", "state=auction&phase=bid&gm=1"], ["auction, hammer", "state=auction&phase=hammer&duration=0"], ["auction, crate", "state=auction&phase=hammer&lot=crate"], ["auction card", "state=shop&auction=1"], ["scratch card", "state=shop&scratch=1"], ["scratch hidden", "state=shop&scratch=hidden"], ["sold out", "state=shop&scratch=soldout"], ["scratch editor", "state=editor&scratch=1"], ["editor, off the shelf", "state=editor&guard=offshelf"], ["editor, stock", "state=editor&guard=stock"], ["editor, discard", "state=editor&guard=discard"], ["scratch fill", "state=editor&scratch=1&fill=done"], ["scratch", "state=scratch&buyer=1&phase=covered"], ["scratch, half", "state=scratch&buyer=1&phase=half"], ["scratch, watched", "state=scratch&phase=sweep"], ["scratch, match 3", "state=scratch&layout=match3&buyer=1"], ["scratch, fey", "state=scratch&outcome=coins&buyer=1&duration=0&ticket=fey"], ["scratch, combo", "state=scratch&outcome=combo&buyer=1&duration=0"], ["scratch, owed", "state=scratch&outcome=owed&buyer=1&duration=0"], ["pull log, owed", "state=manager&tab=log&owed=1"], ["welcome", "state=welcome"], ["welcome, new world", "state=welcome&empty=1"], ["what's new", "state=welcome&view=news"]]) {
   const a = document.createElement("a");
   a.href = `?${query}&seed=${seed}&theme=${theme}`;
   a.textContent = label;
@@ -831,12 +832,15 @@ async function renderDeck() {
   events on the ticket, the path a mouse takes.
 */
 async function renderScratch() {
-  const picked = ["coins", "nothing", "item", "bonus", "combo"].includes(q.get("outcome")) ? q.get("outcome") : "coins";
+  const picked = ["coins", "nothing", "item", "bonus", "combo", "owed"].includes(q.get("outcome")) ? q.get("outcome") : "coins";
   // ?outcome=combo is a prize line that pays three ways at once: the
   // roll's Rare item, 25 gp and the gem, each on its own winning panel
   // (the Fortune Ticket's roll with that line printed once).
   const combo = picked === "combo";
-  const outcome = combo ? "item" : picked;
+  // ?outcome=owed is a ticket that won an item its pools couldn't give
+  // (scratch.js roll): the prize by its rarity, nothing made, owed by the GM.
+  const owed = picked === "owed";
+  const outcome = combo || owed ? "item" : picked;
   const phase = ["covered", "half", "sweep"].includes(q.get("phase")) ? q.get("phase") : null;
   const COMBO_LINE = { count: 1, parts: [{ item: { rarity: "rare" } }, { gp: 25 }, { bonus: true }] };
   const printed = q.get("layout") === "match3" ? SCRATCH_MATCH3 : combo ? { ...SCRATCH, roll: { ...SCRATCH.roll, prizes: [COMBO_LINE, ...SCRATCH.roll.prizes.slice(1)] } } : SCRATCH;
@@ -846,22 +850,22 @@ async function renderScratch() {
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   const rng = seededRng(seed);
   const rarity = game.roll.prizes.find(p => p.item)?.item.rarity ?? "rare";
-  const drawn = outcome === "item" ? draw({ box: { ...game, weights: Object.fromEntries(RARITIES.map(r => [r, r === rarity ? 1 : 0])), rules: {} }, pools: POOLS, rng, state: {} }) : null;
+  const drawn = outcome === "item" && !owed ? draw({ box: { ...game, weights: Object.fromEntries(RARITIES.map(r => [r, r === rarity ? 1 : 0])), rules: {} }, pools: POOLS, rng, state: {} }) : null;
   const gp = printed === SCRATCH ? 25 : 5;
-  const won = drawn ? { kind: "item", rarity: drawn.rarity, name: drawn.entry.name, img: drawn.entry.img } : null;
+  const won = drawn ? { kind: "item", rarity: drawn.rarity, name: drawn.entry.name, img: drawn.entry.img } : owed ? { kind: "item", rarity, name: owedName(rarity) } : null;
   const win = combo && won ? { kind: "line", parts: [won, { kind: "gp", gp: 25 }, { kind: "bonus" }] } : outcome === "coins" ? { kind: "gp", gp } : outcome === "bonus" ? { kind: "bonus" } : won ?? { kind: "dud" };
   const payoutCp = combo ? (25 + game.bonus.gp) * 100 : outcome === "coins" ? gp * 100 : outcome === "bonus" ? game.bonus.gp * 100 : 0;
   const reveal = {
     kind: "scratch", outcome: outcome === "bonus" ? "coins" : outcome, actorName: "Tam Thornwick", userId: "buyer",
     box: { id: game.id, name: game.name, price: game.price },
     card: layCard(game, win, rng), ticket: { rollId: game.roll.id, no: Math.min(44, game.roll.size - 3), size: game.roll.size },
-    result: drawn ? { uuid: drawn.entry.uuid, name: drawn.entry.name, img: drawn.entry.img, rarity: drawn.rarity, pity: false } : payoutCp ? { name: formatPrice(payoutCp / 100), outcome: "coins" } : null,
+    result: drawn ? { uuid: drawn.entry.uuid, name: drawn.entry.name, img: drawn.entry.img, rarity: drawn.rarity, pity: false } : owed ? { name: owedName(rarity), rarity, img: "", owed: true } : payoutCp ? { name: formatPrice(payoutCp / 100), outcome: "coins" } : null,
     itemUuid: drawn ? "Actor.sample.Item.sample" : null,
     ...(combo && drawn ? { wonItems: [{ name: drawn.entry.name, img: drawn.entry.img, rarity: drawn.rarity }] } : {}),
     payoutCp,
     purse: charge({ ...purse, gp: purse.gp + payoutCp / 100 }, game.price) ?? {},
   };
-  const swatch = drawn ? drawn.rarity : "none";
+  const swatch = drawn ? drawn.rarity : owed ? rarity : "none";
   stage.innerHTML = `
     <div class="lc-reveal__body">
       <div class="lc-reveal__head">${kind.head(reveal, { esc })}</div>
@@ -1238,7 +1242,14 @@ stage.addEventListener("click", e => {
 function renderLog(period = q.get("period") === "session" ? "session" : "all") {
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   const now = Date.now();
-  const log = q.get("empty") === "1" ? [] : sampleLog(now);
+  // ?owed=1: two tickets on top that won an item the pools couldn't give
+  // (core/owedprize.js): one still owed, with its Hand over, and one the
+  // GM has handed over.
+  const owedRows = q.get("owed") === "1" ? [
+    { id: "owed1", kind: "scratch", at: now - 30000, boxId: SCRATCH.id, boxName: SCRATCH.name, actorId: "tam", actorName: "Tam Thornwick", userId: "u1", price: SCRATCH.price, payoutCp: 0, rollId: 1, name: "Rare item", rarity: "rare", owed: [{ rarity: "rare" }], itemNames: [] },
+    { id: "owed2", kind: "scratch", at: now - 90000, boxId: SCRATCH.id, boxName: SCRATCH.name, actorId: "tam", actorName: "Tam Thornwick", userId: "u1", price: SCRATCH.price, payoutCp: 2500, rollId: 1, name: "Flame Tongue", rarity: "rare", uuid: "Item.flame", itemId: "i1", itemIds: ["i1"], itemNames: ["Flame Tongue"], owed: [], handed: [{ rarity: "rare", at: now - 60000, name: "Flame Tongue" }] },
+  ] : [];
+  const log = q.get("empty") === "1" ? [] : [...owedRows, ...sampleLog(now)];
   const boxes = Object.fromEntries(GAMES.map(b => [b.id, b]));
   stage.innerHTML = `
     <div class="lc-manager__body">

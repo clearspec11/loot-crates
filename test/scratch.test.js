@@ -20,13 +20,13 @@ vi.mock("../module/scripts/foundry/reveal.js", () => ({ showReveal: vi.fn(async 
 vi.mock("../module/scripts/foundry/sound.js", () => ({ playTick: vi.fn(), playSlow: vi.fn(), playReveal: vi.fn(), playPlop: vi.fn(), playPlink: vi.fn(), playCoinBack: vi.fn(), playBane: vi.fn(), playScratch: vi.fn(), playFoilTick: vi.fn() }));
 
 const scratch = await import("../module/scripts/games/scratch.js");
-const { SCRATCH, SCRATCH_DEFAULTS, SYMBOLS, THEMES, MAX_PRIZES, rowParts, showsLeft, themeOf, prizesOf, rollOf, gridOf, bonusOf, layoutOf, rollState, ticketsSold, drawBag, rollReason, layCard, cardWins, cleanCard, splitsOf, luckyCount, rollOdds, rollPrizes, ribbonTotalText, oddsText, oneIn, prizeText, ticketsLeftText, scratchRulesText, scratchOddsHTML, nextRoll, draftScratch, scratchFieldsHTML, scratchPreview, scratchPreviewHTML, ticketHTML, miniHTML, shownState, prizeListHTML } = scratch;
+const { SCRATCH, SCRATCH_DEFAULTS, SYMBOLS, THEMES, MAX_PRIZES, rowParts, showsLeft, themeOf, prizesOf, rollOf, gridOf, bonusOf, layoutOf, rollState, ticketsSold, drawBag, rollReason, layCard, cardWins, owedWon, itemsWon, cleanCard, splitsOf, luckyCount, rollOdds, rollPrizes, ribbonTotalText, oddsText, oneIn, prizeText, ticketsLeftText, scratchRulesText, scratchOddsHTML, nextRoll, draftScratch, scratchFieldsHTML, scratchPreview, scratchPreviewHTML, ticketHTML, miniHTML, shownState, prizeListHTML } = scratch;
 const { getKind, gotText } = await import("../module/scripts/games/kinds.js");
 const { performPull, PullError } = await import("../module/scripts/foundry/pull.js");
 const { registerSocket } = await import("../module/scripts/foundry/socket.js");
 const { deliverTo } = await import("./requests.js");
 const { registerSettings, getLog, getTally } = await import("../module/scripts/foundry/store.js");
-const { tallyOf, emptyTally, applyRow } = await import("../module/scripts/core/tally.js");
+const { tallyOf, emptyTally, applyRow, trimLog } = await import("../module/scripts/core/tally.js");
 const { readHidden } = await import("../module/scripts/foundry/hidden.js");
 const { refundPull } = await import("../module/scripts/foundry/refund.js");
 const { NEW_DEFAULTS, copyOf } = await import("../module/scripts/views/newgame.js");
@@ -133,20 +133,34 @@ describe("the ledger, from the log", () => {
     expect(drawBag(SMALL, POOLS, tallyOf(sold)).bag.map(b => `${b.key}:${b.weight}`)).toEqual(["gp.10:1"]);
   });
 
-  it("sells nothing while an item prize left in the roll is one the pools can't give, so it never sinks to the bottom", () => {
+  it("keeps an item prize the pools can't give in the draw, so it never sinks to the bottom, and tells the GM's row", () => {
     const noRare = { p: { ...POOLS.p, entries: [POOLS.p.entries[0]] } };
-    const { bag, blocked } = drawBag(SMALL, noRare, tallyOf([]));
-    expect(bag).toEqual([]);
-    expect(blocked).toBe(1);
-    expect(rollReason(SMALL, noRare, tallyOf([]))).toBe("A prize needs an item the pools don't hold");
-    expect(drawBag(SMALL, POOLS, tallyOf([])).bag.map(b => b.key)).toEqual(["item.rare", "gp.10", "bonus", "dud"]);
-    expect(rollReason(SMALL, POOLS, tallyOf([]))).toBe("");
-    // The Boxes row tells the GM.
-    expect(scratchRulesText(SMALL, tallyOf([]), noRare)).toContain("not selling: a prize needs an item its pools don't hold");
-    expect(scratchRulesText(SMALL, tallyOf([]), POOLS)).not.toContain("not selling");
-    // Once that prize is sold, the pools needn't hold its rarity.
-    const rareSold = [row({ boxId: "small", tier: "item.rare" })];
-    expect(rollReason(SMALL, noRare, tallyOf(rareSold))).toBe("");
+    const { bag, owing } = drawBag(SMALL, noRare, tallyOf([]));
+    expect(bag.map(b => b.key)).toEqual(["item.rare", "gp.10", "bonus", "dud"]);
+    expect(owing).toBe(1);
+    expect(drawBag(SMALL, POOLS, tallyOf([])).owing).toBe(0);
+    // The roll sells either way: the ticket is won and its item owed.
+    expect(rollReason(SMALL, noRare, tallyOf([]))).toBe("");
+    expect(scratchRulesText(SMALL, tallyOf([]), noRare)).toContain("a prize would be owed: its pools hold no item for it");
+    expect(scratchRulesText(SMALL, tallyOf([]), POOLS)).not.toContain("owed");
+    // Once that prize is sold, nothing is owing.
+    expect(scratchRulesText(SMALL, tallyOf([row({ boxId: "small", tier: "item.rare" })]), noRare)).not.toContain("owed");
+  });
+
+  it("draws a prize the pools can't give at the same point of the roll as any other", () => {
+    const game = { id: "even2", layout: "lucky", pools: [{ id: "p", share: 1 }], roll: { id: 1, size: 30, prizes: [{ count: 8, parts: [{ gp: 5 }] }, { count: 3, parts: [{ item: { rarity: "legendary" } }] }] } };
+    const rng = seededRng(11);
+    const at = {};
+    for (let run = 0; run < 400; run++) {
+      const rows = [];
+      for (let n = 1; n <= 30; n++) {
+        const line = weightedPick(drawBag(game, POOLS, tallyOf(rows)).bag, b => b.weight, rng);
+        rows.push(row({ boxId: "even2", tier: line.key }));
+        if (line.key !== "dud") (at[line.key] ??= []).push(n);
+      }
+    }
+    expect(Object.keys(at).sort()).toEqual(["gp.5", "item.legendary"]);
+    for (const list of Object.values(at)) expect(Math.abs(list.reduce((a, b) => a + b, 0) / list.length - 15.5)).toBeLessThan(2);
   });
 
   it("sells every tier in its turn: no line comes out later than the rest on average", () => {
@@ -222,11 +236,66 @@ describe("the draw without replacement, through performPull", () => {
     expect(outs.every(o => o.state === undefined)).toBe(true);
   });
 
-  it("refuses a roll with a prize that needs items the pools don't hold, before anything is charged", async () => {
+  it("wins an item the pools can't give as an owed prize: charged, nothing created, named by its rarity everywhere", async () => {
     const actor = actorOf();
     const log = ["gp.10", "gp.10", "bonus", "dud", "dud"].map(tier => row({ boxId: "small", tier }));
-    await expect(performPull({ box: { ...SMALL, pools: [] }, pools: POOLS, actor, rng: seededRng(1), log })).rejects.toThrow("Small Ticket has a prize that needs an item its pools don't hold. Tell the GM.");
-    expect(actor.writes).toHaveLength(0);
+    const game = { ...SMALL, pools: [] };
+    const out = await performPull({ box: game, pools: POOLS, actor, rng: seededRng(1), log });
+    expect(out).toMatchObject({ outcome: "item", price: 5, itemId: null, itemIds: [], result: { name: "Rare item", rarity: "rare", owed: true } });
+    expect(out.result.uuid).toBeUndefined();
+    expect(actor.items.size).toBe(0);
+    expect(actor.system.currency.gp).toBe(95);
+    expect(owedWon(out)).toEqual([{ name: "Rare item", rarity: "rare", img: "", owed: true }]);
+    // The card shows the prize by its rarity, on a winning panel.
+    const wins = cardWins(out.card).winners.map(i => out.card.panels[i].prize);
+    expect(wins).toMatchObject([{ item: "rare", name: "Rare item" }]);
+    // The row: the debt, no source uuid (nothing counts as won yet).
+    const logged = SCRATCH.logRow({ game, state: {}, out });
+    expect(logged).toMatchObject({ rollId: 1, name: "Rare item", rarity: "rare", owed: [{ rarity: "rare" }], itemNames: [] });
+    expect(logged.uuid).toBeUndefined();
+    // The GM is told; a ticket that owes nothing says nothing.
+    expect(SCRATCH.gmNote({ game, out }, { actorName: "Tam" })).toBe("Tam won Rare item at Small Ticket, which its pools can't give. Hand it over from the Pull log.");
+    expect(SCRATCH.gmNote({ game, out: { outcome: "coins", payoutCp: 500, result: { name: "5 gp" } } }, { actorName: "Tam" })).toBeNull();
+    expect(SCRATCH.gotText(out)).toBe("won Rare item");
+    // The window and the chat card say who owes it, with no link and no "Added to".
+    const shown = { ...out, actorName: "Tam", box: { name: "Small Ticket", price: 5 }, itemUuid: null, itemUuids: [] };
+    const html = SCRATCH.reveal.result(shown, { esc });
+    expect(html).toContain("Rare item");
+    expect(html).toContain("Owed by the GM: Rare item");
+    expect(html).not.toContain("Added to");
+    const chat = SCRATCH.chat.card(shown, { esc, itemLink: (uuid, name) => `<a data-uuid="${uuid}">${name}</a>` });
+    expect(chat).toContain(`<div class="lc-chat__owed">Owed by the GM: Rare item</div>`);
+    expect(chat).not.toContain("data-uuid");
+    // Watch again plays it and still says it is owed.
+    const again = SCRATCH.reveal.fromSnapshot(JSON.parse(JSON.stringify(SCRATCH.reveal.snapshot(shown))));
+    expect(again.result).toEqual({ name: "Rare item", rarity: "rare", img: "", owed: true });
+    expect(SCRATCH.reveal.result(again, { esc })).toContain("Owed by the GM: Rare item");
+  });
+
+  it("a line with one item given and one owed: the given one is created and linked, the owed one is words", async () => {
+    const game = { ...SMALL, id: "mixed", name: "Mixed", roll: { id: 1, size: 1, prizes: [{ count: 1, parts: [{ item: { rarity: "rare" } }, { item: { rarity: "legendary" } }, { gp: 10 }] }] } };
+    const actor = actorOf();
+    const out = await performPull({ box: game, pools: POOLS, actor, rng: seededRng(3), log: [] });
+    expect(out.itemIds).toHaveLength(1);
+    expect(out.payoutCp).toBe(1000);
+    expect(itemsWon(out).map(i => [i.name, !!i.owed])).toEqual([["Legendary item", true], ["Flame Tongue", false]]);
+    const logged = SCRATCH.logRow({ game, state: {}, out });
+    expect(logged).toMatchObject({ name: "Legendary item and Flame Tongue", uuid: "Item.b", owed: [{ rarity: "legendary" }], itemNames: ["Flame Tongue"] });
+    const shown = { ...out, actorName: "Tam", box: { name: "Mixed", price: 5 }, itemUuid: "Actor.a1.Item.item1", itemUuids: ["Actor.a1.Item.item1"] };
+    const chat = SCRATCH.chat.card(shown, { esc, itemLink: (uuid, name) => `<a data-uuid="${uuid}">${name}</a>` });
+    expect(chat).toContain(`Legendary item, <a data-uuid="Actor.a1.Item.item1">Flame Tongue</a> and 10 gp`);
+    expect(chat).toContain("Owed by the GM: Legendary item");
+    const html = SCRATCH.reveal.result(shown, { esc });
+    expect(html).toContain("Added to Tam");
+    expect(html).toContain("Owed by the GM: Legendary item");
+  });
+
+  it("the log never trims a row whose item is still owed", () => {
+    const rows = Array.from({ length: 6 }, (_, i) => row({ id: `t${i}` }));
+    rows[4].owed = [{ rarity: "rare" }];
+    rows[5].owed = [{ rarity: "rare" }];
+    rows[5].refunded = 9;
+    expect(trimLog(rows, { cap: 2 }).log.map(r => r.id)).toEqual(["t0", "t1", "t4"]);
   });
 });
 
@@ -336,7 +405,7 @@ describe("the readout", () => {
     const preview = scratchPreview(draft, POOLS);
     expect(preview.notes.map(n => n.text)).toEqual([
       "The prizes need 13 tickets, more than 10: the roll is printed at 13.",
-      "The ticked pools hold no Legendary item: no ticket can be sold until they do.",
+      "The ticked pools hold no Legendary item: tick a pool that has one.",
       "The bonus spot is off, so its tickets are left out of the roll.",
     ]);
     const html = scratchPreviewHTML(preview, esc);

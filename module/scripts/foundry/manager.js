@@ -124,6 +124,7 @@ import { skippedNoun, describeSkipped, dropPreviewHTML, savedNotice, PAGE_ROWS, 
 import { formatPrice, parsePrice, unreadablePrice } from "../core/currency.js";
 import { managerNavHTML, MANAGER_TABS, directoryMenuEntry, statusBarHTML } from "../views/route.js";
 import { describeRefund, refundPull } from "./refund.js";
+import { describeOwed, handOver } from "./owedprize.js";
 import { sellBackFromForm } from "../core/afterplay.js";
 import { postRefundCard } from "./chat.js";
 import { makeTicket, showInItems } from "./tickets.js";
@@ -169,7 +170,7 @@ export class CrateManager extends ApplicationV2 {
       bulkAdd: CrateManager.#bulkAdd, setUnsetRarity: CrateManager.#setUnsetRarity, removeEntry: CrateManager.#removeEntry, updateEntry: CrateManager.#updateEntry, relinkEntry: CrateManager.#relinkEntry,
       addBox: CrateManager.#addBox, addWell: CrateManager.#addWell, addDice: CrateManager.#addDice, addDeck: CrateManager.#addDeck, addWheel: CrateManager.#addWheel, addAuction: CrateManager.#addAuction, addScratch: CrateManager.#addScratch, crateFromPool: CrateManager.#crateFromPool,
       editBox: CrateManager.#editBox, toggleShelf: CrateManager.#toggleShelf, copyBox: CrateManager.#copyBox, makeTicket: CrateManager.#makeTicket, deleteBox: CrateManager.#deleteBox, reshuffle: CrateManager.#reshuffle, printRoll: CrateManager.#printRoll, openTable: CrateManager.#openTable,
-      refund: CrateManager.#refund, toggleShop: CrateManager.#toggleShop, openShop: CrateManager.#openShop, toggleMisses: CrateManager.#toggleMisses, econPeriod: CrateManager.#econPeriod, clearLogFilter: CrateManager.#clearLogFilter,
+      refund: CrateManager.#refund, handOver: CrateManager.#handOver, toggleShop: CrateManager.#toggleShop, openShop: CrateManager.#openShop, toggleMisses: CrateManager.#toggleMisses, econPeriod: CrateManager.#econPeriod, clearLogFilter: CrateManager.#clearLogFilter,
       filterChip: CrateManager.#filterChip, showMore: CrateManager.#showMore,
       starterCrates: CrateManager.#starterCrates, shelfAll: CrateManager.#shelfAll,
     },
@@ -1405,6 +1406,40 @@ export class CrateManager extends ApplicationV2 {
     await removeBox(box.id);
     await this.render();
     this.#announce(deletedNotice(box, cancelled));
+  }
+
+  /*
+    Hand over on a Pull log row: the next item the play is still owed
+    (owedprize.js). The dialog lists every item at that rarity in any pool
+    to pick from; "I gave it by hand" clears the debt without making one.
+    With no such item in any pool it says so and offers only that.
+  */
+  static async #handOver(_e, target) {
+    const plan = describeOwed(target.dataset.row);
+    if (plan.status !== "ready") { ui.notifications.warn(plan.message); return this.render(); }
+    const { row, actor, what, choices } = plan;
+    const names = { actor: `<strong>${esc(actor.name)}</strong>`, what: `<strong>${esc(what)}</strong>`, box: `<strong>${esc(row.boxName)}</strong>` };
+    const picker = choices.length
+      ? `<p>${t("LOOTCRATES.Owed.Ask", names)}</p><label class="lc-owed__pick">${t("LOOTCRATES.Owed.Pick")} <select name="pick">${choices.map(c => `<option value="${esc(c.uuid)}">${esc(t("LOOTCRATES.Owed.Choice", { name: c.name, pool: c.poolName }))}</option>`).join("")}</select></label>`
+      : `<p>${t("LOOTCRATES.Owed.AskNone", names)}</p>`;
+    const pick = await DialogV2.wait({
+      window: { title: t("LOOTCRATES.Owed.Title") },
+      classes: ["loot-crates", "lc-dialog"],
+      position: { width: 460 },
+      content: `${picker}<p class="lc-form__hint">${t("LOOTCRATES.Owed.ByHandHint")}</p>`,
+      buttons: [
+        ...(choices.length ? [{ action: "give", label: t("LOOTCRATES.Owed.HandOver"), icon: "fas fa-hand-holding", default: true, callback: (_ev, button) => ({ uuid: button.form?.elements?.pick?.value ?? "" }) }] : []),
+        { action: "byHand", label: t("LOOTCRATES.Owed.ByHand"), default: !choices.length, callback: () => ({ byHand: true }) },
+        { action: "cancel", label: t("LOOTCRATES.Common.Cancel"), callback: () => null },
+      ],
+      rejectClose: false,
+    });
+    if (!pick || (!pick.byHand && !pick.uuid)) return target.focus?.();
+    this.#focusRow = row.id;
+    const done = await handOver(row.id, pick.byHand ? {} : { uuid: pick.uuid });
+    if (done.status === "handed") ui.notifications.info(done.itemName ? t("LOOTCRATES.Owed.Done", { item: done.itemName, actor: actor.name }) : t("LOOTCRATES.Owed.DoneByHand", { what, actor: actor.name }));
+    else ui.notifications.warn(done.message);
+    return this.render();
   }
 
   static async #refund(_e, target) {
