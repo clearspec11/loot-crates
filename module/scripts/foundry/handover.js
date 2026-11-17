@@ -85,7 +85,9 @@ export async function doGive(msg) {
   const { row, sender, actor, item, name } = guard(msg);
   const target = game.actors.get(msg.targetId) ?? null;
   if (!target || !isGiveTarget(target, allUsers(), sender)) throw new PullError(t("LOOTCRATES.After.BadTarget", { item: name }));
-  const part = { at: Date.now(), given: { actorId: target.id, actorName: target.name } };
+  // How many were left on the sheet: the economy counts the give at that (afterplay.js partWorthCp).
+  const worth = row.worth?.[item.id];
+  const part = { at: Date.now(), given: { actorId: target.id, actorName: target.name }, ...(worth ? { qty: heldWorth(worth, item)?.quantity ?? 0 } : {}) };
   const done = await mark(row, item.id, part);
   const data = giftData(item, { fromActorId: actor.id, logId: row.id });
   let made;
@@ -116,10 +118,12 @@ export async function doGive(msg) {
 export async function doSell(msg) {
   const { row, actor, item, name } = guard(msg);
   const box = getBoxes()[row.boxId] ?? null;
-  const cp = sellCp(heldWorth(row.worth?.[item.id], item), box ? sellBackOf(box) : 0);
+  const held = heldWorth(row.worth?.[item.id], item);
+  const cp = sellCp(held, box ? sellBackOf(box) : 0);
   if (!cp) throw new PullError(t("LOOTCRATES.After.SellOff", { box: row.boxName, item: name }));
   if (msg.cp != null && Math.round(Number(msg.cp)) !== cp) throw new PullError(t("LOOTCRATES.After.SellChanged", { box: row.boxName, item: name, price: formatPrice(cp / 100) }));
-  const part = { at: Date.now(), soldCp: cp };
+  // The coins and the worth they're set against are of the same quantity (afterplay.js partWorthCp).
+  const part = { at: Date.now(), soldCp: cp, qty: held.quantity };
   const done = await mark(row, item.id, part);
   const data = typeof item.toObject === "function" ? item.toObject() : structuredClone(item);
   try {

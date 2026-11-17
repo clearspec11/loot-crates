@@ -25,7 +25,10 @@
   after. A row without `at` is refused.
 
   A row records each item's outcome in `parted` by item id: { at, given:
-  { actorId, actorName } } or { at, soldCp }. A given or sold item no
+  { actorId, actorName }, qty } or { at, soldCp, qty }, `qty` how many of
+  the stack were still on the sheet when it went (heldWorth; 0 for a stack
+  used up, none on a part written by 1.8.0 or for an item with no price),
+  so the economy counts it at what was left (partWorthCp). A given or sold item no
   longer counts as owned for no duplicates (tally.js won, odds.js
   ownedAfterPart), and a row with any parted item can't be refunded: the
   item is gone.
@@ -111,6 +114,31 @@ export function heldWorth(worth, item) {
   const now = raw == null ? won : Math.max(0, Math.floor(Number(raw) || 0));
   const quantity = Math.min(won, now);
   return quantity > 0 ? { ...worth, quantity } : null;
+}
+
+/*
+  The quantity a part records (the `qty` heldWorth read when the item was
+  sold or given), or null for a part without one (1.8.0's).
+*/
+export function partQty(part) {
+  if (part?.qty == null) return null;
+  const n = Number(part.qty);
+  return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : null;
+}
+
+/*
+  What an item that left the winner was worth when it went, in copper: the
+  row's worth as granted at the quantity its part records (no more than
+  was won; nothing for a stack used up), or as granted for a part with no
+  quantity (1.8.0's). The economy's soldWorth, gave and got (core/tally.js).
+*/
+export function partWorthCp(row, itemId) {
+  const worth = row?.worth?.[itemId];
+  const qty = partQty(partOf(row, itemId));
+  if (qty == null) return worthCp(worth);
+  const won = Math.max(1, Math.floor(Number(worth?.quantity) || 1));
+  const quantity = Math.min(won, qty);
+  return quantity > 0 ? worthCp({ ...worth, quantity }) : 0;
 }
 
 // The items a row (or a reveal) granted, in order: [{ id, name }].

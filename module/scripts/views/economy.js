@@ -7,7 +7,8 @@
   - By character: Spent, Won in coins, Won in items and Net, sorted by
     Spent. An item counts at its dnd5e price when it was won (the row's
     `worth`, core/afterplay.js worthCp); one sold back counts as the coins
-    it fetched, and one given away counts for the character who has it now.
+    it fetched, and one given away counts for the character who has it now,
+    each at what was left of its stack (what was used up stays won).
   - By game: Plays, Taken, Paid in coins, Paid in items, Payback (what it
     paid out in coins and items for what it took in) and Set payback (the
     one its settings give, where the kind can say: kinds.js payback),

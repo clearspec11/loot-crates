@@ -7,7 +7,7 @@
   for a GM alone.
 */
 import { describe, it, expect, vi, afterEach, beforeAll, afterAll } from "vitest";
-import { registerSettings, appendLog, recordPlay, getTally, migrateTallies, updateLog, updateLogRows, recordPart, liftPart } from "../module/scripts/foundry/store.js";
+import { registerSettings, appendLog, recordPlay, getTally, migrateTallies, updateLog, updateLogRows, recordPart, liftPart, getLog } from "../module/scripts/foundry/store.js";
 import { TALLY_VERSION, TALLY_KEY, applyRow, applyEcon, econOf, emptyTally, migrateLog, tallyOf, countsChange } from "../module/scripts/core/tally.js";
 import { worthCp } from "../module/scripts/core/afterplay.js";
 import { rowPatch } from "../module/scripts/core/round.js";
@@ -120,9 +120,53 @@ describe("the economy tallies, row by row", () => {
     expect(getTally().chars.saria).toBeUndefined();
   });
 
+  it("a partly used stack sold or given counts at what was left; lifted or refunded, exactly that comes back out", async () => {
+    makeWorld();
+    const stack = { potion: W(50, "gp", 10) };
+    const id = await recordPlay({ row: crate({ itemId: "potion", itemIds: ["potion"], uuid: "Item.potion", worth: stack, name: "Potion" }) });
+    await recordPlay({ row: crate({ id: "p2", at: 11, itemId: "flask", itemIds: ["flask"], uuid: "Item.flask", worth: { flask: W(50, "gp", 10) }, name: "Flask" }) });
+    const before = structuredClone(getTally());
+    // Won ten, drank seven, sold three back for 75 gp: set against the three's 150 gp.
+    const sold = await recordPart(id, "potion", { at: 20, soldCp: 7500, qty: 3 });
+    expect(getTally().chars.tam).toEqual({ name: "Tam", spent: 30000, items: 100000, sold: 7500, soldWorth: 15000 });
+    // The other stack given with three left: the giver gave, and the receiver got, the three's worth.
+    const given = await recordPart("p2", "flask", { at: 21, given: { actorId: "saria", actorName: "Saria" }, qty: 3 });
+    expect(getTally().chars.tam).toMatchObject({ gave: 15000, sold: 7500, soldWorth: 15000 });
+    expect(getTally().chars.saria).toEqual({ name: "Saria", got: 15000 });
+    // The readout: the seven drunk of each stay won; the sale's coins and Saria's three.
+    const lines = Object.fromEntries(charLines(getTally().chars).map(l => [l.id, l]));
+    expect(lines.tam).toMatchObject({ coins: 7500, items: 70000 });
+    expect(lines.saria).toMatchObject({ items: 15000 });
+    // This session, from the log, says the same as All time.
+    expect(econOf(getLog()).chars).toEqual(getTally().chars);
+    // A failed give lifts its mark: exactly the three come back out.
+    await liftPart(given);
+    expect(getTally().chars.saria).toBeUndefined();
+    expect(getTally().chars.tam.gave).toBeUndefined();
+    await liftPart(sold);
+    expect(getTally()).toEqual(before);
+    // A refund of a row whose part is marked (store level) takes that back too.
+    await recordPart(id, "potion", { at: 22, soldCp: 7500, qty: 3 });
+    await updateLog(id, { refunded: 30 });
+    expect(getTally().chars.tam).toEqual({ name: "Tam", spent: 15000, items: 50000 });
+  });
+
+  it("a stack used up to nothing gives nothing; a part with no quantity (1.8.0) counts the stack as won", () => {
+    const row = crate({ itemId: "potion", itemIds: ["potion"], worth: { potion: W(50, "gp", 10) } });
+    const gone = applyRow(emptyTally(), { ...row, parted: { potion: { at: 1, given: { actorId: "saria", actorName: "Saria" }, qty: 0 } } });
+    expect(gone.chars.tam).toEqual({ name: "Tam", spent: 15000, items: 50000 });
+    expect(gone.chars.saria).toBeUndefined();
+    const old = applyRow(emptyTally(), { ...row, parted: { potion: { at: 1, soldCp: 7500 } } });
+    expect(old.chars.tam).toMatchObject({ sold: 7500, soldWorth: 50000 });
+    // A quantity more than was won (a stack topped up since) counts no more than was won.
+    const more = applyRow(emptyTally(), { ...row, parted: { potion: { at: 1, soldCp: 7500, qty: 40 } } });
+    expect(more.chars.tam.soldWorth).toBe(50000);
+  });
+
   it("the parts, the payout and the price are what a tally reads: a patch to them moves it", () => {
     const row = crate();
     expect(countsChange(row, { ...row, parted: { wand: { at: 1, soldCp: 5 } } })).toBe(true);
+    expect(countsChange({ ...row, parted: { wand: { at: 1, soldCp: 5 } } }, { ...row, parted: { wand: { at: 1, soldCp: 5, qty: 1 } } })).toBe(true);
     expect(countsChange(row, { ...row, worth: { wand: W(10) } })).toBe(true);
     expect(countsChange(row, { ...row, lateCancel: 3 })).toBe(false);
   });
@@ -156,8 +200,14 @@ function fixture(seed = 5, n = 600) {
     if (kind === "scratch") Object.assign(row, { rollId: 1, tier: "dud", payoutCp: rng() < 0.3 ? 500 : 0 });
     if (kind === "roulette") Object.assign(row, { roundId: "R1", status: row.refunded ? "refunded" : "settled", payoutCp: rng() < 0.4 ? 2000 : 0 });
     if ((kind === "crate" || kind === "well") && rng() < 0.6) {
-      Object.assign(row, { itemId: `i${i}`, itemIds: [`i${i}`], uuid: `Item.${i % 7}`, worth: { [`i${i}`]: W(pick([1, 25, 400]), pick(["gp", "sp"])) } });
-      if (!row.refunded && rng() < 0.2) row.parted = { [`i${i}`]: rng() < 0.5 ? { at: at + 1, soldCp: 500 } : { at: at + 1, given: { actorId: pick(ACTORS), actorName: "Gift" } } };
+      const won = pick([1, 1, 5, 10]);
+      Object.assign(row, { itemId: `i${i}`, itemIds: [`i${i}`], uuid: `Item.${i % 7}`, worth: { [`i${i}`]: W(pick([1, 25, 400]), pick(["gp", "sp"]), won) } });
+      if (!row.refunded && rng() < 0.3) {
+        // What was left when it went: the whole stack, part of it, none, or not recorded (1.8.0).
+        const left = pick([won, Math.ceil(won / 3), 0, null]);
+        const qty = left == null ? {} : { qty: left };
+        row.parted = { [`i${i}`]: rng() < 0.5 ? { at: at + 1, soldCp: 500, ...qty } : { at: at + 1, given: { actorId: pick(ACTORS), actorName: "Gift" }, ...qty } };
+      }
     }
     if (rng() < 0.05 && kind !== "roulette") row.keep = { paid: row.price };
     rows.push(row);
@@ -181,8 +231,11 @@ function recount(log) {
     add(chars, r.actorId, "paid", Math.max(0, r.payoutCp));
     add(chars, r.actorId, "items", value);
     for (const [id, part] of Object.entries(r.parted ?? {})) {
-      if (part.given) { add(chars, r.actorId, "gave", worthCp(r.worth[id])); add(chars, part.given.actorId, "got", worthCp(r.worth[id])); }
-      else { add(chars, r.actorId, "sold", part.soldCp); add(chars, r.actorId, "soldWorth", worthCp(r.worth[id])); }
+      // At what was left when it went; a part with no quantity at the stack as won.
+      const w = r.worth[id];
+      const left = part.qty == null ? worthCp(w) : part.qty > 0 ? worthCp({ ...w, quantity: Math.min(part.qty, w.quantity) }) : 0;
+      if (part.given) { add(chars, r.actorId, "gave", left); add(chars, part.given.actorId, "got", left); }
+      else { add(chars, r.actorId, "sold", part.soldCp); add(chars, r.actorId, "soldWorth", left); }
     }
   }
   return { chars, games };
