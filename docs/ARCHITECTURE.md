@@ -201,7 +201,6 @@ Setup, the harness, the smoke run, the live checks and what to run before a pull
 | `clock.js` | The in-game day's key, with dnd5e's calendar on or off |
 | `limits.js` | A game's stock and its limit per character: the words, the count from the tallies and the editor's group |
 | `afterplay.js` | After the reveal: what an item is worth as granted and what the house pays for it (`rules.sellBack`), who an item can be given to, why the GM refuses a give or a sell, and how a row says what became of its items |
-
 | `owedprize.js` | An item a play won that nobody has been given yet: what a row owes and what was handed over, in words; the items the GM can pick for a rarity; the row's patch once one is handed over |
 | `tally.js` | The tallies every rule counts from, kept with each Pull log row: what a row adds, the one-time migration from the log, and the trim that keeps a round's rows |
 | `shelf.js` | Whether players can see a game: the shop's filter, the GM's refusal, the editor's box and the row's toggle |
