@@ -290,6 +290,23 @@ describe("Give to…", () => {
     expect(getTally().chars.actor2).toEqual({ name: "Saria", got: 15000 });
   });
 
+  it("a give after a sale that failed counts what is on the sheet at the give, not at the sale", async () => {
+    const world = makeWorld();
+    globalThis.fromUuid = async () => ({ name: "Potion", img: "", toObject: () => ({ name: "Potion", type: "consumable", system: { price: { value: 50, denomination: "gp" }, quantity: 10 }, flags: {} }) });
+    const { row, itemId } = await won(world);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    world.brinn.items[0].system.quantity = 3;
+    world.brinn.failUpdate = true;
+    expect((await sell(row, itemId, 7500)).type).toBe("error");
+    expect(getLog()[0].parted).toBeUndefined();
+    world.brinn.failUpdate = false;
+    // One more drunk before the give: two are given, and two are counted.
+    world.brinn.items[0].system.quantity = 2;
+    expect((await give(row, itemId, "actor2")).part).toMatchObject({ qty: 2 });
+    expect(getTally().chars.actor1).toEqual({ name: "Brinn", spent: 1000, items: 50000, gave: 10000 });
+    expect(getTally().chars.actor2).toEqual({ name: "Saria", got: 10000 });
+  });
+
   it("a give that can't finish takes back exactly what it counted", async () => {
     const world = makeWorld();
     globalThis.fromUuid = async () => ({ name: "Potion", img: "", toObject: () => ({ name: "Potion", type: "consumable", system: { price: { value: 50, denomination: "gp" }, quantity: 10 }, flags: {} }) });
@@ -501,6 +518,21 @@ describe("a spectator's line comes from the GM's log, never from the socket's wo
     vi.setSystemTime(Date.now() + PART_WAIT_MS + 1);
     await recordPart(row.id, itemId, { at: Date.now(), soldCp: 7500 });
     expect(heard).toEqual([]);
+  });
+
+  it("keeps a word for the whole wait, to the millisecond, and no more than fifty at once", async () => {
+    const world = makeWorld();
+    const { row, itemId } = await won(world);
+    const heard = asSpectator(world);
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const t0 = Date.now();
+    world.onSocket(forged(row, itemId));
+    // Fifty-one more words for rows that don't exist: the first is still kept, the last never is.
+    for (let i = 0; i < 51; i++) world.onSocket(forged({ id: `none${i}` }, itemId));
+    vi.setSystemTime(t0 + PART_WAIT_MS);
+    await recordPart(row.id, itemId, { at: Date.now(), soldCp: 7500 });
+    expect(heard).toHaveLength(1);
+    expect(heard[0]).toMatchObject({ logId: row.id, itemName: "Wand wand", part: { soldCp: 7500 } });
   });
 
   it("the winner's own late answer still lands as their own", async () => {
