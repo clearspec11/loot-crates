@@ -155,12 +155,15 @@ export const anyParted = row => partedItems(row).length > 0;
 /*
   What a reveal says became of an item, from the row alone: the `parted`
   word with the row's own part and names, or null while the row has no
-  part for that item. A spectator's window shows only this (handover.js
+  part for that item, and the part is done (store.js sealPart: the GM marks
+  the row before the item moves and lifts the mark if the move fails, so a
+  mark alone is not yet true). A spectator's window shows only this (handover.js
   heardOnTable), never the names or price a socket message carries.
 */
 export function partedFromRow(row, itemId) {
   const part = partOf(row, itemId);
-  const item = part ? rowItems(row).find(i => i.id === itemId) : null;
+  // Marked but not done: the item may not move after all (the mark is lifted).
+  const item = part?.done ? rowItems(row).find(i => i.id === itemId) : null;
   if (!item) return null;
   return { type: "parted", logId: row.id, userId: row.userId ?? null, itemId, itemName: item.name, actorName: row.actorName ?? "", part };
 }

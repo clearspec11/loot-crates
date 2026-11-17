@@ -26,14 +26,16 @@
   - Sell: the item is deleted, then the coins paid through settle(). Coins
     that can't be paid put the item back with its id.
   Either failure lifts the mark (liftPart) and is refused with a plain
-  sentence. Once done, everyone's open reveal of the play hears it on the
+  sentence. Once done, the row's part is stamped done (sealPart): until
+  then no spectator's window says the item went, so a lifted mark is never
+  said. Then everyone's open reveal of the play hears it on the
   socket (`parted`, display only, and taken only as a pointer to the row:
   heardOnTable) and the play's chat card gets a line; the winner has it as
   the query's answer.
 */
 import { SOCKET, MODULE_ID } from "../core/config.js";
 import { PullError } from "../games/kinds.js";
-import { getLog, getBoxes, recordPart, liftPart } from "./store.js";
+import { getLog, getBoxes, recordPart, liftPart, sealPart } from "./store.js";
 import { createGrants } from "./pull.js";
 import { partRefusal, isGiveTarget, sellBackOf, sellCp, heldWorth, rowItems, partsLine, partedFromRow } from "../core/afterplay.js";
 import { settle, formatPrice } from "../core/currency.js";
@@ -157,7 +159,14 @@ export async function doSell(msg) {
   and the answer goes back. The writes are settled by now, so a chat card
   that can't be written is logged, never thrown.
 */
-async function finish({ msg, row, actor, itemId, name, part, extra }) {
+async function finish({ msg, row, actor, itemId, name, part: marked, extra }) {
+  // The move is made: only now does the row say so to the table (sealPart).
+  let part = marked;
+  try {
+    part = await sealPart(row.id, itemId) ?? marked;
+  } catch (err) {
+    console.error(`loot-crates | could not mark ${name} as moved on its Pull log row; other players' windows won't say what became of it`, err);
+  }
   const parted = { type: "parted", logId: row.id, userId: row.userId, itemId, itemName: name, actorName: actor.name, part };
   try { game.socket.emit(SOCKET, parted); } catch (err) { console.error("loot-crates | telling the table what was given or sold failed", err); }
   tellParted(parted);
@@ -180,8 +189,8 @@ export function tellParted(msg) {
 /*
   The socket's `parted` (socket.js), which any client can emit: only its
   logId and itemId are read, as where to look. The line is said only when
-  the play's Pull log row, which only a GM writes, has a part for that
-  item, in the row's words (afterplay.js partedFromRow). The row's write
+  the play's Pull log row, which only a GM writes, has a done part for
+  that item, in the row's words (afterplay.js partedFromRow). The row's write
   and the message reach a client in either order, so one heard before its
   row is kept aside and said when the log next changes (logHeard, from
   main.js's store listener), or forgotten after PART_WAIT_MS: no timer,

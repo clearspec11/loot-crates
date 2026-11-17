@@ -11,7 +11,7 @@ vi.mock("../module/scripts/foundry/reveal.js", () => ({ showReveal: vi.fn(async 
 vi.mock("../module/scripts/foundry/chat.js", () => ({ postPullCard: vi.fn(async () => null), postKeptCard: vi.fn(async () => null) }));
 
 const { registerSocket, heardRequest } = await import("../module/scripts/foundry/socket.js");
-const { registerSettings, enqueueWrite, getLog, getTally, getActorState, appendLog, recordPart, setStoreListener } = await import("../module/scripts/foundry/store.js");
+const { registerSettings, enqueueWrite, getLog, getTally, getActorState, appendLog, recordPart, sealPart, setStoreListener } = await import("../module/scripts/foundry/store.js");
 const { refundPull, describeRefund } = await import("../module/scripts/foundry/refund.js");
 const { onParted, logHeard, PART_WAIT_MS } = await import("../module/scripts/foundry/handover.js");
 const { wonCount } = await import("../module/scripts/core/tally.js");
@@ -503,10 +503,47 @@ describe("a spectator's line comes from the GM's log, never from the socket's wo
     expect(heard).toEqual([]);
     // The GM's write lands on this client afterwards: the line, from the row.
     await recordPart(row.id, itemId, part);
-    expect(heard).toEqual([{ type: "parted", logId: row.id, userId: "p1", itemId, itemName: "Wand wand", actorName: "Brinn", part }]);
+    // Marked, the item not yet moved: still nothing.
+    expect(heard).toEqual([]);
+    await sealPart(row.id, itemId);
+    expect(heard).toEqual([{ type: "parted", logId: row.id, userId: "p1", itemId, itemName: "Wand wand", actorName: "Brinn", part: { ...part, done: true } }]);
     // Later changes to the log don't say it again.
     await appendLog({ id: "other", at: Date.now(), userId: "p3", actorId: "actor2", boxId: "box", name: "x" });
     expect(heard).toHaveLength(1);
+  });
+
+  it("says nothing for a sale that fails and is lifted, though a forged word came while its row was marked", async () => {
+    const world = makeWorld();
+    const { row, itemId } = await won(world);
+    const heard = asSpectator(world);
+    // Cy's word arrives first and is kept; then Ana's real sale marks the row and can't pay.
+    world.onSocket(forged(row, itemId));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    world.brinn.failUpdate = true;
+    expect((await sell(row, itemId, 7500)).type).toBe("error");
+    expect(getLog().find(r => r.id === row.id).parted).toBeUndefined();
+    // A word heard while the row was only marked says nothing either.
+    await recordPart(row.id, itemId, { at: Date.now(), soldCp: 7500 });
+    world.onSocket(forged(row, itemId));
+    await appendLog({ id: "other", at: Date.now(), userId: "p3", actorId: "actor2", boxId: "box", name: "x" });
+    expect(heard).toEqual([]);
+  });
+
+  it("a sale that goes through stamps its part done, and the tallies count it once", async () => {
+    const world = makeWorld();
+    const { row, itemId } = await won(world);
+    const tallyBefore = JSON.stringify(getTally());
+    const answer = await sell(row, itemId, 7500);
+    const marked = JSON.stringify(getTally());
+    expect(answer.part.done).toBe(true);
+    expect(getLog().find(r => r.id === row.id).parted[itemId]).toMatchObject({ soldCp: 7500, done: true });
+    expect(marked).not.toBe(tallyBefore);
+    // Stamping it again moves no count.
+    await sealPart(row.id, itemId);
+    expect(JSON.stringify(getTally())).toBe(marked);
+    // No part, nothing to stamp.
+    expect(await sealPart(row.id, "not-an-item")).toBeNull();
+    expect(await sealPart("nope", itemId)).toBeNull();
   });
 
   it("forgets a word whose row hasn't had it after a short wait", async () => {
@@ -531,6 +568,7 @@ describe("a spectator's line comes from the GM's log, never from the socket's wo
     for (let i = 0; i < 51; i++) world.onSocket(forged({ id: `none${i}` }, itemId));
     vi.setSystemTime(t0 + PART_WAIT_MS);
     await recordPart(row.id, itemId, { at: Date.now(), soldCp: 7500 });
+    await sealPart(row.id, itemId);
     expect(heard).toHaveLength(1);
     expect(heard[0]).toMatchObject({ logId: row.id, itemName: "Wand wand", part: { soldCp: 7500 } });
   });

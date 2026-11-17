@@ -162,7 +162,10 @@ describe("the row's outcome", () => {
     expect(partedFromRow(null, "i1")).toBeNull();
     const two = { ...row, userId: "p1", itemIds: ["i1", "i2"], itemNames: ["Wand of Webs", "Potion"], parted: { i2: { soldCp: 2500 } } };
     expect(partedFromRow(two, "i1")).toBeNull();
-    expect(partedFromRow(two, "i2")).toEqual({ type: "parted", logId: "r", userId: "p1", itemId: "i2", itemName: "Potion", actorName: "Brinn", part: { soldCp: 2500 } });
+    // Marked, the item not yet moved (the mark may be lifted): nothing yet.
+    expect(partedFromRow(two, "i2")).toBeNull();
+    const done = { ...two, parted: { i2: { soldCp: 2500, done: true } } };
+    expect(partedFromRow(done, "i2")).toEqual({ type: "parted", logId: "r", userId: "p1", itemId: "i2", itemName: "Potion", actorName: "Brinn", part: { soldCp: 2500, done: true } });
     // A part for an id the row never granted says nothing.
     expect(partedFromRow({ ...row, parted: { x9: { soldCp: 1 } } }, "x9")).toBeNull();
   });
