@@ -124,6 +124,19 @@ export const partOf = (row, itemId) => row?.parted?.[itemId] ?? null;
 export const partedItems = row => rowItems(row).filter(i => partOf(row, i.id));
 export const anyParted = row => partedItems(row).length > 0;
 
+/*
+  What a reveal says became of an item, from the row alone: the `parted`
+  word with the row's own part and names, or null while the row has no
+  part for that item. A spectator's window shows only this (handover.js
+  heardOnTable), never the names or price a socket message carries.
+*/
+export function partedFromRow(row, itemId) {
+  const part = partOf(row, itemId);
+  const item = part ? rowItems(row).find(i => i.id === itemId) : null;
+  if (!item) return null;
+  return { type: "parted", logId: row.id, userId: row.userId ?? null, itemId, itemName: item.name, actorName: row.actorName ?? "", part };
+}
+
 // Whether the row's first item (the one its `uuid` names, which no
 // duplicates counts) was given or sold.
 export function firstParted(row) {

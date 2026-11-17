@@ -11,10 +11,11 @@ vi.mock("../module/scripts/foundry/reveal.js", () => ({ showReveal: vi.fn(async 
 vi.mock("../module/scripts/foundry/chat.js", () => ({ postPullCard: vi.fn(async () => null), postKeptCard: vi.fn(async () => null) }));
 
 const { registerSocket, heardRequest } = await import("../module/scripts/foundry/socket.js");
-const { registerSettings, enqueueWrite, getLog, getTally, getActorState, appendLog } = await import("../module/scripts/foundry/store.js");
+const { registerSettings, enqueueWrite, getLog, getTally, getActorState, appendLog, recordPart, setStoreListener } = await import("../module/scripts/foundry/store.js");
 const { refundPull, describeRefund } = await import("../module/scripts/foundry/refund.js");
-const { onParted } = await import("../module/scripts/foundry/handover.js");
+const { onParted, logHeard, PART_WAIT_MS } = await import("../module/scripts/foundry/handover.js");
 const { wonCount } = await import("../module/scripts/core/tally.js");
+const { SETTINGS } = await import("../module/scripts/core/config.js");
 
 const tick = () => new Promise(r => setTimeout(r, 0));
 const GM = { id: "gm", name: "Gamemaster", isGM: true };
@@ -67,6 +68,7 @@ function makeWorld() {
   const settings = new Map();
   const onChange = new Map();
   const emitted = [];
+  const handlers = [];
   const calls = [];
   const brinn = makeActor("actor1", "Brinn", ["p1"], calls);
   const saria = makeActor("actor2", "Saria", ["p3"], calls);
@@ -85,7 +87,7 @@ function makeWorld() {
       get: (ns, key) => settings.get(`${ns}.${key}`),
       async set(ns, key, value) { await tick(); settings.set(`${ns}.${key}`, value); onChange.get(`${ns}.${key}`)?.(value); },
     },
-    socket: { on: () => {}, emit: (_n, msg) => emitted.push(msg) },
+    socket: { on: (_n, fn) => handlers.push(fn), emit: (_n, msg) => emitted.push(msg) },
   };
   globalThis.game = game;
   globalThis.ui = { notifications: notes };
@@ -94,7 +96,9 @@ function makeWorld() {
   globalThis.fromUuid = async uuid => ({ name: `Wand ${uuid}`, img: "", toObject: () => ({ name: `Wand ${uuid}`, type: "equipment", system: { price: { ...PRICE }, quantity: 1 }, flags: {} }) });
   registerSettings();
   registerSocket();
-  return { game, brinn, saria, pony, npcHero, wolf, emitted, notes, calls };
+  // A word on the module's socket, as Foundry hands it to every other client.
+  const onSocket = msg => handlers.forEach(h => h(msg));
+  return { game, brinn, saria, pony, npcHero, wolf, emitted, notes, calls, onSocket };
 }
 
 const POOL = { id: "pool", name: "Pool", pools: [], entries: [{ uuid: "wand", name: "Wand", img: "", rarity: "common", weight: 1 }] };
@@ -125,6 +129,8 @@ const gp = actor => actor.system.currency.gp;
 
 afterEach(() => {
   onParted(null);
+  setStoreListener(null);
+  vi.useRealTimers();
   for (const k of ["game", "ui", "CONFIG", "foundry", "fromUuid"]) delete globalThis[k];
 });
 
@@ -359,5 +365,99 @@ describe("several items from one play", () => {
     expect(world.brinn.items).toHaveLength(0);
     expect(Object.keys(getLog()[0].parted).sort()).toEqual([a, b].sort());
     expect(describeRefund("row2").message).toBe("This play can't be refunded, because what it won has left the sheet: Brinn gave Wand of Webs to Saria; sold Potion back for 25 gp. Nothing was refunded.");
+  });
+});
+
+/*
+  A spectator's "gave / sold" line (B1): the socket's `parted` can be sent
+  by any client, so a spectator reads only where to look (logId, itemId)
+  and says the line from the play's Pull log row, which only a GM writes.
+*/
+describe("a spectator's line comes from the GM's log, never from the socket's word", () => {
+  // Cy's client, watching Ana's play; the store listener as main.js sets it.
+  const asSpectator = world => {
+    world.game.user = CY;
+    setStoreListener(key => { if (key === SETTINGS.LOG) logHeard(); });
+    const heard = [];
+    onParted(msg => heard.push(msg));
+    return heard;
+  };
+  const forged = (row, itemId, extra = {}) => ({ type: "parted", logId: row.id, userId: "p3x", itemId, itemName: "Crown of the Lich", actorName: "Mallory", part: { at: 1, soldCp: 9999900 }, ...extra });
+
+  it("shows nothing for a row with no such part, whatever names and price the word carries", async () => {
+    const world = makeWorld();
+    const { row, itemId } = await won(world);
+    const heard = asSpectator(world);
+    world.onSocket(forged(row, itemId));
+    world.onSocket(forged(row, itemId, { part: { at: 1, given: { actorId: "actor2", actorName: "Saria" } }, own: true }));
+    // No such row, no such item: nothing either.
+    world.onSocket(forged({ id: "nope" }, itemId));
+    world.onSocket(forged(row, "not-an-item"));
+    // The log changing for something else says nothing either.
+    await setRules(world.game, { sellBack: 40 });
+    await appendLog({ id: "other", at: Date.now(), userId: "p3", actorId: "actor2", boxId: "box", name: "x" });
+    expect(heard).toEqual([]);
+    expect(getLog().find(r => r.id === row.id).parted).toBeUndefined();
+  });
+
+  it("says the row's words for a forged word on a row that does have a part, not the message's", async () => {
+    const world = makeWorld();
+    const { row, itemId } = await won(world);
+    expect((await sell(row, itemId, 7500)).part.soldCp).toBe(7500);
+    const heard = asSpectator(world);
+    world.onSocket(forged(row, itemId, { own: true, purse: { gp: 99999 } }));
+    expect(heard).toEqual([{ type: "parted", logId: row.id, userId: "p1", itemId, itemName: "Wand wand", actorName: "Brinn", part: expect.objectContaining({ soldCp: 7500 }) }]);
+    expect(heard[0].own).toBeUndefined();
+    expect(heard[0].purse).toBeUndefined();
+  });
+
+  it("says a true word once when the row's write came first", async () => {
+    const world = makeWorld();
+    const { row, itemId } = await won(world);
+    await sell(row, itemId, 7500);
+    const word = world.emitted.find(m => m.type === "parted");
+    const heard = asSpectator(world);
+    world.onSocket(word);
+    await setRules(world.game, { sellBack: 40 });
+    expect(heard).toHaveLength(1);
+    expect(heard[0]).toMatchObject({ itemName: "Wand wand", actorName: "Brinn", part: { soldCp: 7500 } });
+  });
+
+  it("says a true word once when the row's write comes after it", async () => {
+    const world = makeWorld();
+    const { row, itemId } = await won(world);
+    const heard = asSpectator(world);
+    const part = { at: Date.now(), given: { actorId: "actor2", actorName: "Saria" } };
+    world.onSocket({ type: "parted", logId: row.id, userId: "p1", itemId, itemName: "Wand wand", actorName: "Brinn", part });
+    expect(heard).toEqual([]);
+    // The GM's write lands on this client afterwards: the line, from the row.
+    await recordPart(row.id, itemId, part);
+    expect(heard).toEqual([{ type: "parted", logId: row.id, userId: "p1", itemId, itemName: "Wand wand", actorName: "Brinn", part }]);
+    // Later changes to the log don't say it again.
+    await appendLog({ id: "other", at: Date.now(), userId: "p3", actorId: "actor2", boxId: "box", name: "x" });
+    expect(heard).toHaveLength(1);
+  });
+
+  it("forgets a word whose row hasn't had it after a short wait", async () => {
+    const world = makeWorld();
+    const { row, itemId } = await won(world);
+    const heard = asSpectator(world);
+    vi.useFakeTimers({ toFake: ["Date"] });
+    world.onSocket(forged(row, itemId));
+    vi.setSystemTime(Date.now() + PART_WAIT_MS + 1);
+    await recordPart(row.id, itemId, { at: Date.now(), soldCp: 7500 });
+    expect(heard).toEqual([]);
+  });
+
+  it("the winner's own late answer still lands as their own", async () => {
+    const world = makeWorld();
+    const { row, itemId } = await won(world);
+    world.game.user = ANA;
+    const heard = [];
+    onParted(msg => heard.push(msg));
+    // The socket's word, even claiming to be Ana's own, is never `own`.
+    await sell(row, itemId, 7500);
+    world.onSocket(forged(row, itemId, { own: true }));
+    expect(heard.every(m => !m.own)).toBe(true);
   });
 });

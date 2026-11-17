@@ -27,14 +27,15 @@
     that can't be paid put the item back with its id.
   Either failure lifts the mark (liftPart) and is refused with a plain
   sentence. Once done, everyone's open reveal of the play hears it on the
-  socket (`parted`, display only) and the play's chat card gets a line;
-  the winner has it as the query's answer.
+  socket (`parted`, display only, and taken only as a pointer to the row:
+  heardOnTable) and the play's chat card gets a line; the winner has it as
+  the query's answer.
 */
 import { SOCKET, MODULE_ID } from "../core/config.js";
 import { PullError } from "../games/kinds.js";
 import { getLog, getBoxes, recordPart, liftPart } from "./store.js";
 import { createGrants } from "./pull.js";
-import { partRefusal, isGiveTarget, sellBackOf, sellCp, heldWorth, rowItems, partsLine } from "../core/afterplay.js";
+import { partRefusal, isGiveTarget, sellBackOf, sellCp, heldWorth, rowItems, partsLine, partedFromRow } from "../core/afterplay.js";
 import { settle, formatPrice } from "../core/currency.js";
 import { findPullCard, partedCardContent } from "../views/chatcard.js";
 import { t } from "../core/i18n.js";
@@ -162,13 +163,62 @@ async function finish({ msg, row, actor, itemId, name, part, extra }) {
 
 // The open reveal windows on this client hear what became of an item
 // (reveal.js heardParted sets the listener, so this file imports no
-// window): from the socket, and from this GM's own give or sell, whose
-// emit it never hears.
+// window): from the Pull log, when the socket says to look (heardOnTable),
+// from this GM's own give or sell, whose emit it never hears, and from the
+// winner's own late answer (socket.js answered, `own`).
 let heard = null;
 export function onParted(fn) { heard = typeof fn === "function" ? fn : null; }
 export function tellParted(msg) {
   try { heard?.(msg); } catch (err) { console.error("loot-crates | showing what became of an item failed", err); }
   return null;
+}
+
+/*
+  The socket's `parted` (socket.js), which any client can emit: only its
+  logId and itemId are read, as where to look. The line is said only when
+  the play's Pull log row, which only a GM writes, has a part for that
+  item, in the row's words (afterplay.js partedFromRow). The row's write
+  and the message reach a client in either order, so one heard before its
+  row is kept aside and said when the log next changes (logHeard, from
+  main.js's store listener), or forgotten after PART_WAIT_MS: no timer,
+  the wait is checked when the log changes or the next word comes.
+*/
+export const PART_WAIT_MS = 15 * 1000;
+const PART_WAIT_MAX = 50;
+const waiting = new Map();
+const waitKey = (logId, itemId) => `${logId}\u0000${itemId}`;
+const rowOf = logId => getLog().find(r => r.id === logId) ?? null;
+
+function forgetStale(now) {
+  for (const [key, w] of waiting) if (now - w.at > PART_WAIT_MS) waiting.delete(key);
+}
+
+export function heardOnTable(msg) {
+  const logId = typeof msg?.logId === "string" ? msg.logId : null;
+  const itemId = typeof msg?.itemId === "string" ? msg.itemId : null;
+  if (!logId || !itemId) return null;
+  const now = Date.now();
+  forgetStale(now);
+  const said = partedFromRow(rowOf(logId), itemId);
+  const key = waitKey(logId, itemId);
+  if (said) {
+    waiting.delete(key);
+    return tellParted(said);
+  }
+  if (!waiting.has(key) && waiting.size < PART_WAIT_MAX) waiting.set(key, { logId, itemId, at: now });
+  return null;
+}
+
+// The Pull log changed on this client: say each word kept aside whose row now has its part.
+export function logHeard() {
+  if (!waiting.size) return;
+  forgetStale(Date.now());
+  for (const [key, { logId, itemId }] of waiting) {
+    const said = partedFromRow(rowOf(logId), itemId);
+    if (!said) continue;
+    waiting.delete(key);
+    tellParted(said);
+  }
 }
 
 // The play's chat card, with what became of its items.

@@ -102,10 +102,15 @@
                                                            or sell it back for cp
     { type: "parted", logId, userId, itemId, itemName, actorName, part }
                                                            the GM's answer to either,
-                                                           and to everyone on SOCKET
-                                                           (each open reveal of the
-                                                           play says it; the winner's
-                                                           own ignores the socket's)
+                                                           and to everyone on SOCKET.
+                                                           Anyone can emit it, so a
+                                                           client reads only logId and
+                                                           itemId from the socket's and
+                                                           says the line from the Pull
+                                                           log row's part, when it has
+                                                           one (handover.js
+                                                           heardOnTable); the winner's
+                                                           own ignores the socket's
 
   A buyer who gave up waiting (GM_TIMEOUT_MS) calls the purchase off, and the
   GM drops a request that is cancelled before it charges: otherwise a GM
@@ -166,7 +171,7 @@ import { postPullCard, postKeptCard } from "./chat.js";
 import { ticketToRedeem } from "./tickets.js";
 import { keepRow } from "../games/ticket.js";
 import { t, onStrings } from "../core/i18n.js";
-import { doGive, doSell, tellParted } from "./handover.js";
+import { doGive, doSell, tellParted, heardOnTable } from "./handover.js";
 
 export const GM_TIMEOUT_MS = 30000;
 // After this long without a reveal, the buyer's shop says it is waiting on
@@ -332,9 +337,11 @@ export function registerSocket() {
     if (msg.type === "ack" && mine) return heardFromGM(msg);
     // The reveal is everyone's to watch; the buyer's own is its answer.
     if (msg.type === "reveal") return mine ? heardOnSocket(msg) : showReveal(msg);
-    // What became of an item after the reveal: everyone else's window says
-    // it; the winner's own takes it from its answer (anyone can emit this).
-    if (msg.type === "parted") return mine ? null : tellParted(msg);
+    // What became of an item after the reveal. Anyone can emit this, so it
+    // is only where to look: the line is said from the play's Pull log row,
+    // which only a GM writes (handover.js heardOnTable), never from the
+    // message's names, price or `own`. The winner's own takes its answer.
+    if (msg.type === "parted") return mine ? null : heardOnTable({ logId: msg.logId, itemId: msg.itemId });
     if (mine && SOCKET_ANSWERS.has(msg.type)) return heardOnSocket(msg);
     return null;
   });
