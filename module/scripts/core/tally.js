@@ -42,7 +42,10 @@
       core/afterplay.js worthCp), sold (coins from selling one back),
       soldWorth (what those were worth), gave (what the items given away
       were worth), got (what the items given to them were worth: counted
-      on the receiver, from the giver's row) }.
+      on the receiver, from the giver's row) }. An item sold or given is
+      worth what was left of its stack when it went (the part's `qty`,
+      afterplay.js partWorthCp), so the part used up stays in `items`; a
+      part from 1.8.0, with no `qty`, at its worth as granted.
     - games: { name, plays (every row but a Buy to keep; a ticket's use
       is the play), taken (as `spent`), paid, items }. A table stake is
       taken when placed and its settle adds what it paid; a stake turned
@@ -84,7 +87,7 @@
 
   Pure: no Foundry globals.
 */
-import { firstParted, rowItems, partOf, worthCp } from "./afterplay.js";
+import { firstParted, rowItems, partOf, worthCp, partWorthCp } from "./afterplay.js";
 
 export const TALLY_VERSION = 3;
 // Where the tallies are kept in the STATE setting (1.7.0 kept version 1
@@ -195,14 +198,15 @@ export function applyEcon(tally, row, sign = 1) {
   for (const i of items) {
     const part = partOf(row, i.id);
     if (!part) continue;
+    const left = partWorthCp(row, i.id);
     if (part.given?.actorId) {
-      bump(c, "gave", sign * worth(i.id));
+      bump(c, "gave", sign * left);
       const to = entry(t.chars, part.given.actorId, part.given.actorName);
-      bump(to, "got", sign * worth(i.id));
+      bump(to, "got", sign * left);
       tidy(t.chars, part.given.actorId);
     } else {
       bump(c, "sold", sign * Math.max(0, Math.round(Number(part.soldCp) || 0)));
-      bump(c, "soldWorth", sign * worth(i.id));
+      bump(c, "soldWorth", sign * left);
     }
   }
   tidy(t.chars, row.actorId);

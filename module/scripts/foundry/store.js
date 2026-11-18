@@ -466,6 +466,25 @@ export async function recordPart(rowId, itemId, part) {
   return mark;
 }
 
+/*
+  The item has moved: the row's part says so (`done`), in one more write.
+  A spectator's window says "gave" or "sold" only for a done part
+  (afterplay.js partedFromRow), so a mark that is lifted because the move
+  failed is never said. Counts nothing: the tallies read the same part.
+  Returns the part as the row now has it, or null when the row or its part
+  is gone.
+*/
+export async function sealPart(rowId, itemId) {
+  const l = ledger();
+  const row = l.log.find(r => r.id === rowId);
+  const part = row?.parted?.[itemId];
+  if (!part) return null;
+  const done = { ...part, done: true };
+  patchRows(l, new Map([[rowId, { parted: { ...row.parted, [itemId]: done } }]]));
+  await writeLedger(l);
+  return done;
+}
+
 // The row's mark and the buyer's record as they were before recordPart.
 export async function liftPart(mark) {
   if (!mark) return;

@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeAll, vi } from "vitest";
 import { createDocument } from "./minidom.js";
 
-const { SELL_BACK_DEFAULT, PART_WINDOW_MS, sellBackOf, sellBackFromForm, worthOf, worthColumns, sellCp, heldWorth, rowItems, giveTargets, isGiveTarget, partRefusal, partsLine, partSentence, partWhere, anyParted, firstParted } = await import("../module/scripts/core/afterplay.js");
+const { SELL_BACK_DEFAULT, PART_WINDOW_MS, sellBackOf, sellBackFromForm, worthOf, worthColumns, sellCp, heldWorth, rowItems, giveTargets, isGiveTarget, partRefusal, partsLine, partSentence, partWhere, anyParted, firstParted, partedFromRow } = await import("../module/scripts/core/afterplay.js");
 const { afterHTML, wireAfter, setBusy, refused, showPart, spectatorLine, whereAfter } = await import("../module/scripts/views/afterreveal.js");
 const { resultHTML } = await import("../module/scripts/views/revealcard.js");
 const { applyRow, emptyTally, wonCount, countsChange } = await import("../module/scripts/core/tally.js");
@@ -155,6 +155,19 @@ describe("the row's outcome", () => {
     expect(anyParted(two)).toBe(true);
     expect(rowItems(two)).toEqual([{ id: "i1", name: "Wand of Webs" }, { id: "i2", name: "Potion" }]);
     expect(rowItems(row)).toEqual([{ id: "i1", name: "Wand of Webs" }]);
+  });
+
+  it("says what became of an item from the row alone, or nothing while the row has no part for it", () => {
+    expect(partedFromRow(row, "i1")).toBeNull();
+    expect(partedFromRow(null, "i1")).toBeNull();
+    const two = { ...row, userId: "p1", itemIds: ["i1", "i2"], itemNames: ["Wand of Webs", "Potion"], parted: { i2: { soldCp: 2500 } } };
+    expect(partedFromRow(two, "i1")).toBeNull();
+    // Marked, the item not yet moved (the mark may be lifted): nothing yet.
+    expect(partedFromRow(two, "i2")).toBeNull();
+    const done = { ...two, parted: { i2: { soldCp: 2500, done: true } } };
+    expect(partedFromRow(done, "i2")).toEqual({ type: "parted", logId: "r", userId: "p1", itemId: "i2", itemName: "Potion", actorName: "Brinn", part: { soldCp: 2500, done: true } });
+    // A part for an id the row never granted says nothing.
+    expect(partedFromRow({ ...row, parted: { x9: { soldCp: 1 } } }, "x9")).toBeNull();
   });
 
   it("takes the item out of `won` and the no-duplicates record, unless another play still holds it", () => {

@@ -26,9 +26,14 @@
 //      for N, the window's result line says "Sold back for N" where it
 //      said "Added to", the GM's window of the same pull says it too (with
 //      no buttons), and the chat card has the line.
-//   2. Closes it, presses Buy again, and on the new reveal presses Give to…,
+//   2. Closes it, presses Buy again. Before giving, the player's console
+//      emits forged `parted` words (any name and price, one claiming to be
+//      the winner's own) for the new row, which has no part yet, and for
+//      the sold row: the GM's windows of both say none of it (the sold one
+//      still says "Sold back for N"). Then on the new reveal presses Give to…,
 //      picks OTHER's character in the list and presses Give: the item is on
-//      that character and gone from Crate Tester, and the row says given.
+//      that character and gone from Crate Tester, the row says given, and
+//      the GM's window of it says "Given to" OTHER's character.
 //   3. OTHER buys the crate once on their character. The player then sends
 //      a give and a sell for OTHER's row by the real query path (Foundry
 //      names the player as the sender): both refused, nothing moved.
@@ -94,10 +99,13 @@ async function join(browser, user) {
     const { refreshShop } = await import(base + "scripts/foundry/shop.js");
     const { refreshManager } = await import(base + "scripts/foundry/manager.js");
     const redraw = storeRedraw({ refreshShop, refreshManager });
-    store.setStoreListener(redraw);
+    // As main.js: a `parted` word heard before its row is said once the log has it.
+    const { logHeard } = await import(base + "scripts/foundry/handover.js");
+    const heard = key => { redraw(key); if (key === "pullLog") logHeard(); };
+    store.setStoreListener(heard);
     for (const key of store.WORLD_KEYS) {
       const cfg = game.settings.settings.get(`loot-crates.${key}`);
-      if (cfg && !String(cfg.onChange ?? "").includes("storeChanged")) cfg.onChange = () => redraw(key);
+      if (cfg && !String(cfg.onChange ?? "").includes("storeChanged")) cfg.onChange = () => heard(key);
     }
   }, MODULE_BASE);
   return { page, logs };
@@ -161,7 +169,7 @@ async function landedReveal(page, known = []) {
   const browser = await chromium.launch();
   const out = { player: PLAYER, other: OTHER };
   let gm = null, pl = null, ot = null;
-  let boxId = null, seed = null;
+  let boxId = null, seed = null, row2Id = null;
   try {
     pl = await join(browser, PLAYER);
     if (!pl) throw new Error(`${PLAYER} is not free to join`);
@@ -244,6 +252,21 @@ async function landedReveal(page, known = []) {
     const second = await landedReveal(pl.page, [first]);
     const before2 = await untilActor(gm.page, seed.testerId, boxId, a => a.items.length === before.items.length + 1);
     const giftItemId = before2.items.find(i => !before.items.some(b => b.id === i.id))?.id ?? null;
+    // 2a. Forged `parted` words from the player's console (anyone can emit
+    // one): for the new row, which has no part yet, and for the sold row,
+    // which has one. The GM's windows (spectators) say neither's words.
+    const row2 = (await untilRows(gm.page, boxId, 2)).find(r => r.itemId === giftItemId) ?? null;
+    row2Id = row2?.id ?? null;
+    await gm.page.waitForFunction(id => [...foundry.applications.instances.values()].some(a => a.reveal?.logId === id && a.element), row2?.id, { timeout: 15000 }).catch(() => {});
+    await pl.page.evaluate(({ row2, sold }) => {
+      const forged = (row, extra) => ({ type: "parted", logId: row.id, userId: "nobody", itemId: row.itemId, itemName: "Forged Crown", actorName: "Mallory", part: { at: Date.now(), soldCp: 123400 }, ...extra });
+      game.socket.emit("module.loot-crates", forged(row2, {}));
+      game.socket.emit("module.loot-crates", forged(row2, { own: true, part: { at: Date.now(), given: { actorId: "x", actorName: "Nobody Real" } } }));
+      game.socket.emit("module.loot-crates", forged(sold, { part: { at: Date.now(), given: { actorId: "x", actorName: "Nobody Real" } } }));
+    }, { row2, sold: out.soldRow });
+    await gm.page.waitForTimeout(1500);
+    const gmWindows = () => gm.page.evaluate(ids => [...foundry.applications.instances.values()].filter(a => ids.includes(a.reveal?.logId) && a.element).map(a => ({ logId: a.reveal.logId, text: a.element.textContent.replace(/\s+/g, " ").trim() })), [row2?.id, out.soldRow?.id]);
+    out.forgedSeen = await gmWindows();
     await pl.page.locator(`#${second} .lc-after__give`).click();
     await pl.page.locator(`#${second} .lc-after__target`).selectOption(seed.targetId);
     await pl.page.locator(`#${second} .lc-after__confirm`).click();
@@ -253,6 +276,9 @@ async function landedReveal(page, known = []) {
     out.gaveLine = await pl.page.evaluate(id => document.querySelector(`#${id} .lc-reveal__added`)?.textContent.trim() ?? null, second);
     rows = await untilRows(gm.page, boxId, 2);
     out.givenRow = rows[0];
+    // The true word still reaches the GM's window of the gift, in the row's words.
+    await gm.page.waitForFunction(id => [...foundry.applications.instances.values()].some(a => a.reveal?.logId === id && /^Given to/.test(a.element?.querySelector(".lc-reveal__added")?.textContent ?? "")), row2?.id, { timeout: 8000 }).catch(() => {});
+    out.gmGave = (await gmWindows()).find(w => w.logId === row2?.id)?.text ?? null;
     await pl.page.locator(`#${second} .lc-reveal__close`).click().catch(() => {});
 
     // 3. OTHER buys once; the player's forged give and sell for that row.
@@ -310,6 +336,9 @@ async function landedReveal(page, known = []) {
       chatLine: (out.card ?? "").includes(`Crate Tester sold it back for ${price}.`),
       givenMoved: out.given.ms != null && out.given.items.some(i => i.name === seed.itemName && i.given) && out.afterGive.ms != null,
       givenRow: givenPart?.given?.actorId === seed.targetId,
+      // The new row's window must be open; the sold one's, if still open, keeps its true line.
+      forgedPartedShown: out.forgedSeen.some(w => w.logId === row2Id) && out.forgedSeen.every(w => !/Forged Crown|Mallory|Nobody Real|1,?234 gp/.test(w.text)) && out.forgedSeen.filter(w => w.logId === out.soldRow?.id).every(w => /Sold back for/.test(w.text)),
+      trueGaveShown: (out.gmGave ?? "").includes(`Given to ${seed.targetName}`) && !/Forged Crown|Mallory|Nobody Real/.test(out.gmGave ?? ""),
       gaveSaid: out.gaveLine === `Given to ${seed.targetName}`,
       forgedRefused: out.forged.give?.type === "error" && out.forged.sell?.type === "error" && /Only the player who won/.test(out.forged.give.message ?? "") && /Only the player who won/.test(out.forged.sell.message ?? ""),
       forgedNothingMoved: out.otherAfter.items.length === withOther.items.length && out.otherAfter.purseCp === withOther.purseCp && !out.otherRowAfter?.parted,

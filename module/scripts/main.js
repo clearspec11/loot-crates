@@ -18,6 +18,7 @@ import { openShop, refreshShop, registerShopHooks } from "./foundry/shop.js";
 import { addDirectoryButtons, placeMenuEntry } from "./views/route.js";
 import { openManager, refreshManager, CrateManager, makeCrateFromTable, makeCrateMenuEntry, addStarterCrates } from "./foundry/manager.js";
 import { storeRedraw } from "./core/redraw.js";
+import { logHeard } from "./foundry/handover.js";
 import { performPull } from "./foundry/pull.js";
 import { showReveal, showReplay, sealChatCard, watchAgain, preSealItem, setTableWindow } from "./foundry/reveal.js";
 import { openRound, closeRound, resolveRound, cancelRound, recoverRounds, refundOrphanRounds, onTable, watchTables, watchStale } from "./foundry/table.js";
@@ -52,6 +53,8 @@ Hooks.once("init", () => {
     redraw(key);
     if (key === SETTINGS.BOXES) refundOrphanRounds().catch(err => console.error("loot-crates | refunding the round of a deleted game failed", err));
     if (key === SETTINGS.ROUNDS) watchStale();
+    // A `parted` word heard before its row: said once the row has it.
+    if (key === SETTINGS.LOG) logHeard();
   });
   registerIndexFields();
   game.settings.registerMenu(MODULE_ID, "manager", {

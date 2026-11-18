@@ -26,15 +26,18 @@
   - Sell: the item is deleted, then the coins paid through settle(). Coins
     that can't be paid put the item back with its id.
   Either failure lifts the mark (liftPart) and is refused with a plain
-  sentence. Once done, everyone's open reveal of the play hears it on the
-  socket (`parted`, display only) and the play's chat card gets a line;
-  the winner has it as the query's answer.
+  sentence. Once done, the row's part is stamped done (sealPart): until
+  then no spectator's window says the item went, so a lifted mark is never
+  said. Then everyone's open reveal of the play hears it on the
+  socket (`parted`, display only, and taken only as a pointer to the row:
+  heardOnTable) and the play's chat card gets a line; the winner has it as
+  the query's answer.
 */
 import { SOCKET, MODULE_ID } from "../core/config.js";
 import { PullError } from "../games/kinds.js";
-import { getLog, getBoxes, recordPart, liftPart } from "./store.js";
+import { getLog, getBoxes, recordPart, liftPart, sealPart } from "./store.js";
 import { createGrants } from "./pull.js";
-import { partRefusal, isGiveTarget, sellBackOf, sellCp, heldWorth, rowItems, partsLine } from "../core/afterplay.js";
+import { partRefusal, isGiveTarget, sellBackOf, sellCp, heldWorth, rowItems, partsLine, partedFromRow } from "../core/afterplay.js";
 import { settle, formatPrice } from "../core/currency.js";
 import { findPullCard, partedCardContent } from "../views/chatcard.js";
 import { t } from "../core/i18n.js";
@@ -84,7 +87,9 @@ export async function doGive(msg) {
   const { row, sender, actor, item, name } = guard(msg);
   const target = game.actors.get(msg.targetId) ?? null;
   if (!target || !isGiveTarget(target, allUsers(), sender)) throw new PullError(t("LOOTCRATES.After.BadTarget", { item: name }));
-  const part = { at: Date.now(), given: { actorId: target.id, actorName: target.name } };
+  // How many were left on the sheet: the economy counts the give at that (afterplay.js partWorthCp).
+  const worth = row.worth?.[item.id];
+  const part = { at: Date.now(), given: { actorId: target.id, actorName: target.name }, ...(worth ? { qty: heldWorth(worth, item)?.quantity ?? 0 } : {}) };
   const done = await mark(row, item.id, part);
   const data = giftData(item, { fromActorId: actor.id, logId: row.id });
   let made;
@@ -115,10 +120,12 @@ export async function doGive(msg) {
 export async function doSell(msg) {
   const { row, actor, item, name } = guard(msg);
   const box = getBoxes()[row.boxId] ?? null;
-  const cp = sellCp(heldWorth(row.worth?.[item.id], item), box ? sellBackOf(box) : 0);
+  const held = heldWorth(row.worth?.[item.id], item);
+  const cp = sellCp(held, box ? sellBackOf(box) : 0);
   if (!cp) throw new PullError(t("LOOTCRATES.After.SellOff", { box: row.boxName, item: name }));
   if (msg.cp != null && Math.round(Number(msg.cp)) !== cp) throw new PullError(t("LOOTCRATES.After.SellChanged", { box: row.boxName, item: name, price: formatPrice(cp / 100) }));
-  const part = { at: Date.now(), soldCp: cp };
+  // The coins and the worth they're set against are of the same quantity (afterplay.js partWorthCp).
+  const part = { at: Date.now(), soldCp: cp, qty: held.quantity };
   const done = await mark(row, item.id, part);
   const data = typeof item.toObject === "function" ? item.toObject() : structuredClone(item);
   try {
@@ -152,7 +159,14 @@ export async function doSell(msg) {
   and the answer goes back. The writes are settled by now, so a chat card
   that can't be written is logged, never thrown.
 */
-async function finish({ msg, row, actor, itemId, name, part, extra }) {
+async function finish({ msg, row, actor, itemId, name, part: marked, extra }) {
+  // The move is made: only now does the row say so to the table (sealPart).
+  let part = marked;
+  try {
+    part = await sealPart(row.id, itemId) ?? marked;
+  } catch (err) {
+    console.error(`loot-crates | could not mark ${name} as moved on its Pull log row; other players' windows won't say what became of it`, err);
+  }
   const parted = { type: "parted", logId: row.id, userId: row.userId, itemId, itemName: name, actorName: actor.name, part };
   try { game.socket.emit(SOCKET, parted); } catch (err) { console.error("loot-crates | telling the table what was given or sold failed", err); }
   tellParted(parted);
@@ -162,13 +176,62 @@ async function finish({ msg, row, actor, itemId, name, part, extra }) {
 
 // The open reveal windows on this client hear what became of an item
 // (reveal.js heardParted sets the listener, so this file imports no
-// window): from the socket, and from this GM's own give or sell, whose
-// emit it never hears.
+// window): from the Pull log, when the socket says to look (heardOnTable),
+// from this GM's own give or sell, whose emit it never hears, and from the
+// winner's own late answer (socket.js answered, `own`).
 let heard = null;
 export function onParted(fn) { heard = typeof fn === "function" ? fn : null; }
 export function tellParted(msg) {
   try { heard?.(msg); } catch (err) { console.error("loot-crates | showing what became of an item failed", err); }
   return null;
+}
+
+/*
+  The socket's `parted` (socket.js), which any client can emit: only its
+  logId and itemId are read, as where to look. The line is said only when
+  the play's Pull log row, which only a GM writes, has a done part for
+  that item, in the row's words (afterplay.js partedFromRow). The row's write
+  and the message reach a client in either order, so one heard before its
+  row is kept aside and said when the log next changes (logHeard, from
+  main.js's store listener), or forgotten after PART_WAIT_MS: no timer,
+  the wait is checked when the log changes or the next word comes.
+*/
+export const PART_WAIT_MS = 15 * 1000;
+const PART_WAIT_MAX = 50;
+const waiting = new Map();
+const waitKey = (logId, itemId) => `${logId}\u0000${itemId}`;
+const rowOf = logId => getLog().find(r => r.id === logId) ?? null;
+
+function forgetStale(now) {
+  for (const [key, w] of waiting) if (now - w.at > PART_WAIT_MS) waiting.delete(key);
+}
+
+export function heardOnTable(msg) {
+  const logId = typeof msg?.logId === "string" ? msg.logId : null;
+  const itemId = typeof msg?.itemId === "string" ? msg.itemId : null;
+  if (!logId || !itemId) return null;
+  const now = Date.now();
+  forgetStale(now);
+  const said = partedFromRow(rowOf(logId), itemId);
+  const key = waitKey(logId, itemId);
+  if (said) {
+    waiting.delete(key);
+    return tellParted(said);
+  }
+  if (!waiting.has(key) && waiting.size < PART_WAIT_MAX) waiting.set(key, { logId, itemId, at: now });
+  return null;
+}
+
+// The Pull log changed on this client: say each word kept aside whose row now has its part.
+export function logHeard() {
+  if (!waiting.size) return;
+  forgetStale(Date.now());
+  for (const [key, { logId, itemId }] of waiting) {
+    const said = partedFromRow(rowOf(logId), itemId);
+    if (!said) continue;
+    waiting.delete(key);
+    tellParted(said);
+  }
 }
 
 // The play's chat card, with what became of its items.
