@@ -34,7 +34,13 @@
 //      picks OTHER's character in the list and presses Give: the item is on
 //      that character and gone from Crate Tester, the row says given, and
 //      the GM's window of it says "Given to" OTHER's character.
-//   3. OTHER buys the crate once on their character. The player then sends
+//   3. OTHER joins only now, after the sale and the gift, so the play's
+//      reveals reach that client late: each opens there as a broadcast
+//      reveal does (reveal.js showReveal, with the reveal the GM's window
+//      showed), OTHER presses its Skip, and once landed it says "Sold back
+//      for N" and "Given to" OTHER's character from the row, with no buttons
+//      (no `parted` word comes for it). OTHER closes both.
+//      Then OTHER buys the crate once on their character. The player then sends
 //      a give and a sell for OTHER's row by the real query path (Foundry
 //      names the player as the sender): both refused, nothing moved.
 //   4. The GM presses Refund on the sold row in the Pull log: it says the
@@ -240,7 +246,8 @@ async function landedReveal(page, known = []) {
     await gm.page.waitForFunction(() => [...document.querySelectorAll(".application.lc-reveal .lc-reveal__added")].some(s => /^Sold back for/.test(s.textContent)), null, { timeout: 15000 }).catch(() => {});
     out.gmWindow = await gm.page.evaluate(() => {
       const win = [...document.querySelectorAll(".application.lc-reveal")].find(a => /^Sold back for/.test(a.querySelector(".lc-reveal__added")?.textContent ?? ""));
-      return win ? { text: win.querySelector(".lc-reveal__added").textContent.trim(), under: win.querySelector(".lc-reveal__after").textContent.replace(/\s+/g, " ").trim(), buttons: win.querySelectorAll(".lc-reveal__after button").length } : null;
+      const app = win ? [...foundry.applications.instances.values()].find(a => a.element === win) : null;
+      return win ? { text: win.querySelector(".lc-reveal__added").textContent.trim(), under: win.querySelector(".lc-reveal__after").textContent.replace(/\s+/g, " ").trim(), buttons: win.querySelectorAll(".lc-reveal__after button").length, reveal: app?.reveal ? JSON.parse(JSON.stringify(app.reveal)) : null } : null;
     });
     await gm.page.waitForTimeout(500);
     out.card = await gm.page.evaluate(logId => game.messages.contents.find(m => m.flags?.["loot-crates"]?.logId === logId)?.content.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() ?? null, rows[0]?.id);
@@ -279,11 +286,27 @@ async function landedReveal(page, known = []) {
     // The true word still reaches the GM's window of the gift, in the row's words.
     await gm.page.waitForFunction(id => [...foundry.applications.instances.values()].some(a => a.reveal?.logId === id && /^Given to/.test(a.element?.querySelector(".lc-reveal__added")?.textContent ?? "")), row2?.id, { timeout: 8000 }).catch(() => {});
     out.gmGave = (await gmWindows()).find(w => w.logId === row2?.id)?.text ?? null;
+    // The reveal of the gift as the GM's window had it, for OTHER's late window.
+    const giftReveal = await gm.page.evaluate(id => { const a = [...foundry.applications.instances.values()].find(x => x.reveal?.logId === id && !x.reveal.replay); return a ? JSON.parse(JSON.stringify(a.reveal)) : null; }, row2?.id);
     await pl.page.locator(`#${second} .lc-reveal__close`).click().catch(() => {});
 
     // 3. OTHER buys once; the player's forged give and sell for that row.
     ot = await join(browser, OTHER);
     if (!ot) throw new Error(`${OTHER} is not free to join`);
+    // 3a. The sold and the given play's reveals, reaching OTHER only now.
+    out.late = [];
+    for (const reveal of [out.gmWindow?.reveal, giftReveal]) {
+      if (!reveal) { out.late.push(null); continue; }
+      await ot.page.evaluate(async ({ base, reveal }) => { (await import(base + "scripts/foundry/reveal.js")).showReveal(reveal).catch(() => {}); }, { base: MODULE_BASE, reveal });
+      const win = `#loot-crates-reveal-${reveal.requestId}`;
+      await ot.page.waitForSelector(win, { timeout: 15000 });
+      const skip = ot.page.locator(`${win} .lc-reveal__close`);
+      if ((await skip.textContent()).trim() === "Skip") await skip.click().catch(() => {});
+      await ot.page.waitForFunction(w => document.querySelector(`${w} .lc-reveal__close`)?.textContent.trim() === "Close", win, { timeout: 15000 }).catch(() => {});
+      await ot.page.waitForTimeout(300);
+      out.late.push(await ot.page.evaluate(w => { const el = document.querySelector(w); return el ? { added: el.querySelector(".lc-reveal__added")?.textContent.trim() ?? null, under: el.querySelector(".lc-reveal__after").textContent.replace(/\s+/g, " ").trim(), buttons: el.querySelectorAll(".lc-reveal__after button").length } : null; }, win));
+      await ot.page.locator(`${win} .lc-reveal__close`).click().catch(() => {});
+    }
     const otherBefore = await readActor(gm.page, seed.targetId, boxId);
     await buy(ot, boxId, seed.targetName);
     const withOther = await untilActor(gm.page, seed.targetId, boxId, a => a.items.length === otherBefore.items.length + 1, 15000);
@@ -332,6 +355,7 @@ async function landedReveal(page, known = []) {
       soldRow: soldPart?.soldCp === wantCp,
       askedFirst: out.sellAsk === `Sell ${seed.itemName} back for ${price}? This can't be undone.` && out.askedNothingMoved,
       soldSaid: (out.soldLine ?? "").startsWith(`Sold back for ${price}`) && !/Added to/.test(out.soldLine ?? "") && out.soldUnder === "" && out.soldFocus,
+      lateSpectator: out.late[0]?.added === `Sold back for ${price}` && out.late[0].buttons === 0 && out.late[1]?.added === `Given to ${seed.targetName}` && out.late[1].buttons === 0,
       spectator: out.gmWindow?.text === `Sold back for ${price}` && out.gmWindow.under === "" && out.gmWindow.buttons === 0,
       chatLine: (out.card ?? "").includes(`Crate Tester sold it back for ${price}.`),
       givenMoved: out.given.ms != null && out.given.items.some(i => i.name === seed.itemName && i.given) && out.afterGive.ms != null,
@@ -345,6 +369,7 @@ async function landedReveal(page, known = []) {
       refundRefused: out.refund.note === `Crate Tester sold it back for ${price}.` && /can't be refunded/.test(out.refund.said ?? "") && !out.refund.refunded,
     };
     out.ok = Object.values(out.checks).every(Boolean);
+    if (out.gmWindow) delete out.gmWindow.reveal;
     out.gmConsole = gm.logs.filter(l => !l.includes("timings"));
     out.playerLog = pl.logs.filter(l => !l.includes("timings"));
   } catch (err) {

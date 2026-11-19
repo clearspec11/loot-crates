@@ -222,6 +222,10 @@ export function heardOnTable(msg) {
   return null;
 }
 
+// For tests: no word kept aside, so no case hears what an earlier one left.
+// Never called on a log change: a true word heard before its row would be lost.
+export function _resetWaiting() { waiting.clear(); }
+
 // The Pull log changed on this client: say each word kept aside whose row now has its part.
 export function logHeard() {
   if (!waiting.size) return;

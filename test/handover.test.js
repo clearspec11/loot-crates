@@ -5,7 +5,7 @@
   and refund.js on a fake world: a pull grants the item, then the winner
   (or someone else, or a forger) asks for it to be given or sold.
 */
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("../module/scripts/foundry/reveal.js", () => ({ showReveal: vi.fn(async () => ({ landed: Promise.resolve() })) }));
 vi.mock("../module/scripts/foundry/chat.js", () => ({ postPullCard: vi.fn(async () => null), postKeptCard: vi.fn(async () => null) }));
@@ -13,7 +13,7 @@ vi.mock("../module/scripts/foundry/chat.js", () => ({ postPullCard: vi.fn(async 
 const { registerSocket, heardRequest } = await import("../module/scripts/foundry/socket.js");
 const { registerSettings, enqueueWrite, getLog, getTally, getActorState, appendLog, recordPart, sealPart, setStoreListener } = await import("../module/scripts/foundry/store.js");
 const { refundPull, describeRefund } = await import("../module/scripts/foundry/refund.js");
-const { onParted, logHeard, PART_WAIT_MS } = await import("../module/scripts/foundry/handover.js");
+const { onParted, logHeard, PART_WAIT_MS, _resetWaiting } = await import("../module/scripts/foundry/handover.js");
 const { wonCount } = await import("../module/scripts/core/tally.js");
 const { SETTINGS } = await import("../module/scripts/core/config.js");
 
@@ -126,6 +126,9 @@ const ask = (msg, from) => globalThis.CONFIG.queries["loot-crates.request"]({ re
 const sell = (row, itemId, cp, from = ANA) => ask({ type: "sell", logId: row.id, itemId, cp, userId: from.id }, from);
 const give = (row, itemId, targetId, from = ANA) => ask({ type: "give", logId: row.id, itemId, targetId, userId: from.id }, from);
 const gp = actor => actor.system.currency.gp;
+
+// No case hears a word an earlier one left waiting.
+beforeEach(() => _resetWaiting());
 
 afterEach(() => {
   onParted(null);
@@ -554,6 +557,9 @@ describe("a spectator's line comes from the GM's log, never from the socket's wo
     world.onSocket(forged(row, itemId));
     vi.setSystemTime(Date.now() + PART_WAIT_MS + 1);
     await recordPart(row.id, itemId, { at: Date.now(), soldCp: 7500 });
+    // Done, so the row would say it: only the wait keeps it quiet.
+    await sealPart(row.id, itemId);
+    expect(getLog().find(r => r.id === row.id).parted[itemId].done).toBe(true);
     expect(heard).toEqual([]);
   });
 
@@ -571,6 +577,80 @@ describe("a spectator's line comes from the GM's log, never from the socket's wo
     await sealPart(row.id, itemId);
     expect(heard).toHaveLength(1);
     expect(heard[0]).toMatchObject({ logId: row.id, itemName: "Wand wand", part: { soldCp: 7500 } });
+  });
+
+  /*
+    The edges of the words kept aside (B3): fifty at most, the first fifty
+    kept, each for PART_WAIT_MS from when it was first heard. One row of
+    fifty-one items, each given, written after every word was heard.
+  */
+  const ITEMS = Array.from({ length: 51 }, (_, i) => `i${i}`);
+  const wordFor = itemId => ({ type: "parted", logId: "many", userId: "p1", itemId });
+  const manyRow = () => appendLog({
+    id: "many", userId: "p1", actorId: "actor1", actorName: "Brinn", boxId: "box", name: "Wand",
+    itemIds: ITEMS, itemNames: ITEMS.map(id => `Wand ${id}`),
+    parted: Object.fromEntries(ITEMS.map(id => [id, { at: Date.now(), given: { actorId: "actor2", actorName: "Saria" }, done: true }])),
+  });
+  const saidIds = heard => heard.map(m => m.itemId);
+
+  it("keeps the first fifty words and drops the fifty-first", async () => {
+    const world = makeWorld();
+    const heard = asSpectator(world);
+    for (const id of ITEMS) world.onSocket(wordFor(id));
+    expect(heard).toEqual([]);
+    await manyRow();
+    expect(saidIds(heard)).toEqual(ITEMS.slice(0, 50));
+    expect(saidIds(heard)).not.toContain("i50");
+    expect(heard[0]).toMatchObject({ logId: "many", itemName: "Wand i0", actorName: "Brinn", part: { done: true } });
+  });
+
+  it("makes room when the next word comes once the kept ones are past the wait, not at it", async () => {
+    const world = makeWorld();
+    const heard = asSpectator(world);
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const t0 = Date.now();
+    for (const id of ITEMS.slice(0, 50)) world.onSocket(wordFor(id));
+    // Exactly at the wait the fifty are still kept, so the list is full.
+    vi.setSystemTime(t0 + PART_WAIT_MS);
+    world.onSocket(wordFor("i50"));
+    await manyRow();
+    expect(saidIds(heard)).toEqual(ITEMS.slice(0, 50));
+
+    // Again, one millisecond past: the next word forgets the fifty and is kept itself.
+    heard.length = 0;
+    for (const id of ITEMS.slice(0, 50)) world.onSocket({ ...wordFor(id), logId: "later" });
+    vi.setSystemTime(t0 + 2 * PART_WAIT_MS + 1);
+    world.onSocket({ ...wordFor("i50"), logId: "later" });
+    await appendLog({ ...getLog().find(r => r.id === "many"), id: "later" });
+    expect(saidIds(heard)).toEqual(["i50"]);
+  });
+
+  it("a word heard twice waits once, from when it was first heard", async () => {
+    const world = makeWorld();
+    const { row, itemId } = await won(world);
+    const heard = asSpectator(world);
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const t0 = Date.now();
+    world.onSocket(forged(row, itemId));
+    // Heard again before the wait is out: not kept a second time, the wait not started over.
+    vi.setSystemTime(t0 + PART_WAIT_MS - 1000);
+    world.onSocket(forged(row, itemId));
+    vi.setSystemTime(t0 + PART_WAIT_MS + 1);
+    await recordPart(row.id, itemId, { at: Date.now(), soldCp: 7500 });
+    await sealPart(row.id, itemId);
+    expect(heard).toEqual([]);
+  });
+
+  it("a word heard twice inside the wait is said once", async () => {
+    const world = makeWorld();
+    const { row, itemId } = await won(world);
+    const heard = asSpectator(world);
+    world.onSocket(forged(row, itemId));
+    world.onSocket(forged(row, itemId));
+    await recordPart(row.id, itemId, { at: Date.now(), soldCp: 7500 });
+    await sealPart(row.id, itemId);
+    await appendLog({ id: "other", at: Date.now(), userId: "p3", actorId: "actor2", boxId: "box", name: "x" });
+    expect(heard).toHaveLength(1);
   });
 
   it("the winner's own late answer still lands as their own", async () => {

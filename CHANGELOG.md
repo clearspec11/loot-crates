@@ -6,6 +6,8 @@ The newest numbered entry's version is the one in `module/module.json`, and its 
 
 ## Unreleased
 
+- A reveal that opens after the item was given or sold says so. A player whose window opened late (a slow connection, or the winner answered at once) saw the item as still held while everyone else's window said it was sold or given; now every window on the play says the same thing, from the GM's Pull log, whenever it opened.
+
 - The Spending and payback readout counts a partly used stack at what was left. A character who won ten potions, drank seven and sold the last three back was set against the worth of all ten, so their "Won in items" and Net came out too low; a give of the last three credited the receiver with all ten. Now a sale or a give counts the worth of what was still on the sheet, the seven drunk stay in what they won, and the receiver gets the three. Sales and gifts recorded before this update still count the whole stack.
 
 - A "gave" or "sold back" line on someone else's reveal is now always true. When a winner gives an item away or sells it back, the other players' open reveals of that play say so; until now any player could make every other window at the table say an item was sold or given when it wasn't, with any name and any price, from their browser's console. Each window now says it only when the GM's Pull log records it, in the log's own words.

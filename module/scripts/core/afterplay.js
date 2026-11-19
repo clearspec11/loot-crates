@@ -168,6 +168,20 @@ export function partedFromRow(row, itemId) {
   return { type: "parted", logId: row.id, userId: row.userId ?? null, itemId, itemName: item.name, actorName: row.actorName ?? "", part };
 }
 
+/*
+  What a spectator's window of a play says from the row it already has
+  (reveal.js, as it lands): partedFromRow for each of the row's items, so a
+  window opened after an item moved (a late or slow client) says what every
+  other window said when the word came. Nothing for the winner's own window
+  (their answer lands it), a replay (it touches nothing of the play) or a
+  row of another play.
+*/
+export function partsOnOpen(reveal, row, userId) {
+  if (!reveal?.logId || reveal.replay || row?.id !== reveal.logId) return [];
+  if (reveal.userId && reveal.userId === userId) return [];
+  return rowItems(row).map(i => partedFromRow(row, i.id)).filter(Boolean);
+}
+
 // Whether the row's first item (the one its `uuid` names, which no
 // duplicates counts) was given or sold.
 export function firstParted(row) {

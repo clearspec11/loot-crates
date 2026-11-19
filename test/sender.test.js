@@ -6,13 +6,13 @@
   refused with nothing charged. Probed live first (live-forge.cjs): before
   this, a forged pull was charged and a forged cancel marked a real sale.
 */
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("../module/scripts/foundry/reveal.js", () => ({ showReveal: vi.fn(async () => ({ landed: Promise.resolve() })) }));
 vi.mock("../module/scripts/foundry/chat.js", () => ({ postPullCard: vi.fn(async () => null), postKeptCard: vi.fn(async () => null) }));
 
 const { registerSocket, requestPull, requestKeep, requestSell, heardRequest, restCompleted, REQUEST_QUERY, SENT_QUERY, GM_TIMEOUT_MS, WAIT_NOTICE_MS, TIMED_OUT, TIMED_OUT_PART } = await import("../module/scripts/foundry/socket.js");
-const { onParted } = await import("../module/scripts/foundry/handover.js");
+const { onParted, _resetWaiting } = await import("../module/scripts/foundry/handover.js");
 const { showReveal } = await import("../module/scripts/foundry/reveal.js");
 const { registerSettings, enqueueWrite, getLog } = await import("../module/scripts/foundry/store.js");
 const { withQuery } = await import("./requests.js");
@@ -79,6 +79,9 @@ const unchanged = ({ actor }) => {
   expect(actor.items).toHaveLength(0);
   expect(getLog()).toHaveLength(0);
 };
+
+// No case hears a word an earlier one left waiting.
+beforeEach(() => _resetWaiting());
 
 afterEach(() => {
   vi.useRealTimers();
