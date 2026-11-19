@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeAll, vi } from "vitest";
 import { createDocument } from "./minidom.js";
 
-const { SELL_BACK_DEFAULT, PART_WINDOW_MS, sellBackOf, sellBackFromForm, worthOf, worthColumns, sellCp, heldWorth, rowItems, giveTargets, isGiveTarget, partRefusal, partsLine, partSentence, partWhere, anyParted, firstParted, partedFromRow } = await import("../module/scripts/core/afterplay.js");
+const { SELL_BACK_DEFAULT, PART_WINDOW_MS, sellBackOf, sellBackFromForm, worthOf, worthColumns, sellCp, heldWorth, rowItems, giveTargets, isGiveTarget, partRefusal, partsLine, partSentence, partWhere, anyParted, firstParted, partedFromRow, partsOnOpen } = await import("../module/scripts/core/afterplay.js");
 const { afterHTML, wireAfter, setBusy, refused, showPart, spectatorLine, whereAfter } = await import("../module/scripts/views/afterreveal.js");
 const { resultHTML } = await import("../module/scripts/views/revealcard.js");
 const { applyRow, emptyTally, wonCount, countsChange } = await import("../module/scripts/core/tally.js");
@@ -168,6 +168,17 @@ describe("the row's outcome", () => {
     expect(partedFromRow(done, "i2")).toEqual({ type: "parted", logId: "r", userId: "p1", itemId: "i2", itemName: "Potion", actorName: "Brinn", part: { soldCp: 2500, done: true } });
     // A part for an id the row never granted says nothing.
     expect(partedFromRow({ ...row, parted: { x9: { soldCp: 1 } } }, "x9")).toBeNull();
+  });
+
+  it("gives a spectator's window opened late the row's done parts, and nothing to the winner, a replay or another play", () => {
+    const two = { ...row, userId: "p1", itemIds: ["i1", "i2"], itemNames: ["Wand of Webs", "Potion"], parted: { i1: { given: { actorName: "Saria" } }, i2: { soldCp: 2500, done: true } } };
+    const seen = { logId: "r", userId: "p1" };
+    expect(partsOnOpen(seen, two, "p2").map(m => [m.itemId, m.itemName])).toEqual([["i2", "Potion"]]);
+    expect(partsOnOpen(seen, two, "p1")).toEqual([]);
+    expect(partsOnOpen({ ...seen, replay: true }, two, "p2")).toEqual([]);
+    expect(partsOnOpen({ ...seen, logId: "r2" }, two, "p2")).toEqual([]);
+    expect(partsOnOpen(seen, null, "p2")).toEqual([]);
+    expect(partsOnOpen(null, two, "p2")).toEqual([]);
   });
 
   it("takes the item out of `won` and the no-duplicates record, unless another play still holds it", () => {

@@ -233,3 +233,102 @@ describe("the winner's late give or sell, on their own reveal", () => {
     expect(gold(other)).toBe("40 gp left");
   });
 });
+
+/*
+  A spectator's window that lands after an item has moved (a late or slow
+  client, a window opened again inside the hold) hears no `parted` word for
+  it: it says what the play's Pull log row on this client already has
+  (afterplay.js partsOnOpen), done parts only, in the row's words, and a
+  word that comes after it changes nothing.
+*/
+const store = await import("../module/scripts/foundry/store.js");
+describe("a spectator's window opened after the item moved", () => {
+  const row = (parted, extra) => ({ id: "L1", userId: "p1", actorId: "a1", actorName: "Tam", itemId: "i1", itemIds: ["i1", "i2"], itemNames: ["Sling +1", "Potion"], parted, ...extra });
+  const given = { i1: { at: 1, given: { actorId: "a2", actorName: "Saria" }, qty: 1, done: true } };
+  const asCy = () => { globalThis.game.user = { id: "p2", isGM: false, character: null }; };
+  async function opened(extra) {
+    const app = await showReveal(reveal(extra));
+    controllers.at(-1).land();
+    await settle();
+    return app;
+  }
+  const lines = app => slotOf(app).querySelectorAll(".lc-after__item").length;
+  const added = app => app.element.querySelector(".lc-reveal__added")?.textContent ?? null;
+  afterEach(() => store.getLog.mockReset().mockReturnValue([]));
+
+  it("says the row's line for each item that moved, and nothing for the one still held", async () => {
+    asCy();
+    store.getLog.mockReturnValue([row({ ...given, i2: { at: 2, soldCp: 7500, qty: 1, done: true } })]);
+    const app = await opened();
+    expect(said(app, "i1")).toBe("Tam gave Sling +1 to Saria.");
+    expect(said(app, "i2")).toBe("Tam sold Potion back for 75 gp.");
+    expect(slotOf(app).hidden).toBe(false);
+    // Every item gone: the result's line no longer says "Added to".
+    expect(added(app)).toBeNull();
+    expect(slotOf(app).querySelectorAll("button").length).toBe(0);
+  });
+
+  it("a play of one item says where it went in the result's own line", async () => {
+    asCy();
+    store.getLog.mockReturnValue([row(given, { itemIds: ["i1"], itemNames: ["Sling +1"] })]);
+    const app = await opened({ itemIds: ["i1"], itemNames: ["Sling +1"] });
+    expect(added(app)).toBe("Given to Saria");
+    expect(lines(app)).toBe(0);
+  });
+
+  it("with several items, only the moved one has a line and \"Added to\" stays", async () => {
+    asCy();
+    store.getLog.mockReturnValue([row(given)]);
+    const app = await opened();
+    expect(said(app, "i1")).toBe("Tam gave Sling +1 to Saria.");
+    expect(rowOf(app, "i2")).toBeNull();
+    expect(added(app)).toBe("Added to Tam's inventory");
+  });
+
+  it("a part not yet done (the item hasn't moved) says nothing", async () => {
+    asCy();
+    store.getLog.mockReturnValue([row({ i1: { at: 1, given: { actorId: "a2", actorName: "Saria" }, qty: 1 } }, { itemIds: ["i1"], itemNames: ["Sling +1"] })]);
+    const app = await opened({ itemIds: ["i1"], itemNames: ["Sling +1"] });
+    expect(slotOf(app).hidden).toBe(true);
+    expect(lines(app)).toBe(0);
+    expect(added(app)).toBe("Added to Tam's inventory");
+  });
+
+  it("the socket's word after it adds no second line and doesn't say it again", async () => {
+    asCy();
+    store.getLog.mockReturnValue([row(given)]);
+    const app = await opened();
+    const node = rowOf(app, "i1").querySelector(".lc-after__said").firstChild;
+    heardParted(fromRow());
+    app.partHeard(fromRow());
+    expect(lines(app)).toBe(1);
+    expect(said(app, "i1")).toBe("Tam gave Sling +1 to Saria.");
+    expect(rowOf(app, "i1").querySelector(".lc-after__said").firstChild).toBe(node);
+    // The other item's word, when it comes, still lands.
+    heardParted(fromRow({ itemId: "i2", itemName: "Potion", part: { soldCp: 7500, done: true } }));
+    expect(said(app, "i2")).toBe("Tam sold Potion back for 75 gp.");
+    expect(lines(app)).toBe(2);
+  });
+
+  it("the winner's own window is unchanged: its buttons, no line from the row", async () => {
+    store.getLog.mockReturnValue([row(given)]);
+    const app = await opened();
+    expect(rowOf(app, "i1").querySelector(".lc-after__give")).not.toBeNull();
+    expect(rowOf(app, "i1").dataset.parted).toBeUndefined();
+    expect(added(app)).toBe("Added to Tam's inventory");
+  });
+
+  it("a window of another play, or a replay, says nothing from this row", async () => {
+    asCy();
+    store.getLog.mockReturnValue([row(given)]);
+    const other = await opened({ requestId: "r2", logId: "L2" });
+    expect(slotOf(other).childElementCount).toBe(0);
+    expect(added(other)).toBe("Added to Tam's inventory");
+    const replay = new CrateReveal(reveal({ replay: true, replayKey: "m1", requestId: null }));
+    await replay.render({ force: true });
+    controllers.at(-1).land();
+    await settle();
+    expect(slotOf(replay).childElementCount).toBe(0);
+    expect(added(replay)).toBe("Added to Tam's inventory");
+  });
+});

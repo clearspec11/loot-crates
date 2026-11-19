@@ -82,7 +82,8 @@
   picker is open or a request is out. What became of an item replaces
   its row's buttons; every other open reveal of the play says it in a
   line once landed (heardParted, from the GM's `parted`), and only those
-  lines: spectators never see the buttons.
+  lines: spectators never see the buttons. A spectator's window that lands
+  after the item moved says it from the play's row (partsOnOpen).
 
   The sheet and the shop keep the secret too, as the chat card does. The GM
   creates the item before it broadcasts the reveal, and writes the buyer's
@@ -125,7 +126,7 @@ import { withLimit } from "../core/limits.js";
 // side reaches the other only inside a function.
 import { requestPull, requestGive, requestSell } from "./socket.js";
 import { onParted } from "./handover.js";
-import { rowItems, giveTargets, sellBackOf, sellCp, heldWorth, partSentence, partWhere } from "../core/afterplay.js";
+import { rowItems, giveTargets, sellBackOf, sellCp, heldWorth, partSentence, partWhere, partsOnOpen } from "../core/afterplay.js";
 import { afterHTML, wireAfter, setBusy, refused, showPart, spectatorLine, whereAfter } from "../views/afterreveal.js";
 import { formatGold } from "../core/currency.js";
 import { spendPress, disarmSpend } from "../views/spendguard.js";
@@ -643,9 +644,27 @@ export class CrateReveal extends ApplicationV2 {
         onPick: open => (open ? this.linger.pause("picking") : this.linger.resume("picking")),
       });
     }
+    this.#readRow();
     if (!this.#solo()) for (const [itemId, part] of this.#parts) spectatorLine(slot, itemId, part.text, { esc });
     this.#sayWhere(root);
     slot.hidden = !slot.childElementCount;
+  }
+
+  // A spectator's window says what the play's row already has as it lands
+  // (afterplay.js partsOnOpen, the row as this client holds it): opened
+  // after an item moved, it would hear no word for it. Not the winner's
+  // window, a replay or another play's row.
+  #readRow() {
+    const r = this.reveal;
+    if (r.replay || !r.logId) return;
+    let row = null;
+    try { row = getLog().find(x => x.id === r.logId) ?? null; } catch (err) { console.error("loot-crates | the play's Pull log row couldn't be read", err); }
+    for (const msg of partsOnOpen(r, row, game.user?.id)) this.#parts.set(msg.itemId, this.#heardPart(msg));
+  }
+
+  // A spectator's line and where-it-went, in the row's words (partedFromRow).
+  #heardPart(msg) {
+    return { text: partSentence(msg.part, { actor: msg.actorName ?? this.reveal.actorName, item: msg.itemName ?? "" }), where: partWhere(msg.part) };
   }
 
   // One Give or Sell back, out to the GM; its row says what came of it.
@@ -706,7 +725,10 @@ export class CrateReveal extends ApplicationV2 {
       }
       return;
     }
-    const part = { text: partSentence(msg.part, { actor: msg.actorName ?? this.reveal.actorName, item: msg.itemName ?? "" }), where: partWhere(msg.part) };
+    const part = this.#heardPart(msg);
+    // Already said, from the row as the window landed or an earlier word:
+    // the same line again would only be read out twice.
+    if (this.#parts.get(msg.itemId)?.text === part.text && this.#landedAt !== -Infinity) return;
     this.#parts.set(msg.itemId, part);
     const slot = this.element?.querySelector(".lc-reveal__after");
     if (!slot || this.#landedAt === -Infinity || this.#closed) return;
